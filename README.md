@@ -112,7 +112,7 @@ hosted independently of the iPhone app.
 - A readable Herdr default session is required; session selection is not wired up.
 - Backgrounding pauses polling. This is not a general-purpose SSH shell.
 - There is no in-app host-key rotation flow. A changed key fails closed.
-- Uploaded photos remain under `~/.cache/herdcats/attachments` on the connected
+- Uploaded photos remain under `~/.cache/herdrcat/attachments` on the connected
   machine until you remove them; the app does not automatically delete them.
 - Saved-machine routing uses the gateway machine's SSH configuration. Quota and
   photos are available only on the directly connected host.
