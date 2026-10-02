@@ -50,6 +50,7 @@ ios/maestro/fixtures/*key*
 *.rst
 /docs/
 !/README.md
+!/SECURITY.md
 
 # Local development and review artifacts
 .playwright-mcp/
