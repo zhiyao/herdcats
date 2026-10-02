@@ -1323,7 +1323,7 @@ struct PaneSessionView: View {
         )
     }
 
-    var body: some View {
+    private var outputWithInputDock: some View {
         outputScrollView
         .overlay(alignment: .bottom) {
             VStack(spacing: 0) {
@@ -1342,6 +1342,10 @@ struct PaneSessionView: View {
         .onPreferenceChange(PaneBottomDockHeightPreferenceKey.self) { height in
             if height > 0 { bottomDockHeight = height }
         }
+    }
+
+    private var outputWithLiveTasks: some View {
+        outputWithInputDock
         .task(id: pane.id) {
             locallyClearedDone = false
             autoMarkedPaneID = nil
@@ -1406,6 +1410,10 @@ struct PaneSessionView: View {
             liveSession = nil
             resetLiveModifiers()
         }
+    }
+
+    private var outputWithLifecycle: some View {
+        outputWithLiveTasks
         .onDisappear {
             flushDraftSave()
             dictation.cancel()
@@ -1464,7 +1472,7 @@ struct PaneSessionView: View {
                 composeFieldFocused = true
             }
         }
-        .alert("Dictation unavailable", isPresented: Binding(
+        .alert("Dictation unavailable", isPresented: Binding<Bool>(
             get: { dictationError != nil },
             set: { if !$0 { dictationError = nil } }
         )) {
@@ -1472,6 +1480,10 @@ struct PaneSessionView: View {
         } message: {
             Text(dictationError ?? "")
         }
+    }
+
+    var body: some View {
+        outputWithLifecycle
         .animation(.easeInOut(duration: 0.2), value: surfaceModel.surface)
         .onChange(of: composeFieldFocused) { _, focused in
             if focused {
