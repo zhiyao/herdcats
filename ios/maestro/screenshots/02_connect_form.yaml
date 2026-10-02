@@ -1,0 +1,20 @@
+appId: com.enchantinglabs.herdrcat
+---
+# Frame 02: Connection form — SSH host, port, username, and key credentials.
+- launchApp:
+    clearState: true
+
+- extendedWaitUntil:
+    visible: "Continue"
+    timeout: 20000
+
+- tapOn: "Continue"
+
+- extendedWaitUntil:
+    visible: "Connection Settings"
+    timeout: 20000
+
+- waitForAnimationToEnd:
+    timeout: 1500
+
+- takeScreenshot: "02_connect_form"

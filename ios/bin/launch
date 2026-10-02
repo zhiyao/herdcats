@@ -1,0 +1,22 @@
+#!/bin/bash
+set -euo pipefail
+
+ios_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+project_path="$ios_dir/Herdcats.xcodeproj"
+
+if ! command -v xcodegen >/dev/null 2>&1; then
+  echo "error: xcodegen is required but was not found in PATH." >&2
+  echo "Install it with: brew install xcodegen" >&2
+  exit 127
+fi
+
+echo "==> Generating Xcode project"
+(cd "$ios_dir" && xcodegen generate)
+
+if [[ ! -d "$project_path" ]]; then
+  printf 'Xcode project not found: %s\n' "$project_path" >&2
+  exit 1
+fi
+
+echo "==> Opening project in Xcode"
+exec /usr/bin/open -a Xcode "$project_path"

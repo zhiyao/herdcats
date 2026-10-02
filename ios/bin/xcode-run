@@ -1,0 +1,26 @@
+#!/bin/sh
+# Invoke Command-R in the current Xcode window.
+set -eu
+
+if [ "$#" -ne 0 ]; then
+    echo "Usage: ios/bin/xcode-run (uses Xcode's current window, scheme, and destination)" >&2
+    exit 2
+fi
+
+/usr/bin/osascript <<'APPLESCRIPT'
+tell application "System Events"
+    if not (exists application process "Xcode") then
+        error "Open your project in Xcode before running ios/bin/xcode-run."
+    end if
+    tell application process "Xcode"
+        set frontmost to true
+        repeat 50 times
+            if frontmost then exit repeat
+            delay 0.1
+        end repeat
+        if not frontmost then error "Could not bring Xcode to the foreground."
+        if (count of windows) is 0 then error "Open your project in Xcode before running ios/bin/xcode-run."
+        keystroke "r" using command down
+    end tell
+end tell
+APPLESCRIPT

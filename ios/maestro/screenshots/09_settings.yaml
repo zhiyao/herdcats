@@ -1,0 +1,30 @@
+appId: com.enchantinglabs.herdrcat
+---
+# Frame 09: Settings — client behavior, privacy, alerts, and appearance preferences.
+- launchApp:
+    clearState: true
+    arguments:
+      hc.autoconnect: "1"
+      hc.host: "127.0.0.1"
+      hc.port: "@HC_SSH_PORT@"
+      hc.user: "@HC_SSH_USER@"
+      hc.key: "@HC_SSH_KEY_PATH@"
+      hc.tab: "settings"
+
+- extendedWaitUntil:
+    visible: "Verify Host Key"
+    timeout: 30000
+- tapOn: "Trust and Connect"
+
+- extendedWaitUntil:
+    visible: "Back online"
+    timeout: 30000
+
+- extendedWaitUntil:
+    notVisible: "Back online"
+    timeout: 10000
+
+- waitForAnimationToEnd:
+    timeout: 1500
+
+- takeScreenshot: "09_settings"

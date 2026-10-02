@@ -1,0 +1,70 @@
+{
+  "locale": "en-US",
+  "background": "#0A0B0E",
+  "defaultTargets": ["iphone-6.5", "iphone-6.9"],
+  "sources": {
+    "iphone": {"device": "iPhone 17 Pro Max", "folder": "iPhone_17_Pro_Max"}
+  },
+  "targets": {
+    "iphone-6.5": {"family": "iphone", "width": 1284, "height": 2778, "description": "iPhone 6.5-inch"},
+    "iphone-6.9": {"family": "iphone", "width": 1320, "height": 2868, "description": "iPhone 6.9-inch"}
+  },
+  "slides": [
+    {
+      "id": "01-spaces",
+      "source": "03_spaces.png",
+      "headline": "Orchestrate spaces,",
+      "accent": "all from your pocket.",
+      "layout": "device"
+    },
+    {
+      "id": "02-agents",
+      "source": "06_agents.png",
+      "headline": "Tame autonomous agents.",
+      "accent": "Blocked, done, or working.",
+      "layout": "device"
+    },
+    {
+      "id": "03-pane",
+      "source": "04_workspace_pane.png",
+      "headline": "Real ANSI terminal,",
+      "accent": "live in your hands.",
+      "layout": "device"
+    },
+    {
+      "id": "04-keys",
+      "source": "05_pane_keys.png",
+      "headline": "Terminal keyboard.",
+      "accent": "Arrows, F1–F12 & modifiers.",
+      "layout": "device"
+    },
+    {
+      "id": "05-agent-pane",
+      "source": "07_agent_pane.png",
+      "headline": "Direct agent control,",
+      "accent": "one thumb away.",
+      "layout": "device"
+    },
+    {
+      "id": "06-quota",
+      "source": "08_quota.png",
+      "headline": "Track model quotas.",
+      "accent": "Live pace-colored rings.",
+      "layout": "device"
+    },
+    {
+      "id": "07-connect",
+      "source": "02_connect_form.png",
+      "headline": "Pure SSH & Tailscale.",
+      "accent": "No middleman daemons.",
+      "layout": "device"
+    },
+    {
+      "id": "08-settings",
+      "source": "09_settings.png",
+      "headline": "Privacy-first client.",
+      "accent": "Drafts and keys stay local.",
+      "layout": "device"
+    }
+  ]
+}

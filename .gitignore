@@ -1,0 +1,70 @@
+# macOS
+.DS_Store
+
+# Xcode
+DerivedData/
+build/
+xcuserdata/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Dependencies
+Pods/
+Carthage/Build/
+vendor/
+.bundle/
+__pycache__/
+
+# Fastlane generated files
+**/fastlane/changelog.txt
+**/fastlane/report.xml
+**/fastlane/README.md
+
+# Local project and app state
+.cursor/
+.herdrcat/
+quota_not_setup.png
+
+# Screenshot output (Maestro via ios/bin/screenshots / ios/bin/screenshots-app-store)
+ios/maestro/app-store-output/
+
+# JavaScript dependencies and Remotion cache
+node_modules/
+.remotion/
+
+# Local SSH test credentials
+ios/maestro/fixtures/*key*
+
+# Local documentation (keep LICENSE tracked)
+*.md
+*.mdx
+*.rst
+/docs/
+
+# Local development and review artifacts
+.playwright-mcp/
+.serena/
+.no-mistakes.yaml
+.herdcats/
+.herdr/
+.lavish/
+.env
+.env.*
+!.env.example
+*.p8
+*.pem
+*.key
+ios/maestro/fixtures/
+ios/maestro/screenshots-output/
+ios/app-store-images/out/
+web/.next/
+web/out/

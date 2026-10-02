@@ -1,0 +1,32 @@
+appId: com.enchantinglabs.herdrcat
+---
+# Frame 06: Agents — herdr's priority attention queue across spaces.
+- launchApp:
+    clearState: true
+    arguments:
+      hc.autoconnect: "1"
+      hc.host: "127.0.0.1"
+      hc.port: "@HC_SSH_PORT@"
+      hc.user: "@HC_SSH_USER@"
+      hc.key: "@HC_SSH_KEY_PATH@"
+      hc.tab: "agents"
+
+- extendedWaitUntil:
+    visible: "Verify Host Key"
+    timeout: 30000
+- tapOn: "Trust and Connect"
+
+- extendedWaitUntil:
+    visible:
+      id: "machine-picker"
+    timeout: 45000
+
+- extendedWaitUntil:
+    visible:
+      id: "folder"
+    timeout: 45000
+
+- waitForAnimationToEnd:
+    timeout: 3500
+
+- takeScreenshot: "06_agents"

@@ -1,0 +1,1293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#000000">
+<title>Herdcats — Progress & Spinner Consolidation Suite</title>
+<style>
+:root {
+  --canvas: #090a0f;
+  --surface: #10121a;
+  --card: #181a24;
+  --card-elevated: #202433;
+  --field: #232738;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --text: #ffffff;
+  --secondary: #8e8e93;
+  --tertiary: #636366;
+  --accent: #0edcd5;
+  --accent-secondary: #0db1c5;
+  --working: #ffd60a;
+  --blocked: #ff453a;
+  --done: #30b0c7;
+  --idle: #34c759;
+  --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+  --font-rounded: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", "SF Pro Text", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  --radius-xs: 7px;
+  --radius-sm: 10px;
+  --radius-md: 12px;
+  --radius-lg: 14px;
+  --radius-xl: 19px;
+  --radius-full: 9999px;
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --canvas: #f2f2f7;
+  --surface: #ffffff;
+  --card: #ffffff;
+  --card-elevated: #f9f9fb;
+  --field: #e5e5ea;
+  --line: rgba(0, 0, 0, 0.08);
+  --line-strong: rgba(0, 0, 0, 0.16);
+  --text: #000000;
+  --secondary: #6e6e73;
+  --tertiary: #8e8e93;
+  color-scheme: light;
+}
+
+[data-reduce-motion="true"] *,
+[data-reduce-motion="true"] *::before,
+[data-reduce-motion="true"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font-system);
+  background: var(--canvas);
+  color: var(--text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+a { color: var(--accent); text-decoration: none; }
+button { font-family: inherit; cursor: pointer; border: none; background: transparent; color: inherit; }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Header */
+.app-header {
+  border-bottom: 1px solid var(--line);
+  background: rgba(16, 18, 26, 0.75);
+  backdrop-filter: blur(20px);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.header-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.brand-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.brand-badge {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+  display: grid;
+  place-items: center;
+  color: #003e43;
+  font-weight: 800;
+  font-size: 20px;
+}
+.brand-titles h1 {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.brand-titles p {
+  font-size: 12px;
+  color: var(--secondary);
+}
+.badge-version {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: rgba(14, 220, 213, 0.15);
+  color: var(--accent);
+  letter-spacing: 0.5px;
+}
+
+.controls-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: var(--radius-full);
+  background: var(--card);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+.pill-btn:hover {
+  background: var(--field);
+  border-color: var(--line-strong);
+}
+.pill-btn.active {
+  background: var(--accent);
+  color: #003e43;
+  border-color: var(--accent);
+}
+
+/* Hero Section */
+.hero {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 40px 24px 20px;
+}
+.eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.hero h2 {
+  font-size: clamp(26px, 3.5vw, 38px);
+  font-weight: 800;
+  letter-spacing: -1px;
+  line-height: 1.15;
+  margin-bottom: 12px;
+}
+.hero p {
+  max-width: 820px;
+  font-size: 15px;
+  color: var(--secondary);
+}
+
+/* Tabs Navigation */
+.tab-nav {
+  max-width: 1280px;
+  margin: 20px auto 0;
+  padding: 0 24px;
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.tab-trigger {
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--secondary);
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tab-trigger:hover { color: var(--text); }
+.tab-trigger.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.tab-count {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: var(--field);
+  color: var(--secondary);
+}
+.tab-trigger.active .tab-count {
+  background: rgba(14, 220, 213, 0.2);
+  color: var(--accent);
+}
+
+/* Main Content Layout */
+.main-content {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+  flex: 1;
+  width: 100%;
+}
+.view-panel { display: none; }
+.view-panel.active { display: block; }
+
+/* Section Card */
+.content-box {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  padding: 24px;
+  margin-bottom: 28px;
+}
+.box-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.box-title h3 {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+.box-title p {
+  font-size: 13px;
+  color: var(--secondary);
+  margin-top: 4px;
+}
+
+/* Matrix Table */
+.table-wrapper {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  text-align: left;
+}
+th {
+  padding: 12px 14px;
+  background: var(--field);
+  color: var(--secondary);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 10px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+td {
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(255, 255, 255, 0.02); }
+.code-tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--field);
+  padding: 3px 6px;
+  border-radius: 5px;
+  color: var(--accent);
+}
+.badge-issue {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 69, 58, 0.15);
+  color: var(--blocked);
+}
+.badge-ok {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: rgba(52, 199, 89, 0.15);
+  color: var(--idle);
+}
+.badge-warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 214, 10, 0.15);
+  color: var(--working);
+}
+
+/* Spinner Renderers (CSS / SVG) */
+.spinner-ios {
+  display: inline-block;
+  position: relative;
+  vertical-align: middle;
+}
+.spinner-ios.mini { width: 12px; height: 12px; }
+.spinner-ios.small { width: 16px; height: 16px; }
+.spinner-ios.regular { width: 22px; height: 22px; }
+.spinner-blade {
+  position: absolute;
+  left: 44.5%;
+  top: 37%;
+  width: 10%;
+  height: 26%;
+  border-radius: 50px;
+  background-color: currentColor;
+  transform-origin: center -50%;
+  animation: spinner-fade 1s linear infinite;
+}
+@keyframes spinner-fade {
+  0% { opacity: 1; }
+  100% { opacity: 0.15; }
+}
+.spinner-blade:nth-child(1) { transform: rotate(0deg) translateY(-100%); animation-delay: -0.916s; }
+.spinner-blade:nth-child(2) { transform: rotate(30deg) translateY(-100%); animation-delay: -0.833s; }
+.spinner-blade:nth-child(3) { transform: rotate(60deg) translateY(-100%); animation-delay: -0.75s; }
+.spinner-blade:nth-child(4) { transform: rotate(90deg) translateY(-100%); animation-delay: -0.666s; }
+.spinner-blade:nth-child(5) { transform: rotate(120deg) translateY(-100%); animation-delay: -0.583s; }
+.spinner-blade:nth-child(6) { transform: rotate(150deg) translateY(-100%); animation-delay: -0.5s; }
+.spinner-blade:nth-child(7) { transform: rotate(180deg) translateY(-100%); animation-delay: -0.416s; }
+.spinner-blade:nth-child(8) { transform: rotate(210deg) translateY(-100%); animation-delay: -0.333s; }
+.spinner-blade:nth-child(9) { transform: rotate(240deg) translateY(-100%); animation-delay: -0.25s; }
+.spinner-blade:nth-child(10) { transform: rotate(270deg) translateY(-100%); animation-delay: -0.166s; }
+.spinner-blade:nth-child(11) { transform: rotate(300deg) translateY(-100%); animation-delay: -0.083s; }
+.spinner-blade:nth-child(12) { transform: rotate(330deg) translateY(-100%); animation-delay: 0s; }
+
+/* Custom Stroked Arc Spinner (Current Live activity) */
+.custom-arc-spinner {
+  width: 15px;
+  height: 15px;
+  display: inline-block;
+  vertical-align: middle;
+  animation: spin-linear 1.8s linear infinite;
+}
+@keyframes spin-linear {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Working Status Icon Spinner */
+.working-arrow-spinner {
+  width: 14px;
+  height: 14px;
+  display: inline-block;
+  vertical-align: middle;
+  color: var(--working);
+  animation: spin-linear 2s linear infinite;
+}
+
+/* Suggestion Option Cards */
+.options-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 20px;
+  margin-top: 24px;
+}
+.option-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  transition: transform 0.2s, border-color 0.2s;
+}
+.option-card:hover {
+  border-color: var(--line-strong);
+}
+.option-card.highlight {
+  border-color: var(--accent);
+  box-shadow: 0 0 24px rgba(14, 220, 213, 0.15);
+}
+.option-tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.option-card h4 {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  margin-bottom: 6px;
+}
+.option-lead {
+  font-size: 13px;
+  color: var(--secondary);
+  margin-bottom: 16px;
+  line-height: 1.4;
+}
+.bullet-list {
+  list-style: none;
+  font-size: 12px;
+  margin-bottom: 20px;
+  flex: 1;
+}
+.bullet-list li {
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.bullet-list li strong { color: var(--text); font-weight: 600; }
+.bullet-list li span.icon { color: var(--accent); flex-shrink: 0; }
+.card-bottom-action {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Interactive Component Comparison Sandbox */
+.comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 24px;
+}
+.comp-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+}
+.comp-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.comp-title {
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.side-by-side {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.state-box {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 110px;
+  position: relative;
+}
+.state-box.as-is { border-top: 3px solid var(--blocked); }
+.state-box.consolidated { border-top: 3px solid var(--idle); }
+.state-label {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--secondary);
+}
+
+/* Mock UI Elements */
+.mock-primary-btn {
+  width: 100%;
+  max-width: 160px;
+  height: 44px;
+  border-radius: var(--radius-lg);
+  background: var(--accent);
+  color: #003e43;
+  font-size: 14px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 12px rgba(14, 220, 213, 0.25);
+}
+.mock-fab-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--done);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+}
+.mock-send-btn {
+  width: 34px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: rgba(14, 220, 213, 0.15);
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.mock-live-corner {
+  background: var(--card-elevated);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+.mock-banner {
+  width: 100%;
+  background: #2e7ba6;
+  color: #ffffff;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Quota Interactive Tester */
+.quota-tester {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 16px;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+}
+.quota-ring-svg {
+  transform: rotate(-90deg);
+  width: 68px;
+  height: 68px;
+}
+
+/* Pixel Cat Mini Canvas */
+.cat-preview-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  margin-top: 16px;
+}
+canvas#catCanvas {
+  background: transparent;
+  image-rendering: pixelated;
+}
+
+/* Code Snippet Blocks */
+.code-block {
+  background: #0d0f17;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #d1d5db;
+  overflow-x: auto;
+  line-height: 1.6;
+  margin-top: 12px;
+}
+.code-keyword { color: #f472b6; font-weight: 600; }
+.code-type { color: #38bdf8; }
+.code-call { color: #a78bfa; }
+.code-prop { color: #34d399; }
+.code-comment { color: #6b7280; font-style: italic; }
+
+/* Responsive adjustments */
+@media (max-width: 860px) {
+  .hero h2 { font-size: 26px; }
+  .side-by-side { grid-template-columns: 1fr; }
+  .tab-nav { overflow-x: auto; padding-bottom: 4px; }
+}
+</style>
+</head>
+<body data-theme="dark" data-reduce-motion="false">
+
+<!-- Header -->
+<header class="app-header">
+  <div class="header-inner">
+    <div class="brand-group">
+      <div class="brand-badge">◖</div>
+      <div class="brand-titles">
+        <h1>Herdcats Design System <span class="badge-version">Progress Audit</span></h1>
+        <p>Spinner, Activity & Progress Consolidation Suite</p>
+      </div>
+    </div>
+    <div class="controls-group">
+      <button type="button" class="pill-btn" id="themeToggle" title="Toggle Light / Dark theme">
+        <span id="themeIcon">☀️</span> Theme
+      </button>
+      <button type="button" class="pill-btn" id="motionToggle" title="Simulate iOS Reduce Motion accessibility setting">
+        <span id="motionIcon">⏸</span> Reduce Motion: Off
+      </button>
+      <button type="button" class="pill-btn" id="interactiveSimToggle" title="Toggle simulated loading states">
+        <span>🔄</span> Toggle Busy States
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- Hero intro -->
+<section class="hero">
+  <div class="eyebrow">Design System & HIG Architecture</div>
+  <h2>Audit of 16 Progress Indicators & 3 Consolidation Paths</h2>
+  <p>Herdcats orchestrates remote coding agents over SSH. Currently, 16 distinct progress views, hand-rolled circular stroke animations, rotating SF symbols, and pixel cat canvas runners exist across the app with divergent sizes and tints. This interactive suite demonstrates the current state and 3 concrete directions forward.</p>
+</section>
+
+<!-- Tabs Navigation -->
+<nav class="tab-nav" aria-label="Consolidation views">
+  <button type="button" class="tab-trigger active" data-tab="tab-proposals">
+    <span>💡 3 Strategic Suggestions</span>
+    <span class="tab-count">3 Approaches</span>
+  </button>
+  <button type="button" class="tab-trigger" data-tab="tab-playground">
+    <span>🔬 Live Component Comparison</span>
+    <span class="tab-count">6 Sandboxes</span>
+  </button>
+  <button type="button" class="tab-trigger" data-tab="tab-audit">
+    <span>📊 Complete Codebase Audit</span>
+    <span class="tab-count">16 Locations</span>
+  </button>
+  <button type="button" class="tab-trigger" data-tab="tab-code">
+    <span>🛠️ Swift Refactor Spec</span>
+    <span class="tab-count">DesignSystem.swift</span>
+  </button>
+</nav>
+
+<main class="main-content">
+
+  <!-- TAB 1: 3 SUGGESTIONS -->
+  <div class="view-panel active" id="tab-proposals">
+    <div class="content-box">
+      <div class="box-header">
+        <div class="box-title">
+          <h3>3 Strategic Approaches to Consolidate Spinners & Progress</h3>
+          <p>Choose the architecture that best balances Apple HIG fidelity, code minimalism, and Herdr's hacker-chic terminal personality.</p>
+        </div>
+      </div>
+
+      <div class="options-grid">
+        <!-- Option 1 -->
+        <div class="option-card" id="card-opt1">
+          <span class="option-tag">Option 01 · Minimalist</span>
+          <h4>Semantic Native Scale</h4>
+          <p class="option-lead">Strict adherence to standard Apple SwiftUI <code>.controlSize</code>. Replaces all one-off custom geometry with native spinners.</p>
+          <ul class="bullet-list">
+            <li><span class="icon">✓</span> <div><strong>Standardize 3 Sizes:</strong> <code>.mini</code> for chips/tags, <code>.small</code> for all buttons, <code>.regular</code> for view loading.</div></li>
+            <li><span class="icon">✓</span> <div><strong>Kill Custom Stroke Arc:</strong> Replaces the hand-rolled <code>Circle().trim</code> in Live keyboard with <code>ProgressView().controlSize(.mini).tint(Theme.accent)</code>.</div></li>
+            <li><span class="icon">✓</span> <div><strong>Fix Reduce Motion:</strong> All spinners instantly respect iOS system accessibility with zero custom boiler-plate.</div></li>
+            <li><span class="icon">✓</span> <div><strong>Remove Icon Duplication:</strong> Eliminates static <code>arrow.clockwise</code> sitting beside active spinners in status bars.</div></li>
+            <li><span class="icon">✓</span> <div><strong>Smallest Footprint:</strong> Zero new UI dependencies or custom view models needed.</div></li>
+          </ul>
+          <div class="card-bottom-action">
+            <span class="code-tag">Native SwiftUI First</span>
+            <span class="badge-ok">Recommended for Simplicity</span>
+          </div>
+        </div>
+
+        <!-- Option 2 -->
+        <div class="option-card highlight" id="card-opt2">
+          <span class="option-tag">Option 02 · Design System</span>
+          <h4>Unified Token Primitives</h4>
+          <p class="option-lead">Introduce a standardized <code>HerdrSpinner</code> and a <code>.herdrButtonLoading()</code> modifier in <code>Features/DesignSystem.swift</code>.</p>
+          <ul class="bullet-list">
+            <li><span class="icon">★</span> <div><strong>Zero Layout Jumps:</strong> Button modifier locks explicit button bounding box so text-to-spinner swaps never shift surrounding elements.</div></li>
+            <li><span class="icon">★</span> <div><strong>Semantic Sizing Tokens:</strong> <code>HerdrSpinner(size: .compact, tint: .white)</code> replaces repetitive <code>Group { if isBusy { ProgressView() } else { ... } }</code>.</div></li>
+            <li><span class="icon">★</span> <div><strong>Unified Sheet Loader:</strong> Standard <code>HerdrLoadingState(message: "Loading worktrees…")</code> replaces mixed <code>ProgressView("...")</code> and manual <code>VStack</code>s.</div></li>
+            <li><span class="icon">★</span> <div><strong>Centralized Haptics & Accessibility:</strong> Enforces accessibility labels and motion reduction in a single source of truth.</div></li>
+          </ul>
+          <div class="card-bottom-action">
+            <span class="code-tag">DesignSystem.swift Primitives</span>
+            <span class="badge-warn">Highest Engineering Quality</span>
+          </div>
+        </div>
+
+        <!-- Option 3 -->
+        <div class="option-card" id="card-opt3">
+          <span class="option-tag">Option 03 · Brand-Led</span>
+          <h4>Context-Adaptive Tiering</h4>
+          <p class="option-lead">Categorize spinners strictly by <em>semantic domain</em> to provide instant peripheral situational awareness.</p>
+          <ul class="bullet-list">
+            <li><span class="icon">◆</span> <div><strong>1. Remote SSH Handshake:</strong> Pixel Tabby Cat (<code>LazyCatLoadingView</code>) exclusively for host connections.</div></li>
+            <li><span class="icon">◆</span> <div><strong>2. Agent Autonomous Thinking:</strong> Amber rotating <code>WorkingStatusIcon</code> exclusively for Herdr agent process state.</div></li>
+            <li><span class="icon">◆</span> <div><strong>3. Terminal Stream Activity:</strong> Cyan mini pulse indicator for Live queue/raw PTY keystrokes.</div></li>
+            <li><span class="icon">◆</span> <div><strong>4. Local App Interactions:</strong> Subdued monochrome Apple <code>ProgressView</code> for standard user taps (Send, Mark Read, Export).</div></li>
+            <li><span class="icon">◆</span> <div><strong>5. Capacity Tracking:</strong> Determinate <code>QuotaRing</code> for percent burn rates.</div></li>
+          </ul>
+          <div class="card-bottom-action">
+            <span class="code-tag">Domain Specific Archetypes</span>
+            <span class="badge-issue">Highest Visual Personality</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 2: LIVE PLAYGROUND COMPARISON -->
+  <div class="view-panel" id="tab-playground">
+    <div class="content-box">
+      <div class="box-header">
+        <div class="box-title">
+          <h3>Interactive "As-Is" vs "Consolidated" Side-by-Side</h3>
+          <p>Toggle states to observe how each component looks today vs after adopting consolidated tokens.</p>
+        </div>
+      </div>
+
+      <div class="comparison-grid">
+
+        <!-- 1. Primary Connect Button -->
+        <div class="comp-card">
+          <div class="comp-header">
+            <div class="comp-title">1. Connect Button <span class="code-tag">ConnectView.swift:478</span></div>
+            <button type="button" class="pill-btn mini-btn toggle-comp-btn" data-target="connect">Toggle Action</button>
+          </div>
+          <div class="side-by-side">
+            <div class="state-box as-is">
+              <span class="state-label">Current: Default Size (~20pt)</span>
+              <button type="button" class="mock-primary-btn" id="mock-connect-as-is">
+                <span class="spinner-ios regular"><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span></span>
+                Connecting…
+              </button>
+              <div style="font-size:10px; color:var(--secondary); margin-top:8px;">Unconstrained spinner displaces text</div>
+            </div>
+            <div class="state-box consolidated">
+              <span class="state-label">Consolidated: .small + Fixed Frame</span>
+              <button type="button" class="mock-primary-btn" id="mock-connect-cons">
+                <span class="spinner-ios small"><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span></span>
+                Connecting…
+              </button>
+              <div style="font-size:10px; color:var(--idle); margin-top:8px;">Proportional 14pt spinner + stable layout</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Live Activity Spinner -->
+        <div class="comp-card">
+          <div class="comp-header">
+            <div class="comp-title">2. Live Keyboard Activity <span class="code-tag">SpaceDetailView.swift:1278</span></div>
+            <button type="button" class="pill-btn mini-btn toggle-comp-btn" data-target="live">Toggle Draining</button>
+          </div>
+          <div class="side-by-side">
+            <div class="state-box as-is">
+              <span class="state-label">Current: Custom Circle().trim</span>
+              <div class="mock-live-corner">
+                <span>Live Keystrokes</span>
+                <svg class="custom-arc-spinner" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="9" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-dasharray="45 15" stroke-linecap="round"></circle>
+                </svg>
+              </div>
+              <div style="font-size:10px; color:var(--blocked); margin-top:8px;">Ignores reduce-motion, hand-rolled math</div>
+            </div>
+            <div class="state-box consolidated">
+              <span class="state-label">Consolidated: .controlSize(.mini)</span>
+              <div class="mock-live-corner">
+                <span>Live Keystrokes</span>
+                <span class="spinner-ios mini" style="color:var(--accent);"><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span></span>
+              </div>
+              <div style="font-size:10px; color:var(--idle); margin-top:8px;">Native HIG token + respects reduce motion</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Mark As Read Floating Button -->
+        <div class="comp-card">
+          <div class="comp-header">
+            <div class="comp-title">3. Mark-As-Read Action <span class="code-tag">SpaceDetailView.swift:1810</span></div>
+            <button type="button" class="pill-btn mini-btn toggle-comp-btn" data-target="markread">Toggle State</button>
+          </div>
+          <div class="side-by-side">
+            <div class="state-box as-is">
+              <span class="state-label">Current: Unconstrained Default</span>
+              <div class="mock-fab-btn" id="fab-as-is">
+                <span class="spinner-ios regular"><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span></span>
+              </div>
+              <div style="font-size:10px; color:var(--secondary); margin-top:8px;">Oversized (22pt) in 44pt circle</div>
+            </div>
+            <div class="state-box consolidated">
+              <span class="state-label">Consolidated: .controlSize(.small)</span>
+              <div class="mock-fab-btn" id="fab-cons">
+                <span class="spinner-ios small"><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span></span>
+              </div>
+              <div style="font-size:10px; color:var(--idle); margin-top:8px;">Balanced 16pt spinner matches 17pt icon</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. Reconnecting Banner -->
+        <div class="comp-card">
+          <div class="comp-header">
+            <div class="comp-title">4. Top Reconnecting Bar <span class="code-tag">Components.swift:673</span></div>
+          </div>
+          <div class="side-by-side">
+            <div class="state-box as-is">
+              <span class="state-label">Current: Dual Indicators</span>
+              <div class="mock-banner">
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span style="font-size:14px;">↻</span>
+                  <span>Reconnecting…</span>
+                </div>
+                <span class="spinner-ios mini"><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span></span>
+              </div>
+              <div style="font-size:10px; color:var(--blocked); margin-top:8px;">Redundant: static arrow + spinner</div>
+            </div>
+            <div class="state-box consolidated">
+              <span class="state-label">Consolidated: Single Clean Spinner</span>
+              <div class="mock-banner">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span class="spinner-ios mini"><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span></span>
+                  <span>Reconnecting…</span>
+                </div>
+              </div>
+              <div style="font-size:10px; color:var(--idle); margin-top:8px;">Single clear visual communication</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. Quota Determinate Ring -->
+        <div class="comp-card" style="grid-column: 1 / -1;">
+          <div class="comp-header">
+            <div class="comp-title">5. Quota Progress Ring <span class="code-tag">QuotaScreen.swift:360</span></div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:12px; color:var(--secondary);">Remaining:</span>
+              <input type="range" id="quotaSlider" min="0" max="100" value="68" style="accent-color:var(--accent);">
+              <span id="quotaPercent" style="font-size:12px; font-weight:700; width:35px;">68%</span>
+            </div>
+          </div>
+          <div class="quota-tester">
+            <svg class="quota-ring-svg" viewBox="0 0 40 40">
+              <circle cx="20" cy="20" r="16" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="4"></circle>
+              <circle id="quotaProgressCircle" cx="20" cy="20" r="16" fill="none" stroke="var(--accent)" stroke-width="4" stroke-linecap="round" stroke-dasharray="100.5" stroke-dashoffset="32.16"></circle>
+            </svg>
+            <div>
+              <div style="font-size:15px; font-weight:700;">Agent Quota Standard (Determinate Ring)</div>
+              <p style="font-size:12px; color:var(--secondary); margin-top:2px;">Kept strictly for numerical metrics and rate-limit tracking. Conforms to <code>design.md</code> color tokens with smooth spring transitions.</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Tabby Mascot Preview -->
+      <div class="cat-preview-box">
+        <canvas id="catCanvas" width="360" height="70"></canvas>
+        <div style="text-align:center; margin-top:8px;">
+          <strong style="font-size:13px; color:var(--text);">Lazy Cat Mascot Loader (<code>LazyCatLoadingView</code>)</strong>
+          <p style="font-size:11px; color:var(--secondary);">Reserved for full-screen SSH handshakes and workspace discovery (SpacesScreen & ConnectView).</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- TAB 3: COMPLETE AUDIT MATRIX -->
+  <div class="view-panel" id="tab-audit">
+    <div class="content-box">
+      <div class="box-header">
+        <div class="box-title">
+          <h3>Complete Codebase Inventory (16 Occurrences)</h3>
+          <p>Every progress view, custom spinner, and animated activity indicator currently present in <code>ios/Herdcats/</code>.</p>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>File & Location</th>
+              <th>Category</th>
+              <th>Current Implementation</th>
+              <th>Effective Size</th>
+              <th>Color / Tint</th>
+              <th>Status / Flaw</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>ConnectView.swift:478</code></td>
+              <td>Action Button</td>
+              <td><code>ProgressView()</code></td>
+              <td>Default (~20pt)</td>
+              <td><code>.white</code></td>
+              <td><span class="badge-warn">Unsized</span> Jumps layout</td>
+            </tr>
+            <tr>
+              <td><code>Components.swift:673</code></td>
+              <td>Banner / Bar</td>
+              <td><code>ProgressView()</code></td>
+              <td><code>.mini</code> (~12pt)</td>
+              <td><code>.white</code></td>
+              <td><span class="badge-issue">Redundant</span> Beside arrow icon</td>
+            </tr>
+            <tr>
+              <td><code>PaneVoiceComposeBar.swift:531</code></td>
+              <td>Action Button</td>
+              <td><code>ProgressView()</code></td>
+              <td><code>.small</code> (~16pt)</td>
+              <td>Secondary</td>
+              <td><span class="badge-ok">Well-sized</span></td>
+            </tr>
+            <tr>
+              <td><code>PaneVoiceComposeBar.swift:566</code></td>
+              <td>Attachment Chip</td>
+              <td><code>ProgressView()</code></td>
+              <td><code>.mini</code> (~12pt)</td>
+              <td>Secondary</td>
+              <td><span class="badge-ok">Good for chip</span></td>
+            </tr>
+            <tr>
+              <td><code>PaneSlashCommands.swift:337</code></td>
+              <td>Action Button</td>
+              <td><code>ProgressView()</code></td>
+              <td><code>.regular</code> (22pt)</td>
+              <td>Secondary</td>
+              <td><span class="badge-warn">Oversized</span> inside 48pt button</td>
+            </tr>
+            <tr>
+              <td><code>AgentOutputRulesSettingsView.swift:59</code></td>
+              <td>List Row</td>
+              <td><code>ProgressView()</code></td>
+              <td>Default (~20pt)</td>
+              <td>System Gray</td>
+              <td><span class="badge-warn">Trailing alignment</span></td>
+            </tr>
+            <tr>
+              <td><code>AgySignInSheet.swift:89</code></td>
+              <td>Sheet Loader</td>
+              <td><code>ProgressView("Starting…")</code></td>
+              <td>Default Stack</td>
+              <td>System Gray</td>
+              <td><span class="badge-warn">Inconsistent text stack</span></td>
+            </tr>
+            <tr>
+              <td><code>AgySignInSheet.swift:102</code></td>
+              <td>Button Action</td>
+              <td><code>ProgressView()</code></td>
+              <td>Default (~20pt)</td>
+              <td>System Gray</td>
+              <td><span class="badge-warn">Unsized</span> in outline button</td>
+            </tr>
+            <tr>
+              <td><code>AgentOutputFixSheet.swift:215</code></td>
+              <td>Full Sheet</td>
+              <td><code>ProgressView(step)</code></td>
+              <td>Default Stack</td>
+              <td>System Gray</td>
+              <td><span class="badge-warn">Generic</span> No brand identity</td>
+            </tr>
+            <tr>
+              <td><code>SpacesScreen.swift:940</code></td>
+              <td>Modal Loader</td>
+              <td><code>VStack { ProgressView(); Text(...) }</code></td>
+              <td>Manual Stack</td>
+              <td>System Gray</td>
+              <td><span class="badge-issue">Ad-hoc markup</span> Non-standard</td>
+            </tr>
+            <tr>
+              <td><code>SpacesScreen.swift:1460</code></td>
+              <td>View Loader</td>
+              <td><code>ProgressView("Loading panes…")</code></td>
+              <td>Native Stack</td>
+              <td>System Gray</td>
+              <td><span class="badge-warn">Differs from line 940</span></td>
+            </tr>
+            <tr>
+              <td><code>SpaceDetailView.swift:904</code></td>
+              <td>Pending Card</td>
+              <td><code>ProgressView()</code></td>
+              <td><code>.mini</code> (~12pt)</td>
+              <td>Secondary</td>
+              <td><span class="badge-ok">Good</span> First baseline alignment</td>
+            </tr>
+            <tr>
+              <td><code>SpaceDetailView.swift:932</code></td>
+              <td>Pending Pill</td>
+              <td><code>ProgressView()</code></td>
+              <td><code>.mini</code> (~12pt)</td>
+              <td>Secondary</td>
+              <td><span class="badge-ok">Good</span> Compact</td>
+            </tr>
+            <tr>
+              <td><code>SpaceDetailView.swift:1278</code></td>
+              <td>Stream Activity</td>
+              <td><code>Circle().trim(...)</code> + rotation</td>
+              <td>15x15pt</td>
+              <td><code>Theme.accent</code></td>
+              <td><span class="badge-issue">Custom Geometry</span> Ignores reduce-motion</td>
+            </tr>
+            <tr>
+              <td><code>SpaceDetailView.swift:1810</code></td>
+              <td>Floating Action</td>
+              <td><code>ProgressView()</code></td>
+              <td>Default (~20pt)</td>
+              <td><code>.white</code></td>
+              <td><span class="badge-warn">Unsized</span> inside 44x44 FAB</td>
+            </tr>
+            <tr>
+              <td><code>Components.swift:1004</code></td>
+              <td>Agent Status</td>
+              <td><code>WorkingStatusIcon</code> (SF Symbol)</td>
+              <td>14x14pt</td>
+              <td><code>AgentStatus.working</code></td>
+              <td><span class="badge-ok">Canonical</span> Respects reduce-motion</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 4: SWIFT IMPLEMENTATION SPEC -->
+  <div class="view-panel" id="tab-code">
+    <div class="content-box">
+      <div class="box-header">
+        <div class="box-title">
+          <h3>Recommended Swift Consolidation Code</h3>
+          <p>Drop-in extensions for <code>ios/Herdcats/Features/DesignSystem.swift</code> and <code>Components.swift</code>.</p>
+        </div>
+      </div>
+
+      <div class="code-block">
+<span class="code-comment">// MARK: - DesignSystem.swift: Canonical Progress Sizes & Modifiers</span>
+
+<span class="code-keyword">enum</span> <span class="code-type">HerdrSpinnerSize</span> {
+    <span class="code-comment">/// 12pt — micro chips, pending placeholder tags, connection status bar</span>
+    <span class="code-keyword">case</span> mini
+    <span class="code-comment">/// 16pt — standard buttons (Connect, Send, Mark As Read, Refresh)</span>
+    <span class="code-keyword">case</span> button
+    <span class="code-comment">/// 22pt — full-view, modal sheet, or empty state loading</span>
+    <span class="code-keyword">case</span> regular
+
+    <span class="code-keyword">var</span> controlSize: <span class="code-type">ControlSize</span> {
+        <span class="code-keyword">switch</span> <span class="code-keyword">self</span> {
+        <span class="code-keyword">case</span> .mini: <span class="code-keyword">return</span> .mini
+        <span class="code-keyword">case</span> .button: <span class="code-keyword">return</span> .small
+        <span class="code-keyword">case</span> .regular: <span class="code-keyword">return</span> .regular
+        }
+    }
+}
+
+<span class="code-comment">// MARK: - Unified HerdrSpinner Component</span>
+
+<span class="code-keyword">struct</span> <span class="code-type">HerdrSpinner</span>: <span class="code-type">View</span> {
+    <span class="code-keyword">var</span> size: <span class="code-type">HerdrSpinnerSize</span> = .button
+    <span class="code-keyword">var</span> tint: <span class="code-type">Color</span>? = <span class="code-keyword">nil</span>
+
+    <span class="code-keyword">var</span> body: <span class="code-keyword">some</span> <span class="code-type">View</span> {
+        <span class="code-type">ProgressView</span>()
+            .<span class="code-call">controlSize</span>(size.controlSize)
+            .<span class="code-call">tint</span>(tint)
+    }
+}
+
+<span class="code-comment">// MARK: - Clean Button Loading Modifier (Prevents Layout Jumps)</span>
+
+<span class="code-keyword">extension</span> <span class="code-type">View</span> {
+    <span class="code-keyword">func</span> <span class="code-call">inFlightProgress</span>(isLoading: <span class="code-type">Bool</span>, tint: <span class="code-type">Color</span> = .white) -> <span class="code-keyword">some</span> <span class="code-type">View</span> {
+        <span class="code-keyword">self</span>.<span class="code-call">overlay</span> {
+            <span class="code-keyword">if</span> isLoading {
+                <span class="code-type">HerdrSpinner</span>(size: .button, tint: tint)
+            }
+        }
+        .<span class="code-call">opacity</span>(isLoading ? <span class="code-prop">0</span> : <span class="code-prop">1</span>)
+        .<span class="code-call">disabled</span>(isLoading)
+    }
+}
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// Interactive Tab Switching
+const tabButtons = document.querySelectorAll('.tab-trigger');
+const panels = document.querySelectorAll('.view-panel');
+
+tabButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    tabButtons.forEach(b => b.classList.remove('active'));
+    panels.forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    const target = btn.getAttribute('data-tab');
+    document.getElementById(target).classList.add('active');
+  });
+});
+
+// Theme Toggle
+const themeToggle = document.getElementById('themeToggle');
+const themeIcon = document.getElementById('themeIcon');
+themeToggle.addEventListener('click', () => {
+  const current = document.body.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.body.setAttribute('data-theme', next);
+  themeIcon.textContent = next === 'dark' ? '☀️' : '🌙';
+});
+
+// Reduce Motion Toggle
+const motionToggle = document.getElementById('motionToggle');
+const motionIcon = document.getElementById('motionIcon');
+motionToggle.addEventListener('click', () => {
+  const current = document.body.getAttribute('data-reduce-motion') === 'true';
+  const next = !current;
+  document.body.setAttribute('data-reduce-motion', String(next));
+  motionToggle.classList.toggle('active', next);
+  motionIcon.textContent = next ? '▶️' : '⏸';
+  motionToggle.innerHTML = `<span>${next ? '▶️' : '⏸'}</span> Reduce Motion: ${next ? 'ON' : 'Off'}`;
+});
+
+// Quota Slider Interactive Tester
+const quotaSlider = document.getElementById('quotaSlider');
+const quotaPercent = document.getElementById('quotaPercent');
+const quotaProgressCircle = document.getElementById('quotaProgressCircle');
+const circumference = 2 * Math.PI * 16; // r=16 -> ~100.53
+
+quotaSlider.addEventListener('input', (e) => {
+  const val = Number(e.target.value);
+  quotaPercent.textContent = `${val}%`;
+  const offset = circumference - (val / 100) * circumference;
+  quotaProgressCircle.style.strokeDashoffset = offset;
+  if (val < 20) {
+    quotaProgressCircle.style.stroke = 'var(--blocked)';
+  } else if (val < 45) {
+    quotaProgressCircle.style.stroke = 'var(--working)';
+  } else {
+    quotaProgressCircle.style.stroke = 'var(--accent)';
+  }
+});
+
+// Toggle Action simulation in comparison playground
+document.querySelectorAll('.toggle-comp-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const target = btn.getAttribute('data-target');
+    if (target === 'connect') {
+      const b1 = document.getElementById('mock-connect-as-is');
+      const b2 = document.getElementById('mock-connect-cons');
+      const isConnecting = b1.dataset.state === 'loading';
+      if (isConnecting) {
+        b1.innerHTML = 'Connect';
+        b2.innerHTML = 'Connect';
+        b1.dataset.state = 'idle';
+        b2.dataset.state = 'idle';
+      } else {
+        b1.innerHTML = '<span class="spinner-ios regular"><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span></span> Connecting…';
+        b2.innerHTML = '<span class="spinner-ios small"><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span></span> Connecting…';
+        b1.dataset.state = 'loading';
+        b2.dataset.state = 'loading';
+      }
+    } else if (target === 'markread') {
+      const f1 = document.getElementById('fab-as-is');
+      const f2 = document.getElementById('fab-cons');
+      const isSpinning = f1.dataset.state === 'loading';
+      if (isSpinning) {
+        f1.innerHTML = '✓';
+        f2.innerHTML = '✓';
+        f1.dataset.state = 'idle';
+        f2.dataset.state = 'idle';
+      } else {
+        f1.innerHTML = '<span class="spinner-ios regular"><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span></span>';
+        f2.innerHTML = '<span class="spinner-ios small"><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span><span class="spinner-blade"></span></span>';
+        f1.dataset.state = 'loading';
+        f2.dataset.state = 'loading';
+      }
+    }
+  });
+});
+
+// Mini Pixel Cat Canvas Animation
+const catCanvas = document.getElementById('catCanvas');
+if (catCanvas) {
+  const ctx = catCanvas.getContext('2d');
+  let startTime = performance.now();
+
+  function drawPixelCat(x, y, stride, bounce) {
+    const scale = 2;
+    const fur = '#c7a37a';
+    const light = '#f2d4a6';
+    const shade = '#87664d';
+
+    function block(bx, by, bw, bh, col) {
+      ctx.fillStyle = col;
+      ctx.fillRect(x + bx * scale, y + (by - bounce) * scale, bw * scale, bh * scale);
+    }
+
+    // Tabby tail, body, ears, eyes
+    block(-13, -7, 2, 7, fur);
+    block(-15, -8, 4, 2, fur);
+    block(-11, -2, 15, 6, fur);
+    block(1, -6, 7, 8, fur);
+    block(1, -9, 2, 4, fur);
+    block(6, -9, 2, 4, fur);
+    block(5, -4, 1, 2, '#000000');
+    block(7, 0, 2, 1, '#d9877d'); // nose
+
+    // Running legs
+    block(-9 - stride, 3, 3, 4, shade);
+    block(1 + stride, 3, 3, 4, shade);
+  }
+
+  function loop(time) {
+    const isReduce = document.body.getAttribute('data-reduce-motion') === 'true';
+    ctx.clearRect(0, 0, catCanvas.width, catCanvas.height);
+
+    // Ground track
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(30, 52);
+    ctx.lineTo(330, 52);
+    ctx.stroke();
+
+    const elapsed = (time - startTime) / 1000;
+    const width = 23 * 2;
+    const travel = isReduce ? catCanvas.width / 2 : (elapsed * 60) % (catCanvas.width + width);
+    const catX = isReduce ? catCanvas.width / 2 : travel - width + 20;
+    const stride = isReduce ? 0 : [0, 2, 0, -2][Math.floor(elapsed * 8) % 4];
+    const bounce = isReduce ? 0 : Math.abs(Math.sin(elapsed * 12)) * 2;
+
+    drawPixelCat(catX, 36, stride, bounce);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+}
+</script>
+
+</body>
+</html>

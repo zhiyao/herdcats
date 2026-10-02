@@ -1,0 +1,67 @@
+.page { --accent: #0edcd5; height: 100dvh; overflow-y: auto; color: #f2f8f8; background: radial-gradient(circle at 84% 8%, #183a3d, transparent 36%), linear-gradient(155deg, #090f13, #0f1c20 65%, #071013); user-select: text; }
+.shell { width: min(1480px, calc(100% - 64px)); margin: 0 auto; }
+.header { height: 82px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #ffffff25; }
+.brand { display: flex; align-items: center; gap: 12px; font-size: 16px; font-weight: 720; letter-spacing: -.02em; }
+.brand small, .headerNote, .eyebrow, .cardMeta, .stateLabel, .footer { font: 700 10px var(--font-mono); letter-spacing: .1em; }
+.brand small { color: #829c9f; margin-left: 8px; }
+.brandMark { display: grid; place-items: center; width: 30px; height: 30px; position: relative; border-radius: 9px; color: #063b40; background: var(--accent); font-size: 17px; font-weight: 900; }
+.brandMark span { position: absolute; font-size: 8px; top: 3px; right: 4px; }
+.headerNote { color: #91a8aa; }
+.intro { padding: 62px 0 47px; max-width: 850px; }
+.eyebrow { color: var(--accent); }
+.intro h1 { margin: 17px 0 19px; font-size: clamp(43px, 5.1vw, 71px); letter-spacing: -.06em; line-height: 1.07; }
+.intro h1 em { color: #94babc; font-style: normal; }
+.intro > p:last-child { max-width: 700px; color: #b5c5c7; font-size: 16px; line-height: 1.58; }
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 17px; }
+.card { min-width: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid #ffffff29; border-radius: 20px; background: #152126b8; box-shadow: 0 18px 50px #0004; }
+.selectedCard { border-color: #0edcd591; box-shadow: 0 0 0 1px #0edcd52b, 0 18px 50px #0005; }
+.cardHead { padding: 24px 24px 19px; min-height: 169px; }
+.cardMeta { display: flex; align-items: center; justify-content: space-between; color: var(--accent); }
+.selectedTag { color: #063a3e; background: var(--accent); padding: 5px 7px; border-radius: 4px; }
+.cardHead h2 { margin: 23px 0 8px; font-size: 27px; letter-spacing: -.045em; }
+.cardHead p { color: #aec0c2; font-size: 13px; line-height: 1.5; }
+.states { padding: 0 12px; display: flex; flex-direction: column; gap: 20px; }
+.stateLabel { display: flex; align-items: center; justify-content: space-between; margin: 0 3px 9px; color: #d5e4e5; }
+.stateLabel small { color: #8fa7a9; font-size: 9px; letter-spacing: .04em; text-transform: lowercase; }
+.appFrame { overflow: hidden; border: 1px solid #ffffff32; border-radius: 15px; background: #090d10; }
+.appNav { display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 13px; color: #ecf5f5; background: #1c272b; }
+.appNav strong { display: block; font-size: 12px; font-weight: 650; line-height: 1.2; }.appNav small { display: block; margin-top: 2px; color: #91a8ab; font-size: 9px; }
+.back { color: var(--accent); font-size: 29px; line-height: 1; }.more { margin-left: auto; color: #a7b9ba; font-size: 20px; letter-spacing: 1px; }
+.switcher { position: relative; display: flex; min-width: 0; overflow: hidden; background: linear-gradient(135deg, #21343a, #253c3e 54%, #16292c); }
+.switcher::before { content: ''; position: absolute; inset: -20px 10% auto; width: 70%; height: 72px; background: radial-gradient(ellipse, #0edcd52b, transparent 67%); pointer-events: none; }
+.expanded { height: 112px; padding: 9px 9px 12px; }.compact { height: 48px; padding: 6px 5px 8px 9px; }
+.switcherScroll { position: relative; min-width: 0; flex: 1; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }.switcherScroll::-webkit-scrollbar { display: none; }
+.paneRow { display: flex; align-items: stretch; width: max-content; min-width: 100%; height: 100%; gap: 7px; }
+.tabDivider { align-self: center; flex: 0 0 1px; width: 1px; height: 62px; margin: 0 5px; background: #d0e8e8b3; }
+.compact .tabDivider { height: 20px; }
+.pane { border: 0; color: #e5eeee; text-align: left; cursor: pointer; font: inherit; }
+.pane:focus-visible, .addPane:focus-visible, .expand:focus-visible, .cardFoot button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.expanded .pane { width: 153px; display: flex; align-items: flex-start; gap: 7px; padding: 10px; }
+.status { display: block; flex: 0 0 7px; width: 7px; height: 7px; margin-top: 4px; border-radius: 50%; }
+.working { background: #f6d746; box-shadow: 0 0 8px #f6d7466b; }.blocked { background: #fa716a; box-shadow: 0 0 8px #fa716a66; }.idle { background: #7c9ca3; }
+.paneContent { min-width: 0; flex: 1; }.paneContent strong { display: block; font-size: 11px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.paneDetails { display: flex; align-items: flex-end; justify-content: space-between; gap: 4px; margin-top: 33px; }.paneDetails em { color: #9bd6d4; font-size: 9px; font-style: normal; white-space: nowrap; }.paneDetails small { color: #b0c3c4; font-size: 8px; white-space: nowrap; }
+.addPane { flex: 0 0 39px; border: 0; color: var(--accent); font-size: 23px; cursor: pointer; }
+.compact .paneRow { align-items: center; }.compact .pane { display: flex; align-items: center; flex: 0 0 auto; gap: 6px; height: 30px; padding: 0 10px; }.compact .status { margin-top: 0; }.compact .paneContent strong { font-size: 10px; }.expand { position: relative; align-self: center; flex: 0 0 28px; height: 30px; border: 0; background: transparent; color: #d8e8e8; font-size: 23px; line-height: 1; cursor: pointer; }
+.dragHandle { position: absolute; left: 50%; bottom: 3px; transform: translateX(-50%); width: 28px; height: 2px; border-radius: 9px; background: #b6d5d59b; }
+.output { min-height: 105px; padding: 19px 15px; font: 10px/1.65 var(--font-mono); }.output p { margin: 2px 0; color: #dce7e7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }.output p span { color: var(--accent); }.output .outputMuted { color: #82989a; }
+.input { padding: 8px 11px 10px; background: #1e3034; }
+.liveRail { display: flex; height: 32px; overflow: hidden; border: 1px solid #ffffff68; border-radius: 12px; background: linear-gradient(155deg, #ffffff43, #ffffff1c 62%, #ffffff2e); box-shadow: inset 0 1px #ffffff59; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.liveRail span { flex: 1; display: grid; place-items: center; color: #f0faf9; font: 670 10px var(--font-mono); }
+.liveDivider { align-self: center; flex: 0 0 1px; height: 20px; margin: 0 2px; background: #d0e8e8b3; }
+.liveRail svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.cardFoot { display: flex; flex: 1; flex-direction: column; justify-content: space-between; gap: 19px; padding: 20px 24px 25px; }.cardFoot p { min-height: 59px; color: #aec2c4; font-size: 13px; line-height: 1.5; }
+.cardFoot button { align-self: flex-start; padding: 10px 13px; border: 1px solid #0edcd575; border-radius: 8px; background: #0edcd515; color: #86f2ed; font: 700 11px var(--font-mono); cursor: pointer; }.cardFoot button:hover { background: #0edcd52a; }.selectedCard .cardFoot button { background: var(--accent); color: #073a3e; }
+.footer { margin-top: 48px; padding: 23px 0 40px; border-top: 1px solid #ffffff22; color: #8ca4a6; line-height: 1.5; }
+/* 01 — independent glass cards and chips */
+.cards .pane, .cards .addPane { border: 1px solid #ffffff59; background: linear-gradient(145deg, #ffffff42, #ffffff1a); box-shadow: inset 0 1px #ffffff5c, 0 4px 12px #0003; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.cards .expanded .pane, .cards .addPane { border-radius: 14px; }.cards .compact .pane { border-radius: 99px; }.cards .activePane { border-color: #0edcd5c9; background: linear-gradient(145deg, #0edcd54c, #ffffff24); }
+/* 02 — one glass rail with separators, mirroring the Live toolbar */
+.rail .paneRow { gap: 0; border: 1px solid #ffffff65; border-radius: 15px; overflow: hidden; background: linear-gradient(155deg, #ffffff43, #ffffff19 65%, #ffffff2c); box-shadow: inset 0 1px #ffffff5d; backdrop-filter: blur(17px); -webkit-backdrop-filter: blur(17px); }
+.rail .compact .paneRow { border-radius: 14px; }.rail .pane, .rail .addPane { background: transparent; border-right: 1px solid #ffffff5b; }.rail .addPane { border: 0; }.rail .activePane { background: #0edcd527; }.rail .compact .pane { height: 100%; border-radius: 0; }
+/* 03 — a soft glass shelf with minimal boundaries */
+.shelf .switcher { background: linear-gradient(145deg, #ffffff2f, #ffffff12 70%), linear-gradient(#253438, #23363a); backdrop-filter: blur(17px); -webkit-backdrop-filter: blur(17px); box-shadow: inset 0 1px #ffffff46; }
+.shelf .pane, .shelf .addPane { background: transparent; border-radius: 12px; }.shelf .activePane { background: #ffffff27; box-shadow: inset 0 -2px var(--accent); }.shelf .compact .pane { border-radius: 9px; }.shelf .switcher::after { content: ''; position: absolute; inset: auto 0 0; height: 1px; background: #ffffff52; }
+.shelf .tabDivider { background: #e9f6f6d1; }
+@media (max-width: 1050px) { .grid { grid-template-columns: 1fr; max-width: 530px; margin: auto; }.cardHead { min-height: 0; }.cardFoot p { min-height: 0; } }
+@media (max-width: 600px) { .shell { width: calc(100% - 24px); }.header { height: 64px; }.brand small, .headerNote { display: none; }.intro { padding: 39px 7px 33px; }.intro h1 { font-size: 43px; }.intro > p:last-child { font-size: 14px; }.cardHead { padding: 23px 20px 17px; }.cardFoot { padding: 19px 20px 23px; } }

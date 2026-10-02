@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# Build the current commit and upload it to TestFlight via `fastlane ios beta`.
+#
+# Usage: ./ios/bin/beta
+set -euo pipefail
+
+ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+IOS_DIR="$ROOT/ios"
+CHANGELOG="$IOS_DIR/fastlane/changelog.txt"
+PROJECT_YML="$IOS_DIR/project.yml"
+
+echo "[herdrcat] TestFlight beta push"
+
+if [[ -n "$(git -C "$ROOT" status --porcelain)" ]]; then
+  echo "Error: working tree is dirty. Commit or stash changes first."
+  exit 1
+fi
+
+if [[ ! -f "$CHANGELOG" ]]; then
+  echo "Error: $CHANGELOG is required before bin/beta can run." >&2
+  echo "Run bin/changelog or write the TestFlight 'What to Test' notes, then rerun." >&2
+  exit 1
+fi
+
+for tool in xcodegen bundle; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "Error: $tool is required before bin/beta can run." >&2
+    exit 127
+  fi
+done
+
+MARKETING_VERSION="$(sed -n -E 's/^[[:space:]]*CFBundleShortVersionString:[[:space:]]*"?([^"]*)"?.*/\1/p' "$PROJECT_YML" | head -n 1)"
+BUILD_NUMBER="$(sed -n -E 's/^[[:space:]]*CFBundleVersion:[[:space:]]*"?([^"]*)"?.*/\1/p' "$PROJECT_YML" | head -n 1)"
+
+echo "======================================"
+echo "    herdrcat TestFlight beta push"
+echo "======================================"
+echo ""
+echo "  Marketing version : $MARKETING_VERSION"
+echo "  Build number      : $BUILD_NUMBER (from project.yml)"
+echo ""
+echo "  What to Test (fastlane/changelog.txt):"
+echo "  --------------------------------------"
+sed 's/^/  /' "$CHANGELOG"
+echo "  --------------------------------------"
+echo ""
+
+read -r -p "Is the changelog up to date? (y to continue, e to edit, n to abort): " CHANGELOG_OK
+case "$CHANGELOG_OK" in
+  e|E)
+    "${EDITOR:-vi}" "$CHANGELOG"
+    echo ""
+    echo "  Updated changelog:"
+    echo "  --------------------------------------"
+    sed 's/^/  /' "$CHANGELOG"
+    echo "  --------------------------------------"
+    echo ""
+    read -r -p "Looks good? (y to continue, n to abort): " CONFIRM
+    [[ "$CONFIRM" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 1; }
+    ;;
+  y|Y) ;;
+  *) echo "Aborted."; exit 1 ;;
+esac
+
+read -r -p "Push herdrcat $MARKETING_VERSION ($BUILD_NUMBER) to TestFlight? (y/n): " FINAL
+[[ "$FINAL" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 1; }
+
+echo ""
+echo "Running xcodegen to sync project.yml to project.pbxproj..."
+(cd "$IOS_DIR" && xcodegen generate)
+
+echo "Installing gems..."
+(cd "$IOS_DIR" && bundle install --quiet)
+
+echo "Running fastlane ios beta..."
+# fastlane parses xcodebuild output with Ruby's default encoding, which is
+# fixed at startup; force UTF-8 so non-ASCII build output doesn't crash it.
+(cd "$IOS_DIR" && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 bundle exec fastlane ios beta)
+
+echo ""
+echo "Done. herdrcat build submitted to TestFlight."

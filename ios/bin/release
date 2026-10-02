@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# Bump the version in project.yml, regenerate the Xcode project, commit, and tag.
+#
+# Usage: ./ios/bin/release 0.1.0
+set -euo pipefail
+
+VERSION="${1:-}"
+if [[ -z "$VERSION" ]]; then
+  echo "Usage: $0 <version>  (e.g. $0 0.1.0)"
+  exit 1
+fi
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "Error: version must look like MAJOR.MINOR.PATCH (got '$VERSION')."
+  exit 1
+fi
+
+TAG="herdrcat-v$VERSION"
+ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+IOS_DIR="$ROOT/ios"
+PROJECT_YML="$IOS_DIR/project.yml"
+
+echo "[herdrcat] Releasing $TAG"
+
+if ! git -C "$ROOT" rev-parse --verify HEAD >/dev/null 2>&1; then
+  echo "Error: the repository has no commits yet. Make an initial commit first."
+  exit 1
+fi
+
+if [[ -n "$(git -C "$ROOT" status --porcelain)" ]]; then
+  echo "Error: working tree is dirty. Commit or stash changes first."
+  exit 1
+fi
+
+if git -C "$ROOT" rev-parse "$TAG" &>/dev/null; then
+  echo "Error: tag $TAG already exists."
+  exit 1
+fi
+
+# Build number = git commit count, +1 for the release commit we're about to
+# create. Monotonic, no manual bookkeeping, and unique per release.
+BUILD_NUMBER=$(( $(git -C "$ROOT" rev-list --count HEAD) + 1 ))
+
+echo "Bumping CFBundleShortVersionString to $VERSION (build $BUILD_NUMBER)..."
+sed -i.bak -E \
+  -e 's/^([[:space:]]*CFBundleShortVersionString:[[:space:]]*")[^"]+(")/\1'"$VERSION"'\2/' \
+  -e 's/^([[:space:]]*CFBundleVersion:[[:space:]]*")[^"]+(")/\1'"$BUILD_NUMBER"'\2/' \
+  "$PROJECT_YML"
+rm "$PROJECT_YML.bak"
+
+if ! grep -qE "CFBundleShortVersionString:[[:space:]]*\"$VERSION\"" "$PROJECT_YML" \
+   || ! grep -qE "CFBundleVersion:[[:space:]]*\"$BUILD_NUMBER\"" "$PROJECT_YML"; then
+  echo "Error: failed to update version fields in $PROJECT_YML." >&2
+  git -C "$ROOT" checkout -- ios/project.yml
+  exit 1
+fi
+
+echo "Regenerating xcodeproj..."
+(cd "$IOS_DIR" && xcodegen generate)
+
+echo "Staging changes..."
+git -C "$ROOT" add ios/project.yml
+# xcodegen rewrites the project and the generated Info.plist; stage them only
+# if they are tracked.
+for path in ios/Herdcats.xcodeproj/project.pbxproj ios/Herdcats/Info.plist; do
+  if git -C "$ROOT" ls-files --error-unmatch "$path" >/dev/null 2>&1; then
+    git -C "$ROOT" add "$path"
+  fi
+done
+
+echo "Committing release..."
+git -C "$ROOT" commit -m "chore(release): $TAG"
+
+echo "Tagging $TAG..."
+git -C "$ROOT" tag -a "$TAG" -m "Release $TAG"
+
+echo ""
+echo "Done. Push with:"
+echo "  git push origin main --tags"

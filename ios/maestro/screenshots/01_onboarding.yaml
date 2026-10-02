@@ -1,0 +1,14 @@
+appId: com.enchantinglabs.herdrcat
+---
+# Frame 01: Onboarding — brand introduction and first-launch welcome.
+- launchApp:
+    clearState: true
+
+- extendedWaitUntil:
+    visible: "Tame your autonomous agents from your pocket."
+    timeout: 20000
+
+- waitForAnimationToEnd:
+    timeout: 1500
+
+- takeScreenshot: "01_onboarding"

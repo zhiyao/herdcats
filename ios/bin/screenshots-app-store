@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Compose ios/bin/screenshots captures into App Store artwork with Remotion.
+set -euo pipefail
+IOS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if ! command -v node >/dev/null 2>&1; then
+  echo "[herdrcat] Node.js 22 or newer is required." >&2
+  exit 1
+fi
+exec node "$IOS_DIR/app-store-images/render.mjs" "$@"

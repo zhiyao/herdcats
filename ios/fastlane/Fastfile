@@ -1,0 +1,80 @@
+# frozen_string_literal: true
+
+default_platform(:ios)
+
+FASTLANE_DIR = File.expand_path(__dir__)
+IOS_DIR = File.expand_path("..", FASTLANE_DIR)
+BUILD_DIR = File.join(IOS_DIR, "build")
+SCHEME = "Herdcats"
+
+def ensure_xcode_26!
+  version_line = `xcodebuild -version`.lines.first.to_s.strip
+  major = version_line[/\d+/].to_i
+  unless major >= 26
+    UI.user_error!(
+      "App Store Connect rejects uploads not built with Xcode 26+ / iOS 26 SDK. " \
+      "Current: #{version_line.inspect}. Select Xcode 26+ with `xcode-select`."
+    )
+  end
+  UI.message "Using #{version_line}"
+end
+
+def ensure_app_store_connect_api_key!
+  if ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"] && (ENV["APP_STORE_CONNECT_API_KEY_KEY_FILEPATH"] || ENV["APP_STORE_CONNECT_API_KEY_KEY"])
+    return app_store_connect_api_key
+  end
+
+  UI.important("No App Store Connect API key found. Falling back to session auth.")
+  nil
+end
+
+platform :ios do
+  desc "Capture App Store screenshots with Maestro (delegates to bin/screenshots). " \
+       "Default device: iPhone 17 Pro Max. Options: device:\"<sim-name>\""
+  lane :screenshots do |options|
+    args = []
+    args << "--device=#{options[:device]}" if options[:device]
+    sh(File.join(IOS_DIR, "bin", "screenshots"), *args)
+  end
+
+  desc "Compose captures into App Store listing artwork using Remotion (delegates to bin/screenshots-app-store)"
+  lane :app_store_images do |options|
+    args = []
+    args << "--target=#{options[:target]}" if options[:target]
+    args << "--preview" if options[:preview]
+    sh(File.join(IOS_DIR, "bin", "screenshots-app-store"), *args)
+  end
+
+  desc "Build the current project.yml version and upload it to TestFlight. Run bin/changelog first."
+  lane :beta do
+    ensure_xcode_26!
+    api_key = ensure_app_store_connect_api_key!
+    changelog = File.read(File.join(FASTLANE_DIR, "changelog.txt")).strip
+
+    build_app(
+      project: File.join(IOS_DIR, "Herdcats.xcodeproj"),
+      scheme: SCHEME,
+      configuration: "Release",
+      clean: true,
+      export_method: "app-store",
+      output_directory: BUILD_DIR,
+      # Keep DerivedData on the internal disk; the default external location
+      # has produced unsigned bundles for this project.
+      derived_data_path: File.join(BUILD_DIR, "DerivedData"),
+      # Archive resolves signing before export_xcargs is evaluated.
+      xcargs: "-allowProvisioningUpdates",
+      export_xcargs: "-allowProvisioningUpdates"
+    )
+
+    ipa = lane_context[SharedValues::IPA_OUTPUT_PATH]
+    UI.user_error!("build_app did not produce an IPA") if ipa.to_s.empty?
+
+    upload_to_testflight(
+      ipa: ipa,
+      skip_waiting_for_build_processing: true,
+      distribute_external: false,
+      changelog: changelog,
+      api_key: api_key
+    )
+  end
+end

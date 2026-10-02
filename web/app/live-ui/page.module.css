@@ -1,0 +1,60 @@
+.page { height: 100dvh; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; background: #080d11; color: #f4f7f7; }
+.shell { width: min(1180px, calc(100% - 48px)); margin: 0 auto; }
+.topbar { height: 80px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #253139; }
+.brand { display: flex; align-items: center; gap: 10px; color: #fff; text-decoration: none; font-weight: 750; font-size: 17px; letter-spacing: -.03em; }
+.topLabel, .eyebrow, .choiceMeta, .choiceLink, .sketchTag, .terminalMeta, .liveBadge, .keyRow, .flow span, .footer { font: 700 11px var(--font-mono); letter-spacing: .09em; }
+.topLabel { color: #7e9698; }
+.intro { max-width: 850px; padding: 68px 0 42px; }
+.eyebrow { margin: 0; color: #0edcd5; }
+.intro h1 { margin: 18px 0 20px; font-size: clamp(42px, 6vw, 72px); line-height: 1.06; letter-spacing: -.065em; }
+.intro h1 span { color: #0edcd5; }
+.lead { max-width: 700px; color: #b3c0c3; line-height: 1.6; font-size: 17px; }
+.choiceGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.choice { min-height: 222px; border: 1px solid #2a3a40; border-radius: 12px; padding: 20px; background: #10191e; color: inherit; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 13px; transition: background .2s, border-color .2s, transform .2s; }
+.choice:hover { transform: translateY(-2px); border-color: #0edcd5; }
+.choice:focus-visible, .demoActions button:focus-visible, .appPreview button:focus-visible { outline: 2px solid #0edcd5; outline-offset: 3px; }
+.activeChoice { background: #102a2d; border-color: #0edcd5; }
+.choiceMeta { display: flex; justify-content: space-between; color: #0edcd5; font-size: 10px; }
+.choice strong { font-size: 23px; letter-spacing: -.035em; line-height: 1.15; }
+.choiceSummary { color: #adbdc0; font-size: 13px; line-height: 1.5; }
+.choiceLink { margin-top: auto; color: #0edcd5; display: flex; justify-content: space-between; }
+.study { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, .88fr); gap: 44px; padding: 64px 0 76px; }
+.sectionHead { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+.sectionHead h2 { margin: 8px 0 0; font-size: 30px; letter-spacing: -.045em; }
+.sketchTag { color: #778b8d; white-space: nowrap; font-size: 9px; }
+.appPreview { position: relative; overflow: hidden; border: 1px solid #344246; border-radius: 18px; background: #000; height: 560px; display: flex; flex-direction: column; }
+.paneHeader { display: flex; align-items: center; gap: 14px; padding: 15px 18px; background: #17191b; border-bottom: 1px solid #25292b; }
+.paneHeader strong { display: block; font-size: 15px; }.paneHeader small { display: block; color: #9aa4a6; margin-top: 3px; font-size: 11px; }.backMark { color: #0edcd5; font-size: 32px; line-height: .8; }.paneMore { margin-left: auto; font-size: 25px; letter-spacing: 3px; }
+.terminal { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 21px; font: 13px/1.65 var(--font-mono); }
+.keyboardStatus { color: #0edcd5 !important; font-size: 10px; }.keyboardCapture { position: absolute; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; }
+.terminalMeta { display: flex; align-items: center; gap: 7px; color: #799095; font-size: 9px; margin-bottom: 22px; }.terminalMeta span:last-child { margin-left: auto; }.liveDot { width: 6px; height: 6px; background: #0edcd5; border-radius: 50%; }
+.terminal p { margin: 5px 0; color: #e9eeee; }.terminal .muted { color: #839096; }.prompt { color: #0edcd5; }.cursor { display: inline-block; width: 8px; height: 15px; vertical-align: -2px; background: #0edcd5; }
+.inputArea { background: #1b1d20; border-top: 1px solid #33383a; padding: 12px 16px 15px; }
+.segment { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; border-radius: 9px; background: #2c3033; margin-bottom: 11px; }.segment button { border: 0; border-radius: 7px; padding: 8px; background: transparent; color: #b9c4c6; font-family: inherit; font-size: 13px; font-weight: 650; cursor: pointer; }.segment .segmentActive { background: #50585b; color: #fff; }
+.liveRow { display: flex; align-items: center; gap: 10px; background: #303437; border-radius: 10px; padding: 12px; font-size: 13px; color: #c0ccce; }.liveBadge { color: #0edcd5; font-size: 9px; }.keyHint { margin-left: auto; color: #9bb1b4; }
+.singleKeyRow { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }.singleKeyRow button { min-width: 0; height: 42px; border: 1px solid #4a5659; border-radius: 7px; background: #30383b; color: #ebf4f4; font: 600 11px var(--font-system); cursor: pointer; }.singleKeyRow button:nth-last-child(-n + 2) { color: #0edcd5; }.singleKeyRow .keyArmed { border-color: #0edcd5; background: #174346; }
+.singleKeyRow svg { display: block; width: 18px; height: 18px; margin: auto; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.singleKeyRow button:disabled { color: #899495; cursor: not-allowed; opacity: 0.55; }
+.recordingBar { display: flex; align-items: center; gap: 7px; min-height: 42px; }.recordingBar span { display: flex; align-items: center; gap: 7px; margin-right: auto; color: #e5eeee; font-size: 12px; }.recordingBar i { width: 8px; height: 8px; border-radius: 50%; background: #ff645d; box-shadow: 0 0 0 4px #ff645d22; }.recordingBar .recordingDone { display: grid; place-items: center; width: 42px; height: 42px; color: #003e43; background: #0edcd5; border: 0; border-radius: 8px; cursor: pointer; }.recordingDone svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.composeBar { display: flex; flex-direction: column; gap: 6px; }
+.composeLine { display: flex; align-items: flex-end; gap: 7px; }
+.composeLine .photoTrigger { display: grid; flex: 0 0 42px; place-items: center; width: 42px; height: 42px; color: #dceaea; background: transparent; border: 0; border-radius: 8px; cursor: pointer; }
+.messageBubble { display: flex; flex: 1; min-width: 0; align-items: flex-end; gap: 3px; padding: 4px; background: #30383b; border: 1px solid #667275; border-radius: 12px; }
+.composeField { display: block; flex: 1; min-width: 0; min-height: 36px; max-height: 136px; overflow-y: auto; scrollbar-width: none; resize: none; padding: 8px 5px; color: #f4fafa; background: transparent; border: 0; outline: none; font: 14px/20px var(--font-system); -webkit-user-select: text; user-select: text; }
+.composeField::-webkit-scrollbar { display: none; }
+.messageBubble button { display: grid; flex: 0 0 36px; align-self: flex-end; place-items: center; width: 36px; height: 36px; color: #dceaea; background: transparent; border: 0; border-radius: 8px; cursor: pointer; }
+.messageBubble .composeSend { background: #0edcd5; color: #003e43; }
+.composeLine svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.photoInput { display: none; }
+.photoChip { display: flex; align-items: center; gap: 7px; max-width: 100%; padding: 6px 8px; color: #e7f2f2; background: #3c494b; border-radius: 7px; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.photoChip button { margin-left: auto; color: #e7f2f2; background: none; border: 0; cursor: pointer; }
+.keyRow { display: flex; justify-content: space-between; gap: 5px; color: #bdc7c9; font-size: 10px; margin: 11px 0 2px; }.keyRow span { min-width: 29px; text-align: center; padding: 6px 3px; background: #2d3235; border-radius: 6px; }
+.composeTray { border: 1px solid #455053; border-radius: 10px; min-height: 84px; padding: 11px; margin-top: 12px; color: #aab8bb; font-size: 13px; }.composeTray div, .sheetActions { display: flex; align-items: center; gap: 8px; margin-top: 14px; }.composeTray button, .sheetActions button { border: 0; background: #343c3f; border-radius: 7px; color: #e4eded; padding: 7px 9px; cursor: pointer; }.sendPill { margin-left: auto; background: #0edcd5; color: #003e43; border-radius: 7px; padding: 7px 13px; font-weight: 750; }
+.switchNote { margin: 10px 0 0; color: #a8b8bb; font-size: 12px; }
+.inlinePreview { position: absolute; inset: auto 15px 15px; border: 1px solid #4f696d; border-radius: 10px; background: #293638; padding: 16px; box-shadow: 0 10px 24px #0008; }.inlinePreview button { float: right; background: none; border: 0; color: #e2ebeb; font-size: 20px; cursor: pointer; }.inlinePreview p { margin-bottom: 0; color: #bacacc; font-size: 13px; }
+.demoActions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 14px; color: #91a7aa; font-size: 12px; }.demoActions button { border: 1px solid #30464a; background: #142529; color: #d7e9e9; border-radius: 7px; padding: 8px 10px; cursor: pointer; }
+.explanation { padding-top: 50px; }.explanation h3 { font-size: 22px; line-height: 1.4; letter-spacing: -.03em; font-weight: 580; margin: 14px 0 30px; }.flow { border-top: 1px solid #294044; border-bottom: 1px solid #294044; }.flow div { padding: 17px 0; }.flow div + div { border-top: 1px solid #25383c; }.flow span { color: #0edcd5; }.flow p { margin: 7px 0 0; color: #bdcacc; line-height: 1.5; font-size: 14px; }.tradeoffs { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-top: 27px; }.tradeoffs h4 { margin: 0 0 12px; font-size: 15px; }.tradeoffs ul { margin: 0; padding-left: 17px; color: #b3c1c3; line-height: 1.55; font-size: 13px; }.tradeoffs li { margin-bottom: 10px; }.recommendation { margin-top: 22px; border-left: 2px solid #0edcd5; padding: 4px 0 4px 15px; }.recommendation strong { color: #0edcd5; font-size: 13px; }.recommendation p { margin: 7px 0 0; color: #bfcccc; line-height: 1.5; font-size: 13px; }
+.footer { border-top: 1px solid #253139; padding: 20px 0 32px; color: #7c9194; font-size: 10px; line-height: 1.5; }
+@media (max-width: 850px) { .choiceGrid { grid-template-columns: 1fr; }.choice { min-height: 0; }.study { grid-template-columns: 1fr; gap: 30px; }.explanation { padding-top: 0; }.appPreview { max-width: 560px; }.intro { padding-top: 45px; } }
+@media (max-width: 560px) { .shell { width: min(100% - 28px, 500px); }.topLabel, .sketchTag { display: none; }.intro h1 { font-size: 40px; }.lead { font-size: 15px; }.study { padding-top: 45px; }.tradeoffs { gap: 17px; } }
+@media (prefers-reduced-motion: reduce) { .choice { transition: none; } }

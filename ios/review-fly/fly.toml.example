@@ -1,0 +1,26 @@
+# Copy to fly.toml and replace app with a globally unique Fly app name.
+app = "replace-with-unique-herdrcat-review-name"
+primary_region = "sin"
+kill_signal = "SIGTERM"
+kill_timeout = "30s"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[[mounts]]
+  source = "review_data"
+  destination = "/data"
+
+[[services]]
+  internal_port = 2222
+  protocol = "tcp"
+  auto_stop_machines = "off"
+  auto_start_machines = true
+
+  [[services.ports]]
+    port = 22
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "1gb"

@@ -1,0 +1,514 @@
+#!/usr/bin/env bash
+# Usage: ./ios/bin/screenshots
+#        ./ios/bin/screenshots --device=<simulator-udid-or-name>
+#        ./ios/bin/screenshots 02_spaces.yaml 06_quota.yaml
+#
+# A flow argument may be absolute, relative to the invoking directory, or a
+# bare file name inside ios/maestro/screenshots. It is resolved to an
+# absolute path before anything changes directory.
+#
+# The App Store screenshot capture workflow (same design as ExampleApp's):
+# builds HerdrCat for the simulator, runs the Maestro flows in
+# ios/maestro/screenshots, and writes each frame to
+# ios/maestro/screenshots-output/<device>/<frame>.png.
+#
+# With no --device / DEVICE_ID, captures iPhone 17 Pro Max only.
+# Missing simulators are created on the latest released iOS runtime.
+#
+# Unlike ExampleApp's in-app fixture seeder, Herdrcat screenshots render real
+# herdr data: the flows auto-connect over SSH to this machine (127.0.0.1 via
+# HC_SSH_PORT, default 22) using a local key from HC_SSH_KEY_PATH or
+# ~/.ssh/herdcats-test-ed25519. Authorization must be configured explicitly.
+# Prerequisites: Remote Login enabled, an authorized test key, and a running
+# herdr session with at least one workspace.
+#
+# Each numbered flow takes exactly one screenshot named after the flow file
+# (02_spaces.yaml -> 02_spaces.png). The script resets the simulator's
+# Keychain and reinstalls the app before every flow (maestro's clearState
+# does not remove Keychain items, which survive uninstall on simulators),
+# so connected flows deterministically step through the real first-use
+# host-key approval ("Trust and Connect") before their frame.
+#
+# Maestro has been observed to cross devices (capturing on, and mislabeling
+# PNGs for, the wrong simulator) when more than one simulator is booted, so
+# capture always runs with exactly one simulator up. Any other booted
+# simulator is shut down automatically before capture.
+#
+# Maestro writes capture output into a fresh, empty per-attempt directory
+# via `maestro test --test-output-dir`, so every accepted PNG — a nonempty
+# <flow-basename>.png found inside that directory after Maestro exits zero —
+# belongs to this run. Nothing outside the attempt directory is ever
+# accepted.
+
+set -euo pipefail
+
+# Run helper rubies outside Bundler: `bundle exec fastlane` exports a web
+# of BUNDLE_*/BUNDLER_* variables whose inherited setup crashes the system
+# ruby invoked below (`intersect?` NoMethodError), so strip the whole
+# family along with RUBYOPT before any helper runs.
+while IFS='=' read -r bundler_var _; do
+  case "$bundler_var" in
+    BUNDLE*|BUNDLER*|RUBYOPT|RUBY_LIB) unset "$bundler_var" ;;
+  esac
+done < <(env)
+
+ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+IOS_DIR="$ROOT/ios"
+INVOCATION_DIR="$PWD"
+
+SCHEME="${SCHEME:-Herdcats}"
+XCODE_PROJECT="${XCODE_PROJECT:-Herdcats.xcodeproj}"
+CONFIGURATION="${CONFIGURATION:-Debug}"
+DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-$IOS_DIR/build/DerivedData}"
+MAESTRO_DIR="$IOS_DIR/maestro"
+MAESTRO_FLOWS_DIR="$MAESTRO_DIR/screenshots"
+SCREENSHOTS_OUTPUT_DIR="$MAESTRO_DIR/screenshots-output"
+FIXTURE_KEY="${HC_SSH_KEY_PATH:-$HOME/.ssh/herdcats-test-ed25519}"
+BUNDLE_ID="com.enchantinglabs.herdrcat"
+
+# Apple's required App Store screenshot size captured by default (per
+# request: iPhone only).
+DEFAULT_SCREENSHOT_DEVICES=(
+  "iPhone 17 Pro Max"
+)
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: ./ios/bin/screenshots [--device=<udid-or-name>] [<flow>.yaml ...]
+
+  Default: capture iPhone 17 Pro Max, writing to
+           ios/maestro/screenshots-output/iPhone_17_Pro_Max/.
+  --device=<id>  Capture one simulator (UDID or exact name). Also DEVICE_ID.
+  <flow>.yaml    Capture only these flows, sharing one app build.
+
+Environment:
+  HC_SSH_PORT  SSH port of the local fixture server (default 22).
+  HC_SSH_KEY_PATH  Private test key (default ~/.ssh/herdcats-test-ed25519).
+EOF
+}
+
+SPECIFIC_FLOWS=()
+DEVICE_SPEC="${DEVICE_ID:-}"
+
+for arg in "$@"; do
+  case "$arg" in
+    --device=*)
+      DEVICE_SPEC="${arg#*=}"
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *.yaml)
+      SPECIFIC_FLOWS+=("$arg")
+      ;;
+    *)
+      echo "[herdrcat] Unknown argument: $arg" >&2
+      usage
+      exit 2
+      ;;
+  esac
+done
+
+echo "==> Checking required tools"
+for tool in xcodebuild xcrun maestro ssh ssh-keygen; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "[herdrcat] Missing required command: $tool" >&2
+    exit 1
+  fi
+done
+
+mkdir -p "$SCREENSHOTS_OUTPUT_DIR"
+
+# Generate project if needed
+if [[ ! -d "$IOS_DIR/$XCODE_PROJECT" ]]; then
+  echo "==> Generating Xcode project"
+  (cd "$IOS_DIR" && xcodegen generate)
+fi
+
+# ---------------------------------------------------------------------------
+# SSH fixture: require an explicitly authorized local test key, then
+# verify herdr answers over a non-interactive SSH exec (the same path the
+# app's remote wrapper takes).
+# ---------------------------------------------------------------------------
+
+SSH_PORT="${HC_SSH_PORT:-22}"
+SSH_USER="$(id -un)"
+
+if [[ ! -f "$FIXTURE_KEY" ]]; then
+  echo "[herdrcat] Fixture key not found: $FIXTURE_KEY" >&2
+  exit 1
+fi
+chmod 600 "$FIXTURE_KEY"
+
+FIXTURE_PUB="$(ssh-keygen -y -f "$FIXTURE_KEY")" || {
+  echo "[herdrcat] Fixture key is invalid: $FIXTURE_KEY" >&2
+  exit 1
+}
+
+if ! grep -qF "$FIXTURE_PUB" ~/.ssh/authorized_keys 2>/dev/null; then
+  echo "[herdrcat] Test public key is not authorized. Configure your test SSH server explicitly." >&2
+  exit 1
+fi
+
+if ! nc -z 127.0.0.1 "$SSH_PORT" 2>/dev/null; then
+  echo "[herdrcat] No SSH server answering on 127.0.0.1:$SSH_PORT." >&2
+  echo "[herdrcat] Enable Remote Login (System Settings > General > Sharing)" >&2
+  echo "[herdrcat] or point HC_SSH_PORT at a throwaway sshd." >&2
+  exit 1
+fi
+
+# Resolve herdr the way the app's remote wrapper does and check the session.
+if ! ssh -i "$FIXTURE_KEY" \
+     -o IdentitiesOnly=yes -o BatchMode=yes \
+     -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+     -p "$SSH_PORT" "$SSH_USER@127.0.0.1" \
+     'B=$(command -v herdr 2>/dev/null); [ -z "$B" ] && for P in "$HOME/.local/bin/herdr" /opt/homebrew/bin/herdr /usr/local/bin/herdr; do [ -x "$P" ] && B="$P" && break; done; [ -n "$B" ] && "$B" workspace list >/dev/null 2>&1' \
+     2>/dev/null; then
+  echo "[herdrcat] herdr did not answer over SSH on 127.0.0.1:$SSH_PORT." >&2
+  echo "[herdrcat] Start a herdr session (herdr) with at least one workspace." >&2
+  exit 1
+fi
+echo "==> SSH fixture OK ($SSH_USER@127.0.0.1:$SSH_PORT, herdr session running)"
+
+# The SSH fixture values are substituted into per-attempt flow copies in
+# run_attempt below; the committed flows carry @HC_SSH_*@ placeholders.
+
+# ---------------------------------------------------------------------------
+# Simulator resolution (same helpers as ExampleApp's screenshots script)
+# ---------------------------------------------------------------------------
+
+is_udid() {
+  [[ "$1" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]]
+}
+
+# Prints "UDID<TAB>NAME" for an existing available simulator matching $1
+# (exact name or UDID). Prefers a released iOS runtime over a prerelease
+# one, then the highest OS version.
+find_available_simulator() {
+  local spec="$1"
+  xcrun simctl list devices available --json | /usr/bin/ruby -rjson -e '
+require "open3"
+
+spec = ARGV.fetch(0)
+data = JSON.parse(STDIN.read)
+runtimes_json, = Open3.capture2("xcrun", "simctl", "list", "runtimes", "--json")
+runtimes = JSON.parse(runtimes_json).fetch("runtimes", [])
+prerelease = {}
+runtimes.each do |runtime|
+  prerelease[runtime["identifier"]] = runtime.fetch("buildversion", "").match?(/[a-z]\z/)
+end
+
+udid_like = spec.match?(/\A[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\z/)
+matches = []
+data.fetch("devices", {}).each do |runtime_id, devices|
+  devices.each do |device|
+    next unless device["isAvailable"]
+    if udid_like
+      next unless device["udid"].casecmp?(spec)
+    else
+      next unless device["name"] == spec
+    end
+    version = runtime_id[/\.iOS-(\d+(?:-\d+)*)/, 1].to_s.tr("-", ".")
+    version = "0" if version.empty?
+    matches << {
+      udid: device["udid"],
+      name: device["name"],
+      version: Gem::Version.new(version),
+      prerelease: prerelease.fetch(runtime_id, false)
+    }
+  end
+end
+exit 1 if matches.empty?
+
+released = matches.reject { |match| match[:prerelease] }
+pool = released.empty? ? matches : released
+choice = pool.max_by { |match| match[:version] }
+print "#{choice[:udid]}\t#{choice[:name]}"
+' "$spec"
+}
+
+device_type_identifier() {
+  xcrun simctl list devicetypes --json | /usr/bin/ruby -rjson -e '
+data = JSON.parse(STDIN.read)
+match = data.fetch("devicetypes", []).find { |item| item["name"] == ARGV.fetch(0) }
+abort "No simulator device type named #{ARGV.fetch(0).inspect}." unless match
+print match["identifier"]
+' "$1"
+}
+
+latest_released_ios_runtime() {
+  xcrun simctl list runtimes available --json | /usr/bin/ruby -rjson -e '
+data = JSON.parse(STDIN.read)
+candidates = data.fetch("runtimes", []).select do |runtime|
+  runtime["platform"] == "iOS" && runtime["isAvailable"] != false
+end
+abort "No available iOS simulator runtime is installed." if candidates.empty?
+
+released = candidates.reject { |runtime| runtime.fetch("buildversion", "").match?(/[a-z]\z/) }
+pool = released.empty? ? candidates : released
+print pool.max_by { |runtime| Gem::Version.new(runtime.fetch("version", "0")) }.fetch("identifier")
+'
+}
+
+# Resolves $1 (UDID or exact device name) to "UDID<TAB>NAME". Creates a
+# named simulator on the latest released iOS runtime when the name is
+# missing. UDIDs must already exist.
+resolve_or_create_simulator() {
+  local spec="$1"
+  local record device_type_id runtime_id udid
+
+  if record="$(find_available_simulator "$spec")"; then
+    printf '%s\n' "$record"
+    return 0
+  fi
+
+  if is_udid "$spec"; then
+    echo "[herdrcat] No available simulator with UDID $spec." >&2
+    return 1
+  fi
+
+  echo "==> Creating simulator $spec" >&2
+  device_type_id="$(device_type_identifier "$spec")"
+  runtime_id="$(latest_released_ios_runtime)"
+  udid="$(xcrun simctl create "$spec" "$device_type_id" "$runtime_id")"
+  printf '%s\t%s\n' "$udid" "$spec"
+}
+
+boot_exclusive() {
+  local device_id="$1"
+  local booted_udid
+  for booted_udid in $(xcrun simctl list devices booted | grep "(Booted)" | grep -oE "[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}" | sort -u); do
+    if [[ "$booted_udid" != "$device_id" ]]; then
+      echo "==> Shutting down other booted simulator: $booted_udid"
+      xcrun simctl shutdown "$booted_udid" 2>/dev/null || true
+    fi
+  done
+  xcrun simctl boot "$device_id" 2>/dev/null || true
+  xcrun simctl bootstatus "$device_id" -b
+}
+
+# Resolve the capture set before building so a missing device type fails fast.
+DEVICE_RECORDS=()
+if [[ -n "$DEVICE_SPEC" ]]; then
+  DEVICE_RECORDS+=("$(resolve_or_create_simulator "$DEVICE_SPEC")")
+else
+  echo "==> Resolving screenshot devices: ${DEFAULT_SCREENSHOT_DEVICES[*]}"
+  for device_name in "${DEFAULT_SCREENSHOT_DEVICES[@]}"; do
+    DEVICE_RECORDS+=("$(resolve_or_create_simulator "$device_name")")
+  done
+fi
+
+echo "==> Building app for screenshots ($SCHEME, $CONFIGURATION)..."
+# The build log goes to a file so a non-zero xcodebuild exit is never
+# swallowed by output filtering: screenshots must never come from a stale
+# app bundle.
+BUILD_LOG="$SCREENSHOTS_OUTPUT_DIR/last-build.log"
+if ! xcodebuild build \
+  -project "$IOS_DIR/$XCODE_PROJECT" \
+  -scheme "$SCHEME" \
+  -configuration "$CONFIGURATION" \
+  -sdk iphonesimulator \
+  -destination "generic/platform=iOS Simulator" \
+  -derivedDataPath "$DERIVED_DATA_PATH" \
+  >"$BUILD_LOG" 2>&1; then
+  echo "[herdrcat] Build failed. Last 40 log lines:" >&2
+  tail -n 40 "$BUILD_LOG" >&2 || true
+  exit 1
+fi
+grep -E "error:|warning:|BUILD SUCCEEDED|BUILD FAILED" "$BUILD_LOG" || true
+
+APP_PATH="$(find "$DERIVED_DATA_PATH/Build/Products/$CONFIGURATION-iphonesimulator" -maxdepth 1 -name "Herdcats.app" | head -n 1)"
+
+if [[ -z "$APP_PATH" || ! -d "$APP_PATH" ]]; then
+  echo "[herdrcat] App bundle not found in $DERIVED_DATA_PATH" >&2
+  exit 1
+fi
+
+FLOWS_TO_RUN=()
+if [[ ${#SPECIFIC_FLOWS[@]} -gt 0 ]]; then
+  for SPECIFIC_FLOW in "${SPECIFIC_FLOWS[@]}"; do
+    # Resolve before capture cds around: absolute as-is, then relative to
+    # the invoking directory, then relative to the flows directory.
+    if [[ "$SPECIFIC_FLOW" = /* && -f "$SPECIFIC_FLOW" ]]; then
+      FLOWS_TO_RUN+=("$SPECIFIC_FLOW")
+    elif [[ -f "$INVOCATION_DIR/$SPECIFIC_FLOW" ]]; then
+      FLOWS_TO_RUN+=("$INVOCATION_DIR/$SPECIFIC_FLOW")
+    elif [[ -f "$MAESTRO_FLOWS_DIR/$SPECIFIC_FLOW" ]]; then
+      FLOWS_TO_RUN+=("$MAESTRO_FLOWS_DIR/$SPECIFIC_FLOW")
+    else
+      echo "[herdrcat] Flow file not found: $SPECIFIC_FLOW" >&2
+      echo "[herdrcat] Looked in: $INVOCATION_DIR and $MAESTRO_FLOWS_DIR" >&2
+      exit 1
+    fi
+  done
+else
+  for f in "$MAESTRO_FLOWS_DIR"/[0-9]*.yaml; do
+    if [[ -f "$f" ]]; then
+      FLOWS_TO_RUN+=("$f")
+    fi
+  done
+fi
+
+if [[ ${#FLOWS_TO_RUN[@]} -eq 0 ]]; then
+  echo "[herdrcat] No screenshot flows found in $MAESTRO_FLOWS_DIR" >&2
+  exit 1
+fi
+
+# Fresh, empty output directory per attempt. Each flow's SSH placeholders
+# (@HC_SSH_PORT@ etc.) are resolved into a per-attempt copy, so the
+# committed flows stay machine-agnostic and every PNG found in the
+# directory is by construction this attempt's fresh capture.
+RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
+RUN_DIR="$SCREENSHOTS_OUTPUT_DIR/.attempts/$RUN_ID"
+mkdir -p "$RUN_DIR"
+
+# Per-flow wall-clock guard. A hung Maestro/driver process should not block
+# the whole run. `timeout` ships with macOS on recent systems; fall back to
+# homebrew's `gtimeout`.
+FLOW_TIMEOUT="${FLOW_TIMEOUT:-240}"
+if command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_CMD=(timeout "${FLOW_TIMEOUT}s")
+elif command -v gtimeout >/dev/null 2>&1; then
+  TIMEOUT_CMD=(gtimeout "${FLOW_TIMEOUT}s")
+else
+  TIMEOUT_CMD=()
+fi
+
+# Runs one Maestro attempt. $1 = attempt output dir (must exist), $2 = flow
+# path, $3 = simulator UDID. Returns non-zero on failure or timeout. The
+# SSH fixture values are sed-substituted into a per-attempt copy of the
+# flow (Maestro 2.5.1's ${env.VAR} evaluation is unreliable here).
+run_attempt() {
+  local attempt_dir="$1" flow="$2" device_id="$3"
+  local resolved_flow="$attempt_dir/$(basename "$flow")"
+  sed -e "s|@HC_SSH_PORT@|$SSH_PORT|g" \
+      -e "s|@HC_SSH_USER@|$SSH_USER|g" \
+      -e "s|@HC_SSH_KEY_PATH@|$FIXTURE_KEY|g" \
+      "$flow" > "$resolved_flow"
+  if [[ ${#TIMEOUT_CMD[@]} -gt 0 ]]; then
+    (cd "$ROOT" && "${TIMEOUT_CMD[@]}" maestro test \
+      --test-output-dir "$attempt_dir" \
+      --device "$device_id" \
+      "$resolved_flow")
+  else
+    (cd "$ROOT" && maestro test \
+      --test-output-dir "$attempt_dir" \
+      --device "$device_id" \
+      "$resolved_flow")
+  fi
+}
+
+# Collects a frame PNG for one flow. $1 = flow path, $2 = attempt output
+# dir. Prints the collected file path on success. Only a nonempty
+# <flow-basename>.png inside this attempt's directory is accepted —
+# nothing stale (other run, worktree, or device) can ever satisfy a frame.
+collect_frame_png() {
+  local flow="$1" attempt_dir="$2"
+  local frame
+  frame="$(basename "$flow" .yaml)"
+
+  local found
+  found="$(find "$attempt_dir" -type f -name "$frame.png" -size +0c | head -n 1 || true)"
+  if [[ -n "$found" && -s "$found" ]]; then
+    printf '%s\n' "$found"
+    return 0
+  fi
+
+  return 1
+}
+
+MISSING_FRAMES=()
+
+capture_on_device() {
+  local device_id="$1" device_name="$2"
+  local device_dir_name device_dir frame captured attempt attempt_dir png flow
+
+  # Device folder name: the simulator's name with spaces replaced by
+  # underscores (e.g. iPhone_17_Pro_Max), matching the documented output paths.
+  device_dir_name="${device_name// /_}"
+  device_dir="$SCREENSHOTS_OUTPUT_DIR/$device_dir_name"
+  mkdir -p "$device_dir"
+
+  echo "==> Installing app on $device_name ($device_id)..."
+  boot_exclusive "$device_id"
+  xcrun simctl install "$device_id" "$APP_PATH"
+
+  # Springboard is not ready for app launches the moment bootstatus returns;
+  # a first Maestro launch in that window leaves the app on the home screen
+  # and fails every frame (observed live on ExampleApp). Settle briefly
+  # after a fresh boot.
+  sleep 10
+
+  # Force a standard Dynamic Type size so App Store screenshots reflect the
+  # default layout.
+  echo "==> Setting Dynamic Type to standard (large) on $device_name..."
+  xcrun simctl ui "$device_id" content_size large 2>/dev/null || true
+
+  echo "==> Capturing on $device_name -> $device_dir"
+  echo "==> Running Maestro screenshot flows..."
+  for flow in "${FLOWS_TO_RUN[@]}"; do
+    frame="$(basename "$flow" .yaml)"
+    # Invalidate any previous frame at the destination first: a failed
+    # recapture must not leave an old PNG masquerading as this frame.
+    rm -f "$device_dir/$frame.png"
+    echo "    Executing: $frame"
+    captured=""
+    for attempt in 1 2; do
+      attempt_dir="$RUN_DIR/$device_dir_name/$frame-attempt$attempt"
+      mkdir -p "$attempt_dir"
+      # Reset before every attempt: maestro's clearState does not wipe the
+      # iOS Keychain, and simulator Keychain items survive app uninstall, so
+      # a previously pinned host key would suppress the first-use approval
+      # the connected flows step through. A fresh Keychain + install makes
+      # every capture deterministic.
+      xcrun simctl keychain "$device_id" reset 2>/dev/null || true
+      xcrun simctl uninstall "$device_id" "$BUNDLE_ID" 2>/dev/null || true
+      xcrun simctl install "$device_id" "$APP_PATH"
+      if run_attempt "$attempt_dir" "$flow" "$device_id" && png="$(collect_frame_png "$flow" "$attempt_dir")"; then
+        captured="$png"
+        break
+      fi
+      # Maestro screenshot flows occasionally flake on transient app-launch
+      # races, stall, or exit zero without producing a frame. Retry once
+      # with a fresh, empty attempt directory.
+      if [[ $attempt -eq 1 ]]; then
+        echo "    ↻ $frame retrying once..."
+      fi
+    done
+
+    if [[ -n "$captured" ]]; then
+      mv -f "$captured" "$device_dir/$frame.png"
+      echo "    ✔ $frame -> $device_dir/$frame.png"
+    else
+      echo "    ✘ $frame FAILED"
+      MISSING_FRAMES+=("$device_dir_name/$frame.png")
+    fi
+  done
+}
+
+for record in "${DEVICE_RECORDS[@]}"; do
+  IFS=$'\t' read -r device_id device_name <<< "$record"
+  capture_on_device "$device_id" "$device_name"
+done
+
+# This run's staging is removed only on full success; a failed run keeps its
+# .attempts directory for debugging. No cleanup of other runs' directories.
+if [[ ${#MISSING_FRAMES[@]} -eq 0 ]]; then
+  rm -rf "$RUN_DIR"
+fi
+
+if [[ ${#MISSING_FRAMES[@]} -gt 0 ]]; then
+  echo "==> ${#MISSING_FRAMES[@]} frame(s) missing:" >&2
+  for f in "${MISSING_FRAMES[@]}"; do
+    echo "    ✘ $f" >&2
+  done
+  echo "==> Capture incomplete. Output so far: $SCREENSHOTS_OUTPUT_DIR" >&2
+  exit 1
+fi
+
+echo "==> Screenshots complete! Files saved to $SCREENSHOTS_OUTPUT_DIR"
+for record in "${DEVICE_RECORDS[@]}"; do
+  IFS=$'\t' read -r _ device_name <<< "$record"
+  echo "    ${device_name// /_}/"
+done

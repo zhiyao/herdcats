@@ -1,0 +1,31 @@
+appId: com.enchantinglabs.herdrcat
+---
+# Frame 03: Spaces — connected home screen listing active workspaces.
+- launchApp:
+    clearState: true
+    arguments:
+      hc.autoconnect: "1"
+      hc.host: "127.0.0.1"
+      hc.port: "@HC_SSH_PORT@"
+      hc.user: "@HC_SSH_USER@"
+      hc.key: "@HC_SSH_KEY_PATH@"
+      hc.tab: "spaces"
+
+- extendedWaitUntil:
+    visible: "Verify Host Key"
+    timeout: 30000
+- tapOn: "Trust and Connect"
+
+- extendedWaitUntil:
+    visible:
+      id: "machine-picker"
+    timeout: 45000
+
+- extendedWaitUntil:
+    visible: "#1"
+    timeout: 45000
+
+- waitForAnimationToEnd:
+    timeout: 4000
+
+- takeScreenshot: "03_spaces"

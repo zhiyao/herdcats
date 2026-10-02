@@ -1,0 +1,46 @@
+appId: com.enchantinglabs.herdrcat
+---
+# Frame 05: Live terminal keys drawer — extended mobile keyboard controls.
+- launchApp:
+    clearState: true
+    arguments:
+      hc.autoconnect: "1"
+      hc.host: "127.0.0.1"
+      hc.port: "@HC_SSH_PORT@"
+      hc.user: "@HC_SSH_USER@"
+      hc.key: "@HC_SSH_KEY_PATH@"
+      hc.tab: "spaces"
+
+- extendedWaitUntil:
+    visible: "Verify Host Key"
+    timeout: 30000
+- tapOn: "Trust and Connect"
+
+- extendedWaitUntil:
+    visible:
+      id: "machine-picker"
+    timeout: 45000
+
+- extendedWaitUntil:
+    visible: "#1"
+    timeout: 45000
+
+- tapOn: "#1"
+
+- extendedWaitUntil:
+    visible:
+      id: "pane-live-key-extra"
+    timeout: 45000
+
+- tapOn:
+    id: "pane-live-key-extra"
+
+- extendedWaitUntil:
+    visible:
+      id: "pane-live-keys-drawer"
+    timeout: 10000
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- takeScreenshot: "05_pane_keys"

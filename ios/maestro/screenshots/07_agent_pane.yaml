@@ -1,0 +1,44 @@
+appId: com.enchantinglabs.herdrcat
+---
+# Frame 07: Agent pane — opening a task pane directly from the queue.
+- launchApp:
+    clearState: true
+    arguments:
+      hc.autoconnect: "1"
+      hc.host: "127.0.0.1"
+      hc.port: "@HC_SSH_PORT@"
+      hc.user: "@HC_SSH_USER@"
+      hc.key: "@HC_SSH_KEY_PATH@"
+      hc.tab: "agents"
+
+- extendedWaitUntil:
+    visible: "Verify Host Key"
+    timeout: 30000
+- tapOn: "Trust and Connect"
+
+- extendedWaitUntil:
+    visible:
+      id: "machine-picker"
+    timeout: 45000
+
+- extendedWaitUntil:
+    visible:
+      id: "folder"
+    timeout: 45000
+
+# Open the first row of the queue.
+- tapOn:
+    id: "folder"
+
+# The pane is ready when the composer's send button appears.
+- extendedWaitUntil:
+    visible:
+      id: "pane-live-key-esc"
+    timeout: 45000
+
+- waitForAnimationToEnd:
+    timeout: 3000
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "07_agent_pane"

@@ -1,0 +1,12 @@
+# Bundler
+vendor/
+.bundle/
+
+# Fastlane outputs
+fastlane/changelog.txt
+fastlane/report.xml
+fastlane/README.md
+build/
+
+# Maestro screenshot captures
+maestro/screenshots-output/

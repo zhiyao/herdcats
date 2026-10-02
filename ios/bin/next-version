@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Print the suggested next semver for Herdrcat based on conventional commits
+# since the last herdrcat-v* tag.
+#
+# Bump rules:
+#   feat(scope)?:, or BREAKING CHANGE / <type>!:        -> minor
+#   anything else (fix/perf/refactor/chore/docs/...)    -> patch
+#
+# Major bumps are never auto-suggested. Pass the version directly to
+# bin/release when you want one. With no herdrcat-v* tag yet, the version
+# already in project.yml is suggested for the first release.
+#
+# Usage: ./ios/bin/next-version
+set -euo pipefail
+
+ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+cd "$ROOT"
+
+LAST_TAG="$(git describe --tags --abbrev=0 --match 'herdrcat-v*' 2>/dev/null || true)"
+
+if [[ -z "$LAST_TAG" ]]; then
+  CURRENT="$(sed -n -E 's/^[[:space:]]*CFBundleShortVersionString:[[:space:]]*"?([^"]*)"?.*/\1/p' ios/project.yml | head -n 1)"
+  echo "No herdrcat-v* tag yet; this is the first release."
+  echo ""
+  echo "Suggested next version: ${CURRENT:-0.1.0}"
+  exit 0
+fi
+
+LAST_VERSION="${LAST_TAG#herdrcat-v}"
+RANGE="${LAST_TAG}..HEAD"
+
+if [[ -z "$(git log "$RANGE" --oneline -- ios/)" ]]; then
+  echo "Error: no commits touching ios/ since $LAST_TAG - nothing to release." >&2
+  exit 1
+fi
+
+SUBJECTS_AND_BODIES="$(git log "$RANGE" --pretty=format:'%s%n%b' -- ios/)"
+SUBJECTS="$(git log "$RANGE" --pretty=format:'%s' -- ios/)"
+
+BUMP=patch
+if grep -qE '(^BREAKING CHANGE:|^[a-z]+(\([^)]+\))?!:)' <<< "$SUBJECTS_AND_BODIES" \
+   || grep -qE '^feat(\([^)]+\))?:' <<< "$SUBJECTS"; then
+  BUMP=minor
+fi
+
+echo "Unreleased commits since $LAST_TAG:"
+while IFS= read -r line; do
+  echo "  - $line"
+done <<< "$SUBJECTS"
+echo ""
+echo -n "Suggested next version: "
+
+IFS=. read -r MAJ MIN PAT <<< "$LAST_VERSION"
+case "$BUMP" in
+  minor) echo "${MAJ}.$((MIN + 1)).0" ;;
+  patch) echo "${MAJ}.${MIN}.$((PAT + 1))" ;;
+esac

@@ -1,0 +1,34 @@
+appId: com.enchantinglabs.herdrcat
+---
+# Frame 08: Quota — remaining provider quota dashboard from remote quota-axi.
+- launchApp:
+    clearState: true
+    arguments:
+      hc.autoconnect: "1"
+      hc.host: "127.0.0.1"
+      hc.port: "@HC_SSH_PORT@"
+      hc.user: "@HC_SSH_USER@"
+      hc.key: "@HC_SSH_KEY_PATH@"
+      hc.tab: "quota"
+
+- extendedWaitUntil:
+    visible: "Verify Host Key"
+    timeout: 30000
+- tapOn: "Trust and Connect"
+
+- extendedWaitUntil:
+    visible:
+      id: "machine-picker"
+    timeout: 45000
+
+# The Agy usage card renders once the quota screen settles; the first
+# quota-axi fetch after connect can be slow, so allow generously.
+- extendedWaitUntil:
+    visible:
+      id: "agy-usage-card"
+    timeout: 90000
+
+- waitForAnimationToEnd:
+    timeout: 3500
+
+- takeScreenshot: "08_quota"

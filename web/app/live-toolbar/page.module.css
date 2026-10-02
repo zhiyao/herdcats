@@ -1,0 +1,63 @@
+.page{min-height:100dvh;height:100dvh;overflow:auto;background:#090b0d;color:#f4f6f6;font-family:var(--font-system);user-select:text}
+.page *{user-select:text}
+.page button,.page select{font:inherit;cursor:pointer}
+.page button:focus-visible,.page select:focus-visible,.back:focus-visible{outline:2px solid #0edcd5;outline-offset:3px}
+.siteHeader{max-width:1250px;margin:auto;padding:22px 30px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #252b2c}
+.back{color:#e8f1f1;text-decoration:none;font-size:14px;font-weight:700}
+.prototype,.eyebrow,.principles b,.simulation>span,.callout>span,.footer{font:700 10px var(--font-mono);letter-spacing:.12em}
+.prototype{color:#8a9c9e}
+.intro{max-width:1250px;margin:auto;padding:60px 30px 56px;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(290px,.7fr);gap:70px;align-items:end}
+.eyebrow{color:#0edcd5;margin:0 0 18px}
+.intro h1{font-size:clamp(48px,6vw,82px);line-height:.99;letter-spacing:-.075em;margin:0 0 24px}
+.intro h1 span{color:#0edcd5}
+.lead{font-size:17px;line-height:1.6;color:#abbabc;max-width:620px;margin:0}
+.principles{display:flex;flex-wrap:wrap;gap:12px;margin-top:30px}
+.principles span{padding:8px 0;margin-right:12px;color:#c1cece;font-size:12px;white-space:nowrap}
+.principles b{color:#0edcd5;margin-right:6px}
+.notes{border-left:1px solid #354245;padding:0 0 0 28px}
+.notes h2{font-size:18px;letter-spacing:-.025em;margin:0 0 18px}
+.notes p{font-size:13px;line-height:1.55;color:#aebdc0;margin:0 0 15px}
+.notes strong{color:#f2f6f6}
+.workbench{background:#11171a;border-top:1px solid #253135;padding:38px max(30px,calc((100vw - 1190px)/2)) 55px}
+.workbenchHeader{max-width:1190px;margin:0 auto 24px;display:flex;justify-content:space-between;align-items:end;gap:15px}
+.workbenchHeader h2{font-size:29px;letter-spacing:-.04em;margin:0}
+.workbenchHeader .eyebrow{margin:0 0 7px}
+.previewWrap{max-width:1190px;margin:auto;display:grid;grid-template-columns:minmax(330px,420px) minmax(240px,1fr);gap:clamp(28px,6vw,96px);align-items:center}
+.phone{position:relative;height:690px;width:100%;max-width:420px;display:flex;flex-direction:column;background:#000;border:1px solid #414b4d;border-radius:33px;overflow:hidden;box-shadow:0 20px 65px #0009}
+.statusBar{height:35px;flex:none;display:flex;justify-content:space-between;padding:13px 26px 0;color:#dce4e4;font-size:10px;font-weight:700}
+.paneHeader{height:59px;flex:none;display:flex;align-items:center;gap:12px;padding:0 17px;border-bottom:1px solid #22292c}
+.paneHeader strong{display:block;font-size:15px}.paneHeader small{display:block;font-size:10px;color:#849397;margin-top:2px}
+.chevron{font-size:32px;color:#0edcd5;line-height:1}.headerMore{margin-left:auto;letter-spacing:2px;color:#abb8ba}
+.paneSwitch{height:47px;flex:none;display:flex;align-items:center;gap:8px;overflow:hidden;padding:7px 12px;border-bottom:1px solid #202729}
+.paneSwitch span{white-space:nowrap;padding:7px 11px;background:#20282b;border-radius:7px;color:#9aa8aa;font-size:11px}
+.paneSwitch .selectedPane{background:#42494a;color:#fff;box-shadow:inset 0 -2px #0edcd5}
+.terminal{flex:1;min-height:0;overflow:auto;padding:20px 17px;font:11px/1.55 var(--font-mono)}
+.terminal p{margin:0 0 8px;color:#e2ebeb}.terminal .dim{color:#7e8b8e}.terminal .green{color:#61c6a4}
+.menu{border:1px solid #2d3a3e;background:#10171a;padding:8px 11px;margin:17px 0}.menu p{margin:3px 0;color:#bdcbcd}.menu span{color:#0edcd5}
+.terminal .cursorLine{color:#0edcd5}.cursorLine i{display:inline-block;width:7px;height:13px;background:#0edcd5;vertical-align:-2px}
+.inputDock{position:relative;padding:9px 9px 11px;background:#1a2022;border-top:1px solid #354042}
+.rail{height:44px;display:flex;align-items:stretch;gap:1px;border:1px solid #4a5759;border-radius:11px;background:#30383a;overflow:hidden}
+.rail button{min-width:0;flex:1 1 0;background:transparent;border:0;color:#eef4f4;font-size:11px;font-weight:700;padding:0 1px;white-space:nowrap;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
+.rail button:hover,.rail .railActive{background:#124145;color:#5df0e8}.rail .esc{color:#ff786f}.rail button:nth-last-child(-n+2){font-size:18px}
+.altOption{display:inline-block;color:#8fa6a9;font-size:9px;vertical-align:2px;margin-left:1px}
+.arrowCaret{display:inline-block;color:#8fa6a9;font-size:8px;vertical-align:3px;margin-left:1px}
+.railDivider{align-self:center;width:1px;height:24px;background:#738285;flex:none;margin:0 2px}
+.homeIndicator{height:20px;flex:none;display:grid;place-items:center;background:#1a2022}.homeIndicator:after{content:"";width:107px;height:4px;border-radius:5px;background:#d8dfe0}
+.keysDrawer{margin-bottom:9px;border:1px solid #4c6467;border-radius:13px;background:#222e31;box-shadow:0 -12px 35px #0008;padding:7px;overflow:hidden}
+.keyGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin-bottom:4px}
+.keyGrid button,.functionScroll button{height:39px;min-width:0;border:1px solid #4b6668;border-radius:7px;background:#344447;color:#edfbfa;font:700 11px var(--font-system);white-space:nowrap;user-select:none;-webkit-user-select:none}
+.keyGrid button:hover,.functionScroll button:hover,.keyGrid .keyActive{border-color:#0edcd5;background:#20585a;color:#67f1e9}
+.keyGrid:first-child button{font-size:18px}
+.functionScroll{display:flex;gap:4px;overflow-x:auto;overscroll-behavior-inline:contain;scroll-snap-type:x mandatory;padding:0 26px 0 0;mask-image:linear-gradient(to right,#000 0%,#000 88%,transparent 100%);-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.functionScroll::-webkit-scrollbar{display:none}
+.functionScroll button{flex:0 0 54px;scroll-snap-align:start}
+.arrowMenu{width:min(238px,100%);margin:0 0 9px 24px;border:1px solid #4c6467;border-radius:13px;background:#222e31;box-shadow:0 -12px 35px #0008;padding:7px}
+.arrowPad{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}.arrowPad button{height:44px;border:1px solid #4b6668;border-radius:7px;background:#344447;color:#edfbfa;font:700 18px var(--font-system)}.arrowPad button:hover{border-color:#0edcd5;background:#20585a}
+.modeDock{min-height:66px;background:#1a2022;border-top:1px solid #354042;padding:12px;display:flex;align-items:center;justify-content:space-between;gap:8px}.modeDock strong{display:block;font-size:13px}.modeDock small{display:block;color:#9caeb0;font-size:10px;margin-top:3px}.modeDock button{border:1px solid #4c686b;border-radius:8px;background:#254246;color:#eff;padding:8px;font-size:10px;white-space:nowrap}
+.previewAside{max-width:460px}.simulation{padding:22px 0;border-bottom:1px solid #334145}.simulation>span,.callout>span{color:#0edcd5}.simulation strong{display:block;margin:13px 0;font-size:20px;letter-spacing:-.03em}.simulation code{font:600 18px var(--font-mono);color:#0edcd5}.simulation p,.callout p{color:#a7b9bb;font-size:13px;line-height:1.55;margin:0}
+.tryList{padding:22px 0}.tryList h3{font-size:13px;margin:0 0 10px}.tryList button{display:flex;justify-content:space-between;width:100%;border:0;border-top:1px solid #2e3c3e;background:transparent;text-align:left;color:#dce8e9;padding:13px 0;font-size:12px}.tryList button span{color:#0edcd5}.tryList button:hover{color:#0edcd5}
+.callout{padding:17px;border-left:2px solid #0edcd5;background:#172326}.callout p{margin-top:9px}.footer{max-width:1250px;margin:auto;padding:25px 30px;color:#7e9295;line-height:1.5}
+@media(max-width:800px){.intro{grid-template-columns:1fr;gap:35px;padding-top:45px}.notes{max-width:650px}.previewWrap{gap:30px}.workbench{padding-left:22px;padding-right:22px}}
+@media(max-width:650px){.siteHeader{padding:18px}.prototype{font-size:8px}.intro{padding:40px 18px}.intro h1{font-size:53px}.lead{font-size:15px}.notes{padding-left:18px}.workbench{padding:30px 12px}.workbenchHeader{padding:0 7px;align-items:start}.workbenchHeader h2{font-size:22px}.previewWrap{display:flex;flex-direction:column;align-items:center}.phone{height:min(690px,78dvh);min-height:570px;max-width:420px}.previewAside{width:100%;padding:0 8px}.footer{padding:22px 18px}}
+@media(max-width:370px){.rail button{font-size:9px}}
+@media(prefers-reduced-motion:reduce){.page *{scroll-behavior:auto!important}}

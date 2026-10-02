@@ -1,0 +1,7 @@
+{
+  "defaultProvider": "openrouter",
+  "defaultModel": "openrouter/free",
+  "defaultThinkingLevel": "low",
+  "enabledModels": ["openrouter/free"],
+  "enableInstallTelemetry": false
+}

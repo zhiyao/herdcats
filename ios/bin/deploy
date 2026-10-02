@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# Run the full Herdrcat TestFlight release flow with prompts at each step:
+#
+#   1. next-version  - show suggested bump + unreleased commits, pick a version
+#   2. release       - bump project.yml, regenerate the Xcode project, commit, tag
+#   3. changelog     - generate fastlane/changelog.txt (TestFlight "What to Test")
+#   4. beta          - regenerate the Xcode project + build and upload via Fastlane
+#   5. push          - prompt to run `git push origin main --tags`
+#
+# Each sub-step is also runnable on its own (bin/next-version, bin/release, etc.).
+# Any "n" response or sub-script failure aborts the remaining flow.
+#
+# Usage: ./ios/bin/deploy
+set -euo pipefail
+
+BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(git -C "$BIN_DIR" rev-parse --show-toplevel)"
+cd "$ROOT"
+
+banner() {
+  echo ""
+  echo "======================================"
+  echo "  $1"
+  echo "======================================"
+}
+
+abort() {
+  echo "Aborted: $1" >&2
+  exit 1
+}
+
+confirm() {
+  local prompt="$1"
+  local reply
+  read -r -p "$prompt (y/n): " reply
+  [[ "$reply" =~ ^[Yy]$ ]]
+}
+
+banner "herdrcat deploy"
+
+# Fail before the release commit/tag rather than after it.
+if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
+  abort "the repository has no commits yet. Make an initial commit first."
+fi
+if [[ -n "$(git status --porcelain)" ]]; then
+  abort "working tree is dirty. Commit or stash changes first."
+fi
+
+# ----- 1. Version ----------------------------------------------------------
+banner "Step 1/5: choose version"
+NEXT_OUTPUT="$("$BIN_DIR/next-version")"
+echo "$NEXT_OUTPUT"
+echo ""
+
+SUGGESTED="$(echo "$NEXT_OUTPUT" | sed -n 's/^Suggested next version: //p')"
+[[ -n "$SUGGESTED" ]] || abort "could not determine suggested version."
+
+read -r -p "Use $SUGGESTED? (y=use it / type a custom version / n=abort): " VERSION_REPLY
+case "$VERSION_REPLY" in
+  y|Y) VERSION="$SUGGESTED" ;;
+  n|N) abort "user cancelled at version step." ;;
+  "")  abort "no version entered." ;;
+  *)   VERSION="$VERSION_REPLY" ;;
+esac
+
+echo ""
+echo "Releasing version: $VERSION"
+confirm "Proceed?" || abort "user cancelled."
+
+# ----- 2. Release ----------------------------------------------------------
+banner "Step 2/5: release (bump, commit, tag)"
+"$BIN_DIR/release" "$VERSION"
+
+# ----- 3. Changelog --------------------------------------------------------
+banner "Step 3/5: generate TestFlight changelog"
+# With the new tag in place, no arguments means this release versus the
+# preceding herdrcat-v* tag.
+"$BIN_DIR/changelog"
+
+CHANGELOG="$ROOT/ios/fastlane/changelog.txt"
+echo ""
+echo "Generated fastlane/changelog.txt:"
+echo "--------------------------------------"
+sed 's/^/  /' "$CHANGELOG"
+echo "--------------------------------------"
+
+while true; do
+  read -r -p "Changelog OK? (y=continue / e=edit / n=abort): " CHANGELOG_REPLY
+  case "$CHANGELOG_REPLY" in
+    y|Y) break ;;
+    e|E)
+      "${EDITOR:-vi}" "$CHANGELOG"
+      echo ""
+      echo "Updated changelog:"
+      echo "--------------------------------------"
+      sed 's/^/  /' "$CHANGELOG"
+      echo "--------------------------------------"
+      ;;
+    *) abort "user cancelled at changelog step." ;;
+  esac
+done
+
+# ----- 4. Beta -------------------------------------------------------------
+banner "Step 4/5: build & upload to TestFlight"
+# bin/beta re-checks the working tree. fastlane/changelog.txt is gitignored,
+# so generating it above does not make the release tree dirty.
+"$BIN_DIR/beta"
+
+# ----- 5. Push -------------------------------------------------------------
+banner "Step 5/5: push to remote"
+echo "Release $VERSION is committed and tagged locally."
+echo "  git push origin main --tags"
+echo ""
+if ! git remote get-url origin >/dev/null 2>&1; then
+  echo "No 'origin' remote configured; skipping push."
+elif confirm "Push to origin?"; then
+  git -C "$ROOT" push origin main --tags
+  echo ""
+  echo "Pushed."
+else
+  echo "Skipping push. Run later with:"
+  echo "  git push origin main --tags"
+fi
+
+banner "herdrcat $VERSION deployed"

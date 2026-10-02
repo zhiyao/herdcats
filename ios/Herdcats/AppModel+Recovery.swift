@@ -1,0 +1,137 @@
+import Observation
+import SwiftUI
+
+extension AppModel {
+    func prepareConnectionStatus(for config: ConnectionConfig) {
+        lastError = nil
+        connectionProgressMessage = "Signing in over SSH…"
+        herdrMissingOnLastConnect = false
+        herdrSessionUnavailableOnLastConnect = false
+        connectionIdentity = ConnectionIdentity(config)
+    }
+
+    func checkSessionReadiness() async throws {
+        // --version confirms the binary only; a space query confirms the
+        // default session is ready for the screens we present next.
+        do {
+            _ = try await connection.workspaceList(timeoutPolicy: .teardownSilently)
+        } catch {
+            throw Self.sessionReadinessError(error)
+        }
+    }
+
+    static func sessionReadinessError(_ error: Error) -> Error {
+        guard let herdrError = error as? HerdrError else { return error }
+        switch herdrError {
+        case let .api(code, message):
+            let missingSessionPhrases = [
+                "no default session", "default session not found", "default session is missing",
+                "default session is unavailable", "default session does not exist"
+            ]
+            if code == "session_unavailable"
+                || missingSessionPhrases.contains(where: { message.localizedCaseInsensitiveContains($0) }) {
+                return HerdrError.sessionUnavailable
+            }
+            return error
+        default:
+            return error
+        }
+    }
+
+    /// Approval only persists the exact displayed key; the next handshake verifies it again.
+    func approveHostKey(_ challenge: SSHHostKeyChallenge) async -> Bool {
+        guard hostKeyChallenge == challenge, !isDialing else { return false }
+        do {
+            try await SSHHostKeyStore.shared.trust(challenge.publicKey, host: challenge.host, port: challenge.port)
+            guard hostKeyChallenge == challenge else { return false }
+            hostKeyChallenge = nil
+            hostKeyVerificationBlocked = false
+            lastError = nil
+            return true
+        } catch {
+            lastError = HerdrConnection.friendlyMessage(for: error)
+            return false
+        }
+    }
+
+    func cancelHostKeyApproval() {
+        hostKeyChallenge = nil
+        cancelReconnect()
+    }
+
+    func disconnect() async {
+        if let gatewayModel {
+            await gatewayModel.disconnect()
+            return
+        }
+        cancelReconnect()
+        dismissBannerTask?.cancel()
+        connectionBanner = nil
+        hasActiveSession = false
+        activeConfig = nil
+        hostKeyChallenge = nil
+        hostKeyVerificationBlocked = false
+        resetMachines()
+        let generation = ownership.disconnect()
+        phase = .disconnected
+        herdrVersion = nil
+        connectionIdentity = nil
+        if let generation {
+            connection.forceClose(generation: generation)
+        }
+        // If somehow no generation was reserved, invalidate whatever is current
+        // via a fresh reserve-and-close would be wrong; leave transport alone.
+    }
+
+    /// Returns the user to the connection screen if a remembered credential
+    /// could not be persisted after authentication succeeded.
+    func reportCredentialStorageError(_ message: String) async {
+        await disconnect()
+        lastError = message
+    }
+
+    func handleConnectWatchdog(attempt: UInt64) {
+        guard case .connecting = phase else { return }
+        switch ownership.watchdogTimeout(for: attempt) {
+        case .stale:
+            return
+        case let .timedOut(generation):
+            lastError = "The connection attempt timed out."
+            connection.forceClose(generation: generation)
+            connectionIdentity = nil
+            if hasActiveSession, let config = activeConfig {
+                phase = .offline(host: config.host, username: config.username)
+                connectionBanner = .offline(message: "Offline · Connection timed out", canRetry: true)
+                scheduleAutoReconnect(delaySeconds: 5.0)
+            } else {
+                phase = .disconnected
+            }
+        }
+    }
+
+    func handleConnectionLost(generation: ConnectionGeneration) {
+        // Invalidates the app attempt so delayed serverVersion cannot promote.
+        guard ownership.handleLoss(generation: generation) else { return }
+        resetMachines()
+        switch phase {
+        case let .connected(host, username):
+            phase = .offline(host: host, username: username)
+            connectionBanner = .offline(message: "Offline · Connection lost", canRetry: true)
+            scheduleAutoReconnect()
+        case .connecting:
+            if hasActiveSession, let config = activeConfig {
+                phase = .offline(host: config.host, username: config.username)
+                connectionBanner = .offline(message: "Offline · Connection lost", canRetry: true)
+                scheduleAutoReconnect()
+            } else {
+                connectionIdentity = nil
+                phase = .disconnected
+                lastError = "The connection was lost during handshake."
+            }
+        case .offline:
+            scheduleAutoReconnect()
+        case .disconnected:
+            break
+        }
+    }
+}
