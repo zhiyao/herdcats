@@ -72,6 +72,12 @@ These checks require no SSH server, Apple account credentials, or deployment
 secrets. Simulator tests use ad-hoc signing so Keychain tests receive their
 entitlements.
 
+Changes to `main` require a pull request and passing **iOS** and **Web** checks.
+Dependabot checks dependencies weekly and opens update pull requests for review.
+For Swift dependency updates, copy the proposed version changes into
+`ios/project.yml`, regenerate with `(cd ios && xcodegen generate)`, and commit
+the resulting project and lockfile before merging.
+
 Run the same checks locally from the repository root:
 
 ```sh
