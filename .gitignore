@@ -51,6 +51,8 @@ ios/maestro/fixtures/*key*
 /docs/
 !/README.md
 !/SECURITY.md
+!/CONTRIBUTING.md
+!/.github/pull_request_template.md
 
 # Local development and review artifacts
 .playwright-mcp/

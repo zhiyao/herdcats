@@ -1,0 +1,32 @@
+name: Feature request
+description: Describe a problem and a proposed improvement.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search existing issues and the README's limitations first.
+        Keep examples free of credentials, private pane output, and personal machine details.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe the task that is difficult today and who it affects.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Explain how the improvement would work with Herdr's existing concepts.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include any current workaround, if applicable.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Optional redacted examples or mockups.

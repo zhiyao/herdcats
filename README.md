@@ -123,6 +123,11 @@ hosted independently of the iPhone app.
 - Saved-machine routing uses the gateway machine's SSH configuration. Quota and
   photos are available only on the directly connected host.
 
+## Contributing
+
+Bug reports, documentation improvements, and focused code changes are welcome.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, validation, and the PR process.
+
 ## Security
 
 Report vulnerabilities through [GitHub's private reporting form](https://github.com/zhiyao/herdcats/security/advisories/new).
