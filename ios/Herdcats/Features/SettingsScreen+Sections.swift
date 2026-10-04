@@ -204,6 +204,13 @@ extension SettingsScreen {
 
     var versionSection: some View {
         Section {
+            NavigationLink {
+                LicensesView()
+            } label: {
+                Label("Licenses", systemImage: "doc.text")
+            }
+            .listRowBackground(Theme.cardBackground)
+
             HStack {
                 Spacer()
                 Text("Herdcats \(Self.appVersion)")

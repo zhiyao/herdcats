@@ -9,6 +9,7 @@ const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'herdcats-server-test-'
 process.env.PUBLIC_DIR = fixtureDir;
 
 fs.writeFileSync(path.join(fixtureDir, 'index.html'), '<!DOCTYPE html><html><body><h1>Herdcats</h1></body></html>');
+fs.writeFileSync(path.join(fixtureDir, 'third-party-notices.txt'), 'License notices — copyright holders retain their rights.');
 
 fs.mkdirSync(path.join(fixtureDir, 'about'), { recursive: true });
 fs.writeFileSync(path.join(fixtureDir, 'about', 'index.html'), '<!DOCTYPE html><html><body><h1>About Herdcats</h1></body></html>');
@@ -85,4 +86,11 @@ test('exported route directories resolve to their index.html', async () => {
     const root = await requestAsync('/');
     assert.equal(root.statusCode, 200);
     assert.match(root.body, /Herdcats/);
+});
+
+test('license notices are served as readable UTF-8 text', async () => {
+    const response = await requestAsync('/third-party-notices.txt');
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.headers['Content-Type'], 'text/plain; charset=utf-8');
+    assert.equal(response.body, 'License notices — copyright holders retain their rights.');
 });

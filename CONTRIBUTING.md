@@ -34,6 +34,10 @@ For a Dependabot Swift update, reflect the proposed dependency versions in
 `ios/project.yml` and commit the regenerated project and lockfile. Generated
 project edits alone are overwritten by XcodeGen.
 
+When dependency lockfiles change, refresh the notices using the commands in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md#refresh-the-notices) and review
+the resulting license and attribution changes before merging.
+
 ## Keep changes focused
 
 - Use Herdr's concepts: spaces, tabs, panes, agents, and machines.

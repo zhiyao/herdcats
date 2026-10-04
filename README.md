@@ -136,5 +136,7 @@ See [SECURITY.md](SECURITY.md) for supported versions and reporting guidance.
 ## License
 
 [GPLv3 with an additional permission for Apple App Store and Google Play
- distribution](LICENSE). Internal planning documents, local configuration,
+ distribution](LICENSE). See [third-party notices](THIRD_PARTY_NOTICES.md) for
+dependency licenses, artwork provenance, and screenshot-tooling terms.
+Internal planning documents, local configuration,
 credentials, and generated review artifacts are excluded from this repository.
