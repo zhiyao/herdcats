@@ -127,6 +127,8 @@ hosted independently of the iPhone app.
 
 Bug reports, documentation improvements, and focused code changes are welcome.
 Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, validation, and the PR process.
+Community participation follows [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+Maintainers can follow [RELEASING.md](RELEASING.md) to prepare a source release.
 
 ## Security
 
