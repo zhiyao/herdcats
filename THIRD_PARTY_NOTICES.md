@@ -9,7 +9,8 @@ third-party copyright holders.
 
 Full project and dependency license texts are bundled in
 [ios/Herdcats/Resources/ThirdPartyNotices.txt](ios/Herdcats/Resources/ThirdPartyNotices.txt)
-and available offline in **Settings → Licenses**. The notices preserve upstream
+and available offline in **Settings → Licenses** or **Licenses** on the welcome
+screen before connecting. The notices preserve upstream
 NOTICE files, runtime-library exceptions, and the embedded BoringSSL license.
 
 | Dependency | Locked version | License |
