@@ -40,6 +40,10 @@ Capabilities after generation. `ios/project.yml` is the source of truth;
 regeneration replaces manual project settings. For command-line device builds,
 pass your own team using `DEVELOPMENT_TEAM=YOUR_TEAM_ID`.
 
+The app and website share the three-cat pixel icon. Agent badges use the launch
+cat's pixel drawing in each agent's color. Regenerate the launch and agent
+assets with `python3 ios/scripts/generate_launch_cat.py`.
+
 ## Connect to Herdr
 
 1. Install Herdr on your remote machine and start its default session.
