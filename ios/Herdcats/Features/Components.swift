@@ -405,7 +405,7 @@ enum AgentKindVisual {
         }
     }
 
-    /// Asset-catalog pixel cat when available; otherwise fall back to `symbol(for:)`.
+    /// Asset-catalog brand mark when available; otherwise fall back to `symbol(for:)`.
     static func assetName(for kind: String) -> String? {
         switch kind {
         case "cursor": "AgentCursor"
@@ -416,6 +416,11 @@ enum AgentKindVisual {
         case "zai": "AgentZai"
         default: nil
         }
+    }
+
+    /// Pi keeps its multi-color mark; other brand assets are template-tinted.
+    static func usesOriginalAssetColors(for kind: String) -> Bool {
+        kind == "pi"
     }
 
     static func symbol(for kind: String) -> String {
@@ -573,7 +578,7 @@ struct CommandLineBadge: View {
     }
 }
 
-/// Agent-colored pixel cat from the asset catalog when present; SF Symbol otherwise.
+/// Brand mark from the asset catalog when present; SF Symbol otherwise.
 struct AgentKindIcon: View {
     let kind: String
     var size: CGFloat = 10
@@ -581,13 +586,21 @@ struct AgentKindIcon: View {
     @ViewBuilder
     var body: some View {
         if let asset = AgentKindVisual.assetName(for: kind) {
-            Image(asset)
-                .renderingMode(.original)
-                .resizable()
-                .interpolation(.none)
-                .scaledToFit()
-                .frame(width: size, height: size)
-                .accessibilityHidden(true)
+            if AgentKindVisual.usesOriginalAssetColors(for: kind) {
+                Image(asset)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: size, height: size)
+                    .accessibilityHidden(true)
+            } else {
+                Image(asset)
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: size, height: size)
+                    .foregroundStyle(AgentKindVisual.color(for: kind))
+                    .accessibilityHidden(true)
+            }
         } else {
             Image(systemName: AgentKindVisual.symbol(for: kind))
                 .font(.system(size: size, weight: .bold))

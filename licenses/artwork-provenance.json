@@ -11,18 +11,5 @@
     "web/public/assets/logo.png",
     "web/public/assets/favicon.png",
     "web/public/assets/apple-touch-icon.png"
-  ],
-  "agent_badges": {
-    "origin": "Code-generated from the existing launch-cat block drawing, using the six established agent colors.",
-    "generator": "ios/scripts/generate_launch_cat.py",
-    "assets": [
-      "AgentClaude",
-      "AgentCodex",
-      "AgentCursor",
-      "AgentGemini",
-      "AgentPi",
-      "AgentZai"
-    ],
-    "rendering": "Original colors, transparent background, nearest-neighbor interpolation."
-  }
+  ]
 }

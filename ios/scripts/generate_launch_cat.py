@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Export the shared pixel-cat drawing for launch and agent badge assets."""
 
 import struct
 import zlib
@@ -10,15 +9,6 @@ POINTS_PER_UNIT = 2
 ASSET_SCALES = {
     2: "LaunchCat@2x.png",
     3: "LaunchCat@3x.png",
-}
-FUR = (199, 163, 122, 255)
-AGENT_FUR = {
-    "AgentClaude": (217, 120, 87, 255),
-    "AgentCodex": (23, 163, 130, 255),
-    "AgentCursor": (140, 189, 250, 255),
-    "AgentGemini": (143, 118, 178, 255),
-    "AgentPi": (239, 143, 130, 255),
-    "AgentZai": (31, 100, 237, 255),
 }
 BLOCKS = [
     (-13, -7, 2, 7, (199, 163, 122, 255)),
@@ -39,7 +29,7 @@ def png_chunk(chunk_type, data):
     return struct.pack(">I", len(data)) + payload + struct.pack(">I", zlib.crc32(payload))
 
 
-def render(scale, fur=FUR):
+def render(scale):
     min_x = min(x for x, _, _, _, _ in BLOCKS)
     min_y = min(y for _, y, _, _, _ in BLOCKS)
     max_x = max(x + width for x, _, width, _, _ in BLOCKS)
@@ -50,8 +40,6 @@ def render(scale, fur=FUR):
     pixels = bytearray(width * height * 4)
 
     for x, y, block_width, block_height, color in BLOCKS:
-        if color == FUR:
-            color = fur
         left = (x - min_x) * pixels_per_unit
         top = (y - min_y) * pixels_per_unit
         right = left + block_width * pixels_per_unit
@@ -74,18 +62,14 @@ def render(scale, fur=FUR):
 
 
 def main():
-    asset_directory = (
+    output_directory = (
         Path(__file__).resolve().parents[1]
-        / "Herdcats/Assets.xcassets"
+        / "Herdcats/Assets.xcassets/LaunchCat.imageset"
     )
     for scale, filename in ASSET_SCALES.items():
-        output = asset_directory / "LaunchCat.imageset" / filename
+        output = output_directory / filename
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(render(scale))
-    for name, fur in AGENT_FUR.items():
-        output = asset_directory / f"{name}.imageset" / f"{name}.png"
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_bytes(render(6, fur))
 
 
 if __name__ == "__main__":
