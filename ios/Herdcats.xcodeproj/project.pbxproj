@@ -18,6 +18,7 @@
 		138C2C360CFD2FE35078896E /* PaneSessionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81A4E5890CE3DAE5C1F6D649 /* PaneSessionState.swift */; };
 		1439CF21F95DC3CBF2D8D4EF /* ANSIText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E30A6DC23D131D80B7405B0 /* ANSIText.swift */; };
 		156ACEA7131AB8EE9B09D2B0 /* ConnectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 902C762017C8EEFB00E85C2F /* ConnectView.swift */; };
+		15FEC407996EE698BF8092C9 /* test_release_preparation.py in Resources */ = {isa = PBXBuildFile; fileRef = F8CA019F2DDA830AC9B7D1D0 /* test_release_preparation.py */; };
 		18DF82E95FACCEA21CA4D07D /* ConnectionSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5D074F27B1A73850A67894 /* ConnectionSettingsView.swift */; };
 		198358910198F4D981D8D7BD /* ConnectionSettingsView+Card.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6349F51A9FF576CFF9455B92 /* ConnectionSettingsView+Card.swift */; };
 		1B2CEDABD8B5C45FEE90399C /* HerdcatsTests+QuotaUnavailable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39B10C9183B00C53D29BAEF1 /* HerdcatsTests+QuotaUnavailable.swift */; };
@@ -193,6 +194,7 @@
 		EED17C5CD76FB35981A9D96C /* HerdcatsTests+SpaceAndKeyParsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdcatsTests+SpaceAndKeyParsing.swift"; sourceTree = "<group>"; };
 		EF5D074F27B1A73850A67894 /* ConnectionSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionSettingsView.swift; sourceTree = "<group>"; };
 		F2DBC72D55F63C7915ECC5EB /* ConnectionOwnership.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionOwnership.swift; sourceTree = "<group>"; };
+		F8CA019F2DDA830AC9B7D1D0 /* test_release_preparation.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = test_release_preparation.py; sourceTree = "<group>"; };
 		FC0B75ADD32735D5BC85B14E /* PaneLiveModifierComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneLiveModifierComposer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -347,6 +349,7 @@
 				2AFE5DFC694EBCD2A7C697D9 /* PaneLiveInputTests.swift */,
 				217943F1848BADFC038A2932 /* PaneLiveModifierComposerTests.swift */,
 				97046A3F25D35B65A7CA7425 /* test_attachment_storage.py */,
+				F8CA019F2DDA830AC9B7D1D0 /* test_release_preparation.py */,
 				4E50F78F5521566900207BF2 /* TestSupport.swift */,
 			);
 			path = HerdcatsTests;
@@ -482,6 +485,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				059E8BD914E797E5B932DE90 /* test_attachment_storage.py in Resources */,
+				15FEC407996EE698BF8092C9 /* test_release_preparation.py in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
