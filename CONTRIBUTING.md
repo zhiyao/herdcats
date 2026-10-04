@@ -3,6 +3,7 @@
 Herdcats is an early-stage iPhone client for Herdr. Contributions to the app,
 website, tests, and documentation are welcome. Be respectful, keep feedback
 specific, and discuss the work rather than the person.
+Participation follows our [code of conduct](CODE_OF_CONDUCT.md).
 
 ## Report bugs and propose changes
 
