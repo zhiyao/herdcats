@@ -58,6 +58,8 @@ export default function Home() {
             Terms
           </Link>
           <span className="link-separator">•</span>
+          <a href="/third-party-notices.txt" className="text-link">Licenses</a>
+          <span className="link-separator">•</span>
           <a
             href="https://github.com/zhiyao/herdcats"
             target="_blank"

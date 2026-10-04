@@ -31,6 +31,7 @@ export function SitePage({ title, children }: SitePageProps) {
             <Link href="/about" className={styles.footerLink}>About</Link>
             <Link href="/privacy" className={styles.footerLink}>Privacy</Link>
             <Link href="/terms" className={styles.footerLink}>Terms</Link>
+            <a href="/third-party-notices.txt" className={styles.footerLink}>Licenses</a>
             <a
               href="https://github.com/zhiyao/herdcats"
               target="_blank"
