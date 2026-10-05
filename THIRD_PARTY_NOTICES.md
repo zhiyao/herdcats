@@ -74,11 +74,16 @@ or shipped with the static website:
 ## Artwork provenance
 
 The maintainer confirmed on 2026-10-04 that the cat/logo artwork, six agent icons,
-app/launch images, and three website prototype JPGs were AI-generated. The
-repository does not record generation-provider terms or prompt histories.
+app/launch images, and three website prototype JPGs were AI-generated. Original
+generation-provider terms and prompt histories were not recorded for those assets.
 This is an origin statement, not a claim that trademark or other third-party
 rights have been cleared. Agent names and brand-like icons identify supported
 software; inclusion does not imply endorsement or transfer trademark rights.
+
+On 2026-10-04, the app icon and app/website logos were replaced with a three-cat
+pixel design generated with OpenAI's built-in image-generation tool and chosen
+by the maintainer. The standard agent logos are retained. Generation details for
+the new herd artwork are recorded in `licenses/artwork-provenance.json`.
 Future externally sourced assets need their source and license recorded here.
 
 ## Refresh the notices

@@ -72,7 +72,7 @@ export default function InputModesPage() {
       <div className={styles.shell}>
         <header className={styles.topbar}>
           <Link href="/" className={styles.brand} aria-label="Herdcats home">
-            <img src="/assets/logo.svg" alt="" width={34} height={34} />
+            <img src="/assets/logo.png" alt="" width={34} height={34} />
             <span>Herdcats</span>
           </Link>
           <span className={styles.documentTag}>INPUT MODES / DECISION GUIDE</span>

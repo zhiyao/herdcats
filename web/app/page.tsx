@@ -76,7 +76,7 @@ export default function Home() {
             {/* Brand Title */}
             <div className="brand-header">
               <img
-                src="/assets/logo.svg"
+                src="/assets/logo.png"
                 alt=""
                 className="brand-logo"
                 width={44}

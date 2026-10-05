@@ -51,13 +51,13 @@ enum DesignSystem {
 // MARK: - Theme
 
 enum Theme {
-    /// Turquoise accent (#0EDCD5), matching the app icon background gradient start.
+    /// Turquoise brand accent (#0EDCD5).
     static let accent = Color(red: 0.055, green: 0.863, blue: 0.835)
 
-    /// Deep cyan secondary accent (#0DB1C5), matching the app icon background gradient end.
+    /// Deep cyan secondary brand accent (#0DB1C5).
     static let accentSecondary = Color(red: 0.051, green: 0.694, blue: 0.773)
 
-    /// Dynamic linear accent gradient (Turquoise to Deep Cyan), mirroring the app icon background.
+    /// Dynamic linear accent gradient (Turquoise to Deep Cyan).
     static let accentGradient = LinearGradient(
         colors: [
             accent,
