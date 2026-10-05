@@ -58,6 +58,8 @@ export default function Home() {
             Terms
           </Link>
           <span className="link-separator">•</span>
+          <a href="/third-party-notices.txt" className="text-link">Licenses</a>
+          <span className="link-separator">•</span>
           <a
             href="https://github.com/zhiyao/herdcats"
             target="_blank"
@@ -74,7 +76,7 @@ export default function Home() {
             {/* Brand Title */}
             <div className="brand-header">
               <img
-                src="/assets/logo.svg"
+                src="/assets/logo.png"
                 alt=""
                 className="brand-logo"
                 width={44}
