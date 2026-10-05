@@ -47,6 +47,10 @@ platform :ios do
 
   desc "Build the current project.yml version and upload it to TestFlight. Run bin/changelog first."
   lane :beta do
+    development_team = ENV["DEVELOPMENT_TEAM"].to_s.strip
+    unless development_team.match?(/\A[A-Z0-9]{10}\z/)
+      UI.user_error!("Set DEVELOPMENT_TEAM to your 10-character Apple Team ID before uploading.")
+    end
     ensure_xcode_26!
     api_key = ensure_app_store_connect_api_key!
     changelog = File.read(File.join(FASTLANE_DIR, "changelog.txt")).strip
@@ -57,12 +61,13 @@ platform :ios do
       configuration: "Release",
       clean: true,
       export_method: "app-store",
+      export_team_id: development_team,
       output_directory: BUILD_DIR,
       # Keep DerivedData on the internal disk; the default external location
       # has produced unsigned bundles for this project.
       derived_data_path: File.join(BUILD_DIR, "DerivedData"),
       # Archive resolves signing before export_xcargs is evaluated.
-      xcargs: "-allowProvisioningUpdates",
+      xcargs: "-allowProvisioningUpdates DEVELOPMENT_TEAM=#{development_team}",
       export_xcargs: "-allowProvisioningUpdates"
     )
 

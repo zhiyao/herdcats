@@ -1,0 +1,57 @@
+name: Bug report
+description: Report a reproducible problem in the app, website, or build tooling.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search existing issues before submitting. Report security vulnerabilities
+        [privately](https://github.com/zhiyao/herdcats/security/advisories/new).
+        Do not share credentials, private pane output, or personal machine details.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - iPhone app
+        - Website
+        - Build or repository tooling
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Include the app version or Git commit; write unknown if unavailable.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Relevant iOS, Xcode, Herdr, browser, or Node.js versions. Omit hostnames, IP addresses, and usernames.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Use a disposable session for steps that send pane input.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Redacted logs or screenshots
+      description: Optional supporting evidence. Remove secrets and private content before attaching it.

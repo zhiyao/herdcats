@@ -40,6 +40,10 @@ Capabilities after generation. `ios/project.yml` is the source of truth;
 regeneration replaces manual project settings. For command-line device builds,
 pass your own team using `DEVELOPMENT_TEAM=YOUR_TEAM_ID`.
 
+The app and website share the three-cat pixel icon. Agent badges retain their
+standard logos. Regenerate the launch-cat assets with
+`python3 ios/scripts/generate_launch_cat.py`.
+
 ## Connect to Herdr
 
 1. Install Herdr on your remote machine and start its default session.
@@ -123,6 +127,13 @@ hosted independently of the iPhone app.
 - Saved-machine routing uses the gateway machine's SSH configuration. Quota and
   photos are available only on the directly connected host.
 
+## Contributing
+
+Bug reports, documentation improvements, and focused code changes are welcome.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, validation, and the PR process.
+Community participation follows [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+Maintainers can follow [RELEASING.md](RELEASING.md) to prepare a source release.
+
 ## Security
 
 Report vulnerabilities through [GitHub's private reporting form](https://github.com/zhiyao/herdcats/security/advisories/new).
@@ -131,5 +142,7 @@ See [SECURITY.md](SECURITY.md) for supported versions and reporting guidance.
 ## License
 
 [GPLv3 with an additional permission for Apple App Store and Google Play
- distribution](LICENSE). Internal planning documents, local configuration,
+ distribution](LICENSE). See [third-party notices](THIRD_PARTY_NOTICES.md) for
+dependency licenses, artwork provenance, and screenshot-tooling terms.
+Internal planning documents, local configuration,
 credentials, and generated review artifacts are excluded from this repository.
