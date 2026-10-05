@@ -64,7 +64,7 @@ def render(scale):
 def main():
     output_directory = (
         Path(__file__).resolve().parents[1]
-        / "HerdrCat/Assets.xcassets/LaunchCat.imageset"
+        / "Herdcats/Assets.xcassets/LaunchCat.imageset"
     )
     for scale, filename in ASSET_SCALES.items():
         output = output_directory / filename

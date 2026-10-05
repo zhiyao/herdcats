@@ -1,6 +1,7 @@
 {
   "name": "herdrcat-app-store-images",
   "private": true,
+  "license": "SEE LICENSE IN ../../LICENSE",
   "type": "module",
   "engines": {"node": ">=22"},
   "scripts": {"render": "node render.mjs"},
