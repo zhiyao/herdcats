@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bump the version in project.yml, regenerate the Xcode project, commit, and tag.
+# Prepare a version bump on a PR branch. Tag only the tested, merged commit.
 #
 # Usage: ./ios/bin/release 0.1.0
 set -euo pipefail
@@ -31,14 +31,29 @@ if [[ -n "$(git -C "$ROOT" status --porcelain)" ]]; then
   exit 1
 fi
 
+BRANCH="$(git -C "$ROOT" symbolic-ref --short HEAD 2>/dev/null || true)"
+if [[ -z "$BRANCH" || "$BRANCH" == "main" ]]; then
+  echo "Error: create a release branch before running this command. main requires a PR." >&2
+  exit 1
+fi
+
 if git -C "$ROOT" rev-parse "$TAG" &>/dev/null; then
   echo "Error: tag $TAG already exists."
   exit 1
 fi
 
-# Build number = git commit count, +1 for the release commit we're about to
-# create. Monotonic, no manual bookkeeping, and unique per release.
-BUILD_NUMBER=$(( $(git -C "$ROOT" rev-list --count HEAD) + 1 ))
+# The public repository starts with fresh history. Commit count alone can be
+# lower than builds already uploaded from the private repository.
+CURRENT_BUILD="$(sed -n -E 's/^[[:space:]]*CFBundleVersion:[[:space:]]*"([0-9]+)".*/\1/p' "$PROJECT_YML")"
+if [[ ! "$CURRENT_BUILD" =~ ^[0-9]+$ ]]; then
+  echo "Error: CFBundleVersion must be a quoted integer in project.yml." >&2
+  exit 1
+fi
+BUILD_NUMBER=$(( 10#$CURRENT_BUILD + 1 ))
+COMMIT_BUILD=$(( $(git -C "$ROOT" rev-list --count HEAD) + 1 ))
+if (( COMMIT_BUILD > BUILD_NUMBER )); then
+  BUILD_NUMBER="$COMMIT_BUILD"
+fi
 
 echo "Bumping CFBundleShortVersionString to $VERSION (build $BUILD_NUMBER)..."
 sed -i.bak -E \
@@ -70,9 +85,8 @@ done
 echo "Committing release..."
 git -C "$ROOT" commit -m "chore(release): $TAG"
 
-echo "Tagging $TAG..."
-git -C "$ROOT" tag -a "$TAG" -m "Release $TAG"
-
 echo ""
-echo "Done. Push with:"
-echo "  git push origin main --tags"
+echo "Prepared $TAG (build $BUILD_NUMBER). Push this branch and open a PR:"
+echo "  git push -u origin $BRANCH"
+echo "After merge and passing CI, create the release tag at the tested main commit."
+echo "See RELEASING.md. No tag was created."

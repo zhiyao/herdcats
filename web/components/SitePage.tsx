@@ -13,7 +13,7 @@ export function SitePage({ title, children }: SitePageProps) {
     <div className={styles.wrapper}>
       <header className={styles.header}>
         <Link href="/" className={styles.brandLink}>
-          <img src="/assets/logo.svg" alt="" width={36} height={36} className={styles.logo} />
+          <img src="/assets/logo.png" alt="" width={36} height={36} className={styles.logo} />
           <span className={styles.brandName}>Herdcats</span>
         </Link>
       </header>
@@ -31,6 +31,7 @@ export function SitePage({ title, children }: SitePageProps) {
             <Link href="/about" className={styles.footerLink}>About</Link>
             <Link href="/privacy" className={styles.footerLink}>Privacy</Link>
             <Link href="/terms" className={styles.footerLink}>Terms</Link>
+            <a href="/third-party-notices.txt" className={styles.footerLink}>Licenses</a>
             <a
               href="https://github.com/zhiyao/herdcats"
               target="_blank"
