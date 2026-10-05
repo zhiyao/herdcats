@@ -23,7 +23,7 @@ elif [[ $# -eq 0 ]]; then
   TO_TAG="$(head -n 1 <<< "$TAGS")"
   FROM_TAG="$(sed -n 2p <<< "$TAGS")"
   if [[ -z "$TO_TAG" ]]; then
-    echo "Error: no herdrcat-v* tags found. Run bin/release first." >&2
+    echo "Error: no herdrcat-v* tags found. Publish a tested release tag first; see RELEASING.md." >&2
     exit 1
   fi
   # First release: everything up to the only tag.

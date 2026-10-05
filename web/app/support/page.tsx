@@ -20,7 +20,7 @@ export default function SupportPage() {
       {/* Header */}
       <header className="support-header">
         <Link href="/" className="brand-link">
-          <img src="/assets/logo.svg" alt="" width={36} height={36} className="logo" />
+          <img src="/assets/logo.png" alt="" width={36} height={36} className="logo" />
           <span className="brand-name">Herdcats</span>
         </Link>
       </header>
