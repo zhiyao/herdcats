@@ -52,3 +52,26 @@ ends at the PR stage instead of tagging or uploading before CI.
 Signed app distribution is a separate task requiring your own Apple credentials
 and signing configuration. `ios/bin/beta` uploads to TestFlight; it is not part
 of preparing a GitHub source release.
+
+## Local signing for TestFlight
+
+Keep the shared `ios/project.yml` and generated project free of a personal
+`DEVELOPMENT_TEAM` setting. XcodeGen overwrites manual project edits during
+release preparation. The TestFlight lane reads the team from your environment
+and passes it to the archive and IPA export without storing it in the project:
+
+```sh
+export DEVELOPMENT_TEAM=YOURTEAMID
+./ios/bin/beta
+```
+
+Replace `YOURTEAMID` with the 10-character Team ID from your Apple membership.
+The Team ID identifies the membership; it is not an authentication credential.
+You still need authorized Apple authentication and signing credentials. Keep
+API private keys and Apple sessions outside Git. Existing
+`APP_STORE_CONNECT_API_KEY_*` environment variables remain supported; without
+an API key, fastlane falls back to Apple session authentication.
+
+`./ios/bin/deploy` only prepares a release PR and does not need Apple credentials.
+After the PR is merged and CI passes, use `./ios/bin/beta` separately for an
+authorized TestFlight upload.
