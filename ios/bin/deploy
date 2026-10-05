@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# Run the full Herdrcat TestFlight release flow with prompts at each step:
+# Prepare a release through the protected PR workflow:
 #
-#   1. next-version  - show suggested bump + unreleased commits, pick a version
-#   2. release       - bump project.yml, regenerate the Xcode project, commit, tag
-#   3. changelog     - generate fastlane/changelog.txt (TestFlight "What to Test")
-#   4. beta          - regenerate the Xcode project + build and upload via Fastlane
-#   5. push          - prompt to run `git push origin main --tags`
+#   1. next-version - suggest a version
+#   2. release      - bump and commit on a PR branch, without tagging
+#   3. push         - optionally push the branch for review and CI
 #
-# Each sub-step is also runnable on its own (bin/next-version, bin/release, etc.).
+# After merge, follow RELEASING.md. TestFlight uploads use bin/beta separately.
 # Any "n" response or sub-script failure aborts the remaining flow.
 #
 # Usage: ./ios/bin/deploy
@@ -38,7 +36,7 @@ confirm() {
 
 banner "herdrcat deploy"
 
-# Fail before the release commit/tag rather than after it.
+# Fail before any release preparation changes.
 if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
   abort "the repository has no commits yet. Make an initial commit first."
 fi
@@ -46,8 +44,13 @@ if [[ -n "$(git status --porcelain)" ]]; then
   abort "working tree is dirty. Commit or stash changes first."
 fi
 
+BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+if [[ -z "$BRANCH" || "$BRANCH" == "main" ]]; then
+  abort "create a release branch first. main requires a PR."
+fi
+
 # ----- 1. Version ----------------------------------------------------------
-banner "Step 1/5: choose version"
+banner "Step 1/3: choose version"
 NEXT_OUTPUT="$("$BIN_DIR/next-version")"
 echo "$NEXT_OUTPUT"
 echo ""
@@ -68,58 +71,19 @@ echo "Releasing version: $VERSION"
 confirm "Proceed?" || abort "user cancelled."
 
 # ----- 2. Release ----------------------------------------------------------
-banner "Step 2/5: release (bump, commit, tag)"
+banner "Step 2/3: prepare release (bump and commit)"
 "$BIN_DIR/release" "$VERSION"
 
-# ----- 3. Changelog --------------------------------------------------------
-banner "Step 3/5: generate TestFlight changelog"
-# With the new tag in place, no arguments means this release versus the
-# preceding herdrcat-v* tag.
-"$BIN_DIR/changelog"
-
-CHANGELOG="$ROOT/ios/fastlane/changelog.txt"
-echo ""
-echo "Generated fastlane/changelog.txt:"
-echo "--------------------------------------"
-sed 's/^/  /' "$CHANGELOG"
-echo "--------------------------------------"
-
-while true; do
-  read -r -p "Changelog OK? (y=continue / e=edit / n=abort): " CHANGELOG_REPLY
-  case "$CHANGELOG_REPLY" in
-    y|Y) break ;;
-    e|E)
-      "${EDITOR:-vi}" "$CHANGELOG"
-      echo ""
-      echo "Updated changelog:"
-      echo "--------------------------------------"
-      sed 's/^/  /' "$CHANGELOG"
-      echo "--------------------------------------"
-      ;;
-    *) abort "user cancelled at changelog step." ;;
-  esac
-done
-
-# ----- 4. Beta -------------------------------------------------------------
-banner "Step 4/5: build & upload to TestFlight"
-# bin/beta re-checks the working tree. fastlane/changelog.txt is gitignored,
-# so generating it above does not make the release tree dirty.
-"$BIN_DIR/beta"
-
-# ----- 5. Push -------------------------------------------------------------
-banner "Step 5/5: push to remote"
-echo "Release $VERSION is committed and tagged locally."
-echo "  git push origin main --tags"
-echo ""
+# ----- 3. Push PR branch ---------------------------------------------------
+banner "Step 3/3: push branch for review"
+echo "Release $VERSION is prepared on $BRANCH. No tag or upload was created."
 if ! git remote get-url origin >/dev/null 2>&1; then
   echo "No 'origin' remote configured; skipping push."
-elif confirm "Push to origin?"; then
-  git -C "$ROOT" push origin main --tags
-  echo ""
-  echo "Pushed."
+elif confirm "Push branch to origin for a PR?"; then
+  git push -u origin "$BRANCH"
 else
-  echo "Skipping push. Run later with:"
-  echo "  git push origin main --tags"
+  echo "Skipping push. Run later with: git push -u origin $BRANCH"
 fi
 
-banner "herdrcat $VERSION deployed"
+echo "Open a PR, wait for CI, and merge before preparing a release at the tested commit."
+echo "See RELEASING.md. Use bin/beta separately for an authorized TestFlight upload."
