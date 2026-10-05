@@ -40,6 +40,10 @@ Capabilities after generation. `ios/project.yml` is the source of truth;
 regeneration replaces manual project settings. For command-line device builds,
 pass your own team using `DEVELOPMENT_TEAM=YOUR_TEAM_ID`.
 
+The app and website share the three-cat pixel icon. Agent badges retain their
+standard logos. Regenerate the launch-cat assets with
+`python3 ios/scripts/generate_launch_cat.py`.
+
 ## Connect to Herdr
 
 1. Install Herdr on your remote machine and start its default session.
@@ -127,6 +131,8 @@ hosted independently of the iPhone app.
 
 Bug reports, documentation improvements, and focused code changes are welcome.
 Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, validation, and the PR process.
+Community participation follows [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+Maintainers can follow [RELEASING.md](RELEASING.md) to prepare a source release.
 
 ## Security
 

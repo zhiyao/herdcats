@@ -102,7 +102,7 @@ export default function LiveUiPage() {
     <main className={styles.page}>
       <div className={styles.shell}>
         <header className={styles.topbar}>
-          <Link href="/" className={styles.brand}><img src="/assets/logo.svg" alt="" width={30} height={30} /> Herdcats</Link>
+          <Link href="/" className={styles.brand}><img src="/assets/logo.png" alt="" width={30} height={30} /> Herdcats</Link>
           <span className={styles.topLabel}>PANE INPUT · DESIGN STUDY</span>
         </header>
 
