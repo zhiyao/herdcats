@@ -1,8 +1,10 @@
+import Crypto
 import Foundation
 import Security
 import NIOSSH
 import SwiftUI
 import Testing
+import UIKit
 @testable import Herdcats
 
 @Suite("Space join and status ranking")
@@ -215,12 +217,51 @@ struct OpenSSHKeyParserTests {
     /// Throwaway key generated for this test suite only.
     private static let unencryptedPEM = OpenSSHParserFixture.pem
 
-    /// Throwaway passphrase-protected key, used to assert rejection.
-    private static let encryptedPEMHeader = """
+    private static let encrypted16 = """
     -----BEGIN OPENSSH PRIVATE KEY-----
-    b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABBY1ORId0
+    b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABCbXkJg7L
+    Fx6WjNp/Gz9nRnAAAAEAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIJL3ixoEfPqABvBN
+    wlMfi4z+ckv1WNZQo00MhyOR1nIEAAAAoOncXPrbrVC9rQnwN68X6PY3tzllHQb96vnoLf
+    nKt7e66Trh4TFW5j0hkPJyt0euwiyYbQo9sS9jw9bPtNhcRzIevywyKo1MYrbxZ34KQW/J
+    CTRpH1sDxVQii5mP8bCmyoJ3xcrzaWgID97uA9YovHU7rEBmqjMH8pmDZCXOtw/KPYLGlp
+    5lBqqP/9o4oCfWXFaP1V8ZT+jolVYSNdUC0TQ=
+    -----END OPENSSH PRIVATE KEY-----
     """
-
+    private static let encrypted32 = """
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABBY0sytrK
+    GA6SISkuAEnnY6AAAAIAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIIHrV7DrXLWaVn6j
+    JCmh4T6LOtDY4KVB7FL4OXJl34hhAAAAoCRsT/xm/r8VwGQqwE+I5AfBc7uwR5QlC2L+ld
+    d5H54B7lFod3Qbw7OfySl30hTx0TvKznw30MI+Cz9SSkNmji/piPRFs4F1tPACwqTQiI25
+    jopJD5XKlYHQ+FkVWctVQkLuS1qC+qAoa39ln/lcrMY2H6V7Qyj/EMe3uIrmbAGYM4CkbG
+    lbLQp51lgCG/Pc4See3yz8SBbXIXbpkppdWls=
+    -----END OPENSSH PRIVATE KEY-----
+    """
+    private static let encrypted64 = """
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABBQsNNQDE
+    3OeNlbiirYuF51AAAAQAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIEHiHx4Brcpqh9OW
+    lY7YKkM3HN1yOFbJNYbUClrT7q+MAAAAoPXvIQDoTJK/XrKBIF2kuCD9KIPYTstdeLIEcI
+    heoaAWhTJoeN0uixLdLK2E0qnaOA4teelJmrqntGC3kaWAOknVv7UPGceybXd82nYykl/s
+    xiPxdhHmIcm/mO6Bw1Cve9cJZF6k2sd0EBzfwnaFImLcSF3oL/T6Cf/JS6vTFOWHjh+anc
+    1Jzhj402WYisxnyveuTPZGidiF24UyVUEMyEs=
+    -----END OPENSSH PRIVATE KEY-----
+    """
+    private static let encryptedFullPadding = """
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABA67fmC6c588ccWKTA+gjakAAAAIAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIGQrPTgKc2Tjmng/nP1vdbdEG1R97z6O8gsc+bO1lHoWAAAAoHplRLWrpysjRVDkBaZSvn+5etGE2KV7W0HRbLtyHkB+ikdsAD0xhIbdIzeV31ckY055SDLBqiUb9oOQbzAxrHlcdc2ydF/nWc/vv/VckXWwDxCqIbr+8dxqt0aZ0FNNwtbpiEcorhvhz1KET+O0lqVWSrMhAU0l26S0PoqtFWOFnJKyZ8Vxu/EFNhOJJHpX4Ks7Giyw1bVlMi3xrN8lrhI=
+    -----END OPENSSH PRIVATE KEY-----
+    """
+    private static let encrypted256 = """
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    b3BlbnNzaC1rZXktdjEAAAAACmFlczEyOC1jdHIAAAAGYmNyeXB0AAAAGAAAABCAZBE4rD
+    GCia9qfNiUzHkCAAABAAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIMTvWynpLNkXUBjf
+    Nf4cZ/jd18DuIsMlR5uS8EQWsvaOAAAAoJVICIyrMT/au68JOgwscoUFx6QeumnNNjtcRA
+    MIOVoTAAYhUf5MN0bWqGex1L4SHUko9OuekkCPnXK83G/cc/yeThLoxtZQehdJZO/v25fV
+    8135ra4Q4lu7diODsZEQNnTK/WXA/M5C4zk77QNwjp16RElsKf5vaq2F740JYGqAC3BroD
+    uRbhBLh+7+GeZBW+mZQSBsmKIG72CzaFiCR4o=
+    -----END OPENSSH PRIVATE KEY-----
+    """
     @Test
     func parsesUnencryptedEd25519Key() throws {
         let raw = try OpenSSHEd25519.parseRawPrivateKey(pem: Self.unencryptedPEM)
@@ -235,17 +276,207 @@ struct OpenSSHKeyParserTests {
     }
 
     @Test
-    func rejectsEncryptedKeys() {
-        #expect(throws: OpenSSHKeyError.encryptedKeysUnsupported) {
-            // Rebuild a full body from the header so base64 is valid; the
-            // cipher-name check happens before any later structure matters.
-            let body = Self.encryptedPEMHeader
-                .replacingOccurrences(of: "-----BEGIN OPENSSH PRIVATE KEY-----", with: "")
-                .replacingOccurrences(of: "\n", with: "")
-            let padding = (4 - body.count % 4) % 4
-            let filler = String(repeating: "A", count: padding + 200)
-            let pem = "-----BEGIN OPENSSH PRIVATE KEY-----\n\(body)\(filler)\n-----END OPENSSH PRIVATE KEY-----"
-            _ = try OpenSSHEd25519.parseRawPrivateKey(pem: pem)
+    func unlocksEncryptedKeysAboveOldRoundLimit() throws {
+        for pem in [Self.encrypted16, Self.encrypted32, Self.encrypted64, Self.encrypted256, Self.encryptedFullPadding] {
+            #expect(try OpenSSHEd25519.isEncrypted(pem: pem))
+            let raw = try OpenSSHEd25519.parseRawPrivateKey(pem: pem, passphrase: "herdcats-test-passphrase")
+            #expect(raw.count == 32)
+            let key = try Curve25519.Signing.PrivateKey(rawRepresentation: raw)
+            #expect(key.publicKey.rawRepresentation == (try OpenSSHEd25519.parsePublicKey(pem: pem)))
+            #expect(throws: OpenSSHKeyError.passphraseRequired) {
+                _ = try OpenSSHEd25519.parseRawPrivateKey(pem: pem)
+            }
+            #expect(throws: OpenSSHKeyError.invalidPassphraseOrKey) {
+                _ = try OpenSSHEd25519.parseRawPrivateKey(pem: pem, passphrase: "wrong")
+            }
+        }
+    }
+
+    @Test
+    func rejectsCorruptedFinalPaddingByte() throws {
+        let body = Self.encryptedFullPadding.split(separator: "\n").filter { !$0.hasPrefix("-----") }.joined()
+        var bytes = try #require(Data(base64Encoded: body))
+        bytes[bytes.count - 1] ^= 1
+        let pem = "-----BEGIN OPENSSH PRIVATE KEY-----\n" + bytes.base64EncodedString() + "\n-----END OPENSSH PRIVATE KEY-----"
+        #expect(throws: OpenSSHKeyError.invalidPassphraseOrKey) {
+            _ = try OpenSSHEd25519.parseRawPrivateKey(pem: pem, passphrase: "herdcats-test-passphrase")
+        }
+    }
+
+    @MainActor
+    @Test
+    func connectionFormRejectsDamagedUnencryptedPrivateMaterial() throws {
+        let body = Self.unencryptedPEM.split(separator: "\n").filter { !$0.hasPrefix("-----") }.joined()
+        let bytes = try #require(Data(base64Encoded: body))
+        var offset = 15
+        func skipString() {
+            let length = bytes[offset..<(offset + 4)].reduce(0) { ($0 << 8) | Int($1) }
+            offset += 4 + length
+        }
+        for _ in 0..<3 { skipString() }
+        offset += 4 // number of keys
+        skipString() // outer public key
+        let privateStart = offset + 4
+        var badChecks = bytes
+        badChecks[privateStart + 4] ^= 1
+        var mismatchedPublicKey = bytes
+        mismatchedPublicKey[offset - 1] ^= 1
+        offset = privateStart + 8 // check integers
+        skipString() // key type
+        let innerPublicStart = offset + 4
+        skipString() // public key inside private section
+        let seedStart = offset + 4
+        var corruptedSeed = bytes
+        corruptedSeed[seedStart] ^= 1
+        var mismatchedInnerPublicKey = bytes
+        mismatchedInnerPublicKey[innerPublicStart] ^= 1
+        let truncated = Data(bytes.prefix(privateStart + 12))
+        let entry = RecentConnection(host: "fixture.example", port: 22,
+            username: "tester", authMode: "privateKey", remember: true)
+        defer { try? KeychainStore.delete(account: entry.secretAccount) }
+        for damaged in [truncated, badChecks, mismatchedPublicKey, corruptedSeed, mismatchedInnerPublicKey] {
+            let pem = "-----BEGIN OPENSSH PRIVATE KEY-----\n" + damaged.base64EncodedString() + "\n-----END OPENSSH PRIVATE KEY-----"
+            // Each retains a readable outer public key.
+            _ = try OpenSSHEd25519.parsePublicKey(pem: pem)
+            #expect(throws: OpenSSHKeyError.self) {
+                _ = try OpenSSHEd25519.parseRawPrivateKey(pem: pem)
+            }
+            try KeychainStore.save(pem, account: entry.secretAccount)
+            let form = ConnectionSettingsView(connection: entry)
+            #expect(form.keyValidationError != nil)
+            #expect(form.derivedPublicKey == nil)
+            #expect(!form.canConnect)
+        }
+        try KeychainStore.save(Self.unencryptedPEM, account: entry.secretAccount)
+        let validForm = ConnectionSettingsView(connection: entry)
+        #expect(validForm.keyValidationError == nil)
+        #expect(validForm.derivedPublicKey == OpenSSHParserFixture.publicKeyLine)
+        #expect(validForm.canConnect)
+    }
+
+    @MainActor
+    @Test
+    func connectionFormInspectsEncryptedKeysWithoutDecrypting() throws {
+        let entry = RecentConnection(host: "fixture.example", port: 22,
+            username: "tester", authMode: "privateKey", remember: true)
+        try KeychainStore.save(Self.encrypted64, account: entry.secretAccount)
+        defer {
+            try? KeychainStore.delete(account: entry.secretAccount)
+            try? KeychainStore.delete(account: entry.secretAccount + ".passphrase")
+        }
+        let lockedForm = ConnectionSettingsView(connection: entry)
+        #expect(lockedForm.keyValidationError == nil)
+        #expect(lockedForm.derivedPublicKey != nil)
+        #expect(!lockedForm.canConnect)
+        // Passphrase verification belongs to the connection attempt, not rendering.
+        try KeychainStore.save("wrong", account: entry.secretAccount + ".passphrase")
+        let readyForm = ConnectionSettingsView(connection: entry)
+        #expect(readyForm.keyValidationError == nil)
+        #expect(readyForm.derivedPublicKey != nil)
+        #expect(readyForm.canConnect)
+    }
+
+    @MainActor
+    @Test
+    func encryptedKeyFormRendersOnInitialPresentation() async throws {
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousKeyWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        defer {
+            window.isHidden = true
+            previousKeyWindow?.makeKey()
+        }
+        let entry = RecentConnection(host: "fixture.example", port: 22,
+            username: "tester", authMode: "privateKey", remember: true)
+        try KeychainStore.save(Self.encrypted64, account: entry.secretAccount)
+        defer { try? KeychainStore.delete(account: entry.secretAccount) }
+        let form = ConnectionSettingsView(connection: entry)
+        let controller = UIHostingController(rootView: form.environment(AppModel(autoConnectOnLaunch: false)))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+        await Task.yield()
+        let image = UIGraphicsImageRenderer(size: window.bounds.size).image { context in
+            controller.view.layer.render(in: context.cgContext)
+        }
+        #expect(image.size == CGSize(width: 390, height: 844))
+    }
+
+    @MainActor
+    @Test
+    func keyUnlockFailureReturnsToConnectionSelection() async throws {
+        let errors: [OpenSSHKeyError] = [.passphraseRequired, .invalidPassphraseOrKey,
+            .invalidFormat("damaged saved key"), .excessiveRounds]
+        for error in errors {
+            for wasOffline in [false, true] {
+                let config = ConnectionConfig(host: "fixture.example", port: 22,
+                    username: "tester", auth: .privateKey(Self.encrypted64, passphrase: "wrong"))
+                let model = AppModel(autoConnectOnLaunch: false)
+                // Launch auto-connect marks the session active before authentication.
+                model.hasActiveSession = true
+                model.phase = wasOffline ? .offline(host: config.host, username: config.username) : .disconnected
+                let state = try #require(await model.prepareConnectAttempt(config: config))
+                state.watchdog.cancel()
+                #expect(LaunchCatOverlay.shouldShow(hasActiveSession: model.hasActiveSession,
+                    phase: model.phase, hasHandedOff: false))
+                model.handleConnectFailure(error, config: config, attempt: state.attempt,
+                    wasOffline: state.wasOffline, isCheckingHerdr: false)
+                #expect(!model.hasActiveSession)
+                #expect(model.phase == .disconnected)
+                #expect(model.connectionBanner == nil)
+                #expect(model.autoReconnectTask == nil)
+                #expect(model.lastError == error.errorDescription)
+                #expect(!LaunchCatOverlay.shouldShow(hasActiveSession: model.hasActiveSession,
+                    phase: model.phase, hasHandedOff: false))
+            }
+        }
+    }
+
+    @MainActor
+    @Test
+    func launchRequiresRememberedPassphraseForEncryptedKey() throws {
+        let suite = "EncryptedKeyLaunch.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(LaunchPreference.autoConnect.rawValue, forKey: LaunchPreference.storageKey)
+        let entry = RecentConnectionStore.entry(host: "test.example", port: 22, username: "tester",
+            authMode: "privateKey", remember: true, in: [])
+        _ = try RecentConnectionStore.record(entry, in: [], defaults: defaults)
+        let keychain = FakeKeychainOperations()
+        keychain.items[entry.secretAccount] = Data(Self.encrypted64.utf8)
+        #expect(LaunchPreference.autoConnectConfig(defaults: defaults, keychain: keychain) == nil)
+        keychain.items[entry.secretAccount + ".passphrase"] = Data("herdcats-test-passphrase".utf8)
+        let config = try #require(LaunchPreference.autoConnectConfig(defaults: defaults, keychain: keychain))
+        guard case let .privateKey(pem, passphrase) = config.auth else {
+            Issue.record("Expected private key authentication")
+            return
+        }
+        #expect(pem == Self.encrypted64)
+        #expect(passphrase == "herdcats-test-passphrase")
+        keychain.items[entry.secretAccount] = Data(Self.unencryptedPEM.utf8)
+        keychain.items.removeValue(forKey: entry.secretAccount + ".passphrase")
+        #expect(LaunchPreference.autoConnectConfig(defaults: defaults, keychain: keychain) != nil)
+    }
+
+    @Test
+    func rejectsExcessiveWorkBeforeDecryption() throws {
+        let body = Self.encrypted64.split(separator: "\n").filter { !$0.hasPrefix("-----") }.joined()
+        var bytes = try #require(Data(base64Encoded: body))
+        // magic, cipher string, KDF string, options length, salt string, rounds
+        var offset = 15
+        func length(at index: Int) -> Int {
+            bytes[index..<(index + 4)].reduce(0) { ($0 << 8) | Int($1) }
+        }
+        offset += 4 + length(at: offset)
+        offset += 4 + length(at: offset)
+        offset += 4
+        offset += 4 + length(at: offset)
+        bytes.replaceSubrange(offset..<(offset + 4), with: [0, 0, 1, 1])
+        let pem = "-----BEGIN OPENSSH PRIVATE KEY-----\n" + bytes.base64EncodedString() + "\n-----END OPENSSH PRIVATE KEY-----"
+        #expect(throws: OpenSSHKeyError.excessiveRounds) {
+            _ = try OpenSSHEd25519.parseRawPrivateKey(pem: pem, passphrase: "herdcats-test-passphrase")
         }
     }
 

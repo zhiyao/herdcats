@@ -36,7 +36,7 @@ struct HerdrSetupGuideView: View {
                     step(
                         3, title: "Enable SSH",
                         detail: "Use a host your iPhone can reach. Tailscale is recommended. "
-                            + "Have a password or unencrypted OpenSSH ed25519 key."
+                            + "Have a password or OpenSSH ed25519 key and its passphrase, if encrypted."
                     )
 
                     Text(
