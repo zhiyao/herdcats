@@ -1,3 +1,4 @@
+import Citadel
 import Crypto
 import Foundation
 
@@ -5,7 +6,10 @@ enum OpenSSHKeyError: LocalizedError, Equatable {
     case missingPEMBody
     case invalidBase64
     case invalidFormat(String)
-    case encryptedKeysUnsupported
+    case passphraseRequired
+    case invalidPassphraseOrKey
+    case unsupportedEncryption
+    case excessiveRounds
     case unsupportedKeyType(String)
     case multipleKeysUnsupported
 
@@ -18,21 +22,24 @@ enum OpenSSHKeyError: LocalizedError, Equatable {
             "The key body is not valid base64."
         case let .invalidFormat(detail):
             "Could not parse the key — \(detail)"
-        case .encryptedKeysUnsupported:
-            "This key is protected by a passphrase, which the prototype cannot "
-                + "use. Generate an unencrypted key with: "
-                + "ssh-keygen -t ed25519 -N \"\" -f ~/.ssh/herdrcat_key"
+        case .passphraseRequired:
+            "Enter the passphrase to unlock this SSH key."
+        case .invalidPassphraseOrKey:
+            "Could not unlock this key. Check the passphrase; the key may also be damaged."
+        case .unsupportedEncryption:
+            "Supported key encryption is AES-128-CTR or AES-256-CTR with bcrypt."
+        case .excessiveRounds:
+            "This key exceeds the supported bcrypt work limit of 256 rounds."
         case let .unsupportedKeyType(kind):
             "Unsupported key type \"\(kind)\". Use an ed25519 key: "
-                + "ssh-keygen -t ed25519 -N \"\" -f ~/.ssh/herdrcat_key"
+                + "ssh-keygen -t ed25519 -f ~/.ssh/herdrcat_key"
         case .multipleKeysUnsupported:
             "The file contains more than one key."
         }
     }
 }
 
-/// Minimal parser for the `openssh-key-v1` private key container, covering
-/// unencrypted ed25519 keys — the format `ssh-keygen -t ed25519` produces.
+/// Bounded reader for the `openssh-key-v1` container.
 private struct OpenSSHKeyBuffer {
     let data: Data
     var offset: Data.Index
@@ -69,15 +76,39 @@ private struct OpenSSHKeyBuffer {
 
 /// Foundation-only entry points so callers (and tests) don't need CryptoKit types.
 enum OpenSSHEd25519 {
-    /// Parses an OpenSSH PEM private key and returns the 64-byte ed25519 raw
-    /// private representation (seed || public key).
-    static func parseRawPrivateKey(pem: String) throws -> Data {
-        try Curve25519.Signing.PrivateKey(openSSHPEM: pem).rawRepresentation
+    /// Unlocks an OpenSSH key and returns its 32-byte ed25519 seed.
+    static func parseRawPrivateKey(pem: String, passphrase: String? = nil) throws -> Data {
+        try Curve25519.Signing.PrivateKey(openSSHPEM: pem, passphrase: passphrase).rawRepresentation
     }
 
-    /// Parses an OpenSSH PEM private key and returns its 32-byte raw public key.
+    static func isEncrypted(pem: String) throws -> Bool {
+        let body = pem.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.hasPrefix("-----") }.joined()
+        guard let data = Data(base64Encoded: body) else { throw OpenSSHKeyError.invalidBase64 }
+        var buffer = OpenSSHKeyBuffer(data: data)
+        guard try buffer.read(15) == Data("openssh-key-v1\0".utf8) else { throw OpenSSHKeyError.invalidFormat("bad magic header") }
+        return try buffer.readString() != Data("none".utf8)
+    }
+
+    /// Reads the public key from the container; this does not validate the private material.
     static func parsePublicKey(pem: String) throws -> Data {
-        try Curve25519.Signing.PrivateKey(openSSHPEM: pem).publicKey.rawRepresentation
+        let body = pem.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.hasPrefix("-----") }.joined()
+        guard let data = Data(base64Encoded: body) else { throw OpenSSHKeyError.invalidBase64 }
+        var buffer = OpenSSHKeyBuffer(data: data)
+        guard try buffer.read(15) == Data("openssh-key-v1\0".utf8) else { throw OpenSSHKeyError.invalidFormat("bad magic header") }
+        _ = try buffer.readString()
+        _ = try buffer.readString()
+        _ = try buffer.readString()
+        guard try buffer.readUInt32() == 1 else { throw OpenSSHKeyError.multipleKeysUnsupported }
+        var publicBuffer = OpenSSHKeyBuffer(data: try buffer.readString())
+        let kind = String(data: try publicBuffer.readString(), encoding: .utf8) ?? ""
+        guard kind == "ssh-ed25519" else { throw OpenSSHKeyError.unsupportedKeyType(kind) }
+        let key = try publicBuffer.readString()
+        guard key.count == 32, publicBuffer.offset == publicBuffer.data.endIndex else {
+            throw OpenSSHKeyError.invalidFormat("invalid public key")
+        }
+        return key
     }
 
     /// Formats the raw 32-byte ed25519 public key in OpenSSH wire format ("ssh-ed25519 <base64>").
@@ -137,8 +168,8 @@ enum OpenSSHEd25519 {
 
 extension Curve25519.Signing.PrivateKey {
     /// Initializes from an OpenSSH PEM private key (`-----BEGIN OPENSSH
-    /// PRIVATE KEY-----`), ed25519 and unencrypted only.
-    init(openSSHPEM pem: String) throws {
+    /// PRIVATE KEY-----`), ed25519, with an optional passphrase.
+    init(openSSHPEM pem: String, passphrase: String? = nil) throws {
         let lines = pem
             .split(separator: "\n")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -164,13 +195,35 @@ extension Curve25519.Signing.PrivateKey {
 
         // 2. ciphername — must be "none" for the prototype.
         let cipherName = String(data: try buffer.readString(), encoding: .utf8) ?? ""
-        guard cipherName == "none" else {
-            throw OpenSSHKeyError.encryptedKeysUnsupported
+        let kdfName = String(data: try buffer.readString(), encoding: .utf8)
+        let kdfOptions = try buffer.readString()
+        if cipherName != "none" {
+            guard ["aes128-ctr", "aes256-ctr"].contains(cipherName), kdfName == "bcrypt" else {
+                throw OpenSSHKeyError.unsupportedEncryption
+            }
+            var options = OpenSSHKeyBuffer(data: kdfOptions)
+            let salt = try options.readString()
+            let rounds = try options.readUInt32()
+            guard !salt.isEmpty, rounds > 0, options.offset == options.data.endIndex else {
+                throw OpenSSHKeyError.invalidFormat("invalid bcrypt options")
+            }
+            guard rounds <= 256 else { throw OpenSSHKeyError.excessiveRounds }
+            guard let passphrase, !passphrase.isEmpty else { throw OpenSSHKeyError.passphraseRequired }
+            let normalized = lines[beginIndex...endIndex].joined(separator: "\n")
+            let expectedPublicKey = try OpenSSHEd25519.parsePublicKey(pem: normalized)
+            do {
+                self = try Self(sshEd25519: normalized, decryptionKey: Data(passphrase.utf8))
+                guard publicKey.rawRepresentation == expectedPublicKey else {
+                    throw OpenSSHKeyError.invalidPassphraseOrKey
+                }
+            } catch {
+                throw OpenSSHKeyError.invalidPassphraseOrKey
+            }
+            return
         }
-
-        // 3. KDF name + options (ignored for unencrypted keys).
-        _ = try buffer.readString()
-        _ = try buffer.readString()
+        guard kdfName == "none", kdfOptions.isEmpty else {
+            throw OpenSSHKeyError.invalidFormat("invalid unencrypted KDF")
+        }
 
         // 4. Number of keys.
         let keyCount = try buffer.readUInt32()
@@ -194,7 +247,7 @@ extension Curve25519.Signing.PrivateKey {
             throw OpenSSHKeyError.unsupportedKeyType(keyType)
         }
 
-        _ = try privateSection.readString() // public key (again)
+        let publicKeyInPrivateSection = try privateSection.readString()
         let privateKeyBytes = try privateSection.readString()
 
         // ed25519 OpenSSH private material is 64 bytes (seed || public key);
@@ -209,5 +262,9 @@ extension Curve25519.Signing.PrivateKey {
         }
 
         try self.init(rawRepresentation: seed)
+        guard publicKey.rawRepresentation == publicKeyFromPrivate,
+              publicKey.rawRepresentation == publicKeyInPrivateSection else {
+            throw OpenSSHKeyError.invalidFormat("public/private key mismatch")
+        }
     }
 }
