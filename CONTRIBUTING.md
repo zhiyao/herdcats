@@ -50,6 +50,16 @@ For a Dependabot Swift update, reflect the proposed dependency versions in
 `ios/project.yml` and commit the regenerated project and lockfile. Generated
 project edits alone are overwritten by XcodeGen.
 
+The transitive Swift package pins must satisfy
+[Citadel 0.12.1's manifest](https://github.com/orlandos-nl/Citadel/blob/ae8562f895de06ccb86fdb1cbb65fd99c8976e12/Package.swift).
+That release requires Swift Crypto `3.12.3..<4.0.0`, BigInt `5.2.0..<6.0.0`,
+and swift-nio-ssh `0.3.4..<0.4.0`. The lockfile therefore uses Crypto 3.15.1,
+BigInt 5.7.0, and swift-nio-ssh 0.3.7. The earlier Dependabot pins for Crypto
+5.0.0, BigInt 6.0.1, and swift-nio-ssh 0.4.0 fall outside those ranges and
+are replaced during package resolution. Adopting those major/minor updates
+requires a compatible Citadel release or a reviewed change to its manifest;
+editing the lockfile alone cannot upgrade them.
+
 When dependency lockfiles change, refresh the notices using the commands in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md#refresh-the-notices) and review
 the resulting license and attribution changes before merging.
