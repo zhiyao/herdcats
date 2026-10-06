@@ -94,20 +94,24 @@ enum LaunchPreference: String, CaseIterable, Identifiable {
 
     /// Builds a config for the newest remembered connection, if credentials exist.
     static func autoConnectConfig(
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        keychain: KeychainOperations = KeychainStore.operations
     ) -> ConnectionConfig? {
         let raw = defaults.string(forKey: storageKey) ?? LaunchPreference.default.rawValue
         guard LaunchPreference(rawValue: raw) == .autoConnect else { return nil }
 
-        let entries = (try? RecentConnectionStore.load(defaults: defaults)) ?? []
+        let entries = (try? RecentConnectionStore.load(defaults: defaults, using: keychain)) ?? []
         guard let entry = entries.first(where: \.remember),
-              let secret = try? KeychainStore.load(account: entry.secretAccount),
+              let secret = try? KeychainStore.load(account: entry.secretAccount, using: keychain),
               !secret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return nil
         }
 
+        let passphrase = try? KeychainStore.load(account: entry.secretAccount + ".passphrase", using: keychain)
+        if entry.authMode == "privateKey", (try? OpenSSHEd25519.isEncrypted(pem: secret)) == true,
+           passphrase == nil || passphrase?.isEmpty == true { return nil }
         let auth: ConnectionConfig.AuthMethod = entry.authMode == "privateKey"
-            ? .privateKey(secret)
+            ? .privateKey(secret, passphrase: passphrase)
             : .password(secret)
         return ConnectionConfig(
             host: entry.host,

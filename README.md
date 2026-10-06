@@ -87,8 +87,8 @@ standard logos. Regenerate the launch-cat assets with
    Remote Login**. Confirm that SSH works with your account.
 3. Connect the phone and machine to the same Tailscale network, or use another
    network where the phone can reach the SSH server.
-4. Enter the host, port, username, and password or an **unencrypted OpenSSH
-   ed25519 private key** in Herdcats.
+4. Enter the host, port, username, and password or an **OpenSSH
+   ed25519 private key** (enter its passphrase if encrypted) in Herdcats.
 5. Compare the host-key fingerprint shown by the app with the server's
    fingerprint through a trusted channel, then approve it.
 
@@ -173,8 +173,11 @@ hosted independently of the iPhone app.
 
 ## Current limitations
 
-- SSH authentication supports passwords and unencrypted OpenSSH ed25519 keys.
-  Encrypted keys and other private-key formats are not supported.
+- SSH authentication supports passwords and OpenSSH ed25519 keys, including
+  passphrase-protected keys using AES-128-CTR or AES-256-CTR and bcrypt with
+  1–256 rounds. Other key formats and encryption settings are unsupported.
+  Remembering the passphrase is optional; without it, unlock the key again
+  after restarting the app.
 - A readable Herdr default session is required; session selection is not wired up.
 - Backgrounding pauses polling. This is not a general-purpose SSH shell.
 - There is no in-app host-key rotation flow. A changed key fails closed.

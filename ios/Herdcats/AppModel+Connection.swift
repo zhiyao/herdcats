@@ -121,7 +121,7 @@ extension AppModel {
             } else if error is SSHHostKeyStore.StoreError {
                 hostKeyVerificationBlocked = true
             }
-            if hostKeyVerificationBlocked { cancelReconnect() }
+            if hostKeyVerificationBlocked || error is OpenSSHKeyError { cancelReconnect() }
             let message = HerdrConnection.friendlyMessage(for: error, config: config)
             lastError = message
             herdrMissingOnLastConnect = (error as? HerdrError) == .herdrNotFound
@@ -133,9 +133,9 @@ extension AppModel {
                 isCheckingHerdr: isCheckingHerdr
             ) {
             case .readinessRecovery:
-                // A new connection cannot enter the workspace until Herdr is
-                // ready. An established session only returns here when Herdr
-                // itself is missing or its default session is unavailable.
+                // Key errors require editable credentials, and readiness errors
+                // require setup recovery. Clear the session so connection selection
+                // is reachable and the launch overlay cannot remain blocking.
                 hasActiveSession = false
                 cancelReconnect()
                 connectionBanner = nil
@@ -154,7 +154,7 @@ extension AppModel {
     }
 
     private func logPrivateKeyDiagnostics(_ config: ConnectionConfig) {
-        if case let .privateKey(pem) = config.auth,
+        if case let .privateKey(pem, _) = config.auth,
            let pubKey = try? OpenSSHEd25519.parseOpenSSHPublicKeyString(pem: pem),
            let fingerprint = try? OpenSSHEd25519.parseFingerprint(pem: pem) {
             print("[HC] [DEBUG] Auth method: ed25519 private key")
@@ -174,6 +174,7 @@ extension AppModel {
         wasOffline: Bool,
         isCheckingHerdr: Bool
     ) -> ConnectFailureDisposition {
+        if error is OpenSSHKeyError { return .readinessRecovery }
         let herdrError = error as? HerdrError
         let needsReadinessRecovery = herdrError == .herdrNotFound || herdrError == .sessionUnavailable
         if isCheckingHerdr && (!wasOffline || !hadActiveSession || needsReadinessRecovery) {

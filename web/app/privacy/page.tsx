@@ -62,10 +62,8 @@ export default function PrivacyPage() {
         <p>Depending on how you use the app, the following may be stored locally on your iPhone:</p>
         <ul className={styles.list}>
           <li>
-            <strong style={{ color: '#FFFFFF' }}>Credentials.</strong> Passwords or unencrypted
-            OpenSSH ed25519 private keys you choose to remember, stored in the iOS Keychain with
-            device-only protection (WhenUnlockedThisDeviceOnly). They are sent only to hosts you
-            connect to, during SSH authentication.
+            <strong style={{ color: '#FFFFFF' }}>Credentials.</strong> Passwords, OpenSSH ed25519 private keys, and optional key passphrases you choose to remember, stored in the iOS Keychain with
+            device-only protection (WhenUnlockedThisDeviceOnly). Private keys and key passphrases remain on your device. Passwords are sent only to hosts you connect to through encrypted SSH authentication.
           </li>
           <li>
             <strong style={{ color: '#FFFFFF' }}>Connection profile.</strong> Recent connection

@@ -109,8 +109,8 @@ struct SSHHostKeyValidatorDelegate: NIOSSHClientServerAuthenticationDelegate {
 struct ConnectionConfig: Sendable, Equatable {
     enum AuthMethod: Equatable, Sendable {
         case password(String)
-        /// OpenSSH ed25519 private key (PEM), unencrypted.
-        case privateKey(String)
+        /// OpenSSH ed25519 private key (PEM), optionally passphrase-protected.
+        case privateKey(String, passphrase: String? = nil)
     }
 
     var host: String
@@ -267,8 +267,8 @@ actor HerdrConnection {
         case let .password(password):
             print("[HC] authenticating as '\(config.username)' with password")
             return .passwordBased(username: config.username, password: password)
-        case let .privateKey(pem):
-            let key = try Curve25519.Signing.PrivateKey(openSSHPEM: pem)
+        case let .privateKey(pem, passphrase):
+            let key = try Curve25519.Signing.PrivateKey(openSSHPEM: pem, passphrase: passphrase)
             let pubKeyString = OpenSSHEd25519.openSSHPublicKeyString(for: key.publicKey.rawRepresentation)
             let fingerprint = OpenSSHEd25519.fingerprint(for: key.publicKey.rawRepresentation)
             print(

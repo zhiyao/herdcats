@@ -1,3 +1,10 @@
+# Unreleased
+
+- Support passphrase-protected OpenSSH ed25519 keys using AES-128-CTR or
+  AES-256-CTR with bcrypt at 1–256 rounds. Optional device-only passphrase
+  storage enables reconnects after relaunch.
+- Vendor Citadel 0.12.1 with fixes for its bcrypt round limit and OpenSSH padding.
+
 # Herdcats 0.3.1 — first public source preview
 
 This is the first release from the fresh public repository. It is a source
