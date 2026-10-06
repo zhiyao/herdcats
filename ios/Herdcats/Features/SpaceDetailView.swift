@@ -1099,6 +1099,21 @@ struct PaneSessionView: View {
         let policy = PaneContentPersistence.shared
         let draftKey = state.draftKey
         _draft = State(initialValue: policy.loadDraft(key: draftKey))
+#if DEBUG && targetEnvironment(simulator)
+        if ScreenshotFixtures.enabled {
+            let surface = PaneInputSurfaceModel()
+            if ScreenshotFixtures.screen == "compose" {
+                surface.requestComposeDraft()
+                _draft = State(initialValue: "Looks good. Add a test for reconnecting, then open a pull request.")
+            } else if ScreenshotFixtures.screen == "voice" {
+                surface.requestVoiceRecording()
+                let recording = PaneDictation()
+                recording.showScreenshotRecording()
+                _dictation = State(initialValue: recording)
+            }
+            _surfaceModel = State(initialValue: surface)
+        }
+#endif
         _persistence = State(initialValue: policy)
         _persistenceRevision = State(initialValue: policy.revision)
         self.draftKey = draftKey

@@ -20,9 +20,24 @@ Redact screenshots and logs before sharing them.
 ## Set up your checkout
 
 Fork the repository, clone your fork, and create a branch for your change.
-See [README.md](README.md) for build prerequisites, simulator commands, and
-connection setup. The app targets iOS 17 or later and requires Xcode 26 or later
-to build. The website uses Node.js 22 or later.
+On a Mac with Xcode 26 or later, launch Xcode once to finish setup, then run
+from your checkout:
+
+```sh
+ios/bin/setup
+ios/bin/launch
+```
+
+The setup script checks Xcode, installs XcodeGen with Homebrew if needed,
+generates the project, and resolves Swift packages. Install Homebrew first
+if XcodeGen is not already installed. `ios/bin/launch` builds, installs, and
+launches the app in an iPhone simulator. Use `--device=<name-or-UDID>` to choose
+one, or run `open ios/Herdcats.xcodeproj` to develop in Xcode. Install an iOS Simulator runtime in
+Xcode Settings → Components if needed. Use `ios/bin/setup --check` to check
+prerequisites without changing anything.
+
+See [README.md](README.md) for simulator validation commands and connection
+setup. The app targets iOS 17 or later. The website uses Node.js 22 or later.
 
 Project configuration lives in `ios/project.yml`. After changing targets,
 dependencies, build settings, or generated Info.plist properties, regenerate:
@@ -34,6 +49,16 @@ dependencies, build settings, or generated Info.plist properties, regenerate:
 For a Dependabot Swift update, reflect the proposed dependency versions in
 `ios/project.yml` and commit the regenerated project and lockfile. Generated
 project edits alone are overwritten by XcodeGen.
+
+The transitive Swift package pins must satisfy
+[Citadel 0.12.1's manifest](https://github.com/orlandos-nl/Citadel/blob/ae8562f895de06ccb86fdb1cbb65fd99c8976e12/Package.swift).
+That release requires Swift Crypto `3.12.3..<4.0.0`, BigInt `5.2.0..<6.0.0`,
+and swift-nio-ssh `0.3.4..<0.4.0`. The lockfile therefore uses Crypto 3.15.1,
+BigInt 5.7.0, and swift-nio-ssh 0.3.7. The earlier Dependabot pins for Crypto
+5.0.0, BigInt 6.0.1, and swift-nio-ssh 0.4.0 fall outside those ranges and
+are replaced during package resolution. Adopting those major/minor updates
+requires a compatible Citadel release or a reviewed change to its manifest;
+editing the lockfile alone cannot upgrade them.
 
 When dependency lockfiles change, refresh the notices using the commands in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md#refresh-the-notices) and review

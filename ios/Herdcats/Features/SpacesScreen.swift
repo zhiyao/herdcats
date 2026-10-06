@@ -99,7 +99,16 @@ final class SpacesModel {
     private(set) var lastUpdated: Date?
     /// Pane-id → last activity time, shared with pane detail cards.
     private(set) var lastUpdatedByPaneID: [String: Date] = [:]
-    private(set) var isLoading = false
+    // The view can render before its initial refresh task starts.
+    private(set) var isLoading = true
+
+    /// An empty aggregate is conclusive only after every machine has loaded.
+    var hasLoadedAgentList: Bool {
+        if showsAllMachines {
+            return !machineSources.isEmpty && machineSources.allSatisfy { $0.model.hasLoadedAgentList }
+        }
+        return lastUpdated != nil
+    }
     /// Provider usage cards for the Agents header (from remote `quota-axi`).
     private(set) var usageCards: [AgentUsageCard] = []
     private(set) var usageLastUpdated: Date?
@@ -110,6 +119,17 @@ final class SpacesModel {
     private(set) var retryingUsageProviders: Set<String> = []
 
     var errorMessage: String?
+
+    /// Initial failures must expose Retry instead of looking like an endless load.
+    var agentListError: String? {
+        guard let errorMessage,
+              !HerdrConnection.isDisconnectionOrTransitionMessage(errorMessage) else { return nil }
+        return errorMessage
+    }
+
+    var showsAgentLoading: Bool {
+        isLoading || (!hasLoadedAgentList && agentListError == nil)
+    }
     var autoRefreshEnabled = true
     /// When false, periodic polls sleep without issuing remote commands.
     /// Initial / pull-to-refresh loads still run.
@@ -136,6 +156,7 @@ final class SpacesModel {
     private(set) var isRefreshingUsage = false
     @ObservationIgnored var quotaRetryFetch: ((String) async throws -> QuotaReport)?
     @ObservationIgnored var quotaReportFetch: (() async throws -> QuotaReport)?
+    @ObservationIgnored var agentListFetch: (() async throws -> ([Workspace], [AgentEntry]))?
     private var refreshGate = RefreshGenerationGate()
     private var usageGate = RefreshGenerationGate()
     private var connectionScope: ConnectionIdentity?
@@ -196,9 +217,15 @@ final class SpacesModel {
         }
 
         do {
-            async let workspaces = connection.workspaceList()
-            async let agents = connection.agentList()
-            let (workspaceList, agentList) = try await (workspaces, agents)
+            let workspaceList: [Workspace]
+            let agentList: [AgentEntry]
+            if let agentListFetch {
+                (workspaceList, agentList) = try await agentListFetch()
+            } else {
+                async let workspaces = connection.workspaceList()
+                async let agents = connection.agentList()
+                (workspaceList, agentList) = try await (workspaces, agents)
+            }
             guard refreshGate.isCurrent(generation) else { return }
             spaces = Space.join(workspaces: workspaceList, agents: agentList)
             unconfirmedSpaces = SpacePresentationOverlay.unconfirmed(

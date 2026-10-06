@@ -79,6 +79,7 @@
 		D82A1C06AA4BDA852E848F59 /* PaneLiveModifierComposerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 217943F1848BADFC038A2932 /* PaneLiveModifierComposerTests.swift */; };
 		D9236D424B2DBFF26A50E066 /* HerdcatsTests+PaneLiveInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 565E52FF93633CC2CB6D65E5 /* HerdcatsTests+PaneLiveInput.swift */; };
 		DC0A40BA4F3F046A4AEAA18A /* AgentStatusAlerts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 276245D2931453A0D298BEA4 /* AgentStatusAlerts.swift */; };
+		DD031217170E5A6F5E67FCCD /* ScreenshotFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F54450F78CCB68F3776BF68 /* ScreenshotFixtures.swift */; };
 		E243E8E54A06F445062A5E1B /* HerdcatsTests+Quota.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C922AABFF229CB5E4A9417E /* HerdcatsTests+Quota.swift */; };
 		E9F55171BA8B03A66229D51D /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 960C17FAAD7D9802E6C317C3 /* AppModel.swift */; };
 		EBCC026B6DED3089253E3058 /* PaneDictation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43D1609F00AF85022EF107AA /* PaneDictation.swift */; };
@@ -148,6 +149,7 @@
 		7A4516469F0D486DC64EFF43 /* CodexQuestionInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexQuestionInput.swift; sourceTree = "<group>"; };
 		7B1CD175F0F284E79DA115DD /* AppModel+Recovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Recovery.swift"; sourceTree = "<group>"; };
 		7DAD4982D3C8C19D0E3723C5 /* LaunchCatOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchCatOverlay.swift; sourceTree = "<group>"; };
+		7F54450F78CCB68F3776BF68 /* ScreenshotFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotFixtures.swift; sourceTree = "<group>"; };
 		819C8004AF83F50500B35861 /* HerdcatsUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HerdcatsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		81A4E5890CE3DAE5C1F6D649 /* PaneSessionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneSessionState.swift; sourceTree = "<group>"; };
 		81D42600A651B2D8F88588A6 /* PaneLiveInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneLiveInputView.swift; sourceTree = "<group>"; };
@@ -239,6 +241,7 @@
 				D664189B1C20F66BBF2260D8 /* PaneOutputPresentation.swift */,
 				A914BA288B0E47F5DBB7675C /* PaneScrollDiagnostics.swift */,
 				121986C4CFF47D9ACC6C4E0B /* PlainTextInput.swift */,
+				7F54450F78CCB68F3776BF68 /* ScreenshotFixtures.swift */,
 			);
 			path = Support;
 			sourceTree = "<group>";
@@ -563,6 +566,7 @@
 				7195C57B2E149360F277984A /* QuotaModels.swift in Sources */,
 				89EA180917DAB55768B929B4 /* QuotaScreen.swift in Sources */,
 				FE6E743FF60F467084C9D390 /* QuotaUnavailable.swift in Sources */,
+				DD031217170E5A6F5E67FCCD /* ScreenshotFixtures.swift in Sources */,
 				2B05910FF68468E1AA32059A /* SettingsScreen+Replay.swift in Sources */,
 				2674C405332F876201ECC16A /* SettingsScreen+Sections.swift in Sources */,
 				1DF5F4A426B71B495F0F7C70 /* SettingsScreen.swift in Sources */,

@@ -13,6 +13,9 @@ extension HerdrConnection {
     /// Soft dependency: missing binary throws `.quotaAxiNotFound`.
     /// `provider` scopes the read to one quota-axi provider (card retry).
     func quotaReport(provider: String? = nil, timeout: TimeInterval = 30) async throws -> QuotaReport {
+#if DEBUG && targetEnvironment(simulator)
+        if ScreenshotFixtures.enabled { return ScreenshotFixtures.quota }
+#endif
         try requireHostServices()
         let output = try await runQuotaAxi(timeout: timeout, provider: provider)
         var report = try QuotaReport.decode(output.json)
@@ -237,6 +240,9 @@ extension HerdrConnection {
     /// Callers must still perform a successful pane read after this returns before
     /// enabling the Live keyboard.
     func beginPaneLiveInput(paneId: String) async throws -> PaneLiveInputSession {
+#if DEBUG && targetEnvironment(simulator)
+        if ScreenshotFixtures.enabled { return PaneLiveInputSession(paneId: paneId, generation: generation) }
+#endif
         let trimmed = paneId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             throw HerdrError.invalidConfiguration("Pane id is required for live input.")

@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Build and publish the production website to the herdcats Cloudflare Pages project.
+set -euo pipefail
+
+WEB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$WEB_DIR"
+
+if ! command -v npm >/dev/null 2>&1 || ! command -v node >/dev/null 2>&1; then
+  echo "Node.js and npm are required to deploy the website." >&2
+  exit 1
+fi
+NODE_BIN="$(command -v node)"
+export PATH="$(dirname "$NODE_BIN"):$PATH"
+
+if [[ ! -f node_modules/wrangler/bin/wrangler.js || ! -x node_modules/.bin/next ]]; then
+  npm ci
+fi
+
+WRANGLER="node_modules/wrangler/bin/wrangler.js"
+"$NODE_BIN" "$WRANGLER" whoami
+npm run build
+"$NODE_BIN" "$WRANGLER" pages deploy out --project-name=herdcats --branch=main

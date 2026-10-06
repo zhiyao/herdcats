@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""Capture native SwiftUI screens with read-only fixtures; no SSH server required."""
+import argparse
+import json
+from pathlib import Path
+import subprocess
+import tempfile
+import time
+
+ROOT = Path(__file__).resolve().parents[2]
+IOS = ROOT / 'ios'
+BUNDLE = 'com.enchantinglabs.herdrcat'
+FRAMES = {
+    '02_connect_form': 'connect', '03_spaces': 'spaces',
+    '04_workspace_pane': 'pane', '05_pane_keys': 'keys',
+    '06_agents': 'agents', '07_agent_pane': 'agent-pane',
+    '08_quota': 'quota', '09_settings': 'settings',
+    '10_compose': 'compose', '11_voice': 'voice',
+}
+
+def run(*args, **kwargs):
+    return subprocess.run(args, check=True, **kwargs)
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--device', default='iPhone 17 Pro Max')
+    parser.add_argument('--only', nargs='+', choices=FRAMES, help='Capture selected frames')
+    parser.add_argument('--app', type=Path, help='Use an already-built Debug simulator app')
+    parser.add_argument('--output', type=Path, default=IOS / 'maestro/screenshots-output/mock-iPhone')
+    options = parser.parse_args()
+    listing = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '-j']))
+    devices = [d for runtime, group in listing['devices'].items() for d in group if 'iOS' in runtime and (d['udid'] == options.device or d['name'] == options.device)]
+    if not devices:
+        parser.error('No available iPhone matches --device')
+    device = devices[0]
+    if not device['name'].startswith('iPhone'):
+        parser.error('Choose an iPhone simulator')
+    app = options.app
+    if app is None:
+        build = Path(tempfile.gettempdir()) / 'herdcats-screenshots-build'
+        run('xcodegen', 'generate', '--spec', str(IOS / 'project.yml'))
+        run('xcodebuild', '-project', str(IOS / 'Herdcats.xcodeproj'), '-scheme', 'Herdcats', '-configuration', 'Debug', '-destination', f"platform=iOS Simulator,id={device['udid']}", '-derivedDataPath', str(build), 'CODE_SIGNING_ALLOWED=NO', 'build')
+        app = build / 'Build/Products/Debug-iphonesimulator/Herdcats.app'
+    udid = device['udid']
+    if device['state'] != 'Booted':
+        run('xcrun', 'simctl', 'boot', udid)
+    run('xcrun', 'simctl', 'bootstatus', udid, '-b')
+    run('xcrun', 'simctl', 'install', udid, str(app))
+    run('xcrun', 'simctl', 'ui', udid, 'appearance', 'dark')
+    run('xcrun', 'simctl', 'ui', udid, 'content_size', 'large')
+    run('xcrun', 'simctl', 'status_bar', udid, 'override', '--time', '9:41', '--dataNetwork', 'wifi', '--wifiMode', 'active', '--wifiBars', '3', '--batteryState', 'charged', '--batteryLevel', '100')
+    options.output.mkdir(parents=True, exist_ok=True)
+    try:
+        frames = {frame: FRAMES[frame] for frame in options.only} if options.only else FRAMES
+        for frame, screen in frames.items():
+            subprocess.run(['xcrun', 'simctl', 'terminate', udid, BUNDLE], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            run('xcrun', 'simctl', 'launch', udid, BUNDLE, '-hc.screenshots', '-hc.screen', screen, '-hc.tab', screen)
+            time.sleep(10)
+            run('xcrun', 'simctl', 'io', udid, 'screenshot', str(options.output / f'{frame}.png'))
+        manifest = options.output / 'manifest.json'
+        previous = json.loads(manifest.read_text()).get('frames', {}) if manifest.exists() and options.only else {}
+        manifest.write_text(json.dumps({'mode': 'simulator fixtures', 'device': device['name'], 'frames': previous | frames}, indent=2) + '\n')
+    finally:
+        run('xcrun', 'simctl', 'status_bar', udid, 'clear')
+    print(f'Captured {len(frames)} screenshots: {options.output}')
+
+if __name__ == '__main__':
+    main()

@@ -1,13 +1,29 @@
 {
   "locale": "en-US",
   "background": "#0A0B0E",
-  "defaultTargets": ["iphone-6.5", "iphone-6.9"],
+  "defaultTargets": [
+    "iphone-6.5",
+    "iphone-6.9"
+  ],
   "sources": {
-    "iphone": {"device": "iPhone 17 Pro Max", "folder": "iPhone_17_Pro_Max"}
+    "iphone": {
+      "device": "iPhone 17 Pro Max",
+      "folder": "iPhone_17_Pro_Max"
+    }
   },
   "targets": {
-    "iphone-6.5": {"family": "iphone", "width": 1284, "height": 2778, "description": "iPhone 6.5-inch"},
-    "iphone-6.9": {"family": "iphone", "width": 1320, "height": 2868, "description": "iPhone 6.9-inch"}
+    "iphone-6.5": {
+      "family": "iphone",
+      "width": 1284,
+      "height": 2778,
+      "description": "iPhone 6.5-inch"
+    },
+    "iphone-6.9": {
+      "family": "iphone",
+      "width": 1320,
+      "height": 2868,
+      "description": "iPhone 6.9-inch"
+    }
   },
   "slides": [
     {
@@ -35,7 +51,7 @@
       "id": "04-keys",
       "source": "05_pane_keys.png",
       "headline": "Terminal keyboard.",
-      "accent": "Arrows, F1–F12 & modifiers.",
+      "accent": "Arrows, F1\u2013F12 & modifiers.",
       "layout": "device"
     },
     {
@@ -64,6 +80,20 @@
       "source": "09_settings.png",
       "headline": "Privacy-first client.",
       "accent": "Drafts and keys stay local.",
+      "layout": "device"
+    },
+    {
+      "id": "09-compose",
+      "source": "10_compose.png",
+      "headline": "Live or Compose.",
+      "accent": "Your agent, your way.",
+      "layout": "device"
+    },
+    {
+      "id": "10-voice",
+      "source": "11_voice.png",
+      "headline": "Speak to your agent.",
+      "accent": "Dictate, review, then send.",
       "layout": "device"
     }
   ]

@@ -1,6 +1,12 @@
+<p align="center">
+  <a href="https://herdcats.dev"><img src="web/public/assets/logo.png" width="128" height="128" alt="Herdcats logo: three pixel cats"></a>
+</p>
+
 # Herdcats
 
 [![CI](https://github.com/zhiyao/herdcats/actions/workflows/ci.yml/badge.svg)](https://github.com/zhiyao/herdcats/actions/workflows/ci.yml)
+
+[Website](https://herdcats.dev)
 
 A native iPhone client for [Herdr](https://herdr.dev). Connect over SSH to
 browse spaces and agents, read pane output, and send terminal input, composed
@@ -13,22 +19,52 @@ and Herdr machine. Any network that can reach the SSH server also works.
 
 This is an early release. See the limitations below before using it.
 
+## Screenshots
+
+iPhone screenshots with sample data. Click an image to view it larger.
+
+<p align="center">
+  <a href="assets/screenshots/01-spaces.png"><img src="assets/screenshots/01-spaces.png" width="160" alt="Orchestrate spaces, all from your pocket."></a>
+  <a href="assets/screenshots/02-agents.png"><img src="assets/screenshots/02-agents.png" width="160" alt="Tame autonomous agents. Blocked, done, or working."></a>
+  <a href="assets/screenshots/03-pane.png"><img src="assets/screenshots/03-pane.png" width="160" alt="Real ANSI terminal, live in your hands."></a>
+  <a href="assets/screenshots/04-keys.png"><img src="assets/screenshots/04-keys.png" width="160" alt="Terminal keyboard. Arrows, F1–F12 &amp; modifiers."></a>
+  <a href="assets/screenshots/05-agent-pane.png"><img src="assets/screenshots/05-agent-pane.png" width="160" alt="Direct agent control, one thumb away."></a>
+</p>
+
+<p align="center">
+  <a href="assets/screenshots/06-quota.png"><img src="assets/screenshots/06-quota.png" width="160" alt="Track model quotas. Live pace-colored rings."></a>
+  <a href="assets/screenshots/07-connect.png"><img src="assets/screenshots/07-connect.png" width="160" alt="Pure SSH &amp; Tailscale. No middleman daemons."></a>
+  <a href="assets/screenshots/08-settings.png"><img src="assets/screenshots/08-settings.png" width="160" alt="Privacy-first client. Drafts and keys stay local."></a>
+  <a href="assets/screenshots/09-compose.png"><img src="assets/screenshots/09-compose.png" width="160" alt="Live or Compose. Your agent, your way."></a>
+  <a href="assets/screenshots/10-voice.png"><img src="assets/screenshots/10-voice.png" width="160" alt="Speak to your agent. Dictate, review, then send."></a>
+</p>
+
 ## Build the iPhone app
 
-You need a Mac with Xcode 26 or later, an installed iOS Simulator runtime, and
-[XcodeGen](https://github.com/yonaskolb/XcodeGen). Citadel, the SSH dependency,
-is pinned to 0.12.1 and resolves through Swift Package Manager.
+You need a Mac with Xcode 26 or later and an installed iOS Simulator runtime.
+Launch Xcode once to finish its setup. For a new contributor, fork this
+repository and clone your fork in place of the URL below.
+
+Run `ios/bin/setup` to check Xcode, install [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+with Homebrew if needed, generate the project, and resolve Swift packages.
+If XcodeGen is missing, install [Homebrew](https://brew.sh) first. Citadel,
+the SSH dependency, is pinned to 0.12.1. Simulator development requires no
+Apple account or SSH server.
 
 ```sh
 git clone https://github.com/zhiyao/herdcats.git
 cd herdcats
-brew install xcodegen
-(cd ios && xcodegen generate)
-open ios/Herdcats.xcodeproj
+ios/bin/setup
+ios/bin/launch
 ```
 
-Select the **Herdcats** scheme and an iPhone simulator, then run. To build from
-the repository root without opening Xcode:
+`ios/bin/launch` builds the Debug app, boots an iPhone simulator if needed,
+installs the app, and opens it in Simulator. It prefers an already-booted
+iPhone; select a specific simulator with `ios/bin/launch --device="iPhone 17 Pro Max"`
+or `--device=<UDID>`. Build output is saved to `ios/build/Launch/build.log`.
+
+To work in Xcode, run `open ios/Herdcats.xcodeproj`, select the **Herdcats**
+scheme and an iPhone simulator, then run. To build from the repository root:
 
 ```sh
 xcodebuild -project ios/Herdcats.xcodeproj -scheme Herdcats \
@@ -99,6 +135,26 @@ Live SSH UI tests are separate from CI. Some send input to panes: use a
 **disposable SSH server and Herdr session**, with a locally generated key kept
 outside Git. Configure `TEST_RUNNER_HC_USER`, `TEST_RUNNER_HC_PORT`, and
 `TEST_RUNNER_HC_KEY_PATH`; live connection tests skip when the key path is absent.
+
+## iPhone screenshots with mock data
+
+Capture the real SwiftUI screens with read-only sample workspaces, agents,
+terminal output, quotas, a Compose draft, and voice recording. The recording
+fixture displays the native dictation UI without opening the microphone.
+No SSH server or credentials are needed:
+
+```sh
+ios/bin/screenshots-mock
+npm ci --prefix ios/app-store-images
+ios/bin/screenshots-app-store --iphone-input=ios/maestro/screenshots-output/mock-iPhone
+```
+
+The capture command builds a Debug app and defaults to an available iPhone 17
+Pro Max simulator. Use `--device=<name-or-UDID>` to select another iPhone, or
+`--app=<path-to-Debug-simulator-app>` to reuse a build. Raw captures go to
+`ios/maestro/screenshots-output/mock-iPhone`; artwork exports go to a fresh
+folder under `ios/maestro/app-store-output`, with a preview and manifests.
+The screenshot fixture mode is compiled only into Debug simulator builds.
 
 ## Website
 

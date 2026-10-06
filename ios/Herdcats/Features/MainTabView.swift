@@ -180,8 +180,11 @@ struct AgentsScreen: View {
             Group {
                 if appModel.isOffline && items.isEmpty {
                     OfflineHerdView()
-                } else if model.isLoading && model.spaces.isEmpty {
-                    LazyCatLoadingView(message: "Loading agents…")
+                } else if items.isEmpty && model.showsAgentLoading {
+                    loadingSkeleton
+                } else if items.isEmpty && !model.hasLoadedAgentList && model.agentListError != nil {
+                    ContentUnavailableView("Unable to Load Agents", systemImage: "exclamationmark.triangle",
+                                           description: Text("Retry to load agents from your machines."))
                 } else if items.isEmpty {
                     emptyState
                 } else {
@@ -251,9 +254,8 @@ struct AgentsScreen: View {
                 }
             }
             .overlay(alignment: .bottom) {
-                if let error = model.errorMessage,
-                   case .connected = appModel.phase,
-                   !HerdrConnection.isDisconnectionOrTransitionMessage(error) {
+                if let error = model.agentListError,
+                   case .connected = appModel.phase {
                     VStack {
                         Spacer()
                         ErrorBanner(message: error) {
@@ -274,6 +276,46 @@ struct AgentsScreen: View {
     }
 
     // MARK: Pieces
+
+    private var loadingSkeleton: some View {
+        ScrollView {
+            VStack(spacing: 8) {
+                ForEach(0..<4) { index in
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .top, spacing: 8) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                skeletonBar(width: 100, height: 12)
+                                skeletonBar(width: index.isMultiple(of: 2) ? 170 : 140, height: 18)
+                            }
+                            Spacer(minLength: 4)
+                            skeletonBar(width: 58, height: 22)
+                        }
+                        HStack(spacing: 8) {
+                            skeletonBar(width: 64, height: 22)
+                            skeletonBar(width: 90, height: 22)
+                            Spacer(minLength: 0)
+                        }
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .herdrCard()
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 4)
+            .padding(.bottom, 28)
+        }
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Loading agents")
+        .accessibilityIdentifier("agent-list-loading")
+    }
+
+    private func skeletonBar(width: CGFloat, height: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: 5)
+            .fill(Theme.subtleFill)
+            .frame(width: width, height: height)
+    }
 
     private func agentRow(_ item: AgentListItem, showsSpace: Bool) -> some View {
         NavigationLink(value: item) {

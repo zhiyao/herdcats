@@ -27,6 +27,15 @@ final class PaneDictation: NSObject, SFSpeechRecognizerDelegate {
     private var audioSessionActive = false
     private var reportError: ((String) -> Void)?
 
+#if DEBUG && targetEnvironment(simulator)
+    /// Displays the recording surface for screenshots without opening a microphone.
+    func showScreenshotRecording() {
+        guard ScreenshotFixtures.enabled else { return }
+        isBusy = true
+        isPreparing = false
+    }
+#endif
+
     func start(onText: @escaping (String) -> Void,
                onError: @escaping (String) -> Void,
                initialText: () -> String) async {
