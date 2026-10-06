@@ -113,11 +113,11 @@ export default function SupportPage() {
                     <h3>Generate an Ed25519 Key &amp; Authorize It</h3>
                     <p>Open Terminal on your Mac and run this one-line command:</p>
                     <div className="code-box">
-                      <pre><code>ssh-keygen -t ed25519 -N &quot;&quot; -f ~/.ssh/herdcats_key &amp;&amp; cat ~/.ssh/herdcats_key.pub &gt;&gt; ~/.ssh/authorized_keys &amp;&amp; chmod 700 ~/.ssh &amp;&amp; chmod 600 ~/.ssh/authorized_keys</code></pre>
+                      <pre><code>ssh-keygen -t ed25519 -f ~/.ssh/herdcats_key &amp;&amp; cat ~/.ssh/herdcats_key.pub &gt;&gt; ~/.ssh/authorized_keys &amp;&amp; chmod 700 ~/.ssh &amp;&amp; chmod 600 ~/.ssh/authorized_keys</code></pre>
                       <button
                         type="button"
                         className="copy-btn"
-                        onClick={() => copyToClipboard('ssh-keygen -t ed25519 -N "" -f ~/.ssh/herdcats_key && cat ~/.ssh/herdcats_key.pub >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys', 'mac-gen')}
+                        onClick={() => copyToClipboard('ssh-keygen -t ed25519 -f ~/.ssh/herdcats_key && cat ~/.ssh/herdcats_key.pub >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys', 'mac-gen')}
                       >
                         {copiedIndex === 'mac-gen' ? '✓ Copied' : 'Copy'}
                       </button>
@@ -206,11 +206,11 @@ sudo systemctl enable --now sshd`}</code></pre>
                     <h3>Generate &amp; Authorize Key</h3>
                     <p>Generate an ed25519 keypair and ensure correct permissions:</p>
                     <div className="code-box">
-                      <pre><code>ssh-keygen -t ed25519 -N &quot;&quot; -f ~/.ssh/herdcats_key &amp;&amp; cat ~/.ssh/herdcats_key.pub &gt;&gt; ~/.ssh/authorized_keys &amp;&amp; chmod 700 ~/.ssh &amp;&amp; chmod 600 ~/.ssh/authorized_keys</code></pre>
+                      <pre><code>ssh-keygen -t ed25519 -f ~/.ssh/herdcats_key &amp;&amp; cat ~/.ssh/herdcats_key.pub &gt;&gt; ~/.ssh/authorized_keys &amp;&amp; chmod 700 ~/.ssh &amp;&amp; chmod 600 ~/.ssh/authorized_keys</code></pre>
                       <button
                         type="button"
                         className="copy-btn"
-                        onClick={() => copyToClipboard('ssh-keygen -t ed25519 -N "" -f ~/.ssh/herdcats_key && cat ~/.ssh/herdcats_key.pub >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys', 'linux-keygen')}
+                        onClick={() => copyToClipboard('ssh-keygen -t ed25519 -f ~/.ssh/herdcats_key && cat ~/.ssh/herdcats_key.pub >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys', 'linux-keygen')}
                       >
                         {copiedIndex === 'linux-keygen' ? '✓ Copied' : 'Copy'}
                       </button>
@@ -254,13 +254,13 @@ sudo systemctl enable --now sshd`}</code></pre>
                     <div className="code-box">
                       <pre><code>{`sudo apt install openssh-server -y
 sudo service ssh start
-ssh-keygen -t ed25519 -N "" -f ~/.ssh/herdcats_key
+ssh-keygen -t ed25519 -f ~/.ssh/herdcats_key
 cat ~/.ssh/herdcats_key.pub >> ~/.ssh/authorized_keys
 chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys`}</code></pre>
                       <button
                         type="button"
                         className="copy-btn"
-                        onClick={() => copyToClipboard('sudo apt install openssh-server -y && sudo service ssh start && ssh-keygen -t ed25519 -N "" -f ~/.ssh/herdcats_key && cat ~/.ssh/herdcats_key.pub >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys', 'wsl-setup')}
+                        onClick={() => copyToClipboard('sudo apt install openssh-server -y && sudo service ssh start && ssh-keygen -t ed25519 -f ~/.ssh/herdcats_key && cat ~/.ssh/herdcats_key.pub >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys', 'wsl-setup')}
                       >
                         {copiedIndex === 'wsl-setup' ? '✓ Copied' : 'Copy'}
                       </button>
@@ -315,15 +315,16 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
                 <div className="feature-cell">
                   <h3>Passphrase Notice</h3>
                   <p>
-                    For seamless background polling and reconnects, Herdcats requires unencrypted OpenSSH keys
-                    (generate with <code>-N &quot;&quot;</code>). Use in trusted networks or Tailscale mesh.
+                    Herdcats supports passphrase-protected OpenSSH ed25519 keys using AES-128-CTR or AES-256-CTR
+                    with bcrypt (1–256 rounds). Set a passphrase when ssh-keygen prompts, then enter it when importing your key. Optionally remember
+                    it on this device to reconnect after restarting the app.
                   </p>
                 </div>
                 <div className="feature-cell">
                   <h3>On-Device Keychain</h3>
                   <p>
                     Remembered passwords and keys are stored exclusively in the iOS Keychain on your physical device.
-                    They are never backed up unencrypted or transmitted outside the direct SSH handshake.
+                    Private keys and key passphrases stay on your device. SSH uses the key to sign authentication requests; passwords are sent only through the encrypted SSH connection.
                   </p>
                 </div>
                 <div className="feature-cell">

@@ -1,3 +1,4 @@
+import Crypto
 import Foundation
 import Security
 import NIOSSH
@@ -215,12 +216,51 @@ struct OpenSSHKeyParserTests {
     /// Throwaway key generated for this test suite only.
     private static let unencryptedPEM = OpenSSHParserFixture.pem
 
-    /// Throwaway passphrase-protected key, used to assert rejection.
-    private static let encryptedPEMHeader = """
+    private static let encrypted16 = """
     -----BEGIN OPENSSH PRIVATE KEY-----
-    b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABBY1ORId0
+    b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABCbXkJg7L
+    Fx6WjNp/Gz9nRnAAAAEAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIJL3ixoEfPqABvBN
+    wlMfi4z+ckv1WNZQo00MhyOR1nIEAAAAoOncXPrbrVC9rQnwN68X6PY3tzllHQb96vnoLf
+    nKt7e66Trh4TFW5j0hkPJyt0euwiyYbQo9sS9jw9bPtNhcRzIevywyKo1MYrbxZ34KQW/J
+    CTRpH1sDxVQii5mP8bCmyoJ3xcrzaWgID97uA9YovHU7rEBmqjMH8pmDZCXOtw/KPYLGlp
+    5lBqqP/9o4oCfWXFaP1V8ZT+jolVYSNdUC0TQ=
+    -----END OPENSSH PRIVATE KEY-----
     """
-
+    private static let encrypted32 = """
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABBY0sytrK
+    GA6SISkuAEnnY6AAAAIAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIIHrV7DrXLWaVn6j
+    JCmh4T6LOtDY4KVB7FL4OXJl34hhAAAAoCRsT/xm/r8VwGQqwE+I5AfBc7uwR5QlC2L+ld
+    d5H54B7lFod3Qbw7OfySl30hTx0TvKznw30MI+Cz9SSkNmji/piPRFs4F1tPACwqTQiI25
+    jopJD5XKlYHQ+FkVWctVQkLuS1qC+qAoa39ln/lcrMY2H6V7Qyj/EMe3uIrmbAGYM4CkbG
+    lbLQp51lgCG/Pc4See3yz8SBbXIXbpkppdWls=
+    -----END OPENSSH PRIVATE KEY-----
+    """
+    private static let encrypted64 = """
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABBQsNNQDE
+    3OeNlbiirYuF51AAAAQAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIEHiHx4Brcpqh9OW
+    lY7YKkM3HN1yOFbJNYbUClrT7q+MAAAAoPXvIQDoTJK/XrKBIF2kuCD9KIPYTstdeLIEcI
+    heoaAWhTJoeN0uixLdLK2E0qnaOA4teelJmrqntGC3kaWAOknVv7UPGceybXd82nYykl/s
+    xiPxdhHmIcm/mO6Bw1Cve9cJZF6k2sd0EBzfwnaFImLcSF3oL/T6Cf/JS6vTFOWHjh+anc
+    1Jzhj402WYisxnyveuTPZGidiF24UyVUEMyEs=
+    -----END OPENSSH PRIVATE KEY-----
+    """
+    private static let encryptedFullPadding = """
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABA67fmC6c588ccWKTA+gjakAAAAIAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIGQrPTgKc2Tjmng/nP1vdbdEG1R97z6O8gsc+bO1lHoWAAAAoHplRLWrpysjRVDkBaZSvn+5etGE2KV7W0HRbLtyHkB+ikdsAD0xhIbdIzeV31ckY055SDLBqiUb9oOQbzAxrHlcdc2ydF/nWc/vv/VckXWwDxCqIbr+8dxqt0aZ0FNNwtbpiEcorhvhz1KET+O0lqVWSrMhAU0l26S0PoqtFWOFnJKyZ8Vxu/EFNhOJJHpX4Ks7Giyw1bVlMi3xrN8lrhI=
+    -----END OPENSSH PRIVATE KEY-----
+    """
+    private static let encrypted256 = """
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    b3BlbnNzaC1rZXktdjEAAAAACmFlczEyOC1jdHIAAAAGYmNyeXB0AAAAGAAAABCAZBE4rD
+    GCia9qfNiUzHkCAAABAAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIMTvWynpLNkXUBjf
+    Nf4cZ/jd18DuIsMlR5uS8EQWsvaOAAAAoJVICIyrMT/au68JOgwscoUFx6QeumnNNjtcRA
+    MIOVoTAAYhUf5MN0bWqGex1L4SHUko9OuekkCPnXK83G/cc/yeThLoxtZQehdJZO/v25fV
+    8135ra4Q4lu7diODsZEQNnTK/WXA/M5C4zk77QNwjp16RElsKf5vaq2F740JYGqAC3BroD
+    uRbhBLh+7+GeZBW+mZQSBsmKIG72CzaFiCR4o=
+    -----END OPENSSH PRIVATE KEY-----
+    """
     @Test
     func parsesUnencryptedEd25519Key() throws {
         let raw = try OpenSSHEd25519.parseRawPrivateKey(pem: Self.unencryptedPEM)
@@ -235,17 +275,83 @@ struct OpenSSHKeyParserTests {
     }
 
     @Test
-    func rejectsEncryptedKeys() {
-        #expect(throws: OpenSSHKeyError.encryptedKeysUnsupported) {
-            // Rebuild a full body from the header so base64 is valid; the
-            // cipher-name check happens before any later structure matters.
-            let body = Self.encryptedPEMHeader
-                .replacingOccurrences(of: "-----BEGIN OPENSSH PRIVATE KEY-----", with: "")
-                .replacingOccurrences(of: "\n", with: "")
-            let padding = (4 - body.count % 4) % 4
-            let filler = String(repeating: "A", count: padding + 200)
-            let pem = "-----BEGIN OPENSSH PRIVATE KEY-----\n\(body)\(filler)\n-----END OPENSSH PRIVATE KEY-----"
-            _ = try OpenSSHEd25519.parseRawPrivateKey(pem: pem)
+    func unlocksEncryptedKeysAboveOldRoundLimit() throws {
+        for pem in [Self.encrypted16, Self.encrypted32, Self.encrypted64, Self.encrypted256, Self.encryptedFullPadding] {
+            #expect(try OpenSSHEd25519.isEncrypted(pem: pem))
+            let raw = try OpenSSHEd25519.parseRawPrivateKey(pem: pem, passphrase: "herdcats-test-passphrase")
+            #expect(raw.count == 32)
+            let key = try Curve25519.Signing.PrivateKey(rawRepresentation: raw)
+            #expect(key.publicKey.rawRepresentation == (try OpenSSHEd25519.parsePublicKey(pem: pem)))
+            #expect(throws: OpenSSHKeyError.passphraseRequired) {
+                _ = try OpenSSHEd25519.parseRawPrivateKey(pem: pem)
+            }
+            #expect(throws: OpenSSHKeyError.invalidPassphraseOrKey) {
+                _ = try OpenSSHEd25519.parseRawPrivateKey(pem: pem, passphrase: "wrong")
+            }
+        }
+    }
+
+    @Test
+    func rejectsCorruptedFinalPaddingByte() throws {
+        let body = Self.encryptedFullPadding.split(separator: "\n").filter { !$0.hasPrefix("-----") }.joined()
+        var bytes = try #require(Data(base64Encoded: body))
+        bytes[bytes.count - 1] ^= 1
+        let pem = "-----BEGIN OPENSSH PRIVATE KEY-----\n" + bytes.base64EncodedString() + "\n-----END OPENSSH PRIVATE KEY-----"
+        #expect(throws: OpenSSHKeyError.invalidPassphraseOrKey) {
+            _ = try OpenSSHEd25519.parseRawPrivateKey(pem: pem, passphrase: "herdcats-test-passphrase")
+        }
+    }
+
+    @MainActor
+    @Test
+    func keyUnlockFailureDoesNotRetryAutomatically() {
+        #expect(AppModel.connectFailureDisposition(error: OpenSSHKeyError.passphraseRequired,
+            hadActiveSession: true, wasOffline: true, isCheckingHerdr: false) == .disconnected)
+    }
+
+    @MainActor
+    @Test
+    func launchRequiresRememberedPassphraseForEncryptedKey() throws {
+        let suite = "EncryptedKeyLaunch.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(LaunchPreference.autoConnect.rawValue, forKey: LaunchPreference.storageKey)
+        let entry = RecentConnectionStore.entry(host: "test.example", port: 22, username: "tester",
+            authMode: "privateKey", remember: true, in: [])
+        _ = try RecentConnectionStore.record(entry, in: [], defaults: defaults)
+        let keychain = FakeKeychainOperations()
+        keychain.items[entry.secretAccount] = Data(Self.encrypted64.utf8)
+        #expect(LaunchPreference.autoConnectConfig(defaults: defaults, keychain: keychain) == nil)
+        keychain.items[entry.secretAccount + ".passphrase"] = Data("herdcats-test-passphrase".utf8)
+        let config = try #require(LaunchPreference.autoConnectConfig(defaults: defaults, keychain: keychain))
+        guard case let .privateKey(pem, passphrase) = config.auth else {
+            Issue.record("Expected private key authentication")
+            return
+        }
+        #expect(pem == Self.encrypted64)
+        #expect(passphrase == "herdcats-test-passphrase")
+        keychain.items[entry.secretAccount] = Data(Self.unencryptedPEM.utf8)
+        keychain.items.removeValue(forKey: entry.secretAccount + ".passphrase")
+        #expect(LaunchPreference.autoConnectConfig(defaults: defaults, keychain: keychain) != nil)
+    }
+
+    @Test
+    func rejectsExcessiveWorkBeforeDecryption() throws {
+        let body = Self.encrypted64.split(separator: "\n").filter { !$0.hasPrefix("-----") }.joined()
+        var bytes = try #require(Data(base64Encoded: body))
+        // magic, cipher string, KDF string, options length, salt string, rounds
+        var offset = 15
+        func length(at index: Int) -> Int {
+            bytes[index..<(index + 4)].reduce(0) { ($0 << 8) | Int($1) }
+        }
+        offset += 4 + length(at: offset)
+        offset += 4 + length(at: offset)
+        offset += 4
+        offset += 4 + length(at: offset)
+        bytes.replaceSubrange(offset..<(offset + 4), with: [0, 0, 1, 1])
+        let pem = "-----BEGIN OPENSSH PRIVATE KEY-----\n" + bytes.base64EncodedString() + "\n-----END OPENSSH PRIVATE KEY-----"
+        #expect(throws: OpenSSHKeyError.excessiveRounds) {
+            _ = try OpenSSHEd25519.parseRawPrivateKey(pem: pem, passphrase: "herdcats-test-passphrase")
         }
     }
 

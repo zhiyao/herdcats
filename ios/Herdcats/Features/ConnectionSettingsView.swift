@@ -14,6 +14,10 @@ struct ConnectionSettingsView: View {
 
     @State var password = ""
     @State var keyPEM = ""
+    @State var keyPassphrase = ""
+    @State var rememberPassphrase = false
+
+    var keyIsEncrypted: Bool { (try? OpenSSHEd25519.isEncrypted(pem: keyPEM)) == true }
     @State var showPassword = false
     @State var showKey = false
     @State var keyImporterPresented = false
@@ -43,7 +47,7 @@ struct ConnectionSettingsView: View {
                 + "(ssh-keygen -t ed25519)."
         }
         do {
-            _ = try OpenSSHEd25519.parseRawPrivateKey(pem: trimmed)
+            _ = try OpenSSHEd25519.parsePublicKey(pem: trimmed)
             return nil
         } catch let keyError as OpenSSHKeyError {
             return keyError.errorDescription
@@ -65,6 +69,9 @@ struct ConnectionSettingsView: View {
             ? (try? KeychainStore.load(account: connection.secretAccount)) ?? "" : ""
         _password = State(initialValue: connection.authMode == "password" ? secret : "")
         _keyPEM = State(initialValue: connection.authMode == "privateKey" ? secret : "")
+        let phrase = connection.remember ? (try? KeychainStore.load(account: connection.secretAccount + ".passphrase")) ?? "" : ""
+        _keyPassphrase = State(initialValue: phrase)
+        _rememberPassphrase = State(initialValue: !phrase.isEmpty)
     }
 
     enum AuthMode: String, CaseIterable, Identifiable {
@@ -98,7 +105,7 @@ struct ConnectionSettingsView: View {
         case .password:
             return !password.isEmpty
         case .privateKey:
-            return derivedPublicKey != nil
+            return derivedPublicKey != nil && (!keyIsEncrypted || !keyPassphrase.isEmpty)
         }
     }
 
@@ -224,7 +231,7 @@ struct ConnectionSettingsView: View {
             auth: {
                 switch authMode {
                 case .password: .password(password)
-                case .privateKey: .privateKey(keyPEM)
+                case .privateKey: .privateKey(keyPEM, passphrase: keyIsEncrypted ? keyPassphrase : nil)
                 }
             }()
         )
@@ -236,15 +243,31 @@ struct ConnectionSettingsView: View {
         )
         let secret = authMode == .password ? password : keyPEM
         if !isReplay && !remember {
-            try? KeychainStore.delete(account: entry.secretAccount)
+            do {
+                try KeychainStore.delete(account: entry.secretAccount)
+                try KeychainStore.delete(account: entry.secretAccount + ".passphrase")
+            } catch {
+                appModel.lastError = error.localizedDescription
+                return
+            }
         }
         await appModel.connect(config: config)
         guard case .connected = appModel.phase else { return }
         if !isReplay {
-            if entry.remember {
-                try? KeychainStore.save(secret, account: entry.secretAccount)
+            do {
+                if entry.remember {
+                    try KeychainStore.save(secret, account: entry.secretAccount)
+                    if authMode == .privateKey && keyIsEncrypted && rememberPassphrase {
+                        try KeychainStore.save(keyPassphrase, account: entry.secretAccount + ".passphrase")
+                    } else {
+                        try KeychainStore.delete(account: entry.secretAccount + ".passphrase")
+                    }
+                }
+                _ = try RecentConnectionStore.record(entry, in: RecentConnectionStore.load())
+            } catch {
+                appModel.lastError = error.localizedDescription
+                return
             }
-            _ = try? RecentConnectionStore.record(entry, in: (try? RecentConnectionStore.load()) ?? [])
         }
         dismiss()
     }

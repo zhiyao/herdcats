@@ -148,6 +148,7 @@
 		795CA6C4625F7448B13868B0 /* SpaceDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceDetailView.swift; sourceTree = "<group>"; };
 		7A4516469F0D486DC64EFF43 /* CodexQuestionInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexQuestionInput.swift; sourceTree = "<group>"; };
 		7B1CD175F0F284E79DA115DD /* AppModel+Recovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Recovery.swift"; sourceTree = "<group>"; };
+		7B8303991D2A4EB7C2BF80E7 /* Citadel */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Citadel; path = ThirdParty/Citadel; sourceTree = SOURCE_ROOT; };
 		7DAD4982D3C8C19D0E3723C5 /* LaunchCatOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchCatOverlay.swift; sourceTree = "<group>"; };
 		7F54450F78CCB68F3776BF68 /* ScreenshotFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotFixtures.swift; sourceTree = "<group>"; };
 		819C8004AF83F50500B35861 /* HerdcatsUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HerdcatsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -285,8 +286,17 @@
 				A2734D0A6BBA6C67D746242C /* Herdcats */,
 				C73699084CC8A904707EB947 /* HerdcatsTests */,
 				C053056774D3B1B5442546AC /* HerdcatsUITests */,
+				97E35A1EC0F38625B52ECD55 /* Packages */,
 				AEB81BA61E7796C7C3459745 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		97E35A1EC0F38625B52ECD55 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				7B8303991D2A4EB7C2BF80E7 /* Citadel */,
+			);
+			name = Packages;
 			sourceTree = "<group>";
 		};
 		A2734D0A6BBA6C67D746242C /* Herdcats */ = {
@@ -468,7 +478,7 @@
 			mainGroup = 8947AA068DEE7D7EEAA574AE;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				A85279AC5489B93E1DAB5AE5 /* XCRemoteSwiftPackageReference "Citadel" */,
+				8F181E3E620FE50B99171ADC /* XCLocalSwiftPackageReference "ThirdParty/Citadel" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = AEB81BA61E7796C7C3459745 /* Products */;
@@ -890,21 +900,16 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		A85279AC5489B93E1DAB5AE5 /* XCRemoteSwiftPackageReference "Citadel" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/orlandos-nl/Citadel";
-			requirement = {
-				kind = exactVersion;
-				version = 0.12.1;
-			};
+/* Begin XCLocalSwiftPackageReference section */
+		8F181E3E620FE50B99171ADC /* XCLocalSwiftPackageReference "ThirdParty/Citadel" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ThirdParty/Citadel;
 		};
-/* End XCRemoteSwiftPackageReference section */
+/* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		0FED306997E0591F9F6ADDEC /* Citadel */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A85279AC5489B93E1DAB5AE5 /* XCRemoteSwiftPackageReference "Citadel" */;
 			productName = Citadel;
 		};
 /* End XCSwiftPackageProductDependency section */

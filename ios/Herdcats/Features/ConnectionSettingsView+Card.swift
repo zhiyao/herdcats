@@ -153,6 +153,21 @@ extension ConnectionSettingsView {
                             .foregroundStyle(Theme.accent)
                         }
                     }
+                    if keyIsEncrypted {
+                        SecureField("Key passphrase", text: $keyPassphrase)
+                            .textFieldStyle(.plain)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .accessibilityLabel("Key passphrase")
+                        if remember {
+                            Toggle("Remember Passphrase", isOn: $rememberPassphrase)
+                                .font(.footnote)
+                                .tint(Theme.accent)
+                        }
+                        Text("The key is unlocked on this device. Remember the passphrase to reconnect after restarting the app.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                     if let importError = importErrorMessage {
                         Text(importError)
                             .font(.caption2)
@@ -210,6 +225,8 @@ extension ConnectionSettingsView {
                 }
                 .onChange(of: keyPEM) { _, _ in
                     importErrorMessage = nil
+                    keyPassphrase = ""
+                    rememberPassphrase = false
                 }
             }
 

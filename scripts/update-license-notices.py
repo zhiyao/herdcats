@@ -34,6 +34,9 @@ def section(title, source, text):
 
 def swift_notices():
     pins = json.loads((ROOT / "ios/Herdcats.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved").read_text())["pins"]
+    # Local Citadel no longer appears in Package.resolved; preserve its upstream notices.
+    pins.append({"identity": "citadel", "location": "https://github.com/orlandos-nl/Citadel",
+                 "state": {"version": "0.12.1", "revision": "ae8562f895de06ccb86fdb1cbb65fd99c8976e12"}})
     inventory, notices = [], ["Herdcats and third-party software licenses\n\n"]
     notices.append(section("Herdcats", "https://github.com/zhiyao/herdcats/blob/main/LICENSE", (ROOT / "LICENSE").read_text()))
     for pin in pins:
@@ -51,6 +54,9 @@ def swift_notices():
             sources.append(url)
             notices.append(section(f"{pin['identity']} {pin['state']['version']} — {path}", url, fetch(url)))
         inventory.append({"name": pin["identity"], "version": pin["state"]["version"], "revision": rev, "repository": pin["location"], "license_sources": sources})
+        if pin["identity"] == "citadel":
+            inventory[-1]["vendored_path"] = "ios/ThirdParty/Citadel"
+            inventory[-1]["patch_notes"] = "ios/ThirdParty/Citadel/HERDCATS-PATCH.txt"
         if pin["identity"] == "swift-crypto":
             hash_text = fetch(f"https://raw.githubusercontent.com/{repo}/{rev}/Sources/CCryptoBoringSSL/hash.txt")
             boring_rev = re.search(r"revision ([0-9a-f]{40})", hash_text)[1]

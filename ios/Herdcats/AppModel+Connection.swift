@@ -121,7 +121,7 @@ extension AppModel {
             } else if error is SSHHostKeyStore.StoreError {
                 hostKeyVerificationBlocked = true
             }
-            if hostKeyVerificationBlocked { cancelReconnect() }
+            if hostKeyVerificationBlocked || error is OpenSSHKeyError { cancelReconnect() }
             let message = HerdrConnection.friendlyMessage(for: error, config: config)
             lastError = message
             herdrMissingOnLastConnect = (error as? HerdrError) == .herdrNotFound
@@ -154,7 +154,7 @@ extension AppModel {
     }
 
     private func logPrivateKeyDiagnostics(_ config: ConnectionConfig) {
-        if case let .privateKey(pem) = config.auth,
+        if case let .privateKey(pem, _) = config.auth,
            let pubKey = try? OpenSSHEd25519.parseOpenSSHPublicKeyString(pem: pem),
            let fingerprint = try? OpenSSHEd25519.parseFingerprint(pem: pem) {
             print("[HC] [DEBUG] Auth method: ed25519 private key")
@@ -174,6 +174,7 @@ extension AppModel {
         wasOffline: Bool,
         isCheckingHerdr: Bool
     ) -> ConnectFailureDisposition {
+        if error is OpenSSHKeyError { return .disconnected }
         let herdrError = error as? HerdrError
         let needsReadinessRecovery = herdrError == .herdrNotFound || herdrError == .sessionUnavailable
         if isCheckingHerdr && (!wasOffline || !hadActiveSession || needsReadinessRecovery) {

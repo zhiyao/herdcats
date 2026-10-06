@@ -1,0 +1,5 @@
+Vendored from Citadel 0.12.1, revision ae8562f895de06ccb86fdb1cbb65fd99c8976e12 (MIT).
+
+OpenSSHKey.swift accepts bcrypt rounds 1...256 instead of <32. This is a work bound, not an encryption strength limit. Package.swift omits unused example/test targets and ColorizeSwift. All remaining sources are upstream.
+
+The same parser now accepts full-block OpenSSH padding and validates every padding byte (upstream rejected full blocks and skipped the last byte).
