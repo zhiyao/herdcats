@@ -16,7 +16,9 @@
       "repository": "https://github.com/orlandos-nl/Citadel",
       "license_sources": [
         "https://raw.githubusercontent.com/orlandos-nl/Citadel/ae8562f895de06ccb86fdb1cbb65fd99c8976e12/LICENSE"
-      ]
+      ],
+      "vendored_path": "ios/ThirdParty/Citadel",
+      "patch_notes": "ios/ThirdParty/Citadel/HERDCATS-PATCH.txt"
     },
     {
       "name": "swift-asn1",

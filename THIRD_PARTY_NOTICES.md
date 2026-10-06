@@ -15,7 +15,7 @@ NOTICE files, runtime-library exceptions, and the embedded BoringSSL license.
 | Dependency | Locked version | License |
 | --- | --- | --- |
 | BigInt | 5.7.0 | MIT |
-| Citadel | 0.12.1 | MIT |
+| Citadel (vendored, patched) | 0.12.1 | MIT |
 | Swift ASN.1 | 1.7.3 | Apache-2.0 |
 | Swift Atomics | 1.3.1 | Apache-2.0 with Swift Runtime Library Exception |
 | Swift Collections | 1.7.1 | Apache-2.0 with Swift Runtime Library Exception |
@@ -29,7 +29,8 @@ The precise source revisions and license-file URLs are recorded in
 [licenses/dependency-inventory.json](licenses/dependency-inventory.json).
 The generator also includes BoringSSL at the revision identified by Swift
 Crypto's vendoring record and NIO's embedded llhttp license. No Swift package
-source was modified by this review.
+source was modified by that license review. Citadel is now vendored with a bounded bcrypt-round
+patch; see [patch notes](ios/ThirdParty/Citadel/HERDCATS-PATCH.txt).
 
 The reviewed MIT and Apache-2.0 terms do not identify a conflict with the
 project's GPLv3 licensing. See [Apache's GPL compatibility guidance](https://apache.org/licenses/GPL-compatibility.html).
