@@ -131,6 +131,9 @@ extension ConnectionSettingsView {
                                 }
                         }
                     }
+                    .padding(8)
+                    .herdrField()
+                    .overlay(fieldShape.stroke(Theme.hairline, lineWidth: 1))
                     HStack {
                         Button {
                             keyImporterPresented = true
@@ -154,11 +157,18 @@ extension ConnectionSettingsView {
                         }
                     }
                     if keyIsEncrypted {
-                        SecureField("Key passphrase", text: $keyPassphrase)
-                            .textFieldStyle(.plain)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                            .accessibilityLabel("Key passphrase")
+                        VStack(alignment: .leading, spacing: 8) {
+                            fieldLabel("Key Passphrase")
+                            SecureField("Enter key passphrase", text: $keyPassphrase)
+                                .textFieldStyle(.plain)
+                                .foregroundStyle(.primary)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                                .accessibilityLabel("Key passphrase")
+                                .padding(12)
+                                .herdrField()
+                                .overlay(fieldShape.stroke(Theme.hairline, lineWidth: 1))
+                        }
                         if remember {
                             Toggle("Remember Passphrase", isOn: $rememberPassphrase)
                                 .font(.footnote)
@@ -214,8 +224,6 @@ extension ConnectionSettingsView {
                             .foregroundStyle(Theme.warning)
                     }
                 }
-                .padding(12)
-                .background(fieldShape.fill(Theme.fieldBackground))
                 .fileImporter(
                     isPresented: $keyImporterPresented,
                     allowedContentTypes: [.item, .data, .plainText],
