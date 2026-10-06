@@ -2,7 +2,7 @@ import { SitePage, sitePageStyles as styles } from '@/components/SitePage';
 
 export const metadata = {
   title: 'Herdcats — About',
-  description: 'Why Herdcats exists: a minimal, open source iPhone client for Herdr over direct SSH.',
+  description: 'Meet Kenny, the maker of Herdcats, and his company enchantinglabs. Learn why this minimal, open source iPhone client for Herdr exists.',
 };
 
 export default function AboutPage() {
@@ -10,7 +10,10 @@ export default function AboutPage() {
     <SitePage badge="About" title="About Herdcats">
       <section className={styles.section}>
         <h2 className={styles.label}>Who</h2>
-        <p>Herdcats is maintained by Enchanting Labs.</p>
+        <p>
+          Hi, I&rsquo;m Kenny, the maker of Herdcats. enchantinglabs is my company, where I build and
+          maintain Herdcats.
+        </p>
       </section>
 
       <section className={styles.section}>

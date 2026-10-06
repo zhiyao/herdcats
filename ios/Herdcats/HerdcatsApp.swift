@@ -15,10 +15,27 @@ struct HerdcatsApp: App {
         PlainTextInput.install()
     }
 
+#if DEBUG
+    private var screenshotModeEnabled: Bool {
+#if targetEnvironment(simulator)
+        ScreenshotFixtures.enabled
+#else
+        false
+#endif
+    }
+    @ViewBuilder private var screenshotRoot: some View {
+#if targetEnvironment(simulator)
+        ScreenshotRootView()
+#endif
+    }
+#endif
+
     var body: some Scene {
         WindowGroup {
 #if DEBUG
-            if ProcessInfo.processInfo.arguments.contains("-quotaNotSetupPreview") {
+            if screenshotModeEnabled {
+                screenshotRoot
+            } else if ProcessInfo.processInfo.arguments.contains("-quotaNotSetupPreview") {
                 QuotaNotSetupPreviewView()
                     .preferredColorScheme(appearance.colorScheme)
                     .tint(Theme.accent)

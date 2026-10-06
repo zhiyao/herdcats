@@ -23,7 +23,6 @@ struct ConnectView: View {
     @State private var recentConnections: [RecentConnection] = []
     @State private var selectedConnection: RecentConnection?
     @State private var showingSetupGuide = false
-    @State private var showingLicenses = false
     @State private var openFormAfterSetup = false
     @State private var route: OnboardingRoute?
 
@@ -56,8 +55,6 @@ struct ConnectView: View {
                     }
                     .font(.subheadline)
                 }
-                Button("Licenses") { showingLicenses = true }
-                    .font(.footnote)
             }
             .padding(.horizontal, 22)
             .padding(.top, 30)
@@ -90,16 +87,6 @@ struct ConnectView: View {
                 if route == .connectionSelection && recentConnections.isEmpty && !replay {
                     openNewConnection()
                 }
-            }
-        }
-        .sheet(isPresented: $showingLicenses) {
-            NavigationStack {
-                LicensesView()
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { showingLicenses = false }
-                        }
-                    }
             }
         }
         .overlay {

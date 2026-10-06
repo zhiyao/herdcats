@@ -1,22 +1,90 @@
-#!/bin/bash
-set -euo pipefail
+#!/usr/bin/env python3
+"""Build and launch Herdcats on an iPhone simulator."""
+import argparse
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
 
-ios_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-project_path="$ios_dir/Herdcats.xcodeproj"
+IOS = Path(__file__).resolve().parents[1]
+BUNDLE_ID = 'com.enchantinglabs.herdrcat'
 
-if ! command -v xcodegen >/dev/null 2>&1; then
-  echo "error: xcodegen is required but was not found in PATH." >&2
-  echo "Install it with: brew install xcodegen" >&2
-  exit 127
-fi
 
-echo "==> Generating Xcode project"
-(cd "$ios_dir" && xcodegen generate)
+def run(*args, **options):
+    return subprocess.run(args, check=True, **options)
 
-if [[ ! -d "$project_path" ]]; then
-  printf 'Xcode project not found: %s\n' "$project_path" >&2
-  exit 1
-fi
 
-echo "==> Opening project in Xcode"
-exec /usr/bin/open -a Xcode "$project_path"
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, epilog="Set DERIVED_DATA_PATH to reuse a custom build directory.")
+    parser.add_argument('--device', help='Available simulator name or UDID; defaults to a booted iPhone or an available iPhone')
+    options = parser.parse_args()
+    for tool in ('xcodegen', 'xcodebuild', 'xcrun'):
+        if shutil.which(tool) is None:
+            parser.error(f'{tool} is missing. Run ios/bin/setup first.')
+
+    developer_dir = Path(subprocess.check_output(['xcode-select', '-p'], text=True).strip())
+    viewers = [developer_dir / 'Applications/Simulator.app',
+               developer_dir.parent / 'Applications/Simulator.app',
+               developer_dir.parent / 'Applications/DeviceHub.app']
+    simulator_app = next((path for path in viewers if path.is_dir()), None)
+    if simulator_app is None:
+        parser.error('No simulator viewer was found in the selected Xcode. Run ios/bin/setup to check your Xcode installation.')
+
+    listing = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '--json']))
+    devices = [device for runtime, group in listing['devices'].items()
+               if '.iOS-' in runtime for device in group
+               if device.get('isAvailable') and device['name'].startswith('iPhone')]
+    if options.device:
+        devices = [device for device in devices
+                   if device['name'] == options.device or device['udid'].lower() == options.device.lower()]
+    if not devices:
+        parser.error('No matching iPhone simulator is available. Install an iOS runtime in Xcode Settings > Components, or use --device with an available iPhone.')
+    # Prefer an already-booted phone; otherwise use a standard large iPhone.
+    device = next((device for device in devices if device['state'] == 'Booted'), None)
+    device = device or next((device for device in devices if device['name'] == 'iPhone 17 Pro Max'), devices[0])
+    udid = device['udid']
+    build = Path(os.environ.get('DERIVED_DATA_PATH', str(IOS / 'build/Launch'))).expanduser().resolve()
+    build.mkdir(parents=True, exist_ok=True)
+    log = build / 'build.log'
+
+    print('==> Generating Xcode project', flush=True)
+    run('xcodegen', 'generate', cwd=IOS)
+    print(f"==> Building Herdcats for {device['name']} (log: {log})", flush=True)
+    with log.open('w') as output:
+        result = subprocess.run([
+            'xcodebuild', '-project', str(IOS / 'Herdcats.xcodeproj'),
+            '-scheme', 'Herdcats', '-configuration', 'Debug',
+            '-destination', f'platform=iOS Simulator,id={udid}',
+            '-derivedDataPath', str(build), 'CODE_SIGNING_ALLOWED=YES',
+            'CODE_SIGN_IDENTITY=-', 'CODE_SIGNING_REQUIRED=YES', 'build',
+        ], stdout=output, stderr=subprocess.STDOUT)
+    if result.returncode:
+        print('\n'.join(log.read_text(errors='replace').splitlines()[-50:]), file=sys.stderr)
+        raise RuntimeError(f'Build failed. Full log: {log}')
+    app = build / 'Build/Products/Debug-iphonesimulator/Herdcats.app'
+    if not app.is_dir():
+        raise RuntimeError(f'Build completed without the expected app: {app}')
+
+    print(f"==> Launching on {device['name']}", flush=True)
+    if device['state'] != 'Booted':
+        run('xcrun', 'simctl', 'boot', udid)
+    run('xcrun', 'simctl', 'bootstatus', udid, '-b')
+    run('xcrun', 'simctl', 'install', udid, str(app))
+    subprocess.run(['xcrun', 'simctl', 'terminate', udid, BUNDLE_ID],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if simulator_app.name == 'Simulator.app':
+        run('open', '-a', str(simulator_app), '--args', '-CurrentDeviceUDID', udid)
+    else:
+        run('open', '-a', str(simulator_app))
+    run('xcrun', 'simctl', 'launch', udid, BUNDLE_ID)
+    print(f"==> Herdcats is running on {device['name']}.")
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (subprocess.CalledProcessError, OSError, RuntimeError, ValueError) as error:
+        print(f'[herdcats] {error}', file=sys.stderr)
+        sys.exit(1)

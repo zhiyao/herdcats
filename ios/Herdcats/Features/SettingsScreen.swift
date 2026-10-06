@@ -13,6 +13,16 @@ struct SettingsScreen: View {
     @State var showingOnboardingReplay = false
     #endif
 
+    #if DEBUG
+    private var showsDebugReplay: Bool {
+        #if targetEnvironment(simulator)
+        !ScreenshotFixtures.enabled
+        #else
+        true
+        #endif
+    }
+    #endif
+
     @AppStorage(AppearancePreference.storageKey)
     var appearanceRaw = AppearancePreference.default.rawValue
     @AppStorage(LaunchPreference.storageKey)
@@ -125,8 +135,10 @@ struct SettingsScreen: View {
         NavigationStack {
             Form {
                 #if DEBUG
-                OnboardingReplaySection {
-                    showingOnboardingReplay = true
+                if showsDebugReplay {
+                    OnboardingReplaySection {
+                        showingOnboardingReplay = true
+                    }
                 }
                 #endif
 

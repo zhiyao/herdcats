@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Prepare a contributor checkout for native iPhone development.
+set -euo pipefail
+
+usage() {
+  cat <<'HELP'
+Usage: ios/bin/setup [--check]
+
+Checks Xcode 26+, installs XcodeGen with Homebrew if needed, generates the
+Xcode project, and resolves Swift packages. No Apple account or SSH server
+is required for simulator development.
+
+  --check  Check prerequisites without installing or changing anything.
+  --help   Show this help.
+HELP
+}
+
+CHECK_ONLY=false
+case "${1:-}" in
+  '') ;;
+  --check) CHECK_ONLY=true ;;
+  -h|--help) usage; exit 0 ;;
+  *) usage >&2; exit 2 ;;
+esac
+if [[ $# -gt 1 ]]; then usage >&2; exit 2; fi
+
+IOS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fail() { echo "[herdcats] $*" >&2; exit 1; }
+
+[[ "$(uname -s)" == Darwin ]] || fail 'iPhone development requires macOS and Xcode 26 or later.'
+command -v xcodebuild >/dev/null 2>&1 || fail 'Install Xcode 26 or later and launch it once to finish setup.'
+if ! XCODE_VERSION="$(xcodebuild -version 2>&1)"; then
+  fail "Xcode is not ready: $XCODE_VERSION. Install and launch Xcode, then select it in Xcode Settings > Locations > Command Line Tools."
+fi
+XCODE_MAJOR="$(printf '%s\n' "$XCODE_VERSION" | awk '/^Xcode / { split($2, version, "."); print version[1]; exit }')"
+[[ "$XCODE_MAJOR" =~ ^[0-9]+$ ]] || fail 'Could not determine the selected Xcode version.'
+(( XCODE_MAJOR >= 26 )) || fail "Xcode 26 or later is required; selected version: $XCODE_VERSION."
+xcrun --sdk iphonesimulator --show-sdk-path >/dev/null 2>&1 || fail 'Install iOS platform support in Xcode Settings > Components.'
+echo "==> $XCODE_VERSION"
+
+if ! command -v xcodegen >/dev/null 2>&1; then
+  if "$CHECK_ONLY"; then
+    fail 'XcodeGen is missing. Run ios/bin/setup to install it with Homebrew.'
+  fi
+  command -v brew >/dev/null 2>&1 || fail 'Install Homebrew (https://brew.sh), then rerun ios/bin/setup; or install XcodeGen yourself.'
+  echo '==> Installing XcodeGen'
+  brew install xcodegen
+fi
+xcodegen --version
+
+if "$CHECK_ONLY"; then
+  echo '==> Prerequisites are ready. Install an iOS Simulator runtime in Xcode Settings > Components if needed.'
+  exit 0
+fi
+
+echo '==> Generating the Xcode project'
+(cd "$IOS_DIR" && xcodegen generate)
+echo '==> Resolving Swift packages'
+xcodebuild -resolvePackageDependencies -project "$IOS_DIR/Herdcats.xcodeproj" -scheme Herdcats
+
+cat <<HELP
+==> Setup complete.
+Open the project: open "$IOS_DIR/Herdcats.xcodeproj"
+Select the Herdcats scheme and an iPhone simulator, then run.
+If no simulator is available, install an iOS runtime in Xcode Settings > Components.
+See CONTRIBUTING.md for validation commands and the pull request workflow.
+HELP
