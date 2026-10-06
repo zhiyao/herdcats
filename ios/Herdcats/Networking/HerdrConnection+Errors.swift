@@ -91,7 +91,7 @@ extension HerdrConnection {
     }
 
     private static func authenticationFailureMessage(config: ConnectionConfig?) -> String {
-        if let config, case let .privateKey(pem) = config.auth {
+        if let config, case let .privateKey(pem, _) = config.auth {
             if let pubKey = try? OpenSSHEd25519.parseOpenSSHPublicKeyString(pem: pem) {
                 return "Authentication failed for user '\(config.username)' at \(config.host). "
                     + "Verify that the user exists and this public key is in ~/.ssh/authorized_keys: \(pubKey)"

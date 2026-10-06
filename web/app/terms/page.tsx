@@ -67,9 +67,9 @@ export default function TermsPage() {
           <li>All commands, inputs, and agent instructions sent through the Service</li>
         </ul>
         <p>
-          Prototype authentication supports unencrypted OpenSSH ed25519 private keys and password
-          authentication. Broader key formats or encrypted keys are not implied unless implemented
-          and documented.
+          Authentication supports passwords and OpenSSH ed25519 private keys, including encrypted keys
+          using AES-128-CTR or AES-256-CTR with bcrypt at 1–256 rounds. Other key formats and encryption
+          settings are unsupported.
         </p>
       </section>
 

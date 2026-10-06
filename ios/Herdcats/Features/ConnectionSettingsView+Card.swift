@@ -131,6 +131,9 @@ extension ConnectionSettingsView {
                                 }
                         }
                     }
+                    .padding(8)
+                    .herdrField()
+                    .overlay(fieldShape.stroke(Theme.hairline, lineWidth: 1))
                     HStack {
                         Button {
                             keyImporterPresented = true
@@ -152,6 +155,28 @@ extension ConnectionSettingsView {
                             .font(.caption)
                             .foregroundStyle(Theme.accent)
                         }
+                    }
+                    if keyIsEncrypted {
+                        VStack(alignment: .leading, spacing: 8) {
+                            fieldLabel("Key Passphrase")
+                            SecureField("Enter key passphrase", text: $keyPassphrase)
+                                .textFieldStyle(.plain)
+                                .foregroundStyle(.primary)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                                .accessibilityLabel("Key passphrase")
+                                .padding(12)
+                                .herdrField()
+                                .overlay(fieldShape.stroke(Theme.hairline, lineWidth: 1))
+                        }
+                        if remember {
+                            Toggle("Remember Passphrase", isOn: $rememberPassphrase)
+                                .font(.footnote)
+                                .tint(Theme.accent)
+                        }
+                        Text("The key is unlocked on this device. Remember the passphrase to reconnect after restarting the app.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
                     if let importError = importErrorMessage {
                         Text(importError)
@@ -199,8 +224,6 @@ extension ConnectionSettingsView {
                             .foregroundStyle(Theme.warning)
                     }
                 }
-                .padding(12)
-                .background(fieldShape.fill(Theme.fieldBackground))
                 .fileImporter(
                     isPresented: $keyImporterPresented,
                     allowedContentTypes: [.item, .data, .plainText],
@@ -210,6 +233,8 @@ extension ConnectionSettingsView {
                 }
                 .onChange(of: keyPEM) { _, _ in
                     importErrorMessage = nil
+                    keyPassphrase = ""
+                    rememberPassphrase = false
                 }
             }
 

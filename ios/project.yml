@@ -12,8 +12,7 @@ settings:
 
 packages:
   Citadel:
-    url: https://github.com/orlandos-nl/Citadel
-    exactVersion: 0.12.1
+    path: ThirdParty/Citadel
 
 targets:
   Herdcats:
