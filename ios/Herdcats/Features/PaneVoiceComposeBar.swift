@@ -202,6 +202,11 @@ struct PaneVoiceComposeBar: View {
         onSend: @escaping () -> Void,
         onDismissKeyboard: (() -> Void)? = nil
     ) {
+#if DEBUG && targetEnvironment(simulator)
+        if ScreenshotFixtures.enabled && ScreenshotFixtures.screen == "keys" {
+            _isKeysDrawerOpen = State(initialValue: true)
+        }
+#endif
         self._mode = mode
         self._draft = draft
         self._isLiveKeyboardFocused = isLiveKeyboardFocused

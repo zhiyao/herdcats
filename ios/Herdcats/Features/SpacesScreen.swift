@@ -99,7 +99,16 @@ final class SpacesModel {
     private(set) var lastUpdated: Date?
     /// Pane-id → last activity time, shared with pane detail cards.
     private(set) var lastUpdatedByPaneID: [String: Date] = [:]
-    private(set) var isLoading = false
+    // The view can render before its initial refresh task starts.
+    private(set) var isLoading = true
+
+    /// An empty aggregate is conclusive only after every machine has loaded.
+    var hasLoadedAgentList: Bool {
+        if showsAllMachines {
+            return !machineSources.isEmpty && machineSources.allSatisfy { $0.model.hasLoadedAgentList }
+        }
+        return lastUpdated != nil
+    }
     /// Provider usage cards for the Agents header (from remote `quota-axi`).
     private(set) var usageCards: [AgentUsageCard] = []
     private(set) var usageLastUpdated: Date?

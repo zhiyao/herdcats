@@ -72,6 +72,9 @@ extension HerdrConnection {
         _ args: String, timeout: TimeInterval, allowEmptyOutput: Bool,
         timeoutPolicy: HerdrCommandTimeoutPolicy = .teardownAndNotify
     ) async throws -> String {
+#if DEBUG && targetEnvironment(simulator)
+        if ScreenshotFixtures.enabled { return try ScreenshotFixtures.response(args) }
+#endif
         guard let client else { throw HerdrError.notConnected }
         let owned = generation
         let command = Self.remoteCommand(args)

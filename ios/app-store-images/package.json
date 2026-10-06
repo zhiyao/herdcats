@@ -3,13 +3,17 @@
   "private": true,
   "license": "SEE LICENSE IN ../../LICENSE",
   "type": "module",
-  "engines": {"node": ">=22"},
-  "scripts": {"render": "node render.mjs"},
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "render": "node render.mjs"
+  },
   "dependencies": {
     "@remotion/bundler": "4.0.523",
-    "@remotion/renderer": "4.0.531",
+    "@remotion/renderer": "4.0.523",
     "react": "19.2.0",
-    "react-dom": "19.3.0",
+    "react-dom": "19.2.0",
     "remotion": "4.0.523"
   }
 }

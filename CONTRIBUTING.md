@@ -20,9 +20,24 @@ Redact screenshots and logs before sharing them.
 ## Set up your checkout
 
 Fork the repository, clone your fork, and create a branch for your change.
-See [README.md](README.md) for build prerequisites, simulator commands, and
-connection setup. The app targets iOS 17 or later and requires Xcode 26 or later
-to build. The website uses Node.js 22 or later.
+On a Mac with Xcode 26 or later, launch Xcode once to finish setup, then run
+from your checkout:
+
+```sh
+ios/bin/setup
+ios/bin/launch
+```
+
+The setup script checks Xcode, installs XcodeGen with Homebrew if needed,
+generates the project, and resolves Swift packages. Install Homebrew first
+if XcodeGen is not already installed. `ios/bin/launch` builds, installs, and
+launches the app in an iPhone simulator. Use `--device=<name-or-UDID>` to choose
+one, or run `open ios/Herdcats.xcodeproj` to develop in Xcode. Install an iOS Simulator runtime in
+Xcode Settings → Components if needed. Use `ios/bin/setup --check` to check
+prerequisites without changing anything.
+
+See [README.md](README.md) for simulator validation commands and connection
+setup. The app targets iOS 17 or later. The website uses Node.js 22 or later.
 
 Project configuration lives in `ios/project.yml`. After changing targets,
 dependencies, build settings, or generated Info.plist properties, regenerate:
