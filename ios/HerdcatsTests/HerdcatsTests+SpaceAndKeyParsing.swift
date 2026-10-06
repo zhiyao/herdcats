@@ -304,9 +304,32 @@ struct OpenSSHKeyParserTests {
 
     @MainActor
     @Test
-    func keyUnlockFailureDoesNotRetryAutomatically() {
-        #expect(AppModel.connectFailureDisposition(error: OpenSSHKeyError.passphraseRequired,
-            hadActiveSession: true, wasOffline: true, isCheckingHerdr: false) == .disconnected)
+    func keyUnlockFailureReturnsToConnectionSelection() async throws {
+        let errors: [OpenSSHKeyError] = [.passphraseRequired, .invalidPassphraseOrKey,
+            .invalidFormat("damaged saved key"), .excessiveRounds]
+        for error in errors {
+            for wasOffline in [false, true] {
+                let config = ConnectionConfig(host: "fixture.example", port: 22,
+                    username: "tester", auth: .privateKey(Self.encrypted64, passphrase: "wrong"))
+                let model = AppModel(autoConnectOnLaunch: false)
+                // Launch auto-connect marks the session active before authentication.
+                model.hasActiveSession = true
+                model.phase = wasOffline ? .offline(host: config.host, username: config.username) : .disconnected
+                let state = try #require(await model.prepareConnectAttempt(config: config))
+                state.watchdog.cancel()
+                #expect(LaunchCatOverlay.shouldShow(hasActiveSession: model.hasActiveSession,
+                    phase: model.phase, hasHandedOff: false))
+                model.handleConnectFailure(error, config: config, attempt: state.attempt,
+                    wasOffline: state.wasOffline, isCheckingHerdr: false)
+                #expect(!model.hasActiveSession)
+                #expect(model.phase == .disconnected)
+                #expect(model.connectionBanner == nil)
+                #expect(model.autoReconnectTask == nil)
+                #expect(model.lastError == error.errorDescription)
+                #expect(!LaunchCatOverlay.shouldShow(hasActiveSession: model.hasActiveSession,
+                    phase: model.phase, hasHandedOff: false))
+            }
+        }
     }
 
     @MainActor
