@@ -4,6 +4,7 @@ import Security
 import NIOSSH
 import SwiftUI
 import Testing
+import UIKit
 @testable import Herdcats
 
 @Suite("Space join and status ranking")
@@ -300,6 +301,34 @@ struct OpenSSHKeyParserTests {
         #expect(throws: OpenSSHKeyError.invalidPassphraseOrKey) {
             _ = try OpenSSHEd25519.parseRawPrivateKey(pem: pem, passphrase: "herdcats-test-passphrase")
         }
+    }
+
+    @MainActor
+    @Test
+    func encryptedKeyFormRendersOnInitialPresentation() async throws {
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousKeyWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        defer {
+            window.isHidden = true
+            previousKeyWindow?.makeKey()
+        }
+        let entry = RecentConnection(host: "fixture.example", port: 22,
+            username: "tester", authMode: "privateKey", remember: true)
+        try KeychainStore.save(Self.encrypted64, account: entry.secretAccount)
+        defer { try? KeychainStore.delete(account: entry.secretAccount) }
+        let form = ConnectionSettingsView(connection: entry)
+        let controller = UIHostingController(rootView: form.environment(AppModel(autoConnectOnLaunch: false)))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+        await Task.yield()
+        let image = UIGraphicsImageRenderer(size: window.bounds.size).image { context in
+            controller.view.layer.render(in: context.cgContext)
+        }
+        #expect(image.size == CGSize(width: 390, height: 844))
     }
 
     @MainActor
