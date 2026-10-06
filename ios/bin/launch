@@ -57,7 +57,8 @@ def main():
             'xcodebuild', '-project', str(IOS / 'Herdcats.xcodeproj'),
             '-scheme', 'Herdcats', '-configuration', 'Debug',
             '-destination', f'platform=iOS Simulator,id={udid}',
-            '-derivedDataPath', str(build), 'CODE_SIGNING_ALLOWED=NO', 'build',
+            '-derivedDataPath', str(build), 'CODE_SIGNING_ALLOWED=YES',
+            'CODE_SIGN_IDENTITY=-', 'CODE_SIGNING_REQUIRED=YES', 'build',
         ], stdout=output, stderr=subprocess.STDOUT)
     if result.returncode:
         print('\n'.join(log.read_text(errors='replace').splitlines()[-50:]), file=sys.stderr)

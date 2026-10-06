@@ -180,8 +180,11 @@ struct AgentsScreen: View {
             Group {
                 if appModel.isOffline && items.isEmpty {
                     OfflineHerdView()
-                } else if items.isEmpty && (model.isLoading || !model.hasLoadedAgentList) {
+                } else if items.isEmpty && model.showsAgentLoading {
                     loadingSkeleton
+                } else if items.isEmpty && !model.hasLoadedAgentList && model.agentListError != nil {
+                    ContentUnavailableView("Unable to Load Agents", systemImage: "exclamationmark.triangle",
+                                           description: Text("Retry to load agents from your machines."))
                 } else if items.isEmpty {
                     emptyState
                 } else {
@@ -251,10 +254,8 @@ struct AgentsScreen: View {
                 }
             }
             .overlay(alignment: .bottom) {
-                if let error = model.errorMessage,
-                   model.hasLoadedAgentList,
-                   case .connected = appModel.phase,
-                   !HerdrConnection.isDisconnectionOrTransitionMessage(error) {
+                if let error = model.agentListError,
+                   case .connected = appModel.phase {
                     VStack {
                         Spacer()
                         ErrorBanner(message: error) {
