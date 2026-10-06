@@ -37,6 +37,7 @@ def swift_notices():
     # Local Citadel no longer appears in Package.resolved; preserve its upstream notices.
     pins.append({"identity": "citadel", "location": "https://github.com/orlandos-nl/Citadel",
                  "state": {"version": "0.12.1", "revision": "ae8562f895de06ccb86fdb1cbb65fd99c8976e12"}})
+    pins.sort(key=lambda pin: pin["identity"])
     inventory, notices = [], ["Herdcats and third-party software licenses\n\n"]
     notices.append(section("Herdcats", "https://github.com/zhiyao/herdcats/blob/main/LICENSE", (ROOT / "LICENSE").read_text()))
     for pin in pins:

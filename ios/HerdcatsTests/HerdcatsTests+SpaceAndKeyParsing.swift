@@ -305,6 +305,67 @@ struct OpenSSHKeyParserTests {
 
     @MainActor
     @Test
+    func connectionFormRejectsDamagedUnencryptedPrivateMaterial() throws {
+        let body = Self.unencryptedPEM.split(separator: "\n").filter { !$0.hasPrefix("-----") }.joined()
+        let bytes = try #require(Data(base64Encoded: body))
+        var offset = 15
+        func skipString() {
+            let length = bytes[offset..<(offset + 4)].reduce(0) { ($0 << 8) | Int($1) }
+            offset += 4 + length
+        }
+        for _ in 0..<3 { skipString() }
+        offset += 4 // number of keys
+        skipString() // outer public key
+        let privateStart = offset + 4
+        var badChecks = bytes
+        badChecks[privateStart + 4] ^= 1
+        var mismatchedPublicKey = bytes
+        mismatchedPublicKey[offset - 1] ^= 1
+        let truncated = Data(bytes.prefix(privateStart + 12))
+        let entry = RecentConnection(host: "fixture.example", port: 22,
+            username: "tester", authMode: "privateKey", remember: true)
+        defer { try? KeychainStore.delete(account: entry.secretAccount) }
+        for damaged in [truncated, badChecks, mismatchedPublicKey] {
+            let pem = "-----BEGIN OPENSSH PRIVATE KEY-----\n" + damaged.base64EncodedString() + "\n-----END OPENSSH PRIVATE KEY-----"
+            // All three retain a readable outer public key.
+            _ = try OpenSSHEd25519.parsePublicKey(pem: pem)
+            try KeychainStore.save(pem, account: entry.secretAccount)
+            let form = ConnectionSettingsView(connection: entry)
+            #expect(form.keyValidationError != nil)
+            #expect(form.derivedPublicKey == nil)
+            #expect(!form.canConnect)
+        }
+        try KeychainStore.save(Self.unencryptedPEM, account: entry.secretAccount)
+        let validForm = ConnectionSettingsView(connection: entry)
+        #expect(validForm.keyValidationError == nil)
+        #expect(validForm.derivedPublicKey == OpenSSHParserFixture.publicKeyLine)
+        #expect(validForm.canConnect)
+    }
+
+    @MainActor
+    @Test
+    func connectionFormInspectsEncryptedKeysWithoutDecrypting() throws {
+        let entry = RecentConnection(host: "fixture.example", port: 22,
+            username: "tester", authMode: "privateKey", remember: true)
+        try KeychainStore.save(Self.encrypted64, account: entry.secretAccount)
+        defer {
+            try? KeychainStore.delete(account: entry.secretAccount)
+            try? KeychainStore.delete(account: entry.secretAccount + ".passphrase")
+        }
+        let lockedForm = ConnectionSettingsView(connection: entry)
+        #expect(lockedForm.keyValidationError == nil)
+        #expect(lockedForm.derivedPublicKey != nil)
+        #expect(!lockedForm.canConnect)
+        // Passphrase verification belongs to the connection attempt, not rendering.
+        try KeychainStore.save("wrong", account: entry.secretAccount + ".passphrase")
+        let readyForm = ConnectionSettingsView(connection: entry)
+        #expect(readyForm.keyValidationError == nil)
+        #expect(readyForm.derivedPublicKey != nil)
+        #expect(readyForm.canConnect)
+    }
+
+    @MainActor
+    @Test
     func encryptedKeyFormRendersOnInitialPresentation() async throws {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let previousKeyWindow = scene.windows.first(where: \.isKeyWindow)

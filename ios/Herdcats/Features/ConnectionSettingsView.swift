@@ -26,7 +26,16 @@ struct ConnectionSettingsView: View {
     @State var showingSetupGuide = false
 
     var derivedPublicKey: String? {
-        try? OpenSSHEd25519.parseOpenSSHPublicKeyString(pem: keyPEM)
+        try? OpenSSHEd25519.openSSHPublicKeyString(for: validatedPublicKey())
+    }
+
+    private func validatedPublicKey() throws -> Data {
+        // Validate plaintext private material before enabling Connect. Encrypted
+        // keys expose metadata here; unlock them only during the connection attempt.
+        if try !OpenSSHEd25519.isEncrypted(pem: keyPEM) {
+            _ = try OpenSSHEd25519.parseRawPrivateKey(pem: keyPEM)
+        }
+        return try OpenSSHEd25519.parsePublicKey(pem: keyPEM)
     }
 
     var maskedPrivateKey: String {
@@ -47,7 +56,7 @@ struct ConnectionSettingsView: View {
                 + "(ssh-keygen -t ed25519)."
         }
         do {
-            _ = try OpenSSHEd25519.parsePublicKey(pem: trimmed)
+            _ = try validatedPublicKey()
             return nil
         } catch let keyError as OpenSSHKeyError {
             return keyError.errorDescription
