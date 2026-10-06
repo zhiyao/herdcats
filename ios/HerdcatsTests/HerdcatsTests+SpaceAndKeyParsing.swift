@@ -321,14 +321,26 @@ struct OpenSSHKeyParserTests {
         badChecks[privateStart + 4] ^= 1
         var mismatchedPublicKey = bytes
         mismatchedPublicKey[offset - 1] ^= 1
+        offset = privateStart + 8 // check integers
+        skipString() // key type
+        let innerPublicStart = offset + 4
+        skipString() // public key inside private section
+        let seedStart = offset + 4
+        var corruptedSeed = bytes
+        corruptedSeed[seedStart] ^= 1
+        var mismatchedInnerPublicKey = bytes
+        mismatchedInnerPublicKey[innerPublicStart] ^= 1
         let truncated = Data(bytes.prefix(privateStart + 12))
         let entry = RecentConnection(host: "fixture.example", port: 22,
             username: "tester", authMode: "privateKey", remember: true)
         defer { try? KeychainStore.delete(account: entry.secretAccount) }
-        for damaged in [truncated, badChecks, mismatchedPublicKey] {
+        for damaged in [truncated, badChecks, mismatchedPublicKey, corruptedSeed, mismatchedInnerPublicKey] {
             let pem = "-----BEGIN OPENSSH PRIVATE KEY-----\n" + damaged.base64EncodedString() + "\n-----END OPENSSH PRIVATE KEY-----"
-            // All three retain a readable outer public key.
+            // Each retains a readable outer public key.
             _ = try OpenSSHEd25519.parsePublicKey(pem: pem)
+            #expect(throws: OpenSSHKeyError.self) {
+                _ = try OpenSSHEd25519.parseRawPrivateKey(pem: pem)
+            }
             try KeychainStore.save(pem, account: entry.secretAccount)
             let form = ConnectionSettingsView(connection: entry)
             #expect(form.keyValidationError != nil)

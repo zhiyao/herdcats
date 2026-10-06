@@ -247,7 +247,7 @@ extension Curve25519.Signing.PrivateKey {
             throw OpenSSHKeyError.unsupportedKeyType(keyType)
         }
 
-        _ = try privateSection.readString() // public key (again)
+        let publicKeyInPrivateSection = try privateSection.readString()
         let privateKeyBytes = try privateSection.readString()
 
         // ed25519 OpenSSH private material is 64 bytes (seed || public key);
@@ -262,5 +262,9 @@ extension Curve25519.Signing.PrivateKey {
         }
 
         try self.init(rawRepresentation: seed)
+        guard publicKey.rawRepresentation == publicKeyFromPrivate,
+              publicKey.rawRepresentation == publicKeyInPrivateSection else {
+            throw OpenSSHKeyError.invalidFormat("public/private key mismatch")
+        }
     }
 }
