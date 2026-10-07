@@ -191,6 +191,10 @@ actor HerdrConnection {
     var disconnectHandler: (@Sendable () -> Void)?
     /// Exclusive remote composer mutations (send, escape).
     let paneInput = PaneInputCoordinator()
+    var liveShells: [String: PaneLiveShells] = [:]
+    var preparingLiveShells: [String: UUID] = [:]
+    var activeLiveSessions: [String: PaneLiveInputSession] = [:]
+    var liveShellUnavailableGeneration: ConnectionGeneration?
 
     private(set) var host: String = ""
     private(set) var username: String = ""
@@ -205,6 +209,7 @@ actor HerdrConnection {
     /// Reserves a transport generation before dialing so every teardown path
     /// has an identity. Closes any previous client in the background.
     func reserveConnectGeneration() async -> ConnectionGeneration {
+        closeAllLiveShells()
         let (attempt, previous) = slot.beginReplace()
         disconnectHandler = nil
         identity = nil
@@ -285,6 +290,7 @@ actor HerdrConnection {
         case .stale:
             return
         case let .invalidated(oldClient):
+            closeAllLiveShells()
             disconnectHandler = nil
             identity = nil
             if let oldClient {
@@ -310,6 +316,7 @@ actor HerdrConnection {
         case .stale:
             return
         case let .invalidated(oldClient):
+            closeAllLiveShells()
             disconnectHandler = nil
             if let oldClient {
                 Task.detached(priority: .utility) {
@@ -326,6 +333,7 @@ actor HerdrConnection {
         case .stale:
             return
         case .invalidated:
+            closeAllLiveShells()
             let handler = disconnectHandler
             disconnectHandler = nil
             Task.detached { handler?() }
@@ -343,6 +351,7 @@ actor HerdrConnection {
         case .stale:
             return
         case let .invalidated(oldClient):
+            closeAllLiveShells()
             let handler = notifyDisconnect ? disconnectHandler : nil
             disconnectHandler = nil
             if let oldClient {
