@@ -1380,7 +1380,7 @@ struct PaneSessionView: View {
         }
         .task(id: liveSessionTaskKey) {
             var retryDelay = 2.0
-            while !Task.isCancelled && !appModel.isOffline {
+            while !Task.isCancelled && !appModel.isOffline && appModel.isSceneActive {
                 if liveSession == nil || liveQueueState == .needsResync {
                     await resumeLiveInput()
                     retryDelay = liveInputEnabled ? 2 : min(retryDelay * 2, 10)
@@ -1469,6 +1469,7 @@ struct PaneSessionView: View {
         .onChange(of: scenePhase) { _, phase in
             appModel.isSceneActive = phase == .active
             if phase == .background {
+                abandonLiveInput()
                 flushDraftSave()
                 dictation.cancel()
             }
@@ -1538,7 +1539,7 @@ struct PaneSessionView: View {
     /// after a successful pane read. The Voice/Compose detour keeps the
     /// session warm — it is the same pane and SSH generation.
     private var liveSessionTaskKey: String {
-        guard !appModel.isOffline else { return "off" }
+        guard !appModel.isOffline, appModel.isSceneActive else { return "off" }
         return "live-session:\(pane.paneId)"
     }
 
@@ -1565,6 +1566,12 @@ struct PaneSessionView: View {
         resetLiveModifiers()
         do {
             let token = try await appModel.connection.beginPaneLiveInput(paneId: targetPaneId)
+            var installed = false
+            defer {
+                if !installed {
+                    Task { await appModel.connection.endPaneLiveInput(token) }
+                }
+            }
             guard !Task.isCancelled,
                   pane.paneId == targetPaneId,
                   !appModel.isOffline else { return }
@@ -1585,6 +1592,7 @@ struct PaneSessionView: View {
             }
             liveQueue = queue
             liveSession = token
+            installed = true
             liveModifierComposer.noteSession(token)
         } catch {
             // Keep later input disabled until the recovery loop acquires a
@@ -1622,6 +1630,9 @@ struct PaneSessionView: View {
     /// disconnect, or leaving the pane. Accepted-but-undelivered events are
     /// discarded — never replayed into another pane or SSH generation.
     private func abandonLiveInput() {
+        if let token = liveSession {
+            Task { await appModel.connection.endPaneLiveInput(token) }
+        }
         if let liveQueue {
             liveMetrics.noteAbandoned()
             liveQueue.abandonQueuedInput()

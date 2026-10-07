@@ -75,6 +75,11 @@ public struct TTYOutput: AsyncSequence {
 public struct TTYStdinWriter {
     internal let channel: Channel
 
+    /// Close an owned exec stream, including when its reader is waiting for data.
+    public func close() async throws {
+        try await channel.close()
+    }
+
     /// Write raw bytes to the TTY's standard input
     /// - Parameter buffer: The bytes to write
     public func write(_ buffer: ByteBuffer) async throws {
