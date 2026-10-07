@@ -210,7 +210,16 @@ extension HerdrConnection {
     /// Empty output is legitimate here (a freshly cleared pane), so it is
     /// allowed through instead of being treated as a protocol error.
     func paneReadText(paneId: String, lines: Int = 400) async throws -> String {
-        try await runHerdr(
+        if let shells = liveShells[paneId], shells.session.generation == generation,
+           await shells.output.isOpen {
+            let output = try await shells.output.execute(Self.remoteCommand(
+                "pane read \(Self.shellSafeArgument(paneId)) --source recent-unwrapped --lines \(lines) --format ansi"
+            ))
+            try requireGeneration(shells.session.generation)
+            if output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "" }
+            return try Self.interpret(output)
+        }
+        return try await runHerdr(
             "pane read \(Self.shellSafeArgument(paneId)) --source recent-unwrapped --lines \(lines) --format ansi",
             allowEmptyOutput: true
         )
@@ -251,9 +260,12 @@ extension HerdrConnection {
         // Compose mutation rejects this begin rather than minting a stale token.
         let owned = generation
         try requireGeneration(owned)
-        return try await paneInput.run(paneId: trimmed) {
+        let session = try await paneInput.run(paneId: trimmed) {
             try await self.paneLiveBeginBarrierUnlocked(paneId: trimmed, owned: owned)
         }
+        await prepareLiveShells(session: session)
+        try requireGeneration(owned)
+        return session
     }
 
     func paneLiveBeginBarrierUnlocked(
@@ -263,7 +275,9 @@ extension HerdrConnection {
         try requireGeneration(owned)
         // No remote command — lane acquisition itself serializes behind Compose.
         try requireGeneration(owned)
-        return PaneLiveInputSession(paneId: paneId, generation: owned)
+        let session = PaneLiveInputSession(paneId: paneId, generation: owned)
+        activeLiveSessions[paneId] = session
+        return session
     }
 
     /// Live-only `pane send-text` through the exclusive pane lane. Checks the
@@ -286,6 +300,9 @@ extension HerdrConnection {
 
     func paneLiveTypeTextUnlocked(text: String, session: PaneLiveInputSession) async throws {
         try requireGeneration(session.generation)
+        if try await sendThroughLiveShell(
+            Self.paneSendTextArguments(paneId: session.paneId, text: text), session: session
+        ) { return }
         try await paneTypeTextUnlocked(
             paneId: session.paneId, text: text, owned: session.generation
         )
@@ -294,6 +311,9 @@ extension HerdrConnection {
 
     func paneLiveSendKeysUnlocked(_ keys: [String], session: PaneLiveInputSession) async throws {
         try requireGeneration(session.generation)
+        if try await sendThroughLiveShell(
+            Self.paneSendKeysArguments(paneId: session.paneId, keys: keys), session: session
+        ) { return }
         try await paneSendKeysUnlocked(
             paneId: session.paneId, keys, owned: session.generation
         )

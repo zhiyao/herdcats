@@ -1380,7 +1380,7 @@ struct PaneSessionView: View {
         }
         .task(id: liveSessionTaskKey) {
             var retryDelay = 2.0
-            while !Task.isCancelled && !appModel.isOffline {
+            while !Task.isCancelled && !appModel.isOffline && appModel.isSceneActive {
                 if liveSession == nil || liveQueueState == .needsResync {
                     await resumeLiveInput()
                     retryDelay = liveInputEnabled ? 2 : min(retryDelay * 2, 10)
@@ -1422,7 +1422,7 @@ struct PaneSessionView: View {
             guard !draining, liveQueue != nil, liveQueueState == .needsResync else { return }
             liveMetrics.noteDeliveryFailure()
             lastLiveAckAt = nil
-            liveSession = nil
+            PaneLiveSessionTeardown.retire(&liveSession, connection: appModel.connection)
             resetLiveModifiers()
         }
     }
@@ -1469,6 +1469,7 @@ struct PaneSessionView: View {
         .onChange(of: scenePhase) { _, phase in
             appModel.isSceneActive = phase == .active
             if phase == .background {
+                abandonLiveInput()
                 flushDraftSave()
                 dictation.cancel()
             }
@@ -1538,7 +1539,7 @@ struct PaneSessionView: View {
     /// after a successful pane read. The Voice/Compose detour keeps the
     /// session warm — it is the same pane and SSH generation.
     private var liveSessionTaskKey: String {
-        guard !appModel.isOffline else { return "off" }
+        guard !appModel.isOffline, appModel.isSceneActive else { return "off" }
         return "live-session:\(pane.paneId)"
     }
 
@@ -1561,10 +1562,16 @@ struct PaneSessionView: View {
     private func resumeLiveInput() async {
         let targetPaneId = pane.paneId
         guard !appModel.isOffline else { return }
-        liveSession = nil
+        PaneLiveSessionTeardown.retire(&liveSession, connection: appModel.connection)
         resetLiveModifiers()
         do {
             let token = try await appModel.connection.beginPaneLiveInput(paneId: targetPaneId)
+            var installed = false
+            defer {
+                if !installed {
+                    Task { await appModel.connection.endPaneLiveInput(token) }
+                }
+            }
             guard !Task.isCancelled,
                   pane.paneId == targetPaneId,
                   !appModel.isOffline else { return }
@@ -1585,11 +1592,12 @@ struct PaneSessionView: View {
             }
             liveQueue = queue
             liveSession = token
+            installed = true
             liveModifierComposer.noteSession(token)
         } catch {
             // Keep later input disabled until the recovery loop acquires a
             // fresh token; never retry an uncertain key.
-            liveSession = nil
+            PaneLiveSessionTeardown.retire(&liveSession, connection: appModel.connection)
         }
     }
 
@@ -1611,7 +1619,7 @@ struct PaneSessionView: View {
             liveMetrics.noteDiscardedEvents(1)
             liveMetrics.noteAbandoned()
             queue.abandonQueuedInput()
-            liveSession = nil
+            PaneLiveSessionTeardown.retire(&liveSession, connection: appModel.connection)
             lastLiveAckAt = nil
             return
         }
@@ -1626,7 +1634,7 @@ struct PaneSessionView: View {
             liveMetrics.noteAbandoned()
             liveQueue.abandonQueuedInput()
         }
-        liveSession = nil
+        PaneLiveSessionTeardown.retire(&liveSession, connection: appModel.connection)
         lastLiveAckAt = nil
         lastLiveReadAt = nil
         resetLiveModifiers()
