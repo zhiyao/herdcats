@@ -12,6 +12,8 @@ enum PaneLiveInputEvent: Sendable, Equatable {
 struct PaneLiveInputSession: Sendable, Equatable {
     let paneId: String
     let generation: ConnectionGeneration
+    /// Distinguishes successive Live owners on the same connection and pane.
+    let streamID: UUID = UUID()
 }
 
 /// Observable delivery phase for Live input.

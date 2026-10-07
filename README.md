@@ -14,6 +14,11 @@ messages, dictation, and photos from your phone.
 
 Herdcats uses SwiftUI and Observation on iOS 17 or later. It runs the remote
 `herdr` CLI over SSH; it needs no companion daemon or custom relay.
+Live pane input and reads reuse persistent POSIX shell channels when available,
+with separate channels so output reads do not block typing. This uses stock
+Herdr and SSH without Python, additional host packages, or an installed helper.
+Hosts that cannot open these channels use the existing SSH command path.
+Input remains acknowledged in order; uncertain sends are never replayed.
 [Tailscale](https://tailscale.com) is the recommended way to connect your phone
 and Herdr machine. Any network that can reach the SSH server also works.
 
