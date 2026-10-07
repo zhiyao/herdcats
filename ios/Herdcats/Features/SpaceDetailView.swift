@@ -1422,7 +1422,7 @@ struct PaneSessionView: View {
             guard !draining, liveQueue != nil, liveQueueState == .needsResync else { return }
             liveMetrics.noteDeliveryFailure()
             lastLiveAckAt = nil
-            liveSession = nil
+            PaneLiveSessionTeardown.retire(&liveSession, connection: appModel.connection)
             resetLiveModifiers()
         }
     }
@@ -1562,7 +1562,7 @@ struct PaneSessionView: View {
     private func resumeLiveInput() async {
         let targetPaneId = pane.paneId
         guard !appModel.isOffline else { return }
-        liveSession = nil
+        PaneLiveSessionTeardown.retire(&liveSession, connection: appModel.connection)
         resetLiveModifiers()
         do {
             let token = try await appModel.connection.beginPaneLiveInput(paneId: targetPaneId)
@@ -1597,7 +1597,7 @@ struct PaneSessionView: View {
         } catch {
             // Keep later input disabled until the recovery loop acquires a
             // fresh token; never retry an uncertain key.
-            liveSession = nil
+            PaneLiveSessionTeardown.retire(&liveSession, connection: appModel.connection)
         }
     }
 
@@ -1619,7 +1619,7 @@ struct PaneSessionView: View {
             liveMetrics.noteDiscardedEvents(1)
             liveMetrics.noteAbandoned()
             queue.abandonQueuedInput()
-            liveSession = nil
+            PaneLiveSessionTeardown.retire(&liveSession, connection: appModel.connection)
             lastLiveAckAt = nil
             return
         }
@@ -1630,14 +1630,11 @@ struct PaneSessionView: View {
     /// disconnect, or leaving the pane. Accepted-but-undelivered events are
     /// discarded — never replayed into another pane or SSH generation.
     private func abandonLiveInput() {
-        if let token = liveSession {
-            Task { await appModel.connection.endPaneLiveInput(token) }
-        }
         if let liveQueue {
             liveMetrics.noteAbandoned()
             liveQueue.abandonQueuedInput()
         }
-        liveSession = nil
+        PaneLiveSessionTeardown.retire(&liveSession, connection: appModel.connection)
         lastLiveAckAt = nil
         lastLiveReadAt = nil
         resetLiveModifiers()

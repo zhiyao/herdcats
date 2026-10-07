@@ -249,3 +249,15 @@ extension HerdrConnection {
         }
     }
 }
+
+/// Capture the shell owner before disabling input. Failure and recovery paths
+/// use the same teardown as pane departure, so clearing the UI token cannot
+/// leave its channels alive if the view disappears before recovery runs.
+enum PaneLiveSessionTeardown {
+    @MainActor
+    static func retire(_ session: inout PaneLiveInputSession?, connection: HerdrConnection) {
+        guard let token = session else { return }
+        Task { await connection.endPaneLiveInput(token) }
+        session = nil
+    }
+}

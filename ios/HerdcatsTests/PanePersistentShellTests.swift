@@ -141,6 +141,31 @@ private extension HerdrConnection {
 
 @Suite("Live shell ownership")
 struct PaneLiveShellOwnershipTests {
+    @Test @MainActor func failureThenDepartureClosesBothShellsWithoutRecovery() async throws {
+        let connection = HerdrConnection()
+        let token = PaneLiveInputSession(paneId: "w1:p1", generation: ConnectionGeneration(rawValue: 1))
+        let inputWire = ShellTestWire()
+        let outputWire = ShellTestWire()
+        let input = PanePersistentShell(writeCommand: { await inputWire.write($0) }, closeChannel: { await inputWire.close() })
+        let output = PanePersistentShell(writeCommand: { await outputWire.write($0) }, closeChannel: { await outputWire.close() })
+        await connection.installShellTestOwner(token, input: input, output: output)
+        var liveSession: PaneLiveInputSession? = token
+
+        // Failure disables input; background/departure follows before recovery.
+        PaneLiveSessionTeardown.retire(&liveSession, connection: connection)
+        #expect(liveSession == nil)
+        PaneLiveSessionTeardown.retire(&liveSession, connection: connection)
+        for _ in 0..<1_000 {
+            if await inputWire.closeCount == 1, await outputWire.closeCount == 1 { break }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        #expect(await connection.shellTestOwnerIs(token) == false)
+        #expect(await inputWire.closeCount == 1)
+        #expect(await outputWire.closeCount == 1)
+        #expect(await input.isOpen == false)
+        #expect(await output.isOpen == false)
+    }
+
     @Test func delayedOldViewCleanupCannotCloseNewOwner() async {
         let connection = HerdrConnection()
         let generation = ConnectionGeneration(rawValue: 1)
