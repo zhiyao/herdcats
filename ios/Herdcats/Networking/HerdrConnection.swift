@@ -47,6 +47,11 @@ struct SSHHostKeyChallenge: Equatable, Sendable {
     let host: String
     let port: Int
     let publicKey: String
+    var previousPublicKey: String? = nil
+
+    var previousFingerprint: String? {
+        previousPublicKey.map(SSHHostKeyValidatorDelegate.fingerprint)
+    }
 
     var fingerprint: String {
         SSHHostKeyValidatorDelegate.fingerprint(publicKey)
@@ -55,15 +60,15 @@ struct SSHHostKeyChallenge: Equatable, Sendable {
 
 enum SSHHostKeyError: LocalizedError, Equatable {
     case unknown(SSHHostKeyChallenge)
-    case changed(host: String, port: Int, expected: String, received: String)
+    case changed(SSHHostKeyChallenge)
 
     var errorDescription: String? {
         switch self {
         case let .unknown(challenge):
             "Verify the SSH host key for \(challenge.host):\(challenge.port) before connecting."
-        case let .changed(host, port, expected, received):
-            "SSH host key changed for \(host):\(port). Connection blocked. "
-                + "Saved: \(expected). Received: \(received). "
+        case let .changed(challenge):
+            "SSH host key changed for \(challenge.host):\(challenge.port). Connection blocked. "
+                + "Saved: \(challenge.previousFingerprint ?? "Unknown"). Received: \(challenge.fingerprint). "
                 + "Verify this change with the server administrator through a trusted channel."
         }
     }
@@ -88,9 +93,9 @@ struct SSHHostKeyValidatorDelegate: NIOSSHClientServerAuthenticationDelegate {
             throw SSHHostKeyError.unknown(SSHHostKeyChallenge(host: host, port: port, publicKey: publicKey))
         }
         guard publicKey == trustedKey else {
-            throw SSHHostKeyError.changed(host: host, port: port,
-                                          expected: Self.fingerprint(trustedKey),
-                                          received: Self.fingerprint(publicKey))
+            throw SSHHostKeyError.changed(SSHHostKeyChallenge(
+                host: host, port: port, publicKey: publicKey, previousPublicKey: trustedKey
+            ))
         }
     }
 

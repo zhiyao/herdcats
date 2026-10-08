@@ -98,7 +98,9 @@ standard logos. Regenerate the launch-cat assets with
    fingerprint through a trusted channel, then approve it.
 
 Remembered credentials and approved host keys stay in the iOS Keychain. A
-changed host key blocks connection, including automatic reconnects.
+changed host key blocks connection, including automatic reconnects. The app shows
+both fingerprints and lets you replace the approved key after explicitly confirming
+that you verified the new fingerprint through a trusted channel.
 
 Optional: install [quota-axi](https://www.npmjs.com/package/quota-axi) on the
 connected machine to show provider quota. It is not required for pane access.
@@ -185,7 +187,8 @@ hosted independently of the iPhone app.
   after restarting the app.
 - A readable Herdr default session is required; session selection is not wired up.
 - Backgrounding pauses polling. This is not a general-purpose SSH shell.
-- There is no in-app host-key rotation flow. A changed key fails closed.
+- Host-key changes require manual verification and explicit replacement approval.
+  Automatic reconnects remain blocked until approval.
 - Uploaded photos remain under `~/.cache/herdrcat/attachments` on the connected
   machine until you remove them; the app does not automatically delete them.
 - Saved-machine routing uses the gateway machine's SSH configuration. Quota and
