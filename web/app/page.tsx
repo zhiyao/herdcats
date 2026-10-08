@@ -50,7 +50,7 @@ export default function Home() {
           <h1 className="hero-title">Herdcats</h1>
           <p className="hero-subtitle">Tame your autonomous agents from your pocket.</p>
           <p className="hero-description">
-            Herding AI agents used to feel impossible the moment you stepped away from your desk. Herdcats connects directly to Herdr over SSH so you can monitor progress, unblock agents, and keep the herd moving — right from your iPhone.
+            Herdcats is an iPhone client for Herdr. It connects to your machine over SSH, so you can read agent output, answer a blocked prompt, and send input while you are away from your desk.
           </p>
           <div className="hero-actions">
             <a

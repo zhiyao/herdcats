@@ -30,22 +30,19 @@ export default function AboutPage() {
         <h2 className={styles.label}>What</h2>
         <p>Herdcats is a minimal iPhone app for Herdr:</p>
         <ul className={styles.list}>
-          <li>Direct SSH, with no server and no middle layer</li>
-          <li>Fast and simple, built around Herdr&rsquo;s own spaces, tabs, panes and agents</li>
-          <li>Built-in quota integration so you can see your subscription usage</li>
+          <li>Direct SSH to your machine, with no relay or companion server</li>
+          <li>Navigation that follows Herdr&rsquo;s own spaces, tabs, panes and agents</li>
+          <li>An optional quota view, if <code>quota-axi</code> is installed on the connected machine</li>
         </ul>
       </section>
 
       <section className={styles.section}>
         <h2 className={styles.label}>Why Herdcats?</h2>
         <p>
-          In Monty Python&rsquo;s <em>Life of Brian</em>, shepherds joke about a herd of cats waiting to
-          be sheared — the point being it&rsquo;s absurd, basically impossible. That&rsquo;s the playful
-          take: &ldquo;herding cats&rdquo; means trying to wrangle things that refuse to be wrangled. Managing
-          independent AI agents feels the same. The name also nods to{' '}
+          &ldquo;Herding cats&rdquo; means trying to organize things that won&rsquo;t be organized, which is
+          how running several independent AI agents can feel. The name also nods to{' '}
           <a href="https://herdr.dev" target="_blank" rel="noopener noreferrer">Herdr</a>
           &rsquo;s herd, and to the lazy pixel cats that show up when you&rsquo;re waiting or offline.
-          Herding cats, from your pocket.
         </p>
       </section>
 
@@ -57,7 +54,7 @@ export default function AboutPage() {
             open source
           </a>{' '}
           and contributions are welcome. It&rsquo;s on TestFlight now and coming to the App Store for a
-          small one-time price that covers the developer fee.
+          one-time price of US$9.99.
         </p>
       </section>
     </SitePage>

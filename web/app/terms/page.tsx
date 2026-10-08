@@ -5,10 +5,6 @@ export const metadata = {
   description: 'Terms for using Herdcats, the open source iPhone client for Herdr.',
 };
 
-/**
- * Draft Terms of Service for counsel review — not legal advice.
- * Before publishing: confirm legal entity name, governing law/venue, and contact.
- */
 export default function TermsPage() {
   return (
     <SitePage current="terms" title="Terms of Service">
@@ -25,7 +21,6 @@ export default function TermsPage() {
           The Service is provided by the publisher of Herdcats (&ldquo;we,&rdquo; &ldquo;us,&rdquo; or
           &ldquo;Publisher&rdquo;). For legal notices, contact{' '}
           <a href="mailto:hello@enchantinglabs.com">hello@enchantinglabs.com</a>.
-          {/* Counsel: replace “Publisher” with the formal legal entity name and address. */}
         </p>
         <p>
           By downloading, installing, accessing, or using the Service, you agree to these Terms.

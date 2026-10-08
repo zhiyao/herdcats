@@ -313,6 +313,7 @@ export default function SupportPage() {
     <div className="support-wrapper" ref={scrollRoot}>
       <SiteHeader current="support" title="Support">
         <p>Find answers, connect your iPhone to Herdr, and switch between your machines.</p>
+        <p>Still stuck? Email <a href="mailto:hello@enchantinglabs.com">hello@enchantinglabs.com</a> or open an issue on <a href="https://github.com/zhiyao/herdcats/issues" target="_blank" rel="noopener noreferrer">GitHub</a>. Leave out passwords, keys and passphrases.</p>
       </SiteHeader>
 
       {/* Main Content */}
@@ -681,8 +682,8 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
                 <div className="feature-cell">
                   <h3 id="ssh-keys-why-ed25519">Why Ed25519?</h3>
                   <p>
-                    Ed25519 represents modern OpenSSH standards. Keys are compact (32 bytes), extremely fast to negotiate,
-                    immune to timing attacks, and supported natively by Apple CryptoKit.
+                    Ed25519 is the key type Herdcats supports. The keys are short and quick to generate, and
+                    OpenSSH has used them by default for years.
                   </p>
                 </div>
                 <div className="feature-cell">
@@ -746,7 +747,7 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
                 <div className="faq-item">
                   <h3 id="troubleshooting-connection-timeout-host-unreachable"><TriangleAlert className="warn-icon" size={18} strokeWidth={2.25} aria-hidden="true" /><span>Connection Timeout / Host Unreachable</span></h3>
                   <p>
-                    If connecting over Wi-Fi, ensure your phone and computer are on the same subnet. For remote access across networks, install <strong>Tailscale</strong> on both devices to connect seamlessly via MagicDNS.
+                    If connecting over Wi-Fi, ensure your phone and computer are on the same subnet. For remote access across networks, install <strong>Tailscale</strong> on both devices to connect by MagicDNS hostname.
                   </p>
                 </div>
 

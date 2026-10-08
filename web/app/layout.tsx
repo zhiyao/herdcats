@@ -12,7 +12,7 @@ const themeScript = `try{document.documentElement.dataset.theme=localStorage.get
 export const metadata: Metadata = {
   metadataBase: new URL('https://herdcats.dev'),
   title: 'Herdcats — Herding cats, from your pocket',
-  description: 'Herding cats, from your pocket. Native iPhone client for Herdr with git worktrees, Citadel SSH, and live terminal pane streaming.',
+  description: 'A native iPhone client for Herdr. Connect over SSH to browse spaces and agents, read terminal output, and send input from your phone.',
   icons: {
     icon: [
       { url: '/assets/favicon.png', sizes: '32x32', type: 'image/png' },
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: 'Herdcats — Herding cats, from your pocket',
-    description: 'Herding cats, from your pocket. Native iPhone client for Herdr with git worktrees, Citadel SSH, and live terminal pane streaming.',
+    description: 'A native iPhone client for Herdr. Connect over SSH to browse spaces and agents, read terminal output, and send input from your phone.',
     // No openGraph.url — nested routes inherit this object; a fixed '/' would mislabel them.
     siteName: 'Herdcats',
     type: 'website',
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'Herdcats — Herding cats, from your pocket',
-    description: 'Herding cats, from your pocket. Native iPhone client for Herdr with git worktrees, Citadel SSH, and live terminal pane streaming.',
+    description: 'A native iPhone client for Herdr. Connect over SSH to browse spaces and agents, read terminal output, and send input from your phone.',
     images: ['/og.png'],
   },
 };
