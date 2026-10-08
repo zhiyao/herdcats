@@ -25,6 +25,7 @@ final class PaneDictation: NSObject, SFSpeechRecognizerDelegate {
     private var isFinishing = false
     private var hasTap = false
     private var audioSessionActive = false
+    private var previousIdleTimerDisabled: Bool?
     private var reportError: ((String) -> Void)?
 
 #if DEBUG && targetEnvironment(simulator)
@@ -59,6 +60,10 @@ final class PaneDictation: NSObject, SFSpeechRecognizerDelegate {
             fail("Allow Microphone access for Herdcats in Settings to dictate messages.")
             return
         }
+        // Dictation needs its transcript and finish control to remain visible.
+        // Auto-Lock backgrounds the app, whose lifecycle handler cancels capture.
+        previousIdleTimerDisabled = UIApplication.shared.isIdleTimerDisabled
+        UIApplication.shared.isIdleTimerDisabled = true
         transcript = DictationTranscript(committed: initialText())
         self.onText = onText
         isFinishing = false
@@ -231,6 +236,10 @@ final class PaneDictation: NSObject, SFSpeechRecognizerDelegate {
     }
 
     func cancel() {
+        if let previousIdleTimerDisabled {
+            UIApplication.shared.isIdleTimerDisabled = previousIdleTimerDisabled
+            self.previousIdleTimerDisabled = nil
+        }
         sessionID = nil
         segmentID = nil
         timeout?.cancel()
