@@ -3,6 +3,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { SiteNav } from '@/components/SiteNav';
+import { SiteFooter } from '@/components/SitePage';
 import { VictoryModal } from '@/components/VictoryModal';
 import { ConfettiCanvas } from '@/components/ConfettiCanvas';
 import type { CatCanvasHandle } from '@/components/CatCanvas';
@@ -63,6 +64,11 @@ export default function Home() {
             <span className="hero-hint">or herd the cats into the corral below</span>
           </div>
         </section>
+
+        {/* On mobile the header links collapse into this footer */}
+        <div className="landing-footer">
+          <SiteFooter />
+        </div>
       </div>
 
       {/* VICTORY CELEBRATION MODAL */}

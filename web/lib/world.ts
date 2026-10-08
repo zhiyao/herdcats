@@ -125,7 +125,15 @@ export class World {
     private theme: ThemeName = 'dark';
     private colors: CorralColors = NIGHT_COLORS;
 
-    constructor(container: HTMLElement) {
+    /**
+     * `skyReserve` returns how far down the page (in CSS pixels) the hero copy reaches, and
+     * `groundReserve` how tall the footer is. On narrow screens the meadow fits between them,
+     * so the cats never sit behind the text or links.
+     */
+    constructor(
+        container: HTMLElement,
+        private readonly options: { skyReserve?: () => number; groundReserve?: () => number } = {}
+    ) {
         this.container = container;
         this.canvas = document.createElement('canvas');
         this.canvas.style.display = 'block';
@@ -179,14 +187,19 @@ export class World {
 
         const usableWidth = this.width;
         const span = MEADOW_RADIUS * 2;
-        // Leave the top of the screen as night sky for the nav and hero copy.
-        const skyReserve = this.width < 700 ? 0 : this.height * 0.42;
-        const scale = Math.min(usableWidth / span, (this.height - skyReserve) / (span * GROUND_TILT + 3));
+        // Leave the top of the screen as sky for the nav and hero copy. Wide screens let the
+        // meadow tuck slightly under the CTA; narrow ones measure the hero and start below it,
+        // but always keep at least 30% of the height for the meadow.
+        const narrow = this.width < 700;
+        const skyReserve = narrow ? (this.options.skyReserve?.() ?? 0) : this.height * 0.42;
+        const groundReserve = narrow ? (this.options.groundReserve?.() ?? 0) : 0;
+        const meadowHeight = Math.max(this.height - skyReserve - groundReserve, this.height * 0.3);
+        const scale = Math.min(usableWidth / span, meadowHeight / (span * GROUND_TILT + 3));
         const pixel = Math.max(1, Math.round(scale * 0.11));
 
         this.originX = usableWidth / 2;
         // Rest the meadow on the bottom edge so the sky and scenery sit above it.
-        this.originY = this.height - MEADOW_RADIUS * GROUND_TILT * scale - Math.max(scale * 2, 24);
+        this.originY = this.height - groundReserve - MEADOW_RADIUS * GROUND_TILT * scale - Math.max(scale * 2, narrow ? 8 : 24);
 
         const snap = (value: number) => Math.round(value / pixel) * pixel;
         this.view = {
