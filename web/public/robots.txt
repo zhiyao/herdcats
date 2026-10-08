@@ -1,14 +1,4 @@
 User-agent: *
 Allow: /
-Disallow: /studies/
-Disallow: /command-pane/
-Disallow: /input-modes/
-Disallow: /live-toolbar/
-Disallow: /live-ui/
-Disallow: /pane-bar-options/
-Disallow: /pane-switcher-options/
-Disallow: /progress-spinner-options/
-Disallow: /progress-consolidation.html
-Disallow: /offline-demo.html
 
 Sitemap: https://herdcats.dev/sitemap.xml
