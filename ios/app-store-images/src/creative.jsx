@@ -3,7 +3,7 @@ import {AbsoluteFill, Img, Still, continueRender, delayRender, staticFile} from 
 import jost600 from './fonts/Jost-600.woff2';
 import {drawNightScenery, PALETTE} from '../../../web/lib/scenery.ts';
 
-// Product page header (21:9) and search results (3:2) creative assets.
+// Product page header (21:9), search results (3:2), and OG card (1200×630) creative assets.
 // Same Moonlit scenery as the website landing page (web/lib/scenery.ts), drawn
 // at export resolution so the pixels stay crisp. Text is one short phrase.
 const fontFace = `@font-face{font-family:"Jost";font-weight:600;src:url(${jost600}) format("woff2");}`;
@@ -77,11 +77,28 @@ export function SearchResult({sources, sizes}) {
   </AbsoluteFill>;
 }
 
+export function OgCard() {
+  const W = 1200, H = 630;
+  return <AbsoluteFill style={{overflow: 'hidden', fontFamily: font}}>
+    <style>{fontFace}</style>
+    <Scenery width={W} height={H} horizon={H * 0.88} pixel={6} moon={{x: W * 0.78, y: H * 0.28, r: 70}} />
+    <div style={{position: 'absolute', left: 96, right: 96, top: 0, bottom: 0,
+      display: 'flex', flexDirection: 'column', justifyContent: 'center'}}>
+      <Wordmark size={72} />
+      <div style={{marginTop: 28, fontSize: 42, fontWeight: 600, lineHeight: 1.2, letterSpacing: -1,
+        color: PALETTE.paper50}}>Native iPhone client</div>
+      <div style={{fontSize: 42, fontWeight: 600, lineHeight: 1.2, letterSpacing: -1,
+        color: PALETTE.mint200}}>for Herdr</div>
+    </div>
+  </AbsoluteFill>;
+}
+
 export function CreativeRoot() {
   const props = {sources: {main: 'spaces.png', second: 'agents.png'},
     sizes: {main: {width: 1320, height: 2868}, second: {width: 1320, height: 2868}}};
   return <>
     <Still id="ProductHeader" component={ProductHeader} width={3840} height={1646} defaultProps={props} />
     <Still id="SearchResult" component={SearchResult} width={3840} height={2560} defaultProps={props} />
+    <Still id="OgCard" component={OgCard} width={1200} height={630} />
   </>;
 }
