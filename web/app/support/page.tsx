@@ -273,6 +273,32 @@ export default function SupportPage() {
       cancelAnimationFrame(frame);
     };
   }, []);
+  useEffect(() => {
+    const keepActiveLinkVisible = () => {
+      const sidebar = scrollRoot.current?.querySelector<HTMLElement>('.support-sidebar');
+      const link = sidebar?.querySelector<HTMLElement>('[aria-current="location"]');
+      if (!sidebar || !link) return;
+      const mobile = window.matchMedia('(max-width: 800px)').matches;
+      const container = mobile ? sidebar.querySelector<HTMLElement>('nav') : sidebar;
+      if (!container) return;
+      const viewport = container.getBoundingClientRect();
+      const target = link.getBoundingClientRect();
+      // Scroll only the navigation container, leaving the article in place.
+      if (mobile) {
+        const left = target.left < viewport.left ? target.left - viewport.left
+          : target.right > viewport.right ? target.right - viewport.right : 0;
+        if (left) container.scrollBy({ left, behavior: 'instant' });
+      } else {
+        const top = target.top < viewport.top ? target.top - viewport.top
+          : target.bottom > viewport.bottom ? target.bottom - viewport.bottom : 0;
+        if (top) container.scrollBy({ top, behavior: 'instant' });
+      }
+    };
+    keepActiveLinkVisible();
+    window.addEventListener('resize', keepActiveLinkVisible);
+    return () => window.removeEventListener('resize', keepActiveLinkVisible);
+  }, [activeSection]);
+
   const [copiedIndex, setCopiedIndex] = useState<string | null>(null);
 
   const copyToClipboard = (text: string, id: string) => {
@@ -365,11 +391,11 @@ export default function SupportPage() {
         <div className="faq-item">
         <h4 id="privacy-can-i-sign-in-with-a-password-or-ssh-key" className="faq-question">Can I sign in with a password or SSH key?</h4>
         <p>You can use your computer account&#x27;s password or an OpenSSH ed25519 private key. Other private-key formats are unsupported.</p>
-        <p>Newer builds also support passphrase-protected ed25519 keys with certain settings: AES-128-CTR or AES-256-CTR encryption and bcrypt at 1–256 rounds. The 0.3.1 source preview supports only unencrypted keys. If your key is rejected, check your app version and ask your administrator to confirm the key format.</p>
+        <p>Passphrase-protected ed25519 keys are supported with these settings: AES-128-CTR or AES-256-CTR encryption and bcrypt at 1–256 rounds. If your key is rejected, check your app version and ask your administrator to confirm the key format.</p>
         </div>
         <div className="faq-item">
         <h4 id="privacy-do-i-have-to-enter-my-key-s-passphrase-every-time" className="faq-question">Do I have to enter my key&#x27;s passphrase every time?</h4>
-        <p>In builds that support encrypted keys, remembering the passphrase is optional. If you choose not to save it, you will need to unlock the key again after restarting the app.</p>
+        <p>Remembering the passphrase is optional. If you choose not to save it, you will need to unlock the key again after restarting the app.</p>
         </div>
         <div className="faq-item">
         <h4 id="privacy-what-is-the-fingerprint-the-app-asks-me-to-approve" className="faq-question">What is the fingerprint the app asks me to approve?</h4>
