@@ -1,14 +1,20 @@
 import React from 'react';
 import {AbsoluteFill, Img, Still, registerRoot, staticFile, useVideoConfig} from 'remotion';
+import jost600 from './fonts/Jost-600.woff2';
+
+// Jost (SIL OFL) is bundled so artwork renders identically on any machine.
+const fontFace = `@font-face{font-family:"Jost";font-weight:600;src:url(${jost600}) format("woff2");}`;
 
 // Marketing geometry is defined in a 1284 x 2778 reference canvas.
-// Palette and typography follow DESIGN.md; this is a decorative device shell,
+// Palette and typography follow the Moonlit theme in DESIGN.md (no shadows or gradients); this is a decorative device shell,
 // not an Apple-supplied hardware render. The screenshot itself is never stretched.
 const theme = {
-  canvas: '#0A0B0E',
-  ink: '#FFFFFF',
-  cyan: '#0EDCD5',
-  font: '"SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+  canvas: '#1B282E', // night-950
+  ink: '#F8F8F8', // paper-50
+  accent: '#ABE0B6', // mint-200
+  bezel: '#325156', // night-800
+  bezelEdge: '#26343D', // night-900
+  font: '"Jost", Futura, "Century Gothic", system-ui, sans-serif',
 };
 
 function Phone({source, sourceWidth, sourceHeight, width, left, top, rotation = 0, tablet = false}) {
@@ -27,8 +33,8 @@ function Phone({source, sourceWidth, sourceHeight, width, left, top, rotation = 
     padding: bezel,
     boxSizing: 'border-box',
     borderRadius: radius,
-    background: 'linear-gradient(135deg, #4A4D54 0%, #1E2024 15%, #383B42 45%, #18191C 75%, #42454D 100%)',
-    boxShadow: '0 40px 90px rgba(0, 0, 0, 0.85), 0 12px 30px rgba(0, 0, 0, 0.6), 0 0 1px 1px rgba(255, 255, 255, 0.08), 0 0 60px rgba(14, 220, 213, 0.06)',
+    background: theme.bezel,
+    border: `${width * 0.004}px solid ${theme.bezelEdge}`,
   }}>
     <div style={{
       position: 'relative',
@@ -37,7 +43,7 @@ function Phone({source, sourceWidth, sourceHeight, width, left, top, rotation = 
       overflow: 'hidden',
       borderRadius: radius - bezel,
       background: '#000000',
-      outline: `${width * 0.005}px solid #14161A`,
+      outline: `${width * 0.005}px solid ${theme.canvas}`,
     }}>
       <Img src={staticFile(source)} style={{display: 'block', width: screenWidth, height: screenHeight}} />
       {/* Simulator captures omit the physical Dynamic Island. */}
@@ -69,14 +75,7 @@ function Artwork({slide, sourceWidth, sourceHeight, secondarySize, family = 'iph
     : closeup ? 620 : Math.min(tilted ? 540 : 590, canvasHeight - screenHeight - (tilted ? 180 : 110));
   const phoneLeft = (canvasWidth - phoneWidth) / 2 + (tilted && !tablet ? -48 : 0);
   return <AbsoluteFill style={{background, overflow: 'hidden'}}>
-    {/* Subtle ambient cyan glow in the background behind device */}
-    <div style={{
-      position: 'absolute',
-      width: '100%',
-      height: '100%',
-      background: 'radial-gradient(ellipse at 50% 65%, rgba(14, 220, 213, 0.04) 0%, rgba(0, 0, 0, 0) 70%)',
-      pointerEvents: 'none',
-    }} />
+    <style>{fontFace}</style>
     <div style={{
       position: 'absolute',
       width: canvasWidth,
@@ -92,13 +91,13 @@ function Artwork({slide, sourceWidth, sourceHeight, secondarySize, family = 'iph
         right: tablet ? 120 : 70,
         top: tablet ? 120 : 160,
         textAlign: 'center',
-        fontSize: tablet ? 126 : 100,
-        fontWeight: 750,
-        letterSpacing: -3.5,
+        fontSize: tablet ? 112 : 86,
+        fontWeight: 600,
+        letterSpacing: -1,
         lineHeight: 1.12,
       }}>
         <div>{slide.headline}</div>
-        <div style={{color: theme.cyan, marginTop: 14}}>{slide.accent}</div>
+        <div style={{color: theme.accent, marginTop: 14}}>{slide.accent}</div>
       </div>
       {slide.layout === 'stacked' ? <>
         <Phone source={slide.source} sourceWidth={sourceWidth} sourceHeight={sourceHeight}
