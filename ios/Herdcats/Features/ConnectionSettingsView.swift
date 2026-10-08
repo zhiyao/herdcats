@@ -47,7 +47,7 @@ struct ConnectionSettingsView: View {
         guard !trimmed.isEmpty else { return nil }
         if trimmed.hasPrefix("ssh-ed25519 ") || trimmed.hasPrefix("ssh-rsa ") || trimmed.hasPrefix("ecdsa-") {
             return "This is an SSH public key (.pub). Please import or paste your private key instead "
-                + "(usually named herdrcat_key or id_ed25519 without .pub)."
+                + "(usually named herdcats_key or id_ed25519 without .pub)."
         }
         if trimmed.contains("BEGIN RSA PRIVATE KEY")
             || trimmed.contains("BEGIN DSA PRIVATE KEY")

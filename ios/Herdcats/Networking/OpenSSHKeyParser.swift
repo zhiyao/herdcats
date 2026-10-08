@@ -32,7 +32,7 @@ enum OpenSSHKeyError: LocalizedError, Equatable {
             "This key exceeds the supported bcrypt work limit of 256 rounds."
         case let .unsupportedKeyType(kind):
             "Unsupported key type \"\(kind)\". Use an ed25519 key: "
-                + "ssh-keygen -t ed25519 -f ~/.ssh/herdrcat_key"
+                + "ssh-keygen -t ed25519 -f ~/.ssh/herdcats_key"
         case .multipleKeysUnsupported:
             "The file contains more than one key."
         }
