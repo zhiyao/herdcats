@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/zhiyao/herdcats/actions/workflows/ci.yml/badge.svg)](https://github.com/zhiyao/herdcats/actions/workflows/ci.yml)
 
-[Website](https://herdcats.dev)
+[Website](https://herdcats.dev) · [Join the TestFlight beta](https://testflight.apple.com/join/nUr62QY1)
 
 A native iPhone client for [Herdr](https://herdr.dev). Connect over SSH to
 browse spaces and agents, read pane output, and send terminal input, composed
@@ -29,19 +29,19 @@ This is an early release. See the limitations below before using it.
 iPhone screenshots with sample data. Click an image to view it larger.
 
 <p align="center">
-  <a href="assets/screenshots/01-spaces.png"><img src="assets/screenshots/01-spaces.png" width="160" alt="Orchestrate spaces, all from your pocket."></a>
-  <a href="assets/screenshots/02-agents.png"><img src="assets/screenshots/02-agents.png" width="160" alt="Tame autonomous agents. Blocked, done, or working."></a>
-  <a href="assets/screenshots/03-pane.png"><img src="assets/screenshots/03-pane.png" width="160" alt="Real ANSI terminal, live in your hands."></a>
-  <a href="assets/screenshots/04-keys.png"><img src="assets/screenshots/04-keys.png" width="160" alt="Terminal keyboard. Arrows, F1–F12 &amp; modifiers."></a>
-  <a href="assets/screenshots/05-agent-pane.png"><img src="assets/screenshots/05-agent-pane.png" width="160" alt="Direct agent control, one thumb away."></a>
+  <a href="assets/screenshots/01-spaces.png"><img src="assets/screenshots/01-spaces.png" width="160" alt="Spaces tab listing three spaces: Herdcats (blocked), Checkout redesign (working), and API performance (done)."></a>
+  <a href="assets/screenshots/02-agents.png"><img src="assets/screenshots/02-agents.png" width="160" alt="Agents tab listing a blocked Claude agent, a finished Cursor agent, and a working Codex agent, each with its project path."></a>
+  <a href="assets/screenshots/03-pane.png"><img src="assets/screenshots/03-pane.png" width="160" alt="Live terminal pane showing a Claude Code session waiting for input, with an Esc, Tab, Ctrl, Alt and Keys toolbar."></a>
+  <a href="assets/screenshots/04-keys.png"><img src="assets/screenshots/04-keys.png" width="160" alt="Terminal pane with the Keys panel open: arrow keys, Home, End, Page Up and Down, Del, Ins, Backspace, Shift, and F1 to F7."></a>
+  <a href="assets/screenshots/05-agent-pane.png"><img src="assets/screenshots/05-agent-pane.png" width="160" alt="Agent pane for a blocked Claude session, with other panes in a strip above the terminal output."></a>
 </p>
 
 <p align="center">
-  <a href="assets/screenshots/06-quota.png"><img src="assets/screenshots/06-quota.png" width="160" alt="Track model quotas. Live pace-colored rings."></a>
-  <a href="assets/screenshots/07-connect.png"><img src="assets/screenshots/07-connect.png" width="160" alt="Pure SSH &amp; Tailscale. No middleman daemons."></a>
-  <a href="assets/screenshots/08-settings.png"><img src="assets/screenshots/08-settings.png" width="160" alt="Privacy-first client. Drafts and keys stay local."></a>
-  <a href="assets/screenshots/09-compose.png"><img src="assets/screenshots/09-compose.png" width="160" alt="Live or Compose. Your agent, your way."></a>
-  <a href="assets/screenshots/10-voice.png"><img src="assets/screenshots/10-voice.png" width="160" alt="Speak to your agent. Dictate, review, then send."></a>
+  <a href="assets/screenshots/06-quota.png"><img src="assets/screenshots/06-quota.png" width="160" alt="Quota tab with usage rings for ZAI, Agy, Codex, Cursor and Claude, colored by pace with time left on each window."></a>
+  <a href="assets/screenshots/07-connect.png"><img src="assets/screenshots/07-connect.png" width="160" alt="Connection Settings form with host, port, username, password or private key, and a Remember on This Device toggle."></a>
+  <a href="assets/screenshots/08-settings.png"><img src="assets/screenshots/08-settings.png" width="160" alt="Settings screen with auto-refresh, a toggle to keep drafts and command history on the iPhone, appearance, and pane options."></a>
+  <a href="assets/screenshots/09-compose.png"><img src="assets/screenshots/09-compose.png" width="160" alt="Compose box below the terminal with a drafted reply, an attach-photo button, a microphone button and a send button."></a>
+  <a href="assets/screenshots/10-voice.png"><img src="assets/screenshots/10-voice.png" width="160" alt="Voice recording bar below the terminal reading Recording message, with a confirm button."></a>
 </p>
 
 ## Build the iPhone app

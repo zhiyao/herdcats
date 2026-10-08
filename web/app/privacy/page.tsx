@@ -11,7 +11,7 @@ export default function PrivacyPage() {
     <SitePage current="privacy" title="Privacy Policy">
       <section className={styles.section}>
         <p>
-          <strong>Last updated:</strong> 1 October 2026
+          <strong>Last updated:</strong> 8 October 2026
         </p>
         <p>
           This Privacy Policy explains how the publisher of Herdcats (&ldquo;we,&rdquo; &ldquo;us,&rdquo; or
@@ -103,9 +103,9 @@ export default function PrivacyPage() {
           appropriate; Tailscale is the recommended way to reach your machine.
         </p>
         <p>
-          Photo attachments you select are processed on device (including downscaling and stripping
-          EXIF where implemented) and uploaded over SSH to a cache path on your remote machine
-          (for example under <code>~/.cache/herdcats/attachments</code>). The app does not
+          Photo attachments you select are processed on device (downscaled to at most 2048 pixels and
+          re-encoded, which drops location metadata) and uploaded over SSH to a cache path on your remote machine
+          (for example under <code>~/.cache/herdrcat/attachments</code>). The app does not
           automatically delete those remote files.
         </p>
       </section>

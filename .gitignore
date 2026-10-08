@@ -76,3 +76,6 @@ ios/maestro/screenshots-output/
 ios/app-store-images/out/
 web/.next/
 web/out/
+
+# Private marketing notes
+/marketing.md
