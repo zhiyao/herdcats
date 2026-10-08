@@ -14,6 +14,16 @@ const parent = path.resolve(values.output || path.join(iosDir, 'maestro/app-stor
 
 const {bundle} = await import('@remotion/bundler');
 const {renderStill, selectComposition, openBrowser} = await import('@remotion/renderer');
+const pngSize = async file => {
+  const bytes = await readFile(file);
+  if (bytes.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') throw new Error(`${file}: invalid PNG.`);
+  return {width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20)};
+};
+const sizes = {main: await pngSize(path.join(input, '03_spaces.png')), second: await pngSize(path.join(input, '06_agents.png'))};
+for (const [name, {width, height}] of Object.entries(sizes)) {
+  if (width < 600 || height / width < 1.9 || height / width > 2.3) throw new Error(`${name}: expected a full portrait iPhone capture, got ${width}x${height}.`);
+}
+const inputProps = {sources: {main: 'spaces.png', second: 'agents.png'}, sizes};
 const cache = path.join(packageDir, '.cache');
 await mkdir(cache, {recursive: true});
 const work = await mkdtemp(path.join(cache, 'creative-'));
@@ -30,8 +40,8 @@ try {
     webpackOverride: c => ({...c, resolve: {...c.resolve, extensions: ['.ts', '.tsx', ...(c.resolve?.extensions || [])]}})});
   browser = await openBrowser('chrome');
   for (const [id, file] of [['ProductHeader', 'product-page-header.png'], ['SearchResult', 'search-results.png']]) {
-    const composition = await selectComposition({serveUrl, id, puppeteerInstance: browser});
-    await renderStill({serveUrl, composition, output: path.join(output, file), imageFormat: 'png', frame: 0, puppeteerInstance: browser});
+    const composition = await selectComposition({serveUrl, id, inputProps, puppeteerInstance: browser});
+    await renderStill({serveUrl, composition, inputProps, output: path.join(output, file), imageFormat: 'png', frame: 0, puppeteerInstance: browser});
     console.log(`${id}: ${path.join(output, file)}`);
   }
 } finally {

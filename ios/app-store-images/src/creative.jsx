@@ -46,7 +46,7 @@ function Wordmark({size}) {
   </div>;
 }
 
-export function ProductHeader({sources}) {
+export function ProductHeader({sources, sizes}) {
   const W = 3840, H = 1646;
   return <AbsoluteFill style={{overflow: 'hidden', fontFamily: font}}>
     <style>{fontFace}</style>
@@ -58,11 +58,11 @@ export function ProductHeader({sources}) {
       <div style={{fontSize: 112, fontWeight: 600, lineHeight: 1.1, letterSpacing: -2,
         color: PALETTE.mint200}}>from your pocket.</div>
     </div>
-    <Phone source={sources.main} sw={1320} sh={2868} width={800} left={2440} top={260} />
+    <Phone source={sources.main} sw={sizes.main.width} sh={sizes.main.height} width={800} left={2440} top={260} />
   </AbsoluteFill>;
 }
 
-export function SearchResult({sources}) {
+export function SearchResult({sources, sizes}) {
   const W = 3840, H = 2560;
   return <AbsoluteFill style={{overflow: 'hidden', fontFamily: font}}>
     <style>{fontFace}</style>
@@ -72,13 +72,14 @@ export function SearchResult({sources}) {
       <div>Your AI agents,</div>
       <div style={{color: PALETTE.mint200}}>in your pocket.</div>
     </div>
-    <Phone source={sources.main} sw={1320} sh={2868} width={1000} left={820} top={900} rotation={-4} />
-    <Phone source={sources.second} sw={1320} sh={2868} width={1000} left={2020} top={1040} rotation={4} />
+    <Phone source={sources.main} sw={sizes.main.width} sh={sizes.main.height} width={1000} left={820} top={900} rotation={-4} />
+    <Phone source={sources.second} sw={sizes.second.width} sh={sizes.second.height} width={1000} left={2020} top={1040} rotation={4} />
   </AbsoluteFill>;
 }
 
 export function CreativeRoot() {
-  const props = {sources: {main: 'spaces.png', second: 'agents.png'}};
+  const props = {sources: {main: 'spaces.png', second: 'agents.png'},
+    sizes: {main: {width: 1320, height: 2868}, second: {width: 1320, height: 2868}}};
   return <>
     <Still id="ProductHeader" component={ProductHeader} width={3840} height={1646} defaultProps={props} />
     <Still id="SearchResult" component={SearchResult} width={3840} height={2560} defaultProps={props} />
