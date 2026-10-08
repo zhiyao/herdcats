@@ -581,3 +581,38 @@ html:has(.landing) body {
         display: none;
     }
 }
+
+/*
+ * Short screens of any width, e.g. landscape phones (844×390): trim the hero to title,
+ * tagline and CTA so nothing is clipped. lib/world.ts mirrors this (SHORT_LAYOUT_QUERY).
+ */
+@media (max-height: 500px) {
+    #ui-layer {
+        padding-top: 12px;
+        padding-bottom: 12px;
+    }
+
+    .hero {
+        margin-top: 4px;
+    }
+
+    .sign-badge,
+    .hero-description,
+    .hero-hint {
+        display: none;
+    }
+
+    .hero-title {
+        font-size: 32px;
+        margin-bottom: 6px;
+    }
+
+    .hero-subtitle {
+        font-size: 17px;
+        margin-bottom: 10px;
+    }
+
+    .btn-primary {
+        padding: 8px 16px;
+    }
+}

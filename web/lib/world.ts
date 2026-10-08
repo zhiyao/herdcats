@@ -40,6 +40,8 @@ export interface View {
  * fixed footer appears. Keep the two in sync so the meadow lays out against the same overlay.
  */
 const MOBILE_LAYOUT_QUERY = '(max-width: 840px)';
+/** Matches the short-screen rule in app/globals.css (landscape phones), where the hero is trimmed. */
+const SHORT_LAYOUT_QUERY = '(max-height: 500px)';
 
 // Ground plane is viewed from above at a slant, like the iOS herd ring.
 const GROUND_TILT = 0.62;
@@ -129,7 +131,7 @@ export class World {
     private resizeHandler: () => void;
     private stopThemeWatch: () => void;
     private theme: ThemeName = 'dark';
-    private narrow = false;
+    private compact = false;
     private colors: CorralColors = NIGHT_COLORS;
 
     /**
@@ -198,8 +200,10 @@ export class World {
         // meadow tuck slightly under the CTA; narrow ones measure the hero and start below it,
         // but always keep at least 30% of the height for the meadow.
         const narrow = window.matchMedia(MOBILE_LAYOUT_QUERY).matches;
-        this.narrow = narrow;
-        const skyReserve = narrow ? (this.options.skyReserve?.() ?? 0) : this.height * 0.42;
+        // Mobile and short (landscape phone) layouts both measure the hero instead of assuming room.
+        const compact = narrow || window.matchMedia(SHORT_LAYOUT_QUERY).matches;
+        this.compact = compact;
+        const skyReserve = compact ? (this.options.skyReserve?.() ?? 0) : this.height * 0.42;
         const groundReserve = narrow ? (this.options.groundReserve?.() ?? 0) : 0;
         const meadowHeight = Math.max(this.height - skyReserve - groundReserve, this.height * 0.3);
         const scale = Math.min(usableWidth / span, meadowHeight / (span * GROUND_TILT + 3));
@@ -207,7 +211,7 @@ export class World {
 
         this.originX = usableWidth / 2;
         // Rest the meadow on the bottom edge so the sky and scenery sit above it.
-        this.originY = this.height - groundReserve - MEADOW_RADIUS * GROUND_TILT * scale - Math.max(scale * 2, narrow ? 8 : 24);
+        this.originY = this.height - groundReserve - MEADOW_RADIUS * GROUND_TILT * scale - Math.max(scale * 2, compact ? 8 : 24);
 
         const snap = (value: number) => Math.round(value / pixel) * pixel;
         this.view = {
@@ -324,8 +328,9 @@ export class World {
         const W = this.width;
         const horizon = this.originY - MEADOW_RADIUS * GROUND_TILT * scale - scale * 1.5;
         const skyH = Math.max(horizon, 1);
-        // In the mobile layout the hero copy spans the full width, so a small moon tucks beside the title.
-        const narrow = this.narrow;
+        // In compact layouts the hero copy fills the sky, so a small moon sits at the right edge,
+        // rising just above the treeline and never up into the nav.
+        const narrow = this.compact;
         const r = narrow ? 20 : Math.min(64, Math.max(22, skyH * 0.16));
         drawNightScenery(ctx, {
             width: W,
@@ -334,7 +339,7 @@ export class World {
             pixel: Math.max(2, pixel * 2),
             moon: {
                 x: narrow ? W - r * 2.2 : W * 0.78,
-                y: narrow ? 150 : Math.max(r * 1.8, skyH * 0.32),
+                y: narrow ? Math.min(150, horizon - r * 1.5) : Math.max(r * 1.8, skyH * 0.32),
                 r,
             },
             ground: true,
