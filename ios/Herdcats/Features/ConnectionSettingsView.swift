@@ -65,7 +65,7 @@ struct ConnectionSettingsView: View {
         }
     }
 
-    static let documentationURL = URL(string: "https://herdcats.dev/support")!
+    static let documentationURL = URL(string: "https://herdcats.dev/support/#connect")!
 
     init(connection: RecentConnection, isReplay: Bool = false) {
         self.isReplay = isReplay
