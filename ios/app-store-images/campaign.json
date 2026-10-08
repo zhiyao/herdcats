@@ -1,7 +1,8 @@
 {
   "locale": "en-US",
-  "background": "#0A0B0E",
+  "background": "#1B282E",
   "defaultTargets": [
+    "iphone-6.3",
     "iphone-6.5",
     "iphone-6.9"
   ],
@@ -12,6 +13,12 @@
     }
   },
   "targets": {
+    "iphone-6.3": {
+      "family": "iphone",
+      "width": 1206,
+      "height": 2622,
+      "description": "iPhone 6.3-inch"
+    },
     "iphone-6.5": {
       "family": "iphone",
       "width": 1284,

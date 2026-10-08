@@ -9,7 +9,7 @@ const packageDir = path.dirname(fileURLToPath(import.meta.url));
 const iosDir = path.dirname(packageDir);
 const usage = `Usage: ios/bin/screenshots-app-store [options]
 
-  --target=<name>       all (default), iphone-6.5, iphone-6.9
+  --target=<name>       all (default), iphone-6.3, iphone-6.5, iphone-6.9
   --capture             Capture the campaign sources first
   --device=<UDID>       Override capture device
   --input=<directory>   Raw captures for a single target
@@ -69,7 +69,7 @@ function assertExportPng(bytes, name, width, height) {
 }
 
 const escapeHtml = text => String(text).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
-const html = (title, body) => `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>body{margin:32px;background:#0a0b0e;color:#f5f7fa;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}h1{font-size:28px;font-weight:700;letter-spacing:-0.5px}h2{font-size:18px;margin-top:40px;color:#0edcd5;font-weight:600}.row{display:flex;flex-wrap:wrap;align-items:flex-start;gap:24px}figure{margin:0;width:min(340px,100%)}img{display:block;width:100%;border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,0.7),0 0 0 1px rgba(255,255,255,0.08)}figcaption{padding:12px 0;font-size:13px;color:#8e8e93}a{color:#0edcd5;text-decoration:none}a:hover{text-decoration:underline}nav{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:24px;padding:12px 16px;background:#14161a;border-radius:10px}</style>${body}</html>`;
+const html = (title, body) => `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>body{margin:32px;background:#0a0b0e;color:#F8F8F8;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}h1{font-size:28px;font-weight:700;letter-spacing:-0.5px}h2{font-size:18px;margin-top:40px;color:#ABE0B6;font-weight:600}.row{display:flex;flex-wrap:wrap;align-items:flex-start;gap:24px}figure{margin:0;width:min(340px,100%)}img{display:block;width:100%;border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,0.7),0 0 0 1px rgba(255,255,255,0.08)}figcaption{padding:12px 0;font-size:13px;color:#8e8e93}a{color:#0edcd5;text-decoration:none}a:hover{text-decoration:underline}nav{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:24px;padding:12px 16px;background:#26343D;border-radius:10px}</style>${body}</html>`;
 
 async function main() {
   const {values} = parseArgs({options: {
