@@ -29,7 +29,7 @@ export function ConfettiCanvas({ active }: ConfettiCanvasProps) {
     if (!ctx) return;
 
     let animationFrameId: number;
-    const colors = ['#0EDCD5', '#0DB1C5', '#FFD60A', '#34C759', '#D97857', '#8CBDFA', '#FFFFFF'];
+    const colors = ['#ABE0B6', '#ABE0B6', '#F8F8F8', '#63988E', '#4C777D', '#4B221C'];
     const particles: Particle[] = [];
 
     function handleResize() {

@@ -30,9 +30,18 @@ export function CatCanvas({ onVictory, gameWon, onRef }: CatCanvasProps) {
     const container = containerRef.current;
     if (!container) return;
 
-    // 1. Initialize the flat pixel-art meadow
-    const world = new World(container);
+    // 1. Initialize the flat pixel-art meadow between the hero copy and the mobile footer
+    const hero = document.querySelector<HTMLElement>('#ui-layer .hero');
+    const footer = document.querySelector<HTMLElement>('#ui-layer .landing-footer');
+    const world = new World(container, {
+      skyReserve: () => (hero ? hero.getBoundingClientRect().bottom + 8 : 0),
+      groundReserve: () => footer?.offsetHeight ?? 0,
+    });
     worldRef.current = world;
+    // Re-layout when either changes height (web fonts loading, text wrapping, breakpoints).
+    const layoutObserver = new ResizeObserver(() => world.onWindowResize());
+    if (hero) layoutObserver.observe(hero);
+    if (footer) layoutObserver.observe(footer);
 
     // 2. Spawn 10 Independent Meadow Cats
     const cats: Cat[] = [];
@@ -180,6 +189,7 @@ export function CatCanvas({ onVictory, gameWon, onRef }: CatCanvasProps) {
       window.removeEventListener('pointerup', onPointerUp);
       container.removeEventListener('touchmove', onTouchMove);
       window.removeEventListener('keydown', onKeyDown);
+      layoutObserver.disconnect();
       world.destroy();
     };
   }, [onVictory, onRef]);

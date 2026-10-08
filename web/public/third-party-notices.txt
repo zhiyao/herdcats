@@ -904,8 +904,57 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ========================================================================
-next 16.3.6 — dist/compiled/@babel/runtime/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+lucide-react 1.52.0 — LICENSE
+Source: https://registry.npmjs.org/lucide-react/-/lucide-react-1.52.0.tgz
+========================================================================
+
+ISC License
+
+Copyright (c) 2026 Lucide Icons and Contributors
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+---
+
+The following Lucide icons are derived from the Feather project:
+
+airplay, alert-circle, alert-octagon, alert-triangle, aperture, arrow-down-circle, arrow-down-left, arrow-down-right, arrow-down, arrow-left-circle, arrow-left, arrow-right-circle, arrow-right, arrow-up-circle, arrow-up-left, arrow-up-right, arrow-up, at-sign, calendar, cast, check, chevron-down, chevron-left, chevron-right, chevron-up, chevrons-down, chevrons-left, chevrons-right, chevrons-up, circle, clipboard, clock, code, columns, command, compass, corner-down-left, corner-down-right, corner-left-down, corner-left-up, corner-right-down, corner-right-up, corner-up-left, corner-up-right, crosshair, database, divide-circle, divide-square, dollar-sign, download, external-link, feather, frown, hash, headphones, help-circle, info, italic, key, layout, life-buoy, link-2, link, loader, lock, log-in, log-out, maximize, meh, minimize, minimize-2, minus-circle, minus-square, minus, monitor, moon, more-horizontal, more-vertical, move, music, navigation-2, navigation, octagon, pause-circle, percent, plus-circle, plus-square, plus, power, radio, rss, search, server, share, shopping-bag, sidebar, smartphone, smile, square, table-2, tablet, target, terminal, trash-2, trash, triangle, tv, type, upload, x-circle, x-octagon, x-square, x, zoom-in, zoom-out
+
+The MIT License (MIT) (for the icons listed above)
+
+Copyright (c) 2013-present Cole Bemis
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+========================================================================
+next 16.3.8 — dist/compiled/@babel/runtime/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -932,8 +981,8 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/@hapi/accept/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/@hapi/accept/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright (c) 2014-2020, Sideway Inc, and project contributors  
@@ -949,8 +998,8 @@ Redistribution and use in source and binary forms, with or without modification,
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS AND CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS OFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/@mswjs/interceptors/ClientRequest/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/@mswjs/interceptors/ClientRequest/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -964,8 +1013,8 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/@napi-rs/triples/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/@napi-rs/triples/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -991,8 +1040,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/@opentelemetry/api/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/@opentelemetry/api/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
                                  Apache License
@@ -1198,8 +1247,8 @@ Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
    limitations under the License.
 
 ========================================================================
-next 16.3.6 — dist/compiled/@vercel/blob/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/@vercel/blob/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
                                  Apache License
@@ -1405,8 +1454,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ========================================================================
-next 16.3.6 — dist/compiled/@vercel/detect-agent/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/@vercel/detect-agent/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 
@@ -1613,8 +1662,8 @@ Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
    limitations under the License.
 
 ========================================================================
-next 16.3.6 — dist/compiled/@vercel/nft/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/@vercel/nft/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright 2019 Vercel, Inc.
@@ -1626,8 +1675,8 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/@vercel/og/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/@vercel/og/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Mozilla Public License Version 2.0
@@ -2005,8 +2054,8 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
   defined by the Mozilla Public License, v. 2.0.
 
 ========================================================================
-next 16.3.6 — dist/compiled/@vercel/og/satori/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/@vercel/og/satori/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Mozilla Public License Version 2.0
@@ -2384,8 +2433,8 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
   defined by the Mozilla Public License, v. 2.0.
 
 ========================================================================
-next 16.3.6 — dist/compiled/@vercel/routing-utils/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/@vercel/routing-utils/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 
@@ -2592,8 +2641,8 @@ Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
    limitations under the License.
 
 ========================================================================
-next 16.3.6 — dist/compiled/acorn/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/acorn/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -2619,8 +2668,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/anser/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/anser/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License (MIT)
@@ -2646,8 +2695,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/assert/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/assert/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright Joyent, Inc. and other Node contributors. All rights reserved.
@@ -2670,8 +2719,8 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/async-retry/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/async-retry/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -2697,8 +2746,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/async-sema/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/async-sema/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -2726,8 +2775,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/babel/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/babel/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -2754,8 +2803,8 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/browserify-zlib/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/browserify-zlib/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License (MIT)
@@ -2830,8 +2879,8 @@ IN THE SOFTWARE.
 """
 
 ========================================================================
-next 16.3.6 — dist/compiled/browserslist/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/browserslist/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License (MIT)
@@ -2856,8 +2905,8 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/buffer/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/buffer/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License (MIT)
@@ -2883,8 +2932,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/busboy/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/busboy/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright Brian White. All rights reserved.
@@ -2908,8 +2957,8 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/bytes/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/bytes/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 (The MIT License)
@@ -2937,8 +2986,8 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/ci-info/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/ci-info/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License (MIT)
@@ -2964,8 +3013,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/cli-select/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/cli-select/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -2991,8 +3040,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/commander/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/commander/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 (The MIT License)
@@ -3019,8 +3068,8 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/comment-json/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/comment-json/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright (c) 2013 kaelzhang <>, contributors
@@ -3046,8 +3095,8 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/compression/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/compression/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 (The MIT License)
@@ -3075,8 +3124,8 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/conf/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/conf/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -3090,8 +3139,8 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/content-disposition/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/content-disposition/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 (The MIT License)
@@ -3118,8 +3167,8 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/content-type/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/content-type/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 (The MIT License)
@@ -3146,8 +3195,8 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/cookie/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/cookie/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 (The MIT License)
@@ -3175,8 +3224,8 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/cross-spawn/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/cross-spawn/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License (MIT)
@@ -3202,8 +3251,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/crypto-browserify/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/crypto-browserify/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License
@@ -3232,8 +3281,8 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/debug/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/debug/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 (The MIT License)
@@ -3256,8 +3305,8 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/devalue/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/devalue/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright (c) 2018-19 [these people](https://github.com/rich-harris/devalue/graphs/contributors)
@@ -3269,8 +3318,8 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/domain-browser/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/domain-browser/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 <!-- LICENSEFILE/ -->
@@ -3298,8 +3347,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <!-- /LICENSEFILE -->
 
 ========================================================================
-next 16.3.6 — dist/compiled/edge-runtime/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/edge-runtime/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License (MIT)
@@ -3325,8 +3374,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/events/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/events/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT
@@ -3353,8 +3402,8 @@ OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/find-up/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/find-up/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -3368,8 +3417,8 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/fresh/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/fresh/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 (The MIT License)
@@ -3397,8 +3446,8 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/glob/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/glob/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The ISC License
@@ -3424,8 +3473,8 @@ under a Creative Commons Attribution-ShareAlike 4.0 International License
 https://creativecommons.org/licenses/by-sa/4.0/
 
 ========================================================================
-next 16.3.6 — dist/compiled/gzip-size/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/gzip-size/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -3439,8 +3488,36 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/https-browserify/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/hash.js/sha256/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
+========================================================================
+
+This software is licensed under the MIT License.
+
+Copyright Fedor Indutny, 2014.
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to permit
+persons to whom the Software is furnished to do so, subject to the
+following conditions:
+
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+========================================================================
+next 16.3.8 — dist/compiled/https-browserify/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 This software is released under the MIT license:
@@ -3465,8 +3542,8 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/httpxy/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/httpxy/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -3517,8 +3594,8 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/icss-utils/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/icss-utils/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 ISC License (ISC)
@@ -3529,8 +3606,8 @@ Permission to use, copy, modify, and/or distribute this software for any purpose
 THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/ignore-loader/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/ignore-loader/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -3556,8 +3633,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/image-size/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/image-size/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License (MIT)
@@ -3571,8 +3648,8 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/ipaddr.js/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/ipaddr.js/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright (C) 2011-2017 whitequark <whitequark@whitequark.org>
@@ -3596,8 +3673,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/is-animated/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/is-animated/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 # [MIT License](https://spdx.org/licenses/MIT)
@@ -3611,8 +3688,8 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/is-docker/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/is-docker/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -3626,8 +3703,8 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/is-wsl/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/is-wsl/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -3641,8 +3718,8 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/jest-worker/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/jest-worker/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -3668,8 +3745,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/json5/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/json5/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -3697,8 +3774,8 @@ SOFTWARE.
 [others]: https://github.com/json5/json5/contributors
 
 ========================================================================
-next 16.3.6 — dist/compiled/jsonwebtoken/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/jsonwebtoken/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License (MIT)
@@ -3724,8 +3801,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/loader-runner/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/loader-runner/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License
@@ -3751,8 +3828,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/loader-utils2/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/loader-utils2/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright JS Foundation and other contributors
@@ -3777,8 +3854,8 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/loader-utils3/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/loader-utils3/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright JS Foundation and other contributors
@@ -3803,8 +3880,8 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/lodash.curry/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/lodash.curry/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright jQuery Foundation and other contributors <https://jquery.org/>
@@ -3856,8 +3933,8 @@ licenses; we recommend you read them, as their terms may differ from the
 terms above.
 
 ========================================================================
-next 16.3.6 — dist/compiled/lru-cache/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/lru-cache/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The ISC License
@@ -3877,8 +3954,8 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/mini-css-extract-plugin/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/mini-css-extract-plugin/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright JS Foundation and other contributors
@@ -3903,8 +3980,8 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/nanoid/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/nanoid/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License (MIT)
@@ -3929,8 +4006,8 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/native-url/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/native-url/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 
@@ -4137,8 +4214,8 @@ Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
    limitations under the License.
 
 ========================================================================
-next 16.3.6 — dist/compiled/neo-async/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/neo-async/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -4165,8 +4242,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/node-html-parser/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/node-html-parser/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright 2019 Tao Qiufeng
@@ -4178,8 +4255,8 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/ora/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/ora/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -4193,8 +4270,8 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/os-browserify/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/os-browserify/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License (MIT)
@@ -4220,8 +4297,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/p-limit/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/p-limit/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -4235,8 +4312,8 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/p-queue/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/p-queue/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -4250,8 +4327,8 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/path-browserify/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/path-browserify/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -4276,8 +4353,8 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/path-to-regexp/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/path-to-regexp/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License (MIT)
@@ -4303,8 +4380,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/picomatch/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/picomatch/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License (MIT)
@@ -4330,8 +4407,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/postcss-flexbugs-fixes/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/postcss-flexbugs-fixes/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License (MIT)
@@ -4356,8 +4433,8 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/postcss-modules-extract-imports/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/postcss-modules-extract-imports/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright 2015 Glen Maddern
@@ -4367,8 +4444,8 @@ Permission to use, copy, modify, and/or distribute this software for any purpose
 THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/postcss-modules-local-by-default/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/postcss-modules-local-by-default/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License (MIT)
@@ -4393,8 +4470,8 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/postcss-modules-scope/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/postcss-modules-scope/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 ISC License (ISC)
@@ -4406,8 +4483,8 @@ Permission to use, copy, modify, and/or distribute this software for any purpose
 THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/postcss-modules-values/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/postcss-modules-values/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 ISC License (ISC)
@@ -4419,8 +4496,8 @@ Permission to use, copy, modify, and/or distribute this software for any purpose
 THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/postcss-preset-env/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/postcss-preset-env/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 # CC0 1.0 Universal
@@ -4533,8 +4610,8 @@ For more information, please see
 http://creativecommons.org/publicdomain/zero/1.0/.
 
 ========================================================================
-next 16.3.6 — dist/compiled/postcss-safe-parser/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/postcss-safe-parser/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License (MIT)
@@ -4559,8 +4636,8 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/postcss-scss/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/postcss-scss/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License (MIT)
@@ -4585,8 +4662,8 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/postcss-value-parser/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/postcss-value-parser/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright (c) Bogdan Chadkin <trysound@yandex.ru>
@@ -4613,8 +4690,8 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/process/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/process/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 (The MIT License)
@@ -4641,8 +4718,8 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/querystring-es3/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/querystring-es3/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 
@@ -4666,8 +4743,8 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/raw-body/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/raw-body/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License (MIT)
@@ -4694,8 +4771,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/react/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/react/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -4721,8 +4798,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/react-dom/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/react-dom/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -4748,8 +4825,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/react-dom-experimental/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/react-dom-experimental/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -4775,8 +4852,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/react-experimental/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/react-experimental/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -4802,8 +4879,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/react-is/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/react-is/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -4829,8 +4906,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/react-refresh/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/react-refresh/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -4856,8 +4933,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/react-server-dom-turbopack/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/react-server-dom-turbopack/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -4883,8 +4960,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/react-server-dom-turbopack-experimental/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/react-server-dom-turbopack-experimental/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -4910,8 +4987,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/react-server-dom-webpack/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/react-server-dom-webpack/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -4937,8 +5014,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/react-server-dom-webpack-experimental/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/react-server-dom-webpack-experimental/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -4964,8 +5041,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/regenerator-runtime/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/regenerator-runtime/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -4991,8 +5068,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/safe-stable-stringify/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/safe-stable-stringify/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License (MIT)
@@ -5018,8 +5095,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/sass-loader/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/sass-loader/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright JS Foundation and other contributors
@@ -5044,8 +5121,8 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/scheduler/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/scheduler/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -5071,8 +5148,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/scheduler-experimental/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/scheduler-experimental/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -5098,8 +5175,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/schema-utils2/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/schema-utils2/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright JS Foundation and other contributors
@@ -5124,8 +5201,8 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/schema-utils3/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/schema-utils3/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright JS Foundation and other contributors
@@ -5150,8 +5227,8 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/semver/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/semver/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The ISC License
@@ -5171,8 +5248,8 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/send/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/send/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 (The MIT License)
@@ -5200,8 +5277,8 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/serve-handler/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/serve-handler/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -5227,8 +5304,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/shell-quote/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/shell-quote/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License
@@ -5257,8 +5334,8 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/source-map/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/source-map/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 
@@ -5291,8 +5368,8 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/source-map08/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/source-map08/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 
@@ -5325,8 +5402,8 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/stacktrace-parser/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/stacktrace-parser/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -5352,8 +5429,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/stream-browserify/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/stream-browserify/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -5378,8 +5455,8 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/stream-http/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/stream-http/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License
@@ -5408,8 +5485,8 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/string_decoder/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/string_decoder/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Node.js is licensed for use as follows:
@@ -5461,8 +5538,8 @@ IN THE SOFTWARE.
 """
 
 ========================================================================
-next 16.3.6 — dist/compiled/strip-ansi/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/strip-ansi/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -5476,8 +5553,8 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/superstruct/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/superstruct/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License
@@ -5491,8 +5568,8 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/tar/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/tar/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 # Blue Oak Model License
@@ -5552,8 +5629,8 @@ will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim.***
 
 ========================================================================
-next 16.3.6 — dist/compiled/terser/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/terser/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright 2012-2018 (c) Mihai Bazon <mihai.bazon@gmail.com>
@@ -5585,8 +5662,8 @@ THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/text-table/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/text-table/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 This software is released under the MIT license:
@@ -5609,8 +5686,8 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/timers-browserify/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/timers-browserify/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 # timers-browserify
@@ -5661,8 +5738,8 @@ The `lib/node` directory borrows files from joyent/node which uses the following
     IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/tty-browserify/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/tty-browserify/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 This software is released under the MIT license:
@@ -5685,8 +5762,8 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/ua-parser-js/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/ua-parser-js/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -5712,8 +5789,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/util/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/util/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright Joyent, Inc. and other Node contributors. All rights reserved.
@@ -5736,8 +5813,8 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/vm-browserify/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/vm-browserify/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -5760,8 +5837,8 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/watchpack/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/watchpack/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright JS Foundation and other contributors
@@ -5786,8 +5863,8 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/web-vitals/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/web-vitals/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 
@@ -5994,8 +6071,8 @@ Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
    limitations under the License.
 
 ========================================================================
-next 16.3.6 — dist/compiled/web-vitals-attribution/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/web-vitals-attribution/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 
@@ -6202,8 +6279,8 @@ Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
    limitations under the License.
 
 ========================================================================
-next 16.3.6 — dist/compiled/webpack/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/webpack/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright JS Foundation and other contributors
@@ -6228,8 +6305,8 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/webpack-sources1/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/webpack-sources1/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -6255,8 +6332,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/webpack-sources3/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/webpack-sources3/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -6282,8 +6359,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/write-file-atomic/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/write-file-atomic/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright (c) 2015, Rebecca Turner
@@ -6293,8 +6370,8 @@ Permission to use, copy, modify, and/or distribute this software for any purpose
 THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/ws/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/ws/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 Copyright (c) 2011 Einar Otto Stangvik <einaros@gmail.com>
@@ -6318,8 +6395,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/zod/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/zod/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 MIT License
@@ -6345,8 +6422,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ========================================================================
-next 16.3.6 — dist/compiled/zod-validation-error/LICENSE
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — dist/compiled/zod-validation-error/LICENSE
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 (The MIT License)
@@ -6360,8 +6437,8 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-next 16.3.6 — license.md
-Source: https://registry.npmjs.org/next/-/next-16.3.6.tgz
+next 16.3.8 — license.md
+Source: https://registry.npmjs.org/next/-/next-16.3.8.tgz
 ========================================================================
 
 The MIT License (MIT)
@@ -6493,3 +6570,201 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+========================================================================
+Jost font — OFL.txt
+Source: https://raw.githubusercontent.com/google/fonts/5e8a3ba899557829a76cfdac30fa512bda91d7ca/ofl/jost/OFL.txt
+========================================================================
+
+Copyright 2020 The Jost Project Authors (https://github.com/indestructible-type)
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded, 
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+
+========================================================================
+Silkscreen font — OFL.txt
+Source: https://raw.githubusercontent.com/google/fonts/5e8a3ba899557829a76cfdac30fa512bda91d7ca/ofl/silkscreen/OFL.txt
+========================================================================
+
+Copyright 2001 The Silkscreen Project Authors (https://github.com/googlefonts/silkscreen)
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+https://scripts.sil.org/OFL
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded, 
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.

@@ -5,6 +5,7 @@
  */
 
 import type { Cat } from './cats';
+import { PALETTE, currentTheme, drawNightScenery, onThemeChange, type ThemeName } from './scenery';
 
 export interface Vec {
     x: number;
@@ -34,30 +35,79 @@ export interface View {
     snap: (value: number) => number;
 }
 
+/**
+ * Matches the mobile breakpoint in app/globals.css, where the header links hide and the
+ * fixed footer appears. Keep the two in sync so the meadow lays out against the same overlay.
+ */
+const MOBILE_LAYOUT_QUERY = '(max-width: 840px)';
+/** Matches the short-screen rule in app/globals.css (landscape phones), where the hero is trimmed. */
+const SHORT_LAYOUT_QUERY = '(max-height: 500px)';
+
 // Ground plane is viewed from above at a slant, like the iOS herd ring.
 const GROUND_TILT = 0.62;
 const MEADOW_RADIUS = 25;
 
-const COLORS = {
-    background: '#000000',
-    border: 'rgba(255, 255, 255, 0.12)',
-    dot: 'rgba(255, 255, 255, 0.05)',
-    accent: '#0EDCD5',
-    pad: 'rgba(14, 220, 213, 0.07)',
-    post: '#87664D',
-    postTop: '#A07855',
-    rail: '#A07855',
-    railTop: '#C7A37A',
-    beam: '#5C3E2A',
-    sign: '#1F1F2E',
-    box: '#B58E62',
-    boxTop: '#CBA57A',
-    rope: '#E2CBA8',
-    ropeShade: '#B8A07F',
-    base: '#3A3A52',
-    rock: '#2A2A3D',
-    rockTop: '#3A3A52',
+const NIGHT_COLORS = {
+    border: PALETTE.teal600,
+    dot: PALETTE.teal600,
+    accent: PALETTE.mint200,
+    pad: PALETTE.night900,
+    post: PALETTE.night950,
+    postTop: PALETTE.night900,
+    gatePost: PALETTE.lacquer900,
+    gatePostTop: '#5E2D25',
+    rail: PALETTE.night900,
+    railTop: PALETTE.teal400,
+    beam: PALETTE.lacquer900,
+    sign: PALETTE.mint200,
+    signText: PALETTE.lacquer900,
+    box: PALETTE.night900,
+    boxTop: PALETTE.teal400,
+    rope: PALETTE.teal400,
+    ropeShade: PALETTE.teal600,
+    base: PALETTE.night900,
+    rock: PALETTE.night900,
+    rockTop: PALETTE.teal600,
 };
+
+type CorralColors = typeof NIGHT_COLORS;
+
+// Day: one step lighter across the board; the warm accent brightens to read on light ground.
+const DAY_COLORS: CorralColors = {
+    border: '#93BFA9',
+    dot: '#C2DFCF',
+    accent: PALETTE.paper50,
+    pad: '#93BFA9',
+    post: PALETTE.night800,
+    postTop: PALETTE.teal600,
+    gatePost: '#8A3324',
+    gatePostTop: '#A4473A',
+    rail: PALETTE.teal600,
+    railTop: PALETTE.mint200,
+    beam: '#8A3324',
+    sign: PALETTE.paper50,
+    signText: '#8A3324',
+    box: PALETTE.teal600,
+    boxTop: PALETTE.mint200,
+    rope: PALETTE.mint200,
+    ropeShade: PALETTE.teal400,
+    base: PALETTE.teal600,
+    rock: PALETTE.teal400,
+    rockTop: PALETTE.mint200,
+};
+
+
+/** The page's pixel font (Silkscreen via next/font), with a monospace fallback. */
+export function pixelFont(): string {
+    const family = getComputedStyle(document.documentElement).getPropertyValue('--font-pixel').trim();
+    return family || 'ui-monospace, Menlo, monospace';
+}
+
+/** The page's UI font (Jost via next/font), with a system fallback. */
+export function sansFont(): string {
+    const family = getComputedStyle(document.documentElement).getPropertyValue('--font-sans').trim();
+    return family || 'system-ui, sans-serif';
+}
 
 interface Prop {
     z: number;
@@ -79,8 +129,20 @@ export class World {
     private props: Prop[] = [];
     private groundLayer: HTMLCanvasElement | null = null;
     private resizeHandler: () => void;
+    private stopThemeWatch: () => void;
+    private theme: ThemeName = 'dark';
+    private compact = false;
+    private colors: CorralColors = NIGHT_COLORS;
 
-    constructor(container: HTMLElement) {
+    /**
+     * `skyReserve` returns how far down the page (in CSS pixels) the hero copy reaches, and
+     * `groundReserve` how tall the footer is. On narrow screens the meadow fits between them,
+     * so the cats never sit behind the text or links.
+     */
+    constructor(
+        container: HTMLElement,
+        private readonly options: { skyReserve?: () => number; groundReserve?: () => number } = {}
+    ) {
         this.container = container;
         this.canvas = document.createElement('canvas');
         this.canvas.style.display = 'block';
@@ -97,6 +159,8 @@ export class World {
 
         this.resizeHandler = () => this.onWindowResize();
         window.addEventListener('resize', this.resizeHandler);
+        // Rebuild the cached ground and props when the light/dark toggle flips.
+        this.stopThemeWatch = onThemeChange(() => this.onWindowResize());
     }
 
     private buildColliders(): void {
@@ -120,6 +184,8 @@ export class World {
     }
 
     public onWindowResize(): void {
+        this.theme = currentTheme();
+        this.colors = this.theme === 'light' ? DAY_COLORS : NIGHT_COLORS;
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         this.width = this.container.clientWidth;
         this.height = this.container.clientHeight;
@@ -130,12 +196,22 @@ export class World {
 
         const usableWidth = this.width;
         const span = MEADOW_RADIUS * 2;
-        const scale = Math.min(usableWidth / span, this.height / (span * GROUND_TILT + 6));
+        // Leave the top of the screen as sky for the nav and hero copy. Wide screens let the
+        // meadow tuck slightly under the CTA; narrow ones measure the hero and start below it,
+        // but always keep at least 30% of the height for the meadow.
+        const narrow = window.matchMedia(MOBILE_LAYOUT_QUERY).matches;
+        // Mobile and short (landscape phone) layouts both measure the hero instead of assuming room.
+        const compact = narrow || window.matchMedia(SHORT_LAYOUT_QUERY).matches;
+        this.compact = compact;
+        const skyReserve = compact ? (this.options.skyReserve?.() ?? 0) : this.height * 0.42;
+        const groundReserve = narrow ? (this.options.groundReserve?.() ?? 0) : 0;
+        const meadowHeight = Math.max(this.height - skyReserve - groundReserve, this.height * 0.3);
+        const scale = Math.min(usableWidth / span, meadowHeight / (span * GROUND_TILT + 3));
         const pixel = Math.max(1, Math.round(scale * 0.11));
 
         this.originX = usableWidth / 2;
-        // The title card floats at the top center; give the meadow comfortable breathing room below it.
-        this.originY = this.width < 700 ? this.height * 0.64 : this.height / 2 + scale * 1.5;
+        // Rest the meadow on the bottom edge so the sky and scenery sit above it.
+        this.originY = this.height - groundReserve - MEADOW_RADIUS * GROUND_TILT * scale - Math.max(scale * 2, compact ? 8 : 24);
 
         const snap = (value: number) => Math.round(value / pixel) * pixel;
         this.view = {
@@ -198,28 +274,20 @@ export class World {
 
         const { project, pixel, scale } = this.view;
 
-        ctx.fillStyle = COLORS.background;
-        ctx.fillRect(0, 0, this.width, this.height);
-
-        // Soft accent glow from the top centre, matching the app's Theme.listBackground.
-        const glow = ctx.createRadialGradient(this.width / 2, 0, 0, this.width / 2, 0, 430);
-        glow.addColorStop(0, 'rgba(14, 220, 213, 0.16)');
-        glow.addColorStop(1, 'rgba(14, 220, 213, 0)');
-        ctx.fillStyle = glow;
-        ctx.fillRect(0, 0, this.width, this.height);
+        this.drawScenery(ctx);
 
         // Sparse pixel dots inside the meadow.
         for (let x = -24; x <= 24; x += 2) {
             for (let z = -24; z <= 24; z += 2) {
                 if (Math.hypot(x, z) > MEADOW_RADIUS - 1.5) continue;
                 const p = project(x, z);
-                this.rect(ctx, p.sx, p.sy, p.sx + pixel, p.sy + pixel, COLORS.dot);
+                this.rect(ctx, p.sx, p.sy, p.sx + pixel, p.sy + pixel, this.colors.dot);
             }
         }
 
         // The quiet meadow ring, like the iOS offline herd.
         const center = project(0, 0);
-        ctx.strokeStyle = COLORS.border;
+        ctx.strokeStyle = this.colors.border;
         ctx.lineWidth = Math.max(2, pixel * 2);
         ctx.beginPath();
         ctx.ellipse(center.sx, center.sy, MEADOW_RADIUS * scale, MEADOW_RADIUS * scale * GROUND_TILT, 0, 0, Math.PI * 2);
@@ -228,30 +296,55 @@ export class World {
         // Corral pad.
         const nw = project(-5.5, -5.5);
         const se = project(5.5, 5.5);
-        this.rect(ctx, nw.sx, nw.sy, se.sx, se.sy, COLORS.pad);
+        this.rect(ctx, nw.sx, nw.sy, se.sx, se.sy, this.colors.pad);
 
         // Gate threshold in the accent color.
         const gl = project(-2.2, 5.5);
         const gr = project(2.2, 5.5);
-        this.rect(ctx, gl.sx, gl.sy, gr.sx, gl.sy + pixel, COLORS.accent);
+        this.rect(ctx, gl.sx, gl.sy, gr.sx, gl.sy + pixel, this.colors.accent);
 
         // Yarn balls.
         const yarn = [
-            { x: -10, z: -6, color: '#0EDCD5' },
-            { x: 11, z: 6, color: '#FFD60A' },
-            { x: -6, z: 14, color: '#FF453A' },
-            { x: 9, z: -10, color: '#8CBDFA' },
+            { x: -10, z: -6, color: PALETTE.mint200 },
+            { x: 11, z: 6, color: PALETTE.paper50 },
+            { x: -6, z: 14, color: PALETTE.teal400 },
+            { x: 9, z: -10, color: PALETTE.mint200 },
         ];
         yarn.forEach(({ x, z, color }) => {
             const p = project(x, z);
             const u = pixel;
             this.rect(ctx, p.sx - u, p.sy - 3 * u, p.sx + 2 * u, p.sy, color);
             this.rect(ctx, p.sx - 2 * u, p.sy - 2 * u, p.sx + 3 * u, p.sy - u, color);
-            this.rect(ctx, p.sx, p.sy - 2 * u, p.sx + u, p.sy - u, 'rgba(0, 0, 0, 0.25)');
+            this.rect(ctx, p.sx, p.sy - 2 * u, p.sx + u, p.sy - u, 'rgba(27, 40, 46, 0.35)');
             this.rect(ctx, p.sx + 2 * u, p.sy, p.sx + 6 * u, p.sy + u, color);
         });
 
         this.groundLayer = layer;
+    }
+
+    /** Sky, moon, hills and treeline above the meadow; ground and foliage around it. */
+    private drawScenery(ctx: CanvasRenderingContext2D): void {
+        const { scale, pixel } = this.view;
+        const W = this.width;
+        const horizon = this.originY - MEADOW_RADIUS * GROUND_TILT * scale - scale * 1.5;
+        const skyH = Math.max(horizon, 1);
+        // In compact layouts the hero copy fills the sky, so a small moon sits at the right edge,
+        // rising just above the treeline and never up into the nav.
+        const narrow = this.compact;
+        const r = narrow ? 20 : Math.min(64, Math.max(22, skyH * 0.16));
+        drawNightScenery(ctx, {
+            width: W,
+            height: this.height,
+            horizon,
+            pixel: Math.max(2, pixel * 2),
+            moon: {
+                x: narrow ? W - r * 2.2 : W * 0.78,
+                y: narrow ? Math.min(150, horizon - r * 1.5) : Math.max(r * 1.8, skyH * 0.32),
+                r,
+            },
+            ground: true,
+            theme: this.theme,
+        });
     }
 
     private buildProps(): void {
@@ -261,13 +354,14 @@ export class World {
         const t = 0.1; // rail half-thickness
         const p = 0.19; // post half-width
 
-        const post = (x: number, z: number, height = 1.6, lantern = false) => {
+        const post = (x: number, z: number, height = 1.6, lantern = false, gate = false) => {
             props.push({
                 z: z + p,
                 draw: (ctx) => {
-                    this.block(ctx, x - p, x + p, z - p, z + p, 0, height, COLORS.postTop, COLORS.post);
+                    const [top, front] = gate ? [this.colors.gatePostTop, this.colors.gatePost] : [this.colors.postTop, this.colors.post];
+                    this.block(ctx, x - p, x + p, z - p, z + p, 0, height, top, front);
                     if (lantern) {
-                        this.block(ctx, x - 0.12, x + 0.12, z - 0.12, z + 0.12, height, height + 0.3, COLORS.accent, COLORS.accent);
+                        this.block(ctx, x - 0.12, x + 0.12, z - 0.12, z + 0.12, height, height + 0.3, this.colors.accent, this.colors.accent);
                     }
                 },
             });
@@ -277,8 +371,8 @@ export class World {
             props.push({
                 z: z + t,
                 draw: (ctx) => {
-                    this.block(ctx, x1, x2, z - t, z + t, 0.4, 0.62, COLORS.railTop, COLORS.rail);
-                    this.block(ctx, x1, x2, z - t, z + t, 1.0, 1.22, COLORS.railTop, COLORS.rail);
+                    this.block(ctx, x1, x2, z - t, z + t, 0.4, 0.62, this.colors.railTop, this.colors.rail);
+                    this.block(ctx, x1, x2, z - t, z + t, 1.0, 1.22, this.colors.railTop, this.colors.rail);
                 },
             });
         };
@@ -287,8 +381,8 @@ export class World {
             props.push({
                 z: z2,
                 draw: (ctx) => {
-                    this.block(ctx, x - t, x + t, z1, z2, 0.4, 0.62, COLORS.railTop, COLORS.rail);
-                    this.block(ctx, x - t, x + t, z1, z2, 1.0, 1.22, COLORS.railTop, COLORS.rail);
+                    this.block(ctx, x - t, x + t, z1, z2, 0.4, 0.62, this.colors.railTop, this.colors.rail);
+                    this.block(ctx, x - t, x + t, z1, z2, 1.0, 1.22, this.colors.railTop, this.colors.rail);
                 },
             });
         };
@@ -315,24 +409,35 @@ export class World {
         const wing = gateHalf + (half - gateHalf) / 2;
         post(-wing, half);
         post(wing, half);
-        post(-gateHalf, half, 2.0, true);
-        post(gateHalf, half, 2.0, true);
+        post(-gateHalf, half, 2.5, false, true);
+        post(gateHalf, half, 2.5, false, true);
 
         // Gate beam and sign.
         props.push({
             z: half + 0.3,
             draw: (ctx) => {
-                this.block(ctx, -gateHalf - 0.3, gateHalf + 0.3, half - 0.15, half + 0.15, 2.5, 2.8, COLORS.beam, COLORS.beam);
-                this.block(ctx, -1.9, 1.9, half - 0.05, half + 0.05, 2.85, 3.55, COLORS.sign, COLORS.sign);
+                this.block(ctx, -gateHalf - 0.3, gateHalf + 0.3, half - 0.15, half + 0.15, 2.5, 2.8, this.colors.beam, this.colors.beam);
+                this.block(ctx, -1.9, 1.9, half - 0.05, half + 0.05, 2.85, 3.55, this.colors.sign, this.colors.sign);
                 const center = this.view.project(0, half + 0.05, 3.2);
                 // Fit the text to the plate; skip it when it would be unreadably small.
-                const size = Math.round(this.view.scale * 0.42);
+                // Fit the label to the plate, dropping to a shorter one before it gets unreadably small.
+                const plateWidth = 3.4 * this.view.scale;
+                const maxSize = Math.round(this.view.scale * 0.42);
+                let label = '';
+                let size = 0;
+                for (const candidate of ['HERDR CORRAL', 'CORRAL']) {
+                    ctx.font = `700 ${maxSize}px ${pixelFont()}`;
+                    const width = ctx.measureText(candidate).width;
+                    size = Math.min(maxSize, Math.floor((maxSize * plateWidth) / width));
+                    label = candidate;
+                    if (size >= 8) break;
+                }
                 if (size < 7) return;
-                ctx.fillStyle = COLORS.accent;
-                ctx.font = `700 ${size}px ui-monospace, "SF Mono", Menlo, monospace`;
+                ctx.font = `700 ${size}px ${pixelFont()}`;
+                ctx.fillStyle = this.colors.signText;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.fillText('HERDR CORRAL', Math.round(center.sx), Math.round(center.sy));
+                ctx.fillText(label, Math.round(center.sx), Math.round(center.sy));
             },
         });
 
@@ -340,9 +445,9 @@ export class World {
         props.push({
             z: -2.7,
             draw: (ctx) => {
-                this.block(ctx, -4.6, -2.6, -4.5, -2.7, 0, 1.2, COLORS.boxTop, COLORS.box);
-                this.block(ctx, -4.6, -2.6, -4.5, -4.2, 1.2, 1.55, COLORS.box, COLORS.box);
-                this.block(ctx, -4.0, -3.2, -4.5, -2.7, 1.2, 1.22, COLORS.post, COLORS.post);
+                this.block(ctx, -4.6, -2.6, -4.5, -2.7, 0, 1.2, this.colors.boxTop, this.colors.box);
+                this.block(ctx, -4.6, -2.6, -4.5, -4.2, 1.2, 1.55, this.colors.box, this.colors.box);
+                this.block(ctx, -4.0, -3.2, -4.5, -2.7, 1.2, 1.22, this.colors.post, this.colors.post);
             },
         });
 
@@ -350,12 +455,12 @@ export class World {
         props.push({
             z: -2.9,
             draw: (ctx) => {
-                this.block(ctx, 3.1, 4.5, -4.3, -2.9, 0, 0.15, COLORS.base, COLORS.base);
+                this.block(ctx, 3.1, 4.5, -4.3, -2.9, 0, 0.15, this.colors.base, this.colors.base);
                 for (let i = 0; i < 4; i++) {
-                    const color = i % 2 === 0 ? COLORS.rope : COLORS.ropeShade;
-                    this.block(ctx, 3.55, 4.05, -3.85, -3.35, 0.15 + i * 0.5, 0.65 + i * 0.5, COLORS.rope, color);
+                    const color = i % 2 === 0 ? this.colors.rope : this.colors.ropeShade;
+                    this.block(ctx, 3.55, 4.05, -3.85, -3.35, 0.15 + i * 0.5, 0.65 + i * 0.5, this.colors.rope, color);
                 }
-                this.block(ctx, 3.6, 4.0, -3.8, -3.4, 2.15, 2.5, COLORS.accent, COLORS.accent);
+                this.block(ctx, 3.6, 4.0, -3.8, -3.4, 2.15, 2.5, this.colors.accent, this.colors.accent);
             },
         });
 
@@ -367,8 +472,8 @@ export class World {
             props.push({
                 z: z + s * 0.5,
                 draw: (ctx) => {
-                    this.block(ctx, x - s, x + s, z - s * 0.5, z + s * 0.5, 0, s * 0.6, COLORS.rockTop, COLORS.rock);
-                    this.block(ctx, x - s * 0.55, x + s * 0.45, z - s * 0.3, z + s * 0.2, s * 0.6, s * 0.95, COLORS.rockTop, COLORS.rock);
+                    this.block(ctx, x - s, x + s, z - s * 0.5, z + s * 0.5, 0, s * 0.6, this.colors.rockTop, this.colors.rock);
+                    this.block(ctx, x - s * 0.55, x + s * 0.45, z - s * 0.3, z + s * 0.2, s * 0.6, s * 0.95, this.colors.rockTop, this.colors.rock);
                 },
             });
         });
@@ -472,6 +577,7 @@ export class World {
 
     public destroy(): void {
         window.removeEventListener('resize', this.resizeHandler);
+        this.stopThemeWatch();
         this.canvas.remove();
     }
 }

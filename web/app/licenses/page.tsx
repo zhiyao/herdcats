@@ -7,7 +7,7 @@ export const metadata = {
 
 export default function LicensesPage() {
   return (
-    <SitePage title="Open source licenses">
+    <SitePage current="licenses" title="Open source licenses">
       <section className={styles.section}>
         <h2 className={styles.label}>Herdcats</h2>
         <p>

@@ -8,10 +8,10 @@ export const metadata = {
 
 export default function PrivacyPage() {
   return (
-    <SitePage badge="Privacy" title="Privacy Policy">
+    <SitePage current="privacy" title="Privacy Policy">
       <section className={styles.section}>
         <p>
-          <strong style={{ color: '#FFFFFF' }}>Last updated:</strong> 1 October 2026
+          <strong>Last updated:</strong> 1 October 2026
         </p>
         <p>
           This Privacy Policy explains how the publisher of Herdcats (&ldquo;we,&rdquo; &ldquo;us,&rdquo; or
@@ -62,27 +62,27 @@ export default function PrivacyPage() {
         <p>Depending on how you use the app, the following may be stored locally on your iPhone:</p>
         <ul className={styles.list}>
           <li>
-            <strong style={{ color: '#FFFFFF' }}>Credentials.</strong> Passwords, OpenSSH ed25519 private keys, and optional key passphrases you choose to remember, stored in the iOS Keychain with
+            <strong>Credentials.</strong> Passwords, OpenSSH ed25519 private keys, and optional key passphrases you choose to remember, stored in the iOS Keychain with
             device-only protection (WhenUnlockedThisDeviceOnly). Private keys and key passphrases remain on your device. Passwords are sent only to hosts you connect to through encrypted SSH authentication.
           </li>
           <li>
-            <strong style={{ color: '#FFFFFF' }}>Connection profile.</strong> Recent connection
+            <strong>Connection profile.</strong> Recent connection
             details (such as host, port, and username) and approved SSH host-key fingerprints,
             stored in Keychain and checked on later connects, including automatic reconnect.
           </li>
           <li>
-            <strong style={{ color: '#FFFFFF' }}>App preferences.</strong> Settings such as
+            <strong>App preferences.</strong> Settings such as
             onboarding state and Pane Data &amp; Privacy choices (for example whether to preserve
             drafts and command history), typically via ordinary app preferences / UserDefaults.
           </li>
           <li>
-            <strong style={{ color: '#FFFFFF' }}>Drafts and history.</strong> When Preserve Drafts
+            <strong>Drafts and history.</strong> When Preserve Drafts
             and Command History is enabled (default), unsent drafts and sent-message history keyed
             by connection and pane may be stored locally. Turning the setting off or clearing saved
             data erases that local material; it does not clear remote panes.
           </li>
           <li>
-            <strong style={{ color: '#FFFFFF' }}>In-session UI state.</strong> Temporary in-memory
+            <strong>In-session UI state.</strong> Temporary in-memory
             state needed to run the app (for example connection phase, queues, or debug latency
             samples in non-production builds). Debug diagnostics are not present in production
             builds and do not record keystrokes, output, or credentials.

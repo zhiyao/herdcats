@@ -11,10 +11,10 @@ export const metadata = {
  */
 export default function TermsPage() {
   return (
-    <SitePage badge="Terms" title="Terms of Service">
+    <SitePage current="terms" title="Terms of Service">
       <section className={styles.section}>
         <p>
-          <strong style={{ color: '#FFFFFF' }}>Last updated:</strong> 1 October 2026
+          <strong>Last updated:</strong> 1 October 2026
         </p>
         <p>
           These Terms of Service (&ldquo;Terms&rdquo;) govern your access to and use of the Herdcats

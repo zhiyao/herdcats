@@ -85,10 +85,17 @@ def npm_inventory(lockfile):
     return records
 
 
+CODE_SUFFIXES = {".js", ".mjs", ".cjs", ".map", ".ts"}
+
+# Fonts loaded with next/font/google in web/app/layout.tsx, pinned to a google/fonts commit.
+GOOGLE_FONTS_REVISION = "5e8a3ba899557829a76cfdac30fa512bda91d7ca"
+WEB_FONTS = [("Jost", "jost"), ("Silkscreen", "silkscreen")]
+
+
 def web_notices():
     lock = json.loads((ROOT / "web/package-lock.json").read_text())
     notices = ["Herdcats website third-party notices\n\nIncludes the browser framework packages and licenses embedded in Next.js.\nBuild and deployment tooling is inventoried separately in licenses/dependency-inventory.json.\n"]
-    browser_packages = {"next", "react", "react-dom", "scheduler", "styled-jsx", "@swc/helpers"}
+    browser_packages = {"next", "react", "react-dom", "scheduler", "styled-jsx", "@swc/helpers", "lucide-react"}
     notices.append(section("Herdcats", "https://github.com/zhiyao/herdcats/blob/main/LICENSE", (ROOT / "LICENSE").read_text()))
     for path, package in sorted(lock["packages"].items()):
         if not path or path.removeprefix("node_modules/") not in browser_packages:
@@ -101,13 +108,18 @@ def web_notices():
         installed = json.loads((directory / "package.json").read_text())
         if installed["version"] != package["version"]:
             raise ValueError(f"Run npm ci in web/: version mismatch for {path}")
-        files = sorted(p for p in directory.rglob("*") if p.is_file() and "node_modules" not in p.relative_to(directory).parts and re.match(r"^(license|notice|copying|copyright|thirdpartynotice|thirdpartycopyright)(\.|$)", p.name, re.I))
+        # Skip code files: lucide-react ships an icon module named copyright.mjs.
+        files = sorted(p for p in directory.rglob("*") if p.is_file() and "node_modules" not in p.relative_to(directory).parts and p.suffix not in CODE_SUFFIXES and re.match(r"^(license|notice|copying|copyright|thirdpartynotice|thirdpartycopyright)(\.|$)", p.name, re.I))
         if not files:
             raise ValueError(f"Missing installed license files for {path}")
         for file in files:
             relative = file.relative_to(directory)
             text = file.read_text(encoding="utf-8")
             notices.append(section(f"{path.removeprefix('node_modules/')} {package['version']} — {relative}", package.get("resolved", "npm registry"), text))
+    # next/font self-hosts these Google Fonts in the built site, so their licenses ship too.
+    for family, folder in WEB_FONTS:
+        url = f"https://raw.githubusercontent.com/google/fonts/{GOOGLE_FONTS_REVISION}/ofl/{folder}/OFL.txt"
+        notices.append(section(f"{family} font — OFL.txt", url, fetch(url)))
     return "".join(notices)
 
 
