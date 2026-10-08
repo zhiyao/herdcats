@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Herdcats — Herding cats, from your pocket',
     description: 'Herding cats, from your pocket. Native iPhone client for Herdr with git worktrees, Citadel SSH, and live terminal pane streaming.',
-    url: '/',
+    // No openGraph.url — nested routes inherit this object; a fixed '/' would mislabel them.
     siteName: 'Herdcats',
     type: 'website',
     images: [{ url: '/og.png', width: 1200, height: 630, alt: 'Herdcats' }],
