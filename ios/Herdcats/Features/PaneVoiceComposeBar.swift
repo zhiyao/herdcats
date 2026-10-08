@@ -30,28 +30,17 @@ enum PaneLiveModifier: String, CaseIterable, Identifiable, Hashable, Sendable {
     }
 }
 
-/// One translucent surface for a whole pane input group. The controls inside
-/// keep their plain style so the Live row does not turn into separate pills.
-/// When Reduce Transparency is on, uses an opaque card instead of glass/material.
+/// One solid surface for a whole pane input group. The controls inside keep
+/// their plain style so the Live row does not turn into separate pills.
+/// Moonlit uses no glass or blur: `--surface` with a `--border` outline.
 private struct PaneInputGlassSurface: ViewModifier {
     let cornerRadius: CGFloat
 
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-
-    @ViewBuilder
     func body(content: Content) -> some View {
         let shape = RoundedRectangle.continuous(cornerRadius)
-        if reduceTransparency {
-            content
-                .background(Theme.cardBackground, in: shape)
-                .overlay(shape.strokeBorder(Color.primary.opacity(0.14), lineWidth: 1))
-        } else if #available(iOS 26, *) {
-            content.glassEffect(.regular, in: shape)
-        } else {
-            content
-                .background(.regularMaterial, in: shape)
-                .overlay(shape.strokeBorder(Color.primary.opacity(0.14), lineWidth: 1))
-        }
+        content
+            .background(Theme.cardBackground, in: shape)
+            .overlay(shape.strokeBorder(Theme.hairline, lineWidth: 1))
     }
 }
 
@@ -322,7 +311,7 @@ struct PaneVoiceComposeBar: View {
             .overlay(alignment: .topTrailing) {
                 if armedModifiers.contains(.shift) {
                     Text("⇧")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.jost(10, weight: .bold))
                         .foregroundStyle(Theme.accent)
                         .frame(width: 15, height: 15)
                         .background(Theme.accent.opacity(0.16), in: Circle())
@@ -343,7 +332,7 @@ struct PaneVoiceComposeBar: View {
                 onStartVoice()
             } label: {
                 Image(systemName: "mic.fill")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.jost(16, weight: .semibold))
                     .foregroundStyle(Color.primary)
                     .frame(maxWidth: .infinity)
                     .frame(height: 42)
@@ -359,7 +348,7 @@ struct PaneVoiceComposeBar: View {
                 onOpenCompose()
             } label: {
                 Image(systemName: "keyboard")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.jost(16, weight: .semibold))
                     .foregroundStyle(Color.primary)
                     .frame(maxWidth: .infinity)
                     .frame(height: 42)
@@ -380,7 +369,7 @@ struct PaneVoiceComposeBar: View {
             sendLiveKey("up")
         } label: {
             Text("↑")
-                .font(.caption.weight(.semibold).monospaced())
+                .font(.jost(.caption, weight: .semibold).monospaced())
                 .foregroundStyle(Color.primary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 42)
@@ -443,7 +432,7 @@ struct PaneVoiceComposeBar: View {
             sendLiveKey(key.token)
         } label: {
             Text(key.label)
-                .font(.caption.weight(.semibold).monospaced())
+                .font(.jost(.caption, weight: .semibold).monospaced())
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
                 .frame(maxWidth: .infinity)
@@ -489,7 +478,7 @@ struct PaneVoiceComposeBar: View {
             action()
         } label: {
             Text(title)
-                .font(.caption.weight(.semibold).monospaced())
+                .font(.jost(.caption, weight: .semibold).monospaced())
                 .foregroundStyle(isSelected ? Theme.accent : (style == .destructive ? Theme.destructive : Color.primary))
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
@@ -523,7 +512,7 @@ struct PaneVoiceComposeBar: View {
             }
         } label: {
             Text(title)
-                .font(.caption.weight(.semibold).monospaced())
+                .font(.jost(.caption, weight: .semibold).monospaced())
                 .foregroundStyle(isArmed ? Theme.accent : (isEnabled ? Color.primary : Color.secondary))
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
@@ -548,7 +537,7 @@ struct PaneVoiceComposeBar: View {
             recordingIndicator
 
             Text(recordingStatusText)
-                .font(.subheadline.weight(.medium))
+                .font(.jost(.subheadline, weight: .medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
 
@@ -559,7 +548,7 @@ struct PaneVoiceComposeBar: View {
                 onFinishVoice()
             } label: {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 26))
+                    .font(.jost(26))
                     .foregroundStyle(Theme.accent)
                     .frame(width: 34, height: 36)
                     .contentShape(Rectangle())
@@ -653,7 +642,7 @@ struct PaneVoiceComposeBar: View {
                 isPhotoPickerPresented = true
             } label: {
                 Image(systemName: "photo")
-                    .font(.system(size: 20))
+                    .font(.jost(20))
                     .foregroundStyle(supportsHostServices ? Theme.accent : Color.secondary)
                     .frame(width: 38, height: 38)
                     .contentShape(Rectangle())
@@ -681,7 +670,7 @@ struct PaneVoiceComposeBar: View {
         HStack(alignment: .bottom, spacing: 4) {
             // Editable 1-to-6-row field
             TextField(placeholder, text: $draft, axis: .vertical)
-                .font(.subheadline)
+                .font(.jost(.subheadline))
                 .lineLimit(1...6)
                 .focused($isComposeFieldFocused)
                 .textInputAutocapitalization(.never)
@@ -703,7 +692,7 @@ struct PaneVoiceComposeBar: View {
                 onStartVoice()
             } label: {
                 Image(systemName: "mic.fill")
-                    .font(.system(size: 18))
+                    .font(.jost(18))
                     .foregroundStyle(Color.secondary)
                     .frame(width: 32, height: 36)
                     .contentShape(Rectangle())
@@ -724,7 +713,7 @@ struct PaneVoiceComposeBar: View {
                             CircularArcSpinner(size: 18)
                         } else {
                             Image(systemName: "arrow.up.circle.fill")
-                                .font(.system(size: 26))
+                                .font(.jost(26))
                                 .foregroundStyle(canSend ? Theme.accent : Color.secondary)
                         }
                     }
@@ -754,23 +743,23 @@ struct PaneVoiceComposeBar: View {
             VStack(alignment: .leading, spacing: 2) {
                 if attachment.isUploading {
                     Text("Uploading…")
-                        .font(.caption.weight(.medium))
+                        .font(.jost(.caption, weight: .medium))
                     CircularArcSpinner(size: 12)
                 } else if let error = attachment.uploadError {
                     Text(error)
-                        .font(.caption)
+                        .font(.jost(.caption))
                         .foregroundStyle(Theme.destructive)
                         .lineLimit(2)
                 } else if let path = attachment.remotePath {
                     Text("Image ready")
-                        .font(.caption.weight(.medium))
+                        .font(.jost(.caption, weight: .medium))
                     Text(URL(fileURLWithPath: path).lastPathComponent)
-                        .font(.caption2)
+                        .font(.jost(.caption2))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 } else {
                     Text("Image attached")
-                        .font(.caption.weight(.medium))
+                        .font(.jost(.caption, weight: .medium))
                 }
             }
             Spacer(minLength: 0)
@@ -778,7 +767,7 @@ struct PaneVoiceComposeBar: View {
                 onRemoveAttachment?()
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 18))
+                    .font(.jost(18))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)

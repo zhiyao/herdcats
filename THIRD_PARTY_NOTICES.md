@@ -24,6 +24,8 @@ NOTICE files, runtime-library exceptions, and the embedded BoringSSL license.
 | Swift NIO | 2.103.0 | Apache-2.0; embedded component terms also apply |
 | Swift NIO SSH (Wellz26 fork) | 0.3.7 | Apache-2.0 |
 | Swift System | 1.8.1 | Apache-2.0 with Swift Runtime Library Exception |
+| Jost font (unmodified variable TTF) | google/fonts `5e8a3ba` | SIL OFL 1.1 |
+| Silkscreen font (Regular, Bold) | google/fonts `5e8a3ba` | SIL OFL 1.1 |
 
 The precise source revisions and license-file URLs are recorded in
 [licenses/dependency-inventory.json](licenses/dependency-inventory.json).

@@ -53,7 +53,7 @@ struct QuotaScreen: View {
                         }
                     } label: {
                         Image(systemName: "ellipsis")
-                            .font(.system(size: 16, weight: .medium))
+                            .font(.jost(16, weight: .medium))
                             .foregroundStyle(.primary)
                     }
                     .accessibilityLabel("Quota Options")
@@ -78,7 +78,7 @@ struct QuotaLastUpdatedView: View {
     var body: some View {
         TimelineView(.periodic(from: date, by: 30)) { context in
             Text(QuotaUpdatedFormat.label(for: date, now: context.date))
-                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .font(.jost(12, weight: .medium))
                 .foregroundStyle(.tertiary)
                 .padding(.horizontal, 4)
         }
@@ -169,7 +169,7 @@ struct QuotaCardsView: View {
             CircularArcSpinner(size: 16)
 
             Text(statusMessage)
-                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .font(.jost(13, weight: .medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -238,7 +238,7 @@ struct QuotaCardsView: View {
                         CircularArcSpinner(size: 11)
                     } else {
                         Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.jost(11, weight: .semibold))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -269,15 +269,15 @@ struct QuotaAxiNotSetupView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 Image(systemName: "gauge.with.dots.needle.67percent")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.jost(16, weight: .semibold))
                     .foregroundStyle(Theme.accent)
                 Text("quota-axi is not installed")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .font(.jost(15, weight: .bold))
                     .foregroundStyle(.primary)
             }
 
             Text("Install quota-axi on the remote machine to view remaining quota and reset countdowns for Claude, Cursor, Codex, Agy, and other providers.")
-                .font(.system(size: 13, weight: .regular, design: .rounded))
+                .font(.jost(13, weight: .regular))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -300,7 +300,7 @@ struct QuotaAxiNotSetupView: View {
                         didCopyCommand ? "Copied" : "Copy",
                         systemImage: didCopyCommand ? "checkmark" : "doc.on.doc"
                     )
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.jost(11, weight: .medium))
                 }
                 .buttonStyle(.herdrSecondary(fullWidth: false))
                 .controlSize(.mini)
@@ -319,9 +319,9 @@ struct QuotaAxiNotSetupView: View {
                     HStack(spacing: 4) {
                         Text("quota-axi Setup Guide")
                         Image(systemName: "arrow.up.right")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.jost(9, weight: .semibold))
                     }
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .font(.jost(13, weight: .medium))
                     .foregroundStyle(Theme.accent)
                 }
                 .accessibilityLabel("quota-axi Setup Guide")
@@ -338,11 +338,11 @@ struct QuotaAxiNotSetupView: View {
                             Text("Checking…")
                         } else {
                             Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.jost(11, weight: .semibold))
                             Text("Check Quota")
                         }
                     }
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .font(.jost(12, weight: .medium))
                 }
                 .buttonStyle(.herdrSecondary(fullWidth: false))
                 .controlSize(.small)
@@ -380,7 +380,7 @@ private struct AgentUsageCardView: View {
             HStack(spacing: 5) {
                 AgentKindIcon(kind: card.provider, size: 11)
                 Text(title)
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .font(.jost(11, weight: .bold))
                     .foregroundStyle(tint)
                     .lineLimit(1)
             }
@@ -399,12 +399,12 @@ private struct AgentUsageCardView: View {
                 let state = card.unavailableState ?? .unavailable
                 VStack(alignment: .leading, spacing: 1) {
                     Text(state.title)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .font(.jost(12, weight: .medium))
                         .foregroundStyle(.tertiary)
                         .lineLimit(2)
                     if let detail = state.detail {
                         Text(detail)
-                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .font(.jost(9, weight: .semibold))
                             .foregroundStyle(.quaternary)
                             .lineLimit(1)
                     }
@@ -428,12 +428,12 @@ private struct AgentUsageCardView: View {
     private func chipLegend(_ chip: AgentUsageChip, inner: Bool) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(chip.percentText)
-                .font(.system(size: 16, weight: .semibold, design: .rounded).monospacedDigit())
+                .font(.jost(16, weight: .semibold).monospacedDigit())
                 .foregroundStyle(Theme.quotaColor(for: chip, now: now, inner: inner))
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
             Text(chip.displayLabel(now: now))
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .font(.jost(9, weight: .semibold))
                 .foregroundStyle(Theme.quotaCountdownStyle(for: chip, now: now, inner: inner))
                 .textCase(.uppercase)
                 .lineLimit(1)

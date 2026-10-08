@@ -35,12 +35,15 @@
 		2B3A742B2DDD9B5702E52638 /* HerdcatsTests+DictationAndHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7475F5A880AB410731990323 /* HerdcatsTests+DictationAndHistory.swift */; };
 		2BA715F52B84EE0338390D9F /* HerdrConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36BDF4DD61F89622C7C5196F /* HerdrConnection.swift */; };
 		3192AA326E7D86AEE41625D1 /* OpenSSHKeyParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03D86B705A4E80AB24216844 /* OpenSSHKeyParser.swift */; };
+		33945CD1938637387DD78ADF /* Silkscreen-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A8104B7E702235B8CE7A5518 /* Silkscreen-Regular.ttf */; };
 		388443991E3C846836009F4C /* HerdrConnection+AgyAndPanes.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDC8A986ECD954E87C90B196 /* HerdrConnection+AgyAndPanes.swift */; };
 		424A7E2D237F3DD78BD7DFB8 /* LaunchCatOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DAD4982D3C8C19D0E3723C5 /* LaunchCatOverlay.swift */; };
+		432F1172CA742211722777FC /* Jost-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 0B7FDB979853200806B0878B /* Jost-Variable.ttf */; };
 		435D80316CFAB773C4827855 /* HerdcatsUITests+Connections.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E597E391503ECB4F82A34B /* HerdcatsUITests+Connections.swift */; };
 		50A0DEA7145EF0ED649928E9 /* AppModel+Connection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F08939634B4BDB715233641 /* AppModel+Connection.swift */; };
 		5C9D102CC251986AED9D5DB6 /* HerdcatsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D6AD0D245B62B4BA7FEEFA2 /* HerdcatsUITests.swift */; };
 		6198DBFF79330F4B794A210B /* PaneLiveModifierComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0B75ADD32735D5BC85B14E /* PaneLiveModifierComposer.swift */; };
+		6388979D21882DA2F23F0EE9 /* Silkscreen-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 14D439FDB83BE3A5C49A7E07 /* Silkscreen-Bold.ttf */; };
 		64DA83D0D83F7071CA6B16D8 /* HerdrConnection+Queries.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59460EB647F68FC33C825D67 /* HerdrConnection+Queries.swift */; };
 		653E60D6AE32FA1FE3ED7C9B /* HerdcatsTests+RefreshGeneration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08F22D067F6E76605909958F /* HerdcatsTests+RefreshGeneration.swift */; };
 		66A6D27875DD944D947DFC86 /* HerdcatsTests+ModelDecoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7D8691E59345CB8F559F5BB /* HerdcatsTests+ModelDecoding.swift */; };
@@ -115,8 +118,10 @@
 /* Begin PBXFileReference section */
 		03D86B705A4E80AB24216844 /* OpenSSHKeyParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenSSHKeyParser.swift; sourceTree = "<group>"; };
 		08F22D067F6E76605909958F /* HerdcatsTests+RefreshGeneration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdcatsTests+RefreshGeneration.swift"; sourceTree = "<group>"; };
+		0B7FDB979853200806B0878B /* Jost-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Jost-Variable.ttf"; sourceTree = "<group>"; };
 		102AB3022C660FF63EDC66C0 /* PaneVoiceComposeBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneVoiceComposeBar.swift; sourceTree = "<group>"; };
 		121986C4CFF47D9ACC6C4E0B /* PlainTextInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlainTextInput.swift; sourceTree = "<group>"; };
+		14D439FDB83BE3A5C49A7E07 /* Silkscreen-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Silkscreen-Bold.ttf"; sourceTree = "<group>"; };
 		16E4B2585764F574B8BEA8B9 /* ConnectionIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionIdentity.swift; sourceTree = "<group>"; };
 		1F245C24A7A231ABFE3D3946 /* PaneImageEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneImageEncoder.swift; sourceTree = "<group>"; };
 		217943F1848BADFC038A2932 /* PaneLiveModifierComposerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneLiveModifierComposerTests.swift; sourceTree = "<group>"; };
@@ -170,6 +175,7 @@
 		96136F1C1C246A3CD0F8CB15 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		97046A3F25D35B65A7CA7425 /* test_attachment_storage.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = test_attachment_storage.py; sourceTree = "<group>"; };
 		A0B450F19759740A5C938D45 /* SpacesScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpacesScreen.swift; sourceTree = "<group>"; };
+		A8104B7E702235B8CE7A5518 /* Silkscreen-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Silkscreen-Regular.ttf"; sourceTree = "<group>"; };
 		A914BA288B0E47F5DBB7675C /* PaneScrollDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneScrollDiagnostics.swift; sourceTree = "<group>"; };
 		A9279B1941DE63EF79A3526F /* HerdcatsTests+PanePrivacyAndPerformance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdcatsTests+PanePrivacyAndPerformance.swift"; sourceTree = "<group>"; };
 		A9F59CB2840187527B1A6D5D /* HerdcatsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdcatsTests.swift; sourceTree = "<group>"; };
@@ -255,6 +261,7 @@
 			isa = PBXGroup;
 			children = (
 				B53C5E6919817DD4512F59BC /* ThirdPartyNotices.txt */,
+				610CEE3878955B21E66648C2 /* Fonts */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -282,6 +289,16 @@
 				A0B450F19759740A5C938D45 /* SpacesScreen.swift */,
 			);
 			path = Features;
+			sourceTree = "<group>";
+		};
+		610CEE3878955B21E66648C2 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				0B7FDB979853200806B0878B /* Jost-Variable.ttf */,
+				14D439FDB83BE3A5C49A7E07 /* Silkscreen-Bold.ttf */,
+				A8104B7E702235B8CE7A5518 /* Silkscreen-Regular.ttf */,
+			);
+			path = Fonts;
 			sourceTree = "<group>";
 		};
 		8947AA068DEE7D7EEAA574AE = {
@@ -513,6 +530,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				BBE717D1FC9D281A05E84276 /* Assets.xcassets in Resources */,
+				432F1172CA742211722777FC /* Jost-Variable.ttf in Resources */,
+				6388979D21882DA2F23F0EE9 /* Silkscreen-Bold.ttf in Resources */,
+				33945CD1938637387DD78ADF /* Silkscreen-Regular.ttf in Resources */,
 				B13AA033466FC0174049AA81 /* ThirdPartyNotices.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

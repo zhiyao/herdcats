@@ -64,6 +64,7 @@ def swift_notices():
             url = f"https://raw.githubusercontent.com/google/boringssl/{boring_rev}/LICENSE"
             notices.append(section(f"BoringSSL {boring_rev} (embedded in Swift Crypto)", url, fetch(url)))
             inventory.append({"name": "BoringSSL", "revision": boring_rev, "embedded_in": "swift-crypto", "license_sources": [url]})
+    notices.extend(font_notices(APP_FONTS))
     return inventory, "".join(notices)
 
 
@@ -90,6 +91,16 @@ CODE_SUFFIXES = {".js", ".mjs", ".cjs", ".map", ".ts"}
 # Fonts loaded with next/font/google in web/app/layout.tsx, pinned to a google/fonts commit.
 GOOGLE_FONTS_REVISION = "5e8a3ba899557829a76cfdac30fa512bda91d7ca"
 WEB_FONTS = [("Jost", "jost"), ("Silkscreen", "silkscreen")]
+# The same font files, unmodified, are bundled in ios/Herdcats/Resources/Fonts.
+APP_FONTS = WEB_FONTS
+
+
+def font_notices(fonts):
+    notices = []
+    for family, folder in fonts:
+        url = f"https://raw.githubusercontent.com/google/fonts/{GOOGLE_FONTS_REVISION}/ofl/{folder}/OFL.txt"
+        notices.append(section(f"{family} font — OFL.txt", url, fetch(url)))
+    return notices
 
 
 def web_notices():
@@ -117,9 +128,7 @@ def web_notices():
             text = file.read_text(encoding="utf-8")
             notices.append(section(f"{path.removeprefix('node_modules/')} {package['version']} — {relative}", package.get("resolved", "npm registry"), text))
     # next/font self-hosts these Google Fonts in the built site, so their licenses ship too.
-    for family, folder in WEB_FONTS:
-        url = f"https://raw.githubusercontent.com/google/fonts/{GOOGLE_FONTS_REVISION}/ofl/{folder}/OFL.txt"
-        notices.append(section(f"{family} font — OFL.txt", url, fetch(url)))
+    notices.extend(font_notices(WEB_FONTS))
     return "".join(notices)
 
 

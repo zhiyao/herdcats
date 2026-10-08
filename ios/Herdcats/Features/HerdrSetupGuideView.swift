@@ -20,7 +20,7 @@ struct HerdrSetupGuideView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     Text("Prepare Herdr and SSH on your remote machine.")
-                        .font(.subheadline)
+                        .font(.jost(.subheadline))
                         .foregroundStyle(.secondary)
 
                     step(
@@ -43,7 +43,7 @@ struct HerdrSetupGuideView: View {
                         "When you connect for the first time, compare the SSH host-key fingerprint "
                         + "with the one on the remote machine before trusting it."
                     )
-                        .font(.footnote)
+                        .font(.jost(.footnote))
                         .foregroundStyle(.secondary)
 
                     Button(onContinue == nil ? "Back to Connection" : "Enter SSH Details") {
@@ -63,7 +63,7 @@ struct HerdrSetupGuideView: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.jost(16, weight: .semibold))
                             .foregroundStyle(.primary)
                     }
                     .accessibilityLabel("Close")
@@ -78,22 +78,22 @@ struct HerdrSetupGuideView: View {
     ) -> some View {
         HStack(alignment: .top, spacing: 14) {
             Text("\(number)")
-                .font(.headline)
+                .font(.jost(.headline))
                 .foregroundStyle(Theme.onPrimary)
                 .frame(width: 30, height: 30)
                 .background(Theme.accent, in: Circle())
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 8) {
                 Text(title)
-                    .font(.headline)
+                    .font(.jost(.headline))
                     .accessibilityLabel("Step \(number): \(title)")
                 Text(detail)
-                    .font(.subheadline)
+                    .font(.jost(.subheadline))
                     .foregroundStyle(.secondary)
                 if let url {
                     Link(destination: url) {
                         Label(linkTitle, systemImage: "arrow.up.right")
-                            .font(.subheadline)
+                            .font(.jost(.subheadline))
                     }
                 }
             }

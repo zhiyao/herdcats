@@ -5,11 +5,14 @@ struct OnboardingReplaySection: View {
     let action: () -> Void
 
     var body: some View {
-        Section("Debug") {
+        Section {
             Button(action: action) {
                 Label("Replay Onboarding", systemImage: "arrow.counterclockwise.circle")
             }
             .listRowBackground(Theme.cardBackground)
+        } header: {
+            Text("Debug")
+                .font(.jost(.footnote))
         }
     }
 }

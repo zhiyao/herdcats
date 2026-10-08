@@ -146,7 +146,7 @@ struct ConnectionSettingsView: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.jost(16, weight: .semibold))
                             .foregroundStyle(.primary)
                     }
                     .accessibilityLabel("Close")
@@ -176,11 +176,11 @@ struct ConnectionSettingsView: View {
     var footer: some View {
         VStack(spacing: 8) {
             Text("Use a host address your iPhone can reach. 127.0.0.1 means the iPhone itself.")
-                .font(.footnote)
+                .font(.jost(.footnote))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             Button("Connection Setup Help") { showingSetupGuide = true }
-                .font(.footnote)
+                .font(.jost(.footnote))
         }
         .padding(.horizontal, 18)
     }
@@ -195,7 +195,7 @@ struct ConnectionSettingsView: View {
         Group {
             if !hidden {
                 Text(text.uppercased())
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.jost(10, weight: .semibold))
                     .foregroundStyle(.tertiary)
                     .tracking(0.8)
             }

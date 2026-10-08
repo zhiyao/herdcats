@@ -28,6 +28,12 @@
 	<string>Choose photos to send into Herdr panes.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Transcribe your speech into pane messages using Apple speech recognition.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Jost-Variable.ttf</string>
+		<string>Silkscreen-Regular.ttf</string>
+		<string>Silkscreen-Bold.ttf</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

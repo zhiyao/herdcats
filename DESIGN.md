@@ -172,12 +172,17 @@ Pages use these tokens, never the raw ramp, so both themes come from one stylesh
 | `--sky-link` | `#ABE0B6` | `#325156` | Nav links and toggle over the sky |
 | `--bg` | `#26343D` | `#EEF6F1` | Page body |
 | `--bg-deep` | `#1B282E` | `#DCEBE2` | Footer, code blocks |
+| `--surface` | `#26343D` | `#F8FBF9` | Cards (always with a `--border` outline) |
 | `--raised` / `--border` | `#325156` | `#C5DCCF` | Active rows, chips, dividers |
 | `--text` | `#F8F8F8` | `#1B282E` | Body text |
 | `--text-muted` | paper at 72% | night-950 at 72% | Secondary text |
 | `--accent` | `#ABE0B6` | `#325156` | Links, labels, icons |
 | `--accent-fill` / `--on-accent` | `#ABE0B6` / `#1B282E` | `#325156` / `#F8F8F8` | Primary buttons |
+| `--accent-fill-hover` | `#F8F8F8` | `#1B282E` | Primary button hover |
 | `--warm` | `#4B221C` | `#8A3324` | Sign badges (brightened by day so it reads on light grounds) |
+| `--sign-bg` | `#ABE0B6` | `#ABE0B6` | Sign badge fill |
+| `--focus` | `#F8F8F8` | `#1B282E` | Focus rings |
+| `--overlay` | night-950 at 88% | `#EEF6F1` at 90% | Modal and menu scrims |
 
 All day pairs pass WCAG AA: body text 13.7:1, links 7.8:1, buttons 8.1:1, warm on mint 5.5:1.
 
@@ -192,15 +197,6 @@ All day pairs pass WCAG AA: body text 13.7:1, links 7.8:1, buttons 8.1:1, warm o
 | Treeline | `#26343D` | `#63988E` |
 | Ground | `#325156` | `#A9CFBB` |
 | Foreground foliage | `#1B282E` | `#4C777D` |
-
----|---|---|
-| Page background | `#4C777D` / `#1B282E` | `#E6F2EA` |
-| Surface | `#26343D` | `#FFFFFF` |
-| Border | `#325156` | `#C5DCCF` |
-| Text primary | `#F8F8F8` | `#1B282E` |
-| Text secondary | `#ABE0B6` | `#325156` |
-| Accent | `#ABE0B6` | `#4C777D` |
-| Warm accent | `#4B221C` | `#8A3324` (brightened so it reads on light backgrounds) |
 
 ---
 
@@ -220,22 +216,53 @@ All day pairs pass WCAG AA: body text 13.7:1, links 7.8:1, buttons 8.1:1, warm o
   --ink-700:   #383B3F;
   --lacquer-900: #4B221C;
 
-  /* semantic */
-  --bg:           var(--night-950);
-  --bg-hero:      var(--teal-600);
-  --surface:      var(--night-900);
-  --border:       var(--night-800);
-  --text:         var(--paper-50);
-  --text-muted:   var(--mint-200);
-  --text-subtle:  var(--teal-400);
-  --accent:       var(--mint-200);
-  --accent-warm:  var(--lacquer-900);
+  /* semantic: night (default). Pages use these, never the raw ramp. */
+  --sky:               var(--teal-600);
+  --sky-text:          var(--paper-50);
+  --sky-link:          var(--mint-200);
+  --bg:                var(--night-900);
+  --bg-deep:           var(--night-950);
+  --surface:           var(--night-900);
+  --raised:            var(--night-800);
+  --border:            var(--night-800);
+  --text:              var(--paper-50);
+  --text-muted:        rgba(248, 248, 248, 0.72);
+  --accent:            var(--mint-200);
+  --accent-fill:       var(--mint-200);
+  --accent-fill-hover: var(--paper-50);
+  --on-accent:         var(--night-950);
+  --warm:              var(--lacquer-900);
+  --sign-bg:           var(--mint-200);
+  --focus:             var(--paper-50);
+  --overlay:           rgba(27, 40, 46, 0.88);
 
   --radius-sm: 8px;
   --radius-md: 16px;
   --radius-pill: 999px;
   --font-sans: "Jost", Futura, "Century Gothic", system-ui, sans-serif;
   --font-pixel: "Silkscreen", "DotGothic16", monospace;
+}
+
+/* Day: same hues, value ramp inverted (§7). */
+:root[data-theme="light"] {
+  --sky:               #D3EBDD;
+  --sky-text:          var(--night-950);
+  --sky-link:          var(--night-800);
+  --bg:                #EEF6F1;
+  --bg-deep:           #DCEBE2;
+  --surface:           #F8FBF9;
+  --raised:            #C5DCCF;
+  --border:            #C5DCCF;
+  --text:              var(--night-950);
+  --text-muted:        rgba(27, 40, 46, 0.72);
+  --accent:            var(--night-800);
+  --accent-fill:       var(--night-800);
+  --accent-fill-hover: var(--night-950);
+  --on-accent:         var(--paper-50);
+  --warm:              #8A3324;
+  --sign-bg:           var(--mint-200);
+  --focus:             var(--night-950);
+  --overlay:           rgba(238, 246, 241, 0.9);
 }
 ```
 
@@ -281,6 +308,8 @@ extension Color {
 }
 ```
 For sprites, use `Image("sprite").interpolation(.none).resizable()` to keep pixels crisp.
+
+The app bundles the same Jost (variable) and Silkscreen files as the site, from `ios/Herdcats/Resources/Fonts`. Use `Font.jost(.caption, weight:)` for text styles (scales with Dynamic Type), `Font.jost(14, weight:)` for fixed sizes, and `Font.pixel(10)` for pixel labels. Navigation titles, tab labels and segmented controls get Jost from `AppTypeface.installUIKitAppearance()`. Terminal output stays in the system monospaced font.
 
 ---
 

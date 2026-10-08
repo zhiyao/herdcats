@@ -236,7 +236,7 @@ struct AgentsScreen: View {
                         }
                     } label: {
                         Image(systemName: "ellipsis")
-                            .font(.system(size: 16, weight: .medium))
+                            .font(.jost(16, weight: .medium))
                             .foregroundStyle(.primary)
                     }
                     .accessibilityLabel("Agent List Options")
@@ -312,7 +312,7 @@ struct AgentsScreen: View {
     }
 
     private func skeletonBar(width: CGFloat, height: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: 5)
+        RoundedRectangle.continuous(DesignSystem.CornerRadius.sm)
             .fill(Theme.subtleFill)
             .frame(width: width, height: height)
     }
@@ -334,7 +334,7 @@ struct AgentsScreen: View {
     private func spaceHeader(_ space: Space) -> some View {
         HStack(spacing: 8) {
             Text("#\(space.workspace.number) · \(space.label)")
-                .font(.appLabelSm.monospacedDigit().weight(.semibold))
+                .font(.pixel(10, bold: true))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             StatusPill(status: space.status)
@@ -348,12 +348,12 @@ struct AgentsScreen: View {
     private var emptyState: some View {
         VStack(spacing: 14) {
             Image(systemName: "cpu")
-                .font(.system(size: 42, weight: .light))
+                .font(.jost(42, weight: .light))
                 .foregroundStyle(.tertiary)
             Text("No agents running")
-                .font(.title3.weight(.semibold))
+                .font(.jost(.title3, weight: .semibold))
             Text("Launch an agent inside a herdr space —\nit will show up here on the next refresh.")
-                .font(.footnote)
+                .font(.jost(.footnote))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
@@ -445,7 +445,7 @@ struct AgentListRow: View {
                 Spacer(minLength: 4)
                 if agent.focused {
                     Image(systemName: "scope")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.jost(11, weight: .semibold))
                         .foregroundStyle(Theme.accent)
                         .padding(.top, 2)
                 }
@@ -456,7 +456,7 @@ struct AgentListRow: View {
                 AgentBadge(kind: agent.agent)
                 if let machineLabel {
                     Label(machineLabel, systemImage: "desktopcomputer")
-                        .font(.caption2)
+                        .font(.jost(.caption2))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -465,9 +465,9 @@ struct AgentListRow: View {
                 if machineLabel == nil, !agent.shortCwd.isEmpty {
                     HStack(spacing: 5) {
                         Image(systemName: "folder")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.jost(9, weight: .semibold))
                         Text(agent.shortCwd)
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.jost(11, weight: .medium))
                             .lineLimit(1)
                     }
                     .foregroundStyle(.secondary)
@@ -480,7 +480,7 @@ struct AgentListRow: View {
 
                 if let lastUpdated {
                     Text(PaneUpdatedFormat.label(for: lastUpdated))
-                        .font(.caption2)
+                        .font(.jost(.caption2))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -533,7 +533,7 @@ struct HerdrcatBrandMark: View {
                         .clipShape(RoundedRectangle.continuous(DesignSystem.CornerRadius.xs))
                 }
                 Text(title ?? "Herdcats")
-                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .font(.jost(17, weight: .semibold))
                     .foregroundStyle(.primary)
             }
             if let host {
@@ -574,7 +574,7 @@ struct HerdrcatBrandMark: View {
                         Text(shortHost).lineLimit(1).truncationMode(.middle)
                         Image(systemName: "chevron.down")
                     }
-                    .font(.caption2)
+                    .font(.jost(.caption2))
                     .foregroundStyle(Color(uiColor: .secondaryLabel))
                 }
                 .accessibilityLabel("Machine: \(host)")

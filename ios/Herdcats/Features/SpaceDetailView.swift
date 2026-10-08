@@ -191,7 +191,7 @@ struct PaneDetailView: View {
                     #endif
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 16, weight: .medium))
+                        .font(.jost(16, weight: .medium))
                         .foregroundStyle(.primary)
                 }
                 .disabled(isPerformingAction)
@@ -544,44 +544,20 @@ private struct PaneBottomDockHeightPreferenceKey: PreferenceKey {
     }
 }
 
-/// Each selectable pane gets its own glass surface in the expanded and compact rows.
-/// When Reduce Transparency is on, uses an opaque card instead of glass/material.
+/// Each selectable pane gets its own solid card in the expanded and compact rows:
+/// `--surface` with a `--border` outline, or `--raised` with an accent outline
+/// when selected, like the website's active rows. Moonlit uses no glass or blur.
 private struct PaneSwitcherGlassItem<S: InsettableShape>: ViewModifier {
     let shape: S
     var isSelected = false
-    var isInteractive = true
 
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-
-    @ViewBuilder
     func body(content: Content) -> some View {
-        let stroke = shape.strokeBorder(
-            isSelected ? Theme.accent : Color.primary.opacity(0.18),
-            lineWidth: isSelected ? 1.2 : 0.7
-        )
-        .allowsHitTesting(false)
-
-        if reduceTransparency {
-            content
-                .background(Theme.cardBackground, in: shape)
-                .background(isSelected ? Theme.accent.opacity(0.22) : Color.clear, in: shape)
-                .overlay(stroke)
-        } else if #available(iOS 26, *) {
-            let glass = isSelected
-                ? Glass.regular.tint(Theme.accent.opacity(0.28))
-                : .regular
-            content
-                .glassEffect(
-                    isInteractive ? glass.interactive() : glass,
-                    in: shape
-                )
-                .overlay(stroke)
-        } else {
-            content
-                .background(isSelected ? Theme.accent.opacity(0.14) : Color.clear, in: shape)
-                .background(.regularMaterial, in: shape)
-                .overlay(stroke)
-        }
+        content
+            .background(isSelected ? Theme.selectedFill : Theme.cardBackground, in: shape)
+            .overlay(
+                shape.strokeBorder(isSelected ? Theme.accent : Theme.hairline, lineWidth: isSelected ? 1.5 : 1)
+                    .allowsHitTesting(false)
+            )
     }
 }
 
@@ -598,7 +574,6 @@ private struct PaneSwitcher: View {
     var onAdd: () -> Void
     var onRename: (PaneEntry) -> Void = { _ in }
     var onKill: (PaneEntry) -> Void = { _ in }
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @ScaledMetric(relativeTo: .subheadline) private var cardHeight = 100
     @ScaledMetric(relativeTo: .caption) private var chipHeight = 30
     /// Vertical translation while the strip follows a drag; nil otherwise.
@@ -608,17 +583,6 @@ private struct PaneSwitcher: View {
 
     private var expandedHeight: CGFloat { cardHeight + 20 }
     private var compactHeight: CGFloat { chipHeight + 12 }
-
-    @ViewBuilder
-    private func glassGroup<Content: View>(
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        if #available(iOS 26, *), !reduceTransparency {
-            GlassEffectContainer(spacing: 4) { content() }
-        } else {
-            content()
-        }
-    }
 
     private var orderedPanes: [PaneEntry] {
         let knownTabIDs = Set(tabs.map(\.id))
@@ -706,7 +670,7 @@ private struct PaneSwitcher: View {
     private var cardsRow: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                glassGroup {
+                Group {
                     HStack(spacing: 8) {
                         let ordered = orderedPanes
                         ForEach(Array(ordered.enumerated()), id: \.element.id) { index, pane in
@@ -724,7 +688,7 @@ private struct PaneSwitcher: View {
                                                 dimensions.height * 0.5 + 4.5
                                             }
                                         Text(pane.displayTitle)
-                                            .font(.subheadline.weight(.medium))
+                                            .font(.jost(.subheadline, weight: .medium))
                                             .lineLimit(2, reservesSpace: true)
                                             .frame(maxWidth: .infinity, alignment: .leading)
                                     }
@@ -739,7 +703,7 @@ private struct PaneSwitcher: View {
                                         Spacer(minLength: 0)
                                         if let updated = lastUpdatedByPaneID[pane.paneId] {
                                             Text(PaneUpdatedFormat.label(for: updated))
-                                                .font(.caption2)
+                                                .font(.jost(.caption2))
                                                 .foregroundStyle(.secondary)
                                                 .lineLimit(1)
                                         }
@@ -773,7 +737,7 @@ private struct PaneSwitcher: View {
 
                         Button(action: onAdd) {
                             Image(systemName: "plus")
-                                .font(.title2.weight(.semibold))
+                                .font(.jost(.title2, weight: .semibold))
                                 .foregroundStyle(Theme.accent)
                                 .frame(width: 56, height: cardHeight)
                                 .contentShape(RoundedRectangle.continuous(DesignSystem.CornerRadius.lg))
@@ -810,7 +774,7 @@ private struct PaneSwitcher: View {
     private var chipsRow: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                glassGroup {
+                Group {
                     HStack(spacing: 6) {
                         let ordered = orderedPanes
                         ForEach(Array(ordered.enumerated()), id: \.element.id) { index, pane in
@@ -831,7 +795,7 @@ private struct PaneSwitcher: View {
 
                         Button(action: onAdd) {
                             Image(systemName: "plus")
-                                .font(.caption.weight(.semibold))
+                                .font(.jost(.caption, weight: .semibold))
                                 .foregroundStyle(Theme.accent)
                                 .frame(width: chipHeight, height: chipHeight)
                                 .contentShape(Capsule())
@@ -871,7 +835,7 @@ private struct PaneSwitcher: View {
             HStack(spacing: 6) {
                 StatusDot(status: pane.status)
                 Text(pane.displayTitle)
-                    .font(.caption.weight(.medium))
+                    .font(.jost(.caption, weight: .medium))
                     .lineLimit(1)
             }
             .padding(.horizontal, 10)
@@ -901,7 +865,7 @@ private struct PaneSwitcher: View {
                         dimensions.height * 0.5 + 4.5
                     }
                 Text(pendingPane?.title ?? "")
-                    .font(.subheadline.weight(.medium))
+                    .font(.jost(.subheadline, weight: .medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(2, reservesSpace: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -911,8 +875,7 @@ private struct PaneSwitcher: View {
         .padding(12)
         .frame(width: 260, height: cardHeight, alignment: .leading)
         .modifier(PaneSwitcherGlassItem(
-            shape: RoundedRectangle.continuous(DesignSystem.CornerRadius.lg),
-            isInteractive: false
+            shape: RoundedRectangle.continuous(DesignSystem.CornerRadius.lg)
         ))
         .transition(.opacity.combined(with: .scale(scale: 0.95)))
         .accessibilityElement(children: .ignore)
@@ -925,14 +888,14 @@ private struct PaneSwitcher: View {
         HStack(spacing: 6) {
             CircularArcSpinner(size: 11)
             Text(pendingPane?.title ?? "")
-                .font(.caption.weight(.medium))
+                .font(.jost(.caption, weight: .medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
         .padding(.horizontal, 10)
         .frame(maxWidth: 160)
         .frame(height: chipHeight)
-        .modifier(PaneSwitcherGlassItem(shape: Capsule(), isInteractive: false))
+        .modifier(PaneSwitcherGlassItem(shape: Capsule()))
         .transition(.opacity.combined(with: .scale(scale: 0.9)))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(pendingAccessibilityLabel)
@@ -1261,7 +1224,7 @@ struct PaneSessionView: View {
                 .accessibilityIdentifier("pane-live-metrics-summary")
             if let error = sessionError ?? errorMessage {
                 Text(error)
-                    .font(.caption2)
+                    .font(.jost(.caption2))
                     .foregroundStyle(Theme.warning)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -1774,13 +1737,12 @@ struct PaneSessionView: View {
                     CircularArcSpinner(size: 18)
                 } else {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.jost(17, weight: .semibold))
                         .foregroundStyle(.white)
                 }
             }
             .frame(width: 44, height: 44)
             .background(AgentStatus.done.color, in: Circle())
-            .shadow(color: Color.black.opacity(0.18), radius: 8, y: 3)
         }
         .buttonStyle(.plain)
         .disabled(isMarkingSeen)
@@ -2453,14 +2415,14 @@ private struct WorkspaceActionDrawer: View {
             switch action {
             case .rename:
                 Text("Rename Workspace")
-                    .font(.title3.weight(.semibold))
+                    .font(.jost(.title3, weight: .semibold))
                 Text("Enter a new label for this workspace. Pane names are unchanged.")
-                    .font(.subheadline)
+                    .font(.jost(.subheadline))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Workspace name")
-                        .font(.caption.weight(.semibold))
+                        .font(.jost(.caption, weight: .semibold))
                         .foregroundStyle(.secondary)
                     TextField("Workspace Name", text: $name)
                         .textInputAutocapitalization(.never)
@@ -2488,11 +2450,11 @@ private struct WorkspaceActionDrawer: View {
 
             case .close:
                 Text("Close Workspace")
-                    .font(.title3.weight(.semibold))
+                    .font(.jost(.title3, weight: .semibold))
                 Text(
                     "This closes “\(action.workspace.label)” and stops all of its tabs and panes on the remote machine."
                 )
-                .font(.subheadline)
+                .font(.jost(.subheadline))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
@@ -2500,7 +2462,7 @@ private struct WorkspaceActionDrawer: View {
                     Button("Close Workspace", role: .destructive) {
                         onConfirm(.close)
                     }
-                    .buttonStyle(.herdrPrimary(tint: .red, useGradient: false))
+                    .buttonStyle(.herdrPrimary(tint: .red))
                     .accessibilityIdentifier("workspace-close-confirm-button")
 
                     Button("Cancel", action: onCancel)
@@ -2509,10 +2471,10 @@ private struct WorkspaceActionDrawer: View {
 
             case .deleteWorktree:
                 Text("Delete Worktree Checkout")
-                    .font(.title3.weight(.semibold))
+                    .font(.jost(.title3, weight: .semibold))
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Checkout")
-                        .font(.caption.weight(.semibold))
+                        .font(.jost(.caption, weight: .semibold))
                         .foregroundStyle(.secondary)
                     Text(action.workspace.worktree?.checkoutPath ?? "")
                         .font(.system(size: 13, design: .monospaced))
@@ -2529,15 +2491,15 @@ private struct WorkspaceActionDrawer: View {
                 Text(
                     "This deletes the checkout folder on the remote machine and closes this workspace. The worktree branch itself is not deleted."
                 )
-                .font(.subheadline)
+                .font(.jost(.subheadline))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 Toggle(isOn: $force) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Force delete")
-                            .font(.subheadline.weight(.medium))
+                            .font(.jost(.subheadline, weight: .medium))
                         Text("Remove even when the checkout has uncommitted changes.")
-                            .font(.caption)
+                            .font(.jost(.caption))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -2546,9 +2508,9 @@ private struct WorkspaceActionDrawer: View {
                 Toggle(isOn: $trustRepository) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Trust repository")
-                            .font(.subheadline.weight(.medium))
+                            .font(.jost(.subheadline, weight: .medium))
                         Text("Required when this checkout is the repository’s main checkout.")
-                            .font(.caption)
+                            .font(.jost(.caption))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -2559,7 +2521,7 @@ private struct WorkspaceActionDrawer: View {
                     Button("Delete Checkout", role: .destructive) {
                         onConfirm(.deleteWorktree(force: force, trustRepository: trustRepository))
                     }
-                    .buttonStyle(.herdrPrimary(tint: .red, useGradient: false))
+                    .buttonStyle(.herdrPrimary(tint: .red))
                     .accessibilityIdentifier("workspace-delete-confirm-button")
 
                     Button("Cancel", action: onCancel)
@@ -2585,7 +2547,7 @@ private struct AddPaneDrawer: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Add to Space")
-                .font(.title3.weight(.semibold))
+                .font(.jost(.title3, weight: .semibold))
             Picker("Add", selection: $kind) {
                 Text("Pane").tag(AddPaneKind.pane)
                 Text("Tab").tag(AddPaneKind.tab)
@@ -2596,13 +2558,13 @@ private struct AddPaneDrawer: View {
             Text(kind == .pane
                  ? "Add a pane beside this one. Name is optional."
                  : "Add a tab with its own pane. Name is optional.")
-                .font(.subheadline)
+                .font(.jost(.subheadline))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             VStack(alignment: .leading, spacing: 8) {
                 Text(kind == .pane ? "Pane name" : "Tab name")
-                    .font(.caption.weight(.semibold))
+                    .font(.jost(.caption, weight: .semibold))
                     .foregroundStyle(.secondary)
                 TextField("Optional", text: $name)
                     .textInputAutocapitalization(.never)

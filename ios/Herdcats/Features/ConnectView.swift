@@ -53,7 +53,7 @@ struct ConnectView: View {
                     Button(recentConnections.isEmpty ? "Connection Setup Help" : "Set Up Another Remote Machine") {
                         showingSetupGuide = true
                     }
-                    .font(.subheadline)
+                    .font(.jost(.subheadline))
                 }
             }
             .padding(.horizontal, 22)
@@ -121,12 +121,12 @@ struct ConnectView: View {
                     .clipShape(RoundedRectangle.continuous(6))
                     .accessibilityHidden(true)
                 Text("Herdcats")
-                    .font(.system(size: 17, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .font(.jost(17, weight: .semibold))
+                    .foregroundStyle(Theme.text)
             }
             Text("Tame your autonomous agents from your pocket.")
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
+                .font(.jost(34, weight: .bold))
+                .foregroundStyle(Theme.text)
                 .fixedSize(horizontal: false, vertical: true)
             AnimatedOnboardingBody()
                 .padding(.top, 6)
@@ -155,7 +155,7 @@ struct ConnectView: View {
                 Text(recentConnections.isEmpty
                      ? "Tame your autonomous coding agents from your iPhone."
                      : "Connect to a remote machine")
-                    .font(.subheadline)
+                    .font(.jost(.subheadline))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -167,7 +167,7 @@ struct ConnectView: View {
         VStack(alignment: .leading, spacing: 16) {
             if !recentConnections.isEmpty {
                 Text("Recent Connections")
-                    .font(.title2.bold())
+                    .font(.jost(.title2, weight: .bold))
             }
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
@@ -177,17 +177,17 @@ struct ConnectView: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 10) {
                             Image(systemName: "server.rack")
-                                .font(.title2)
+                                .font(.jost(.title2))
                                 .foregroundStyle(Theme.accent)
                             Text(connection.host)
-                                .font(.headline)
+                                .font(.jost(.headline))
                                 .lineLimit(2)
                                 .truncationMode(.middle)
                             Text(connection.username)
-                                .font(.subheadline)
+                                .font(.jost(.subheadline))
                                 .lineLimit(1)
                             Text("Port \(connection.port)")
-                                .font(.caption)
+                                .font(.jost(.caption))
                                 .foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity, minHeight: 126, alignment: .leading)
@@ -225,14 +225,14 @@ struct MissingHerdrRecoveryCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("SSH worked. Herdr was not found.")
-                .font(.headline)
+                .font(.jost(.headline))
             Text(
                 "Install Herdr on the remote machine. "
                 + (inForm
                     ? "Your connection details stay in this form. Then tap Connect again."
                     : "Open a connection form, enter your SSH details, then tap Connect.")
             )
-                .font(.subheadline)
+                .font(.jost(.subheadline))
                 .foregroundStyle(.secondary)
             Button("See Setup Steps", action: onSetup)
                 .buttonStyle(.herdrSecondary())
@@ -249,7 +249,7 @@ struct SessionRecoveryCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Herdr was found. Check its session.")
-                .font(.headline)
+                .font(.jost(.headline))
             Text(
                 "On the remote machine, run herdr from a project directory to start or attach "
                 + "to the default session. "
@@ -257,10 +257,10 @@ struct SessionRecoveryCard: View {
                     ? "Then tap Connect again here."
                     : "Open a connection form, enter your SSH details, then tap Connect.")
             )
-                .font(.subheadline)
+                .font(.jost(.subheadline))
                 .foregroundStyle(.secondary)
             Link("Herdr Quick Start", destination: URL(string: "https://herdr.dev/docs/quick-start/")!)
-                .font(.subheadline)
+                .font(.jost(.subheadline))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
@@ -293,8 +293,8 @@ struct AnimatedOnboardingBody: View {
                 ForEach(Array(Self.paragraph1Words.enumerated()), id: \.offset) { index, word in
                     let isVisible = index < visibleWordCount
                     Text(word)
-                        .font(.system(size: 28, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color.white.opacity(0.72))
+                        .font(.jost(28, weight: .medium))
+                        .foregroundStyle(Theme.textMuted)
                         .opacity(isVisible ? 1 : 0)
                         .offset(y: isVisible ? 0 : 5)
                         .blur(radius: isVisible ? 0 : 3)
@@ -307,8 +307,8 @@ struct AnimatedOnboardingBody: View {
                     let globalIndex = Self.paragraph1Words.count + index
                     let isVisible = globalIndex < visibleWordCount
                     Text(word)
-                        .font(.system(size: 28, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color.white.opacity(0.72))
+                        .font(.jost(28, weight: .medium))
+                        .foregroundStyle(Theme.textMuted)
                         .opacity(isVisible ? 1 : 0)
                         .offset(y: isVisible ? 0 : 5)
                         .blur(radius: isVisible ? 0 : 3)

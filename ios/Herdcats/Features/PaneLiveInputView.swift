@@ -603,7 +603,7 @@ struct PaneLiveInputView: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "terminal")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.jost(14, weight: .semibold))
                 .foregroundStyle(isEnabled ? Theme.accent : .secondary)
                 .accessibilityHidden(true)
 

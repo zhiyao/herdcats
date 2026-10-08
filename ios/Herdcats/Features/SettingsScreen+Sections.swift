@@ -20,6 +20,7 @@ extension SettingsScreen {
             }
         } header: {
             Text("Refresh")
+                .font(.jost(.footnote))
         }
     }
 
@@ -38,10 +39,12 @@ extension SettingsScreen {
             .listRowBackground(Theme.cardBackground)
         } header: {
             Text("Pane Data & Privacy")
+                .font(.jost(.footnote))
         } footer: {
             Text(
                 "Preserves unsent prompts and voice dictations when switching panes or backgrounding the app, and remembers recent commands. Stored strictly on this iPhone—turn off to keep inputs in temporary memory only."
             )
+                .font(.jost(.footnote))
         }
     }
 
@@ -57,6 +60,7 @@ extension SettingsScreen {
             .listRowBackground(Theme.cardBackground)
         } header: {
             Text("Appearance")
+                .font(.jost(.footnote))
         }
     }
 
@@ -90,7 +94,7 @@ extension SettingsScreen {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 Text(paneScrollBehavior.wrappedValue.detail)
-                    .font(.footnote)
+                    .font(.jost(.footnote))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -108,7 +112,7 @@ extension SettingsScreen {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 Text(doneClear.wrappedValue.detail)
-                    .font(.footnote)
+                    .font(.jost(.footnote))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -116,6 +120,7 @@ extension SettingsScreen {
             .listRowBackground(Theme.cardBackground)
         } header: {
             Text("Pane")
+                .font(.jost(.footnote))
         }
     }
 
@@ -146,8 +151,10 @@ extension SettingsScreen {
             .accessibilityIdentifier("haptic-toggle")
         } header: {
             Text("Sounds & Haptics")
+                .font(.jost(.footnote))
         } footer: {
             Text("Alerts play while the app is open and respect the Ring/Silent switch.")
+                .font(.jost(.footnote))
         }
     }
 
@@ -166,6 +173,7 @@ extension SettingsScreen {
             .listRowBackground(Theme.cardBackground)
         } header: {
             Text("On Launch")
+                .font(.jost(.footnote))
         }
     }
 
@@ -175,7 +183,7 @@ extension SettingsScreen {
                 Label(machine.label, systemImage: "desktopcomputer")
                     .listRowBackground(Theme.cardBackground)
                 Text("\(machine.target) · \(machine.session)")
-                    .font(.caption)
+                    .font(.jost(.caption))
                     .listRowBackground(Theme.cardBackground)
             }
             if case let .connected(host, username) = appModel.machineCatalog.phase {
@@ -199,6 +207,7 @@ extension SettingsScreen {
             .listRowBackground(Theme.cardBackground)
         } header: {
             Text("Connection")
+                .font(.jost(.footnote))
         }
     }
 
@@ -214,7 +223,7 @@ extension SettingsScreen {
             HStack {
                 Spacer()
                 Text("Herdcats \(Self.appVersion)")
-                    .font(.footnote)
+                    .font(.jost(.footnote))
                     .foregroundStyle(.secondary)
                 Spacer()
             }
