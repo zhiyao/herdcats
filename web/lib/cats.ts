@@ -6,6 +6,8 @@
 
 import { soundSystem } from './audio';
 import type { Vec, View, World } from './world';
+import { currentTheme } from './scenery';
+import { sansFont } from './world';
 
 export interface CatTheme {
     name: string;
@@ -413,7 +415,7 @@ export class Cat {
             ctx.fillRect(ox + (gx + (facing > 0 ? 3 : -4)) * u, oy + (y - 7) * u, w * u, h * u);
         };
 
-        block(-11, 7, 19, 1, 'rgba(0, 0, 0, 0.35)');
+        block(-11, 7, 19, 1, 'rgba(27, 40, 46, 0.6)');
 
         const resting = this.state === CAT_STATES.LOAF || this.state === CAT_STATES.SLEEP;
         if (resting) {
@@ -492,21 +494,22 @@ export class Cat {
         const u = view.pixel;
         const size = Math.max(11, Math.round(view.scale * 0.55));
 
-        ctx.font = `700 ${size}px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif`;
+        ctx.font = `600 ${size}px ${sansFont()}`;
         const width = Math.ceil(ctx.measureText(this.bubbleText).width) + size;
         const height = size + Math.round(size * 0.7);
         const x = Math.round(sx - width / 2);
         const y = Math.round(sy - 18 * u - height - 4);
 
-        ctx.fillStyle = 'rgba(31, 31, 46, 0.92)';
-        ctx.strokeStyle = '#0EDCD5';
+        const isLight = currentTheme() === 'light';
+        ctx.fillStyle = isLight ? '#F8F8F8' : '#26343D';
+        ctx.strokeStyle = isLight ? '#325156' : '#ABE0B6';
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.roundRect(x, y, width, height, height / 2);
         ctx.fill();
         ctx.stroke();
 
-        ctx.fillStyle = '#FFFFFF';
+        ctx.fillStyle = isLight ? '#1B282E' : '#F8F8F8';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(this.bubbleText, Math.round(sx), y + height / 2 + 1);

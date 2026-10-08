@@ -7,7 +7,7 @@ export const metadata = {
 
 export default function AboutPage() {
   return (
-    <SitePage badge="About" title="About Herdcats">
+    <SitePage current="about" title="About Herdcats">
       <section className={styles.section}>
         <h2 className={styles.label}>Who</h2>
         <p>

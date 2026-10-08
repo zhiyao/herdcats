@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useRef, useCallback } from 'react';
-import Link from 'next/link';
 import dynamic from 'next/dynamic';
+import { SiteNav } from '@/components/SiteNav';
 import { VictoryModal } from '@/components/VictoryModal';
 import { ConfettiCanvas } from '@/components/ConfettiCanvas';
 import type { CatCanvasHandle } from '@/components/CatCanvas';
@@ -28,7 +28,7 @@ export default function Home() {
   }, []);
 
   return (
-    <main>
+    <main className="landing">
       {/* Interactive pixel-art herding canvas */}
       <CatCanvas
         onVictory={handleVictory}
@@ -40,59 +40,18 @@ export default function Home() {
 
       {/* UI Overlay Layer */}
       <div id="ui-layer" inert={gameWon ? true : undefined}>
-        {/* Footer Links */}
-        <nav className="bottom-left-links" aria-label="Legal">
-          <Link href="/support" className="text-link text-link-primary">
-            Support
-          </Link>
-          <span className="link-separator">•</span>
-          <Link href="/about" className="text-link">
-            About
-          </Link>
-          <span className="link-separator">•</span>
-          <Link href="/privacy" className="text-link">
-            Privacy Policy
-          </Link>
-          <span className="link-separator">•</span>
-          <Link href="/terms" className="text-link">
-            Terms
-          </Link>
-          <span className="link-separator">•</span>
-          <Link href="/licenses" className="text-link">Licenses</Link>
-          <span className="link-separator">•</span>
-          <a
-            href="https://github.com/zhiyao/herdcats"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-link"
-          >
-            GitHub ↗
-          </a>
-        </nav>
+        {/* Top navigation floats directly on the night sky */}
+        <SiteNav />
 
-        {/* App title, intro, and TestFlight link */}
-        <div className="ui-column ui-column-center">
-          <div className="glass-card title-card">
-            {/* Brand Title */}
-            <div className="brand-header">
-              <img
-                src="/assets/logo.png"
-                alt=""
-                className="brand-logo"
-                width={44}
-                height={44}
-              />
-              <h1 className="brand-title">Herdcats</h1>
-            </div>
-
-            <p className="brand-subtitle">
-              Tame your autonomous agents from your pocket.
-            </p>
-
-            <p className="brand-description">
-              Herding AI agents used to feel impossible the moment you stepped away from your desk. Herdcats connects directly to Herdr over SSH so you can monitor progress, unblock agents, and keep the herd moving — right from your iPhone.
-            </p>
-
+        {/* Hero copy sits in the sky above the meadow */}
+        <section className="hero">
+          <span className="sign-badge">iPhone · Beta</span>
+          <h1 className="hero-title">Herdcats</h1>
+          <p className="hero-subtitle">Tame your autonomous agents from your pocket.</p>
+          <p className="hero-description">
+            Herding AI agents used to feel impossible the moment you stepped away from your desk. Herdcats connects directly to Herdr over SSH so you can monitor progress, unblock agents, and keep the herd moving — right from your iPhone.
+          </p>
+          <div className="hero-actions">
             <a
               href="https://testflight.apple.com/join/nUr62QY1"
               target="_blank"
@@ -101,8 +60,9 @@ export default function Home() {
             >
               Join the TestFlight ↗
             </a>
+            <span className="hero-hint">or herd the cats into the corral below</span>
           </div>
-        </div>
+        </section>
       </div>
 
       {/* VICTORY CELEBRATION MODAL */}

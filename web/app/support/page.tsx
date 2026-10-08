@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
+import { TriangleAlert } from 'lucide-react';
+import { SiteHeader } from '@/components/SiteHeader';
+import { SiteFooter } from '@/components/SitePage';
 
 const supportSections = [
   {
@@ -309,13 +311,9 @@ export default function SupportPage() {
 
   return (
     <div className="support-wrapper" ref={scrollRoot}>
-      {/* Header */}
-      <header className="support-header">
-        <Link href="/" className="brand-link">
-          <img src="/assets/logo.png" alt="" width={36} height={36} className="logo" />
-          <span className="brand-name">Herdcats</span>
-        </Link>
-      </header>
+      <SiteHeader current="support" title="Support">
+        <p>Find answers, connect your iPhone to Herdr, and switch between your machines.</p>
+      </SiteHeader>
 
       {/* Main Content */}
       <main className="support-main">
@@ -334,10 +332,6 @@ export default function SupportPage() {
         <div className="support-content">
         {/* Hero Section */}
         <section className="hero-section">
-          <h1 className="hero-title">Support</h1>
-          <p className="hero-subtitle">
-            Find answers, connect your iPhone to Herdr, and switch between your machines.
-          </p>
           <div className="security-banner">
             <div className="security-text">
               <strong>Direct &amp; Secure:</strong> No intermediate relays, proxies, or cloud daemons.
@@ -727,7 +721,7 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
 
               <div className="faq-list">
                 <div className="faq-item">
-                  <h3 id="troubleshooting-authentication-failed-check-username-and-password-key">🔴 &ldquo;Authentication failed — check username and password/key&rdquo;</h3>
+                  <h3 id="troubleshooting-authentication-failed-check-username-and-password-key"><TriangleAlert className="warn-icon" size={18} strokeWidth={2.25} aria-hidden="true" /><span>&ldquo;Authentication failed — check username and password/key&rdquo;</span></h3>
                   <p>
                     The SSH server rejected authentication (<code>allAuthenticationOptionsFailed</code>).
                   </p>
@@ -743,21 +737,21 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
                 </div>
 
                 <div className="faq-item">
-                  <h3 id="troubleshooting-host-key-verification-failed-changed">🔴 &ldquo;Host key verification failed / changed&rdquo;</h3>
+                  <h3 id="troubleshooting-host-key-verification-failed-changed"><TriangleAlert className="warn-icon" size={18} strokeWidth={2.25} aria-hidden="true" /><span>&ldquo;Host key verification failed / changed&rdquo;</span></h3>
                   <p>
                     Herdcats pins remote host key fingerprints in Keychain on first connect (Trust On First Use). If your server was reinstalled or rebuilt, the key will fail closed to prevent MITM attacks. Verify the change directly with your computer or its administrator before restoring access. There is currently no in-app host-key rotation flow.
                   </p>
                 </div>
 
                 <div className="faq-item">
-                  <h3 id="troubleshooting-connection-timeout-host-unreachable">🔴 Connection Timeout / Host Unreachable</h3>
+                  <h3 id="troubleshooting-connection-timeout-host-unreachable"><TriangleAlert className="warn-icon" size={18} strokeWidth={2.25} aria-hidden="true" /><span>Connection Timeout / Host Unreachable</span></h3>
                   <p>
                     If connecting over Wi-Fi, ensure your phone and computer are on the same subnet. For remote access across networks, install <strong>Tailscale</strong> on both devices to connect seamlessly via MagicDNS.
                   </p>
                 </div>
 
                 <div className="faq-item">
-                  <h3 id="troubleshooting-herdr-command-not-found">🔴 &ldquo;herdr: command not found&rdquo;</h3>
+                  <h3 id="troubleshooting-herdr-command-not-found"><TriangleAlert className="warn-icon" size={18} strokeWidth={2.25} aria-hidden="true" /><span>&ldquo;herdr: command not found&rdquo;</span></h3>
                   <p>
                     Herdcats looks for <code>herdr</code> in <code>PATH</code>, <code>~/.local/bin</code>, <code>/opt/homebrew/bin</code>, and <code>/usr/local/bin</code>. Ensure Herdr is installed on the remote machine.
                   </p>
@@ -769,71 +763,27 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="support-footer">
-        <div className="footer-inner">
-          <p>© {new Date().getFullYear()} Herdcats. Open source iOS client for Herdr.</p>
-          <div className="footer-links">
-            <Link href="/support" className="footer-link">Support</Link>
-            <Link href="/about" className="footer-link">About</Link>
-            <Link href="/privacy" className="footer-link">Privacy</Link>
-            <Link href="/terms" className="footer-link">Terms</Link>
-            <a
-              href="https://github.com/zhiyao/herdcats"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="footer-link"
-            >
-              GitHub ↗
-            </a>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter />
 
       {/* Styles */}
       <style jsx>{`
         .support-wrapper {
           min-height: 100dvh;
           height: 100dvh;
-          background: var(--bg-page);
-          color: #FFFFFF;
-          font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+          background: var(--bg);
+          --content-width: 1160px;
+          color: var(--text);
+          font-family: var(--font-sans), Futura, "Century Gothic", system-ui, sans-serif;
           overflow-y: auto;
           -webkit-overflow-scrolling: touch;
           display: flex;
           flex-direction: column;
         }
 
-        .support-header {
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          padding: 40px 20px 16px;
-        }
 
-        .support-wrapper :global(.brand-link) {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 12px;
-          text-decoration: none;
-          color: #FFFFFF;
-          transition: opacity 0.15s ease;
-        }
 
-        .support-wrapper :global(.brand-link:hover) {
-          opacity: 0.85;
-        }
 
-        .logo {
-          border-radius: 8px;
-        }
 
-        .brand-name {
-          font-size: 20px;
-          font-weight: 700;
-          letter-spacing: -0.3px;
-        }
 
         .support-main {
           flex: 1;
@@ -851,42 +801,28 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
           margin-bottom: 32px;
         }
 
-        .hero-title {
-          font-size: 32px;
-          font-weight: 800;
-          letter-spacing: -0.8px;
-          background: linear-gradient(135deg, #FFFFFF 40%, #0EDCD5 100%);
-          -webkit-background-clip: text;
-          background-clip: text;
-          -webkit-text-fill-color: transparent;
-          margin-bottom: 10px;
-        }
 
-        .hero-subtitle {
-          font-size: 16px;
-          color: #8E8E93;
-          line-height: 1.5;
-          max-width: 680px;
-          margin-bottom: 20px;
-        }
 
         .security-banner {
           display: flex;
           align-items: center;
-          border-left: 3px solid #FF9500;
+          border-left: 3px solid var(--accent);
           padding-left: 12px;
           font-size: 13px;
-          color: #CCCCCC;
+          color: var(--text);
         }
 
         .ts-tag {
           display: inline-block;
           margin-left: 10px;
-          background: rgba(14, 220, 213, 0.15);
-          color: #0EDCD5;
-          font-size: 11px;
-          font-weight: 600;
-          padding: 2px 7px;
+          background: var(--sign-bg);
+          color: var(--warm);
+          border: 2px solid var(--warm);
+          font-family: var(--font-pixel), monospace;
+          font-size: 10px;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+          padding: 2px 6px;
           border-radius: 4px;
         }
 
@@ -897,13 +833,13 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
           overflow-x: auto;
           padding-bottom: 4px;
           margin-bottom: 24px;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          border-bottom: 1px solid var(--border);
         }
 
         .tab-btn {
           background: transparent;
           border: none;
-          color: #8E8E93;
+          color: var(--text-muted);
           font-size: 14px;
           font-weight: 600;
           padding: 10px 16px;
@@ -915,13 +851,13 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
         }
 
         .tab-btn:hover {
-          color: #FFFFFF;
+          color: var(--text);
         }
 
         .tab-btn.active {
-          color: #0EDCD5;
-          border-bottom: 2px solid #0EDCD5;
-          background: rgba(14, 220, 213, 0.06);
+          color: var(--text);
+          border-bottom: 2px solid var(--accent);
+          background: var(--raised);
         }
 
         /* Guide sections */
@@ -931,24 +867,24 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
         .guide-card h2 {
           font-size: 22px;
           font-weight: 700;
-          color: #FFFFFF;
+          color: var(--text);
           margin-bottom: 6px;
         }
 
         .card-desc {
           font-size: 14px;
-          color: #8E8E93;
+          color: var(--text-muted);
           margin-bottom: 24px;
         }
 
         .prereq-text {
           font-size: 13px;
-          color: #CCCCCC;
+          color: var(--text);
           margin: -12px 0 24px;
         }
 
         .prereq-text a {
-          color: #0EDCD5;
+          color: var(--accent);
         }
 
         /* Steps */
@@ -967,10 +903,10 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
         .step-num {
           width: 32px;
           height: 32px;
-          border-radius: 50%;
-          background: rgba(14, 220, 213, 0.15);
-          color: #0EDCD5;
-          font-weight: 700;
+          border-radius: 4px;
+          background: var(--raised);
+          color: var(--accent);
+          font-family: var(--font-pixel), monospace;
           font-size: 14px;
           display: flex;
           align-items: center;
@@ -986,25 +922,25 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
         .step-body h3 {
           font-size: 16px;
           font-weight: 600;
-          color: #FFFFFF;
+          color: var(--text);
           margin-bottom: 6px;
         }
 
         .step-body p {
           font-size: 14px;
-          color: #CCCCCC;
+          color: var(--text);
           line-height: 1.5;
           margin-bottom: 8px;
         }
 
         .path-text {
           font-size: 13px;
-          color: #0EDCD5 !important;
+          color: var(--accent) !important;
         }
 
         .tip-text {
           font-size: 12px !important;
-          color: #8E8E93 !important;
+          color: var(--text-muted) !important;
           margin-top: 4px;
         }
 
@@ -1013,14 +949,17 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
           position: relative;
           margin: 8px 0;
           overflow-x: auto;
-          padding: 12px 60px 12px 0;
+          padding: 12px 76px 12px 14px;
+          background: var(--bg-deep);
+          border: 1px solid var(--border);
+          border-radius: 8px;
         }
 
         .code-box pre {
           margin: 0;
           font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
           font-size: 12px;
-          color: #0EDCD5;
+          color: var(--accent);
           line-height: 1.5;
           white-space: pre-wrap;
           word-break: break-all;
@@ -1030,8 +969,9 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
           position: absolute;
           top: 10px;
           right: 10px;
-          background: rgba(255, 255, 255, 0.1);
-          color: #FFFFFF;
+          background: var(--raised);
+          color: var(--text);
+          font-family: inherit;
           border: none;
           font-size: 11px;
           font-weight: 600;
@@ -1042,8 +982,8 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
         }
 
         .copy-btn:hover {
-          background: #0EDCD5;
-          color: #003E43;
+          background: var(--accent-fill);
+          color: var(--on-accent);
         }
 
         .sub-options {
@@ -1059,13 +999,13 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
         .sub-option strong {
           display: block;
           font-size: 13px;
-          color: #0EDCD5;
+          color: var(--accent);
           margin-bottom: 4px;
         }
 
         .sub-option p {
           font-size: 12px;
-          color: #8E8E93;
+          color: var(--text-muted);
           margin: 0;
         }
 
@@ -1079,7 +1019,7 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
 
         .info-bullets li {
           font-size: 13px;
-          color: #CCCCCC;
+          color: var(--text);
         }
 
         /* Feature grid */
@@ -1095,52 +1035,52 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
         .feature-cell h3 {
           font-size: 15px;
           font-weight: 700;
-          color: #0EDCD5;
+          color: var(--accent);
           margin-bottom: 6px;
         }
 
         .feature-cell p {
           font-size: 13px;
-          color: #8E8E93;
+          color: var(--text-muted);
           line-height: 1.5;
         }
 
 
         .connection-guide, .faq-section { margin-bottom: 48px; }
         .faq-section { margin-top: 24px; }
-        .connection-steps { padding-left: 22px; color: #CCCCCC; font-size: 14px; line-height: 1.6; }
+        .connection-steps { padding-left: 22px; color: var(--text); font-size: 14px; line-height: 1.6; }
         .connection-steps li { margin-bottom: 12px; }
-        .connection-note { margin-top: 16px; color: #8E8E93; font-size: 14px; line-height: 1.6; }
-        .connection-guide a, .faq-item a { color: #0EDCD5; text-decoration: underline; }
-        .faq-category { margin: 24px 0 12px; font-size: 17px; color: #FFFFFF; }
-        .faq-question { font-size: 15px; font-weight: 600; line-height: 1.5; color: #FFFFFF; margin-bottom: 12px; }
-        .faq-item ol { padding-left: 18px; font-size: 13px; color: #CCCCCC; line-height: 1.6; }
+        .connection-note { margin-top: 16px; color: var(--text-muted); font-size: 14px; line-height: 1.6; }
+        .connection-guide a, .faq-item a { color: var(--accent); text-decoration: underline; }
+        .faq-category { margin: 24px 0 12px; font-size: 17px; color: var(--text); }
+        .faq-question { font-size: 15px; font-weight: 600; line-height: 1.5; color: var(--text); margin-bottom: 12px; }
+        .faq-item ol { padding-left: 18px; font-size: 13px; color: var(--text); line-height: 1.6; }
         .faq-item li { margin-bottom: 6px; }
         .faq-item { min-width: 0; overflow-wrap: anywhere; }
         .step-body { min-width: 0; }
 
         .support-sections { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; }
-        .support-sections a { color: #0EDCD5; text-decoration: underline; }
+        .support-sections a { color: var(--accent); text-decoration: underline; }
 
 
         .support-wrapper { scroll-behavior: smooth; }
         .support-content { min-width: 0; }
         .support-content section, .support-content h3, .support-content h4 { scroll-margin-top: 40px; }
         .support-sidebar { position: sticky; top: 32px; max-height: calc(100dvh - 130px); overflow-y: auto; }
-        .sidebar-title { color: #8E8E93; font-size: 12px; font-weight: 600; margin: 0 0 16px 12px; }
-        .section-link { display: block; padding: 10px 12px; border-left: 2px solid rgba(255,255,255,.08); color: #8E8E93; font-size: 14px; text-decoration: none; }
+        .sidebar-title { color: var(--accent); font-family: var(--font-pixel), monospace; font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; margin: 0 0 16px 12px; }
+        .section-link { display: block; padding: 10px 12px; border-left: 2px solid var(--border); color: var(--text-muted); font-size: 14px; text-decoration: none; }
         .subsection-link { padding: 8px 12px 8px 24px; font-size: 12px; line-height: 1.5; }
-        .section-link:hover { color: #FFFFFF; }
-        .section-link.active { color: #0EDCD5; border-left-color: #0EDCD5; background: rgba(14,220,213,.06); }
-        .section-link:focus-visible { outline: 2px solid #0EDCD5; outline-offset: 2px; }
+        .section-link:hover { color: var(--text); }
+        .section-link.active { color: var(--text); border-left-color: var(--accent); background: var(--raised); }
+        .section-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         .tab-pane { margin-bottom: 48px; }
         @media (max-width: 800px) {
           .support-main { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-top: 16px; }
-          .support-sidebar { top: 0; z-index: 30; max-height: none; background: #14141F; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.08); }
+          .support-sidebar { top: 0; z-index: 30; max-height: none; background: var(--bg); padding: 8px 0; border-bottom: 1px solid var(--border); }
           .support-sidebar nav { display: flex; overflow-x: auto; }
           .sidebar-title { display: none; }
           .section-link { flex-shrink: 0; border-left: 0; border-bottom: 2px solid transparent; }
-          .section-link.active { border-bottom-color: #0EDCD5; }
+          .section-link.active { border-bottom-color: var(--accent); }
           .support-content section, .support-content h3, .support-content h4 { scroll-margin-top: 90px; }
         }
         @media (prefers-reduced-motion: reduce) {
@@ -1158,15 +1098,18 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
         }
 
         .faq-item h3 {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
           font-size: 15px;
           font-weight: 600;
-          color: #FFFFFF;
+          color: var(--text);
           margin-bottom: 8px;
         }
 
         .faq-item p {
           font-size: 13px;
-          color: #8E8E93;
+          color: var(--text-muted);
           line-height: 1.5;
           margin-bottom: 8px;
         }
@@ -1174,56 +1117,23 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
         .faq-item ul {
           padding-left: 18px;
           font-size: 13px;
-          color: #CCCCCC;
+          color: var(--text);
           line-height: 1.6;
         }
 
+        .faq-item :global(.warn-icon) {
+          flex-shrink: 0;
+          margin-top: 2px;
+          color: var(--accent);
+        }
+
         /* Footer */
-        .support-footer {
-          position: sticky;
-          bottom: 0;
-          z-index: 40;
-          border-top: 1px solid rgba(255, 255, 255, 0.08);
-          background: rgba(20, 20, 31, 0.92);
-          backdrop-filter: blur(16px);
-          -webkit-backdrop-filter: blur(16px);
-          padding: 18px 20px;
-          margin-top: auto;
-        }
 
-        .footer-inner {
-          max-width: 960px;
-          margin: 0 auto;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 10px;
-          text-align: center;
-          font-size: 13px;
-          color: #636366;
-        }
 
-        .footer-links {
-          display: flex;
-          justify-content: center;
-          flex-wrap: wrap;
-          gap: 16px;
-        }
 
-        .support-wrapper :global(.footer-link) {
-          color: #8E8E93;
-          text-decoration: none;
-          transition: color 0.15s ease;
-        }
 
-        .support-wrapper :global(.footer-link:hover) {
-          color: #0EDCD5;
-        }
 
         @media (max-width: 640px) {
-          .support-header {
-            padding: 28px 16px 12px;
-          }
           .sub-options, .feature-grid {
             grid-template-columns: 1fr;
           }
