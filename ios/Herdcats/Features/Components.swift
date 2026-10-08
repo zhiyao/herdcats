@@ -1093,7 +1093,7 @@ extension CircularArcSpinner {
 // MARK: - Host key approval
 
 extension View {
-    /// Presents first-use SSH host key approval; `onApproved` retries the connection.
+    /// Presents SSH host key approval or verified replacement; `onApproved` retries the connection.
     func hostKeyApprovalSheet(onApproved: @escaping @MainActor () async -> Void) -> some View {
         modifier(HostKeyApprovalModifier(onApproved: onApproved))
     }
@@ -1109,13 +1109,14 @@ private struct HostKeyApprovalModifier: ViewModifier {
             set: { if $0 == nil, appModel.hostKeyChallenge != nil { appModel.cancelHostKeyApproval() } }
         )) { item in
             HostKeyApprovalView(challenge: item.challenge, onApproved: onApproved)
+                .id(item.id)
         }
     }
 }
 
 private struct HostKeyApprovalItem: Identifiable {
     let challenge: SSHHostKeyChallenge
-    var id: String { "\(challenge.host):\(challenge.port) \(challenge.publicKey)" }
+    var id: String { "\(challenge.host):\(challenge.port) \(challenge.publicKey) \(challenge.previousPublicKey ?? "")" }
 }
 
 private struct HostKeyApprovalView: View {
@@ -1123,50 +1124,91 @@ private struct HostKeyApprovalView: View {
     let challenge: SSHHostKeyChallenge
     let onApproved: @MainActor () async -> Void
     @State private var isApproving = false
+    @State private var approvalError: String?
+    @State private var verifiedReplacement = false
+
+    private var isReplacement: Bool { challenge.previousPublicKey != nil }
+
+    private func fingerprint(_ value: String, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(label).font(.subheadline.weight(.semibold))
+            Text(value)
+                .font(.system(.footnote, design: .monospaced))
+                .textSelection(.enabled)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle.continuous(DesignSystem.CornerRadius.lg)
+                        .fill(Color.secondary.opacity(0.12))
+                )
+        }
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    Text("Herdcats hasn't connected to \(challenge.host):\(challenge.port) before. "
-                        + "Compare this fingerprint with the server's before you trust it.")
+                    Text(isReplacement
+                        ? "The SSH identity of \(challenge.host):\(challenge.port) has changed. Connection is blocked. "
+                            + "This can happen after a rebuild or key rotation, but could also mean someone is impersonating your computer."
+                        : "Herdcats hasn't connected to \(challenge.host):\(challenge.port) before. "
+                            + "Compare this fingerprint with the server's before you trust it.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    Text(challenge.fingerprint)
-                        .font(.system(.footnote, design: .monospaced))
-                        .textSelection(.enabled)
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(
-                            RoundedRectangle.continuous(DesignSystem.CornerRadius.lg)
-                                .fill(Color.secondary.opacity(0.12))
-                        )
-                    Text("On the server, run: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub")
+                    if let previousFingerprint = challenge.previousFingerprint {
+                        fingerprint(previousFingerprint, label: "Previously approved fingerprint")
+                    }
+                    fingerprint(challenge.fingerprint, label: isReplacement ? "New fingerprint" : "Server fingerprint")
+                    Text("Verify the fingerprint directly on your computer or with its administrator through a trusted channel. "
+                        + "For an Ed25519 host key, run on the server: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                    if isReplacement {
+                        Toggle("I verified the new fingerprint through a trusted channel", isOn: $verifiedReplacement)
+                            .font(.subheadline)
+                            .disabled(isApproving)
+                        Text("Replacing this key updates trust only for this hostname and port. Your login credentials are kept.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let error = approvalError {
+                        Text(error)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                     Button {
                         Task {
                             isApproving = true
                             defer { isApproving = false }
+                            approvalError = nil
                             if await appModel.approveHostKey(challenge) {
                                 await onApproved()
+                            } else {
+                                approvalError = appModel.lastError
                             }
                         }
                     } label: {
-                        Text("Trust and Connect")
+                        Text(isReplacement ? "Replace Approved Key and Connect" : "Trust and Connect")
                     }
                     .buttonStyle(.herdrPrimary)
-                    .disabled(isApproving)
+                    .disabled(isApproving || (isReplacement && !verifiedReplacement))
                 }
                 .padding(20)
             }
             .background(Theme.backgroundGradient)
-            .navigationTitle("Verify Host Key")
+            .navigationTitle(isReplacement ? "Host Key Changed" : "Verify Host Key")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { appModel.cancelHostKeyApproval() }
-                        .disabled(isApproving)
+                    Button {
+                        appModel.cancelHostKeyApproval()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.primary)
+                    }
+                    .accessibilityLabel("Close")
+                    .disabled(isApproving)
                 }
             }
         }

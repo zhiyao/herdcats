@@ -39,10 +39,15 @@ extension AppModel {
     }
 
     /// Approval only persists the exact displayed key; the next handshake verifies it again.
-    func approveHostKey(_ challenge: SSHHostKeyChallenge) async -> Bool {
+    func approveHostKey(_ challenge: SSHHostKeyChallenge, store: SSHHostKeyStore = .shared) async -> Bool {
         guard hostKeyChallenge == challenge, !isDialing else { return false }
         do {
-            try await SSHHostKeyStore.shared.trust(challenge.publicKey, host: challenge.host, port: challenge.port)
+            if let previousKey = challenge.previousPublicKey {
+                try await store.replace(challenge.publicKey, replacing: previousKey,
+                                        host: challenge.host, port: challenge.port)
+            } else {
+                try await store.trust(challenge.publicKey, host: challenge.host, port: challenge.port)
+            }
             guard hostKeyChallenge == challenge else { return false }
             hostKeyChallenge = nil
             hostKeyVerificationBlocked = false

@@ -117,7 +117,10 @@ extension AppModel {
             connectionIdentity = nil
             if let hostKeyError = error as? SSHHostKeyError {
                 hostKeyVerificationBlocked = true
-                if case let .unknown(challenge) = hostKeyError { hostKeyChallenge = challenge }
+                switch hostKeyError {
+                case let .unknown(challenge), let .changed(challenge):
+                    hostKeyChallenge = challenge
+                }
             } else if error is SSHHostKeyStore.StoreError {
                 hostKeyVerificationBlocked = true
             }
