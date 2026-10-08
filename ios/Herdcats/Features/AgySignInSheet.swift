@@ -26,7 +26,7 @@ struct AgySignInSheet: View {
                         .foregroundStyle(.secondary)
 
                     if let error {
-                        Text(error).foregroundStyle(.red)
+                        Text(error).foregroundStyle(Theme.destructive)
                     }
 
                     if transcript.codeSubmitted {

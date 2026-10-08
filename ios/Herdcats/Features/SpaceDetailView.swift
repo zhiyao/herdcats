@@ -1738,7 +1738,7 @@ struct PaneSessionView: View {
                 } else {
                     Image(systemName: "checkmark")
                         .font(.jost(17, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Theme.onPrimary)
                 }
             }
             .frame(width: 44, height: 44)
@@ -2462,7 +2462,7 @@ private struct WorkspaceActionDrawer: View {
                     Button("Close Workspace", role: .destructive) {
                         onConfirm(.close)
                     }
-                    .buttonStyle(.herdrPrimary(tint: .red))
+                    .buttonStyle(.herdrPrimary(tint: Theme.destructive))
                     .accessibilityIdentifier("workspace-close-confirm-button")
 
                     Button("Cancel", action: onCancel)
@@ -2521,7 +2521,7 @@ private struct WorkspaceActionDrawer: View {
                     Button("Delete Checkout", role: .destructive) {
                         onConfirm(.deleteWorktree(force: force, trustRepository: trustRepository))
                     }
-                    .buttonStyle(.herdrPrimary(tint: .red))
+                    .buttonStyle(.herdrPrimary(tint: Theme.destructive))
                     .accessibilityIdentifier("workspace-delete-confirm-button")
 
                     Button("Cancel", action: onCancel)

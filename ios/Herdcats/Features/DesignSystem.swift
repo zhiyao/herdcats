@@ -149,40 +149,55 @@ enum Theme {
     /// `--warm`: rare lacquer accent for sign badges.
     static let warm = moonlit(night: Palette.lacquer900, day: 0x8A3324)
 
-    /// Unified-diff addition (`+`) line wash.
-    static let diffAdditionBackground = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.12, green: 0.42, blue: 0.22, alpha: 0.72)
-            : UIColor(red: 0.20, green: 0.70, blue: 0.40, alpha: 0.28)
-    })
+    // MARK: - Status Colors
+    //
+    // Moonlit-tuned status set: the teal ramp and lacquer, plus one muted amber,
+    // so blocked / working / done / idle stay distinct at a glance. Each passes
+    // WCAG AA (4.5:1) as text on `cardBackground`; `onPrimary` reads on each fill.
 
-    /// Unified-diff deletion (`-`) line wash.
-    static let diffDeletionBackground = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.42, green: 0.08, blue: 0.10, alpha: 0.85)
-            : UIColor(red: 0.85, green: 0.20, blue: 0.22, alpha: 0.28)
-    })
+    /// Idle: lifted teal-400 by night, teal-600 by day.
+    static let statusIdle = moonlit(night: 0x7FB5A9, day: Palette.teal600)
+
+    /// Done: mint-200 by night, a deep mint by day.
+    static let statusDone = moonlit(night: Palette.mint200, day: 0x2F7148)
+
+    /// Working: muted amber, the one hue outside the ramp.
+    static let statusWorking = moonlit(night: 0xE0B866, day: 0x865C0E)
+
+    /// Blocked: lacquer brightened enough to read as an alert.
+    static let statusBlocked = moonlit(night: 0xE8806A, day: 0xA8432F)
+
+    /// Unified-diff addition (`+`) line wash: mint.
+    static let diffAdditionBackground = moonlit(
+        night: UIColor(hex: Palette.mint200, alpha: 0.22),
+        day: UIColor(hex: Palette.mint200, alpha: 0.6)
+    )
+
+    /// Unified-diff deletion (`-`) line wash: lacquer.
+    static let diffDeletionBackground = moonlit(
+        night: UIColor(hex: 0xE8806A, alpha: 0.24),
+        day: UIColor(hex: 0xA8432F, alpha: 0.18)
+    )
 
     // MARK: - Semantic & Action Colors
 
-    /// Destructive / critical error color (#FF453A / system red).
-    static let destructive = Color(red: 1.0, green: 0.27, blue: 0.23)
+    /// Destructive / critical error color.
+    static let destructive = statusBlocked
 
-    /// Warning alert color (#FF9F0A / system orange).
-    static let warning = Color(red: 1.0, green: 0.62, blue: 0.04)
+    /// Warning alert color.
+    static let warning = statusWorking
 
     /// `--on-accent`: text on `accentFill` (night-950 on mint, paper on night-800).
     static let onPrimary = moonlit(night: Palette.night950, day: Palette.paper50)
 
-    /// Soft heads-up yellow (#FFD60A) when remaining is healthy but burn is
-    /// ahead of the even-burn line.
-    static let quotaHeadsUp = Color(red: 1.0, green: 214.0 / 255.0, blue: 10.0 / 255.0)
+    /// Heads-up when remaining is healthy but burn is ahead of the even-burn line.
+    static let quotaHeadsUp = statusWorking
 
-    /// Hybrid quota color: green when remaining ≥ 40% and on pace; yellow when
-    /// ≥ 40% but behind pace; orange for 15–39%; red below 15%. A full window
+    /// Hybrid quota color: mint when remaining ≥ 40% and on pace; amber when
+    /// ≥ 40% but behind pace or at 15–39%; blocked red below 15%. A full window
     /// is always green. Outer and inner rings share the same semantic color
     /// (`inner` is ignored for hue). Windows without a schedule use the same
-    /// percent bands with no yellow path.
+    /// percent bands with no heads-up path.
     static func quotaColor(for chip: AgentUsageChip, now: Date = .now, inner: Bool = false) -> Color {
         _ = inner
         let remaining = chip.percentRemaining
@@ -195,8 +210,8 @@ enum Theme {
         return successGreen
     }
 
-    /// Countdown color: yellow when behind pace at ≥ 40% remaining; match
-    /// orange/red in the low band; otherwise secondary.
+    /// Countdown color: amber when behind pace at ≥ 40% remaining; match
+    /// amber/red in the low band; otherwise secondary.
     static func quotaCountdownStyle(for chip: AgentUsageChip, now: Date = .now, inner: Bool = false) -> AnyShapeStyle {
         _ = inner
         if chip.percentRemaining < 40 {
@@ -208,8 +223,8 @@ enum Theme {
         return AnyShapeStyle(.secondary)
     }
 
-    /// Affirming green used for on-pace / healthy quota chips.
-    static let successGreen = Color(red: 0.20, green: 0.78, blue: 0.35)
+    /// Affirming mint used for on-pace / healthy quota chips.
+    static let successGreen = statusDone
 }
 
 // MARK: - Typography Tokens
@@ -458,10 +473,7 @@ struct HerdrPrimaryButtonStyle: ButtonStyle {
         if !isEnabled {
             return Theme.textMuted
         }
-        if tint == nil {
-            return Theme.onPrimary
-        }
-        return .white
+        return Theme.onPrimary
     }
 
     func makeBody(configuration: Configuration) -> some View {

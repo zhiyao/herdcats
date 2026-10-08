@@ -378,14 +378,15 @@ extension AgentUsageCard {
 // MARK: - Status visuals
 
 extension AgentStatus {
-    /// Matches Herdr TUI status colors (`state_dot` / `state_label_color`).
+    /// Moonlit-tuned versions of the Herdr TUI status colors (`state_dot` /
+    /// `state_label_color`), keeping the same meaning per state.
     var color: Color {
         switch self {
-        case .working: .yellow
-        case .blocked: .red
-        case .unknown: .gray
-        case .done: .teal
-        case .idle: .green
+        case .working: Theme.statusWorking
+        case .blocked: Theme.statusBlocked
+        case .unknown: Theme.textMuted
+        case .done: Theme.statusDone
+        case .idle: Theme.statusIdle
         }
     }
 }

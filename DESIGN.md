@@ -155,6 +155,16 @@ img.pixel, canvas.pixel {
 ### Circular emblem
 - Mascot icon inside a circle with a 3px `mint-200` stroke and a transparent fill.
 
+### Status colours (app)
+Agent status, quota rings and destructive actions need four states that read at a glance. They use tuned steps of the ramp and lacquer, plus one muted amber, the only hue outside the palette. Each passes AA (4.5:1) as text on a card; fills take `--on-accent` text.
+
+| State | Night | Day | Also used for |
+|---|---|---|---|
+| Idle | `#7FB5A9` (lifted teal-400) | `#4C777D` | |
+| Done | `#ABE0B6` | `#2F7148` | Quota on pace, diff `+` wash |
+| Working | `#E0B866` | `#865C0E` | Warnings, quota behind pace or 15–39% |
+| Blocked | `#E8806A` (bright lacquer) | `#A8432F` | Errors, destructive buttons, quota <15%, diff `−` wash |
+
 ---
 
 ## 7. Light mode ("day")
