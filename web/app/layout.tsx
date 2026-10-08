@@ -10,6 +10,7 @@ const silkscreen = Silkscreen({ subsets: ['latin'], weight: ['400', '700'], vari
 const themeScript = `try{document.documentElement.dataset.theme=localStorage.getItem('${THEME_STORAGE_KEY}')==='light'?'light':'dark'}catch(e){document.documentElement.dataset.theme='dark'}`;
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://herdcats.dev'),
   title: 'Herdcats — Herding cats, from your pocket',
   description: 'Herding cats, from your pocket. Native iPhone client for Herdr with git worktrees, Citadel SSH, and live terminal pane streaming.',
   icons: {
@@ -18,6 +19,20 @@ export const metadata: Metadata = {
       { url: '/assets/logo.png', sizes: '512x512', type: 'image/png' },
     ],
     apple: { url: '/assets/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+  },
+  openGraph: {
+    title: 'Herdcats — Herding cats, from your pocket',
+    description: 'Herding cats, from your pocket. Native iPhone client for Herdr with git worktrees, Citadel SSH, and live terminal pane streaming.',
+    url: '/',
+    siteName: 'Herdcats',
+    type: 'website',
+    images: [{ url: '/og.png', width: 1200, height: 630, alt: 'Herdcats' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Herdcats — Herding cats, from your pocket',
+    description: 'Herding cats, from your pocket. Native iPhone client for Herdr with git worktrees, Citadel SSH, and live terminal pane streaming.',
+    images: ['/og.png'],
   },
 };
 
