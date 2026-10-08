@@ -316,6 +316,17 @@ actor SSHHostKeyStore {
         }
     }
 
+    /// Replace only the pin reviewed by the user. A stale review must fail closed.
+    func replace(_ key: String, replacing previousKey: String, host: String, port: Int) throws {
+        guard try load(host: host, port: port) == previousKey else {
+            throw StoreError(status: errSecDuplicateItem)
+        }
+        let match = query(host: host, port: port)
+        let status = SecItemUpdate(match as CFDictionary,
+                                  [kSecValueData as String: Data(key.utf8)] as CFDictionary)
+        guard status == errSecSuccess else { throw StoreError(status: status) }
+    }
+
     struct StoreError: LocalizedError {
         let status: OSStatus
         var errorDescription: String? {

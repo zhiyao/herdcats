@@ -397,7 +397,7 @@ export default function SupportPage() {
         </div>
         <div className="faq-item">
         <h4 id="privacy-why-is-a-changed-host-key-blocking-my-connection" className="faq-question">Why is a changed host key blocking my connection?</h4>
-        <p>The computer is presenting a different identity from the one you approved. This can happen after a server is rebuilt, but you should verify the reason with its administrator before restoring access. Herdcats blocks the connection, including automatic reconnects. There is currently no in-app option to replace an approved host key.</p>
+        <p>The computer is presenting a different identity from the one you approved. This can happen after a server is rebuilt, but you should verify the reason with its administrator before restoring access. Herdcats blocks the connection, including automatic reconnects. When the changed-key review appears, compare the new fingerprint with one obtained directly from your computer or its administrator through a trusted channel. Confirm that you verified it, then choose “Replace Approved Key and Connect”. Canceling keeps the previously approved key.</p>
         </div>
         <div className="faq-item">
         <h4 id="privacy-where-are-my-saved-sign-in-details-stored" className="faq-question">Where are my saved sign-in details stored?</h4>
@@ -739,7 +739,7 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
                 <div className="faq-item">
                   <h3 id="troubleshooting-host-key-verification-failed-changed"><TriangleAlert className="warn-icon" size={18} strokeWidth={2.25} aria-hidden="true" /><span>&ldquo;Host key verification failed / changed&rdquo;</span></h3>
                   <p>
-                    Herdcats pins remote host key fingerprints in Keychain on first connect (Trust On First Use). If your server was reinstalled or rebuilt, the key will fail closed to prevent MITM attacks. Verify the change directly with your computer or its administrator before restoring access. There is currently no in-app host-key rotation flow.
+                    Herdcats pins remote host key fingerprints in Keychain on first connect (Trust On First Use). If your server was reinstalled or rebuilt, the key will fail closed to prevent MITM attacks. Verify the change directly with your computer or its administrator before restoring access. The app shows both the previously approved and new fingerprints. After verifying the new fingerprint through a trusted channel, confirm verification and choose “Replace Approved Key and Connect” to update trust for that hostname and port.
                   </p>
                 </div>
 

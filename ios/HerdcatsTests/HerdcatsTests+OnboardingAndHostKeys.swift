@@ -277,9 +277,8 @@ struct SSHHostKeyVerificationTests {
         let validator = SSHHostKeyValidatorDelegate(host: "server", port: 22, trustedKey: key)
         try validator.validate(key)
         let other = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-        #expect(throws: SSHHostKeyError.changed(host: "server", port: 22,
-                                              expected: SSHHostKeyValidatorDelegate.fingerprint(key),
-                                              received: SSHHostKeyValidatorDelegate.fingerprint(other))) {
+        #expect(throws: SSHHostKeyError.changed(SSHHostKeyChallenge(
+            host: "server", port: 22, publicKey: other, previousPublicKey: key))) {
             try validator.validate(other)
         }
         // Corrupt stored trust data must fail closed, never offer first-use approval.
@@ -314,6 +313,80 @@ struct SSHHostKeyVerificationTests {
             try await store.trust("different key", host: "server", port: 22)
         }
         #expect(try await store.load(host: "server", port: 22) == key)
+    }
+
+    @Test @MainActor func changedKeyFailureOffersReviewAndStopsAutomaticReconnect() async throws {
+        let config = ConnectionConfig(host: "server", port: 22, username: "tester", auth: .password("fixture"))
+        let model = AppModel(autoConnectOnLaunch: false)
+        model.hasActiveSession = true
+        model.phase = .offline(host: config.host, username: config.username)
+        let state = try #require(await model.prepareConnectAttempt(config: config))
+        state.watchdog.cancel()
+        let challenge = SSHHostKeyChallenge(host: "server", port: 22,
+            publicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            previousPublicKey: key)
+        model.handleConnectFailure(SSHHostKeyError.changed(challenge), config: config,
+            attempt: state.attempt, wasOffline: state.wasOffline, isCheckingHerdr: false)
+        #expect(model.hostKeyChallenge == challenge)
+        #expect(model.hostKeyVerificationBlocked)
+        #expect(model.autoReconnectTask == nil)
+        model.scheduleAutoReconnect()
+        #expect(model.autoReconnectTask == nil)
+        await model.reconnect(automatically: true)
+        #expect(model.hostKeyChallenge == challenge)
+        #expect(model.hostKeyVerificationBlocked)
+    }
+
+    @Test func replacementPersistsAndRejectsStaleOrMissingPins() async throws {
+        let service = "com.enchantinglabs.herdrcat.tests.hostkeys.\(UUID().uuidString)"
+        defer { SecItemDelete([kSecClass: kSecClassGenericPassword, kSecAttrService: service] as CFDictionary) }
+        let store = SSHHostKeyStore(service: service)
+        let other = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        try await store.trust(key, host: "server", port: 22)
+        try await store.trust(key, host: "server", port: 2222)
+        try await store.trust(key, host: "other", port: 22)
+        try await store.replace(other, replacing: key, host: "SERVER", port: 22)
+        #expect(try await SSHHostKeyStore(service: service).load(host: "server", port: 22) == other)
+        #expect(try await store.load(host: "server", port: 2222) == key)
+        #expect(try await store.load(host: "other", port: 22) == key)
+        await #expect(throws: SSHHostKeyStore.StoreError.self) {
+            try await store.replace(key, replacing: key, host: "server", port: 22)
+        }
+        await #expect(throws: SSHHostKeyStore.StoreError.self) {
+            try await store.replace(other, replacing: key, host: "missing", port: 22)
+        }
+        #expect(try await store.load(host: "missing", port: 22) == nil)
+        #expect(try await store.load(host: "server", port: 22) == other)
+        try SSHHostKeyValidatorDelegate(host: "server", port: 22, trustedKey: other).validate(other)
+        #expect(throws: SSHHostKeyError.self) {
+            try SSHHostKeyValidatorDelegate(host: "server", port: 22, trustedKey: other).validate(key)
+        }
+    }
+
+    @Test @MainActor func cancellationAndStaleChallengesCannotReplacePin() async throws {
+        let service = "com.enchantinglabs.herdrcat.tests.hostkeys.\(UUID().uuidString)"
+        defer { SecItemDelete([kSecClass: kSecClassGenericPassword, kSecAttrService: service] as CFDictionary) }
+        let store = SSHHostKeyStore(service: service)
+        try await store.trust(key, host: "server", port: 22)
+        let challenge = SSHHostKeyChallenge(host: "server", port: 22,
+            publicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            previousPublicKey: key)
+        let model = AppModel(autoConnectOnLaunch: false)
+        model.hostKeyChallenge = challenge
+        model.hostKeyVerificationBlocked = true
+        model.cancelHostKeyApproval()
+        #expect(model.hostKeyVerificationBlocked)
+        #expect(await model.approveHostKey(challenge, store: store) == false)
+        #expect(try await store.load(host: "server", port: 22) == key)
+        model.hostKeyChallenge = challenge
+        var stale = challenge
+        stale.previousPublicKey = "stale pin"
+        #expect(await model.approveHostKey(stale, store: store) == false)
+        #expect(try await store.load(host: "server", port: 22) == key)
+        #expect(await model.approveHostKey(challenge, store: store))
+        #expect(model.hostKeyChallenge == nil)
+        #expect(!model.hostKeyVerificationBlocked)
+        #expect(try await store.load(host: "server", port: 22) == challenge.publicKey)
     }
 
     @Test func malformedKeychainItemIsNotAnUnknownHost() async throws {
