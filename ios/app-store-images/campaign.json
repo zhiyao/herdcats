@@ -15,8 +15,8 @@
   "targets": {
     "iphone-6.3": {
       "family": "iphone",
-      "width": 1179,
-      "height": 2556,
+      "width": 1206,
+      "height": 2622,
       "description": "iPhone 6.3-inch"
     },
     "iphone-6.5": {
