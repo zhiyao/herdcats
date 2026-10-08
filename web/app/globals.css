@@ -508,7 +508,7 @@ html:has(.landing) body {
     display: none;
 }
 
-/* Responsive adjustments */
+/* Responsive adjustments. lib/world.ts mirrors this breakpoint (MOBILE_LAYOUT_QUERY). */
 @media (max-width: 840px) {
     /* The footer carries the page links on mobile, so the header keeps only the badge and toggle. */
     .nav-links,

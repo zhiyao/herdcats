@@ -35,6 +35,12 @@ export interface View {
     snap: (value: number) => number;
 }
 
+/**
+ * Matches the mobile breakpoint in app/globals.css, where the header links hide and the
+ * fixed footer appears. Keep the two in sync so the meadow lays out against the same overlay.
+ */
+const MOBILE_LAYOUT_QUERY = '(max-width: 840px)';
+
 // Ground plane is viewed from above at a slant, like the iOS herd ring.
 const GROUND_TILT = 0.62;
 const MEADOW_RADIUS = 25;
@@ -123,6 +129,7 @@ export class World {
     private resizeHandler: () => void;
     private stopThemeWatch: () => void;
     private theme: ThemeName = 'dark';
+    private narrow = false;
     private colors: CorralColors = NIGHT_COLORS;
 
     /**
@@ -190,7 +197,8 @@ export class World {
         // Leave the top of the screen as sky for the nav and hero copy. Wide screens let the
         // meadow tuck slightly under the CTA; narrow ones measure the hero and start below it,
         // but always keep at least 30% of the height for the meadow.
-        const narrow = this.width < 700;
+        const narrow = window.matchMedia(MOBILE_LAYOUT_QUERY).matches;
+        this.narrow = narrow;
         const skyReserve = narrow ? (this.options.skyReserve?.() ?? 0) : this.height * 0.42;
         const groundReserve = narrow ? (this.options.groundReserve?.() ?? 0) : 0;
         const meadowHeight = Math.max(this.height - skyReserve - groundReserve, this.height * 0.3);
@@ -316,8 +324,8 @@ export class World {
         const W = this.width;
         const horizon = this.originY - MEADOW_RADIUS * GROUND_TILT * scale - scale * 1.5;
         const skyH = Math.max(horizon, 1);
-        // On narrow screens the hero copy spans the full width, so a small moon tucks beside the title.
-        const narrow = W < 700;
+        // In the mobile layout the hero copy spans the full width, so a small moon tucks beside the title.
+        const narrow = this.narrow;
         const r = narrow ? 20 : Math.min(64, Math.max(22, skyH * 0.16));
         drawNightScenery(ctx, {
             width: W,
