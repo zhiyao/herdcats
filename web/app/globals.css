@@ -183,9 +183,6 @@ html:has(.landing) body {
 .nav-badge {
     display: inline-flex;
     flex-shrink: 0;
-    border: 3px solid var(--sky-link);
-    border-radius: 14px;
-    padding: 3px;
     pointer-events: auto;
 }
 
