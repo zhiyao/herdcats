@@ -1,15 +1,22 @@
 {
-  "date": "2026-10-04",
-  "asset": "Herdcats three-cat pixel app icon",
-  "origin": "AI-generated with the built-in OpenAI image-generation tool; option 3 selected by the maintainer.",
-  "reference": "ios/Herdcats/Assets.xcassets/LaunchCat.imageset/LaunchCat@3x.png",
-  "prompt": "Use case: logo-brand. Asset type: opaque square iOS app icon. Preserve the existing launch cat’s simple chunky rectangular pixel geometry: side facing right, two upright ears, one rectangular eye, pink nose, long body, short stepped paws and hooked tail. Three full-body cats in a compact stepped group: a large tan cat in front below, smaller pale-cream cat behind upper-left and muted turquoise cat behind upper-right. Solid warm cream background. No scenery, grass, fence, text or shadows. Keep silhouettes clean and readable at small sizes. Full square without baked-in rounded corners.",
-  "prompt_record": "Normalized design specification; preserves the selected concept instructions.",
+  "date": "2026-10-09",
+  "asset": "Herdcats single pixel-cat logo on the dark night canvas",
+  "origin": "Rendered programmatically by ios/scripts/generate_logo.py from the launch-cat blocks in ios/scripts/generate_launch_cat.py; no generated imagery.",
+  "reference": "ios/scripts/generate_launch_cat.py",
   "exports": [
     "ios/Herdcats/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
     "ios/Herdcats/Assets.xcassets/HerdrcatLogo.imageset/HerdrcatLogo.png",
     "web/public/assets/logo.png",
     "web/public/assets/favicon.png",
-    "web/public/assets/apple-touch-icon.png"
-  ]
+    "web/public/assets/apple-touch-icon.png",
+    "web/public/og.png"
+  ],
+  "previous": {
+    "date": "2026-10-04",
+    "asset": "Herdcats three-cat pixel app icon",
+    "origin": "AI-generated with the built-in OpenAI image-generation tool; option 3 selected by the maintainer.",
+    "reference": "ios/Herdcats/Assets.xcassets/LaunchCat.imageset/LaunchCat@3x.png",
+    "prompt": "Use case: logo-brand. Asset type: opaque square iOS app icon. Preserve the existing launch cat’s simple chunky rectangular pixel geometry: side facing right, two upright ears, one rectangular eye, pink nose, long body, short stepped paws and hooked tail. Three full-body cats in a compact stepped group: a large tan cat in front below, smaller pale-cream cat behind upper-left and muted turquoise cat behind upper-right. Solid warm cream background. No scenery, grass, fence, text or shadows. Keep silhouettes clean and readable at small sizes. Full square without baked-in rounded corners.",
+    "prompt_record": "Normalized design specification; preserves the selected concept instructions."
+  }
 }

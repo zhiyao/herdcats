@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://herdcats.dev"><img src="web/public/assets/logo.png" width="128" height="128" alt="Herdcats logo: three pixel cats"></a>
+  <a href="https://herdcats.dev"><img src="web/public/assets/logo.png" width="128" height="128" alt="Herdcats logo: a pixel cat on a dark night canvas"></a>
 </p>
 
 # Herdcats
@@ -81,9 +81,10 @@ Capabilities after generation. `ios/project.yml` is the source of truth;
 regeneration replaces manual project settings. For command-line device builds,
 pass your own team using `DEVELOPMENT_TEAM=YOUR_TEAM_ID`.
 
-The app and website share the three-cat pixel icon. Agent badges retain their
-standard logos. Regenerate the launch-cat assets with
-`python3 ios/scripts/generate_launch_cat.py`.
+The app and website share the single pixel-cat icon from the launch screen on
+the dark night canvas. Agent badges retain their standard logos. Regenerate the
+launch-cat assets with `python3 ios/scripts/generate_launch_cat.py` and the icon
+and logo assets with `python3 ios/scripts/generate_logo.py`.
 
 ## Connect to Herdr
 
