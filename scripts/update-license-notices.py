@@ -93,14 +93,29 @@ GOOGLE_FONTS_REVISION = "5e8a3ba899557829a76cfdac30fa512bda91d7ca"
 WEB_FONTS = [("Jost", "jost"), ("Silkscreen", "silkscreen")]
 # The same font files, unmodified, are bundled in ios/Herdcats/Resources/Fonts.
 APP_FONTS = WEB_FONTS
+APP_FONT_FILES = {"Jost": ["Jost-Variable.ttf"], "Silkscreen": ["Silkscreen-Regular.ttf", "Silkscreen-Bold.ttf"]}
+
+
+def font_license_url(folder):
+    return f"https://raw.githubusercontent.com/google/fonts/{GOOGLE_FONTS_REVISION}/ofl/{folder}/OFL.txt"
 
 
 def font_notices(fonts):
     notices = []
     for family, folder in fonts:
-        url = f"https://raw.githubusercontent.com/google/fonts/{GOOGLE_FONTS_REVISION}/ofl/{folder}/OFL.txt"
+        url = font_license_url(folder)
         notices.append(section(f"{family} font — OFL.txt", url, fetch(url)))
     return notices
+
+
+def font_inventory(fonts, bundled_files=None):
+    records = []
+    for family, folder in fonts:
+        record = {"name": family, "license": "OFL-1.1", "revision": GOOGLE_FONTS_REVISION, "repository": "https://github.com/google/fonts", "upstream_path": f"ofl/{folder}", "license_sources": [font_license_url(folder)]}
+        if bundled_files:
+            record["bundled_files"] = [f"ios/Herdcats/Resources/Fonts/{name}" for name in bundled_files[family]]
+        records.append(record)
+    return records
 
 
 def web_notices():
@@ -168,7 +183,7 @@ def main():
     # Finish collection before writing, so a failed download doesn't leave partial output.
     swift, ios_text = swift_notices()
     web_text = web_notices()
-    inventory = {"swift": swift, "web_npm": npm_inventory("web/package-lock.json"), "image_tooling_npm": npm_inventory("ios/app-store-images/package-lock.json"), "fastlane_gems": gem_inventory()}
+    inventory = {"swift": swift, "app_fonts": font_inventory(APP_FONTS, APP_FONT_FILES), "web_fonts": font_inventory(WEB_FONTS), "web_npm": npm_inventory("web/package-lock.json"), "image_tooling_npm": npm_inventory("ios/app-store-images/package-lock.json"), "fastlane_gems": gem_inventory()}
     write("licenses/dependency-inventory.json", json.dumps(inventory, indent=2, ensure_ascii=False) + "\n")
     write("ios/Herdcats/Resources/ThirdPartyNotices.txt", ios_text)
     write("web/public/third-party-notices.txt", web_text)

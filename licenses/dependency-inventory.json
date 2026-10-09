@@ -106,6 +106,57 @@
       ]
     }
   ],
+  "app_fonts": [
+    {
+      "name": "Jost",
+      "license": "OFL-1.1",
+      "revision": "5e8a3ba899557829a76cfdac30fa512bda91d7ca",
+      "repository": "https://github.com/google/fonts",
+      "upstream_path": "ofl/jost",
+      "license_sources": [
+        "https://raw.githubusercontent.com/google/fonts/5e8a3ba899557829a76cfdac30fa512bda91d7ca/ofl/jost/OFL.txt"
+      ],
+      "bundled_files": [
+        "ios/Herdcats/Resources/Fonts/Jost-Variable.ttf"
+      ]
+    },
+    {
+      "name": "Silkscreen",
+      "license": "OFL-1.1",
+      "revision": "5e8a3ba899557829a76cfdac30fa512bda91d7ca",
+      "repository": "https://github.com/google/fonts",
+      "upstream_path": "ofl/silkscreen",
+      "license_sources": [
+        "https://raw.githubusercontent.com/google/fonts/5e8a3ba899557829a76cfdac30fa512bda91d7ca/ofl/silkscreen/OFL.txt"
+      ],
+      "bundled_files": [
+        "ios/Herdcats/Resources/Fonts/Silkscreen-Regular.ttf",
+        "ios/Herdcats/Resources/Fonts/Silkscreen-Bold.ttf"
+      ]
+    }
+  ],
+  "web_fonts": [
+    {
+      "name": "Jost",
+      "license": "OFL-1.1",
+      "revision": "5e8a3ba899557829a76cfdac30fa512bda91d7ca",
+      "repository": "https://github.com/google/fonts",
+      "upstream_path": "ofl/jost",
+      "license_sources": [
+        "https://raw.githubusercontent.com/google/fonts/5e8a3ba899557829a76cfdac30fa512bda91d7ca/ofl/jost/OFL.txt"
+      ]
+    },
+    {
+      "name": "Silkscreen",
+      "license": "OFL-1.1",
+      "revision": "5e8a3ba899557829a76cfdac30fa512bda91d7ca",
+      "repository": "https://github.com/google/fonts",
+      "upstream_path": "ofl/silkscreen",
+      "license_sources": [
+        "https://raw.githubusercontent.com/google/fonts/5e8a3ba899557829a76cfdac30fa512bda91d7ca/ofl/silkscreen/OFL.txt"
+      ]
+    }
+  ],
   "web_npm": [
     {
       "name": "@cloudflare/kv-asset-handler",

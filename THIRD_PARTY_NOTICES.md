@@ -47,8 +47,13 @@ The static export includes this file and the site's legal navigation links to it
 The full npm lockfile inventory also records optional platform packages and
 build/deployment dependencies that are not shipped as browser code.
 
-The website uses system font stacks; no font files are bundled. The iPhone app
-also uses system fonts and Apple's system symbols through platform APIs.
+Both the website and the iPhone app ship the Jost and Silkscreen fonts under
+the SIL Open Font License 1.1, pinned to the same google/fonts revision. The
+website self-hosts them through `next/font`, and the app bundles the unmodified
+files in `ios/Herdcats/Resources/Fonts`. Their OFL texts are included in both
+notice files, and their revisions and license URLs are recorded in the
+dependency inventory. The app's terminal output still uses the system
+monospaced font, and the app uses Apple's system symbols through platform APIs.
 
 ## Screenshot and release tools
 
