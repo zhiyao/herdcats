@@ -117,7 +117,7 @@ enum Theme {
 
     /// `--surface`: cards (with a `hairline` outline, see `HerdrCardModifier`)
     /// and native Settings rows.
-    static let cardBackground = moonlit(night: Palette.night900, day: 0xF8FBF9)
+    static let cardBackground = moonlit(night: 0x31464E, day: 0xF8FBF9)
 
     /// Inset background for text inputs, search fields, and recessed areas
     /// (`--bg-deep` at night).
@@ -127,7 +127,7 @@ enum Theme {
     static let hairline = moonlit(night: Palette.night800, day: 0xC5DCCF)
 
     /// `--raised`: chips, pills, and secondary surfaces.
-    static let subtleFill = moonlit(night: Palette.night800, day: 0xC5DCCF)
+    static let subtleFill = moonlit(night: 0x446670, day: 0xC5DCCF)
 
     /// Rows and pane cards share the solid card surface.
     static let rowBackground = cardBackground
@@ -158,7 +158,7 @@ enum Theme {
     // WCAG AA (4.5:1) as text on `cardBackground`; `onPrimary` reads on each fill.
 
     /// Idle: lifted teal-400 by night, teal-600 by day.
-    static let statusIdle = moonlit(night: 0x7FB5A9, day: Palette.teal600)
+    static let statusIdle = moonlit(night: 0x8CC2B6, day: Palette.teal600)
 
     /// Done: mint-200 by night, a deep mint by day.
     static let statusDone = moonlit(night: Palette.mint200, day: 0x2F7148)
@@ -167,7 +167,7 @@ enum Theme {
     static let statusWorking = moonlit(night: 0xE0B866, day: 0x865C0E)
 
     /// Blocked: lacquer brightened enough to read as an alert.
-    static let statusBlocked = moonlit(night: 0xE8806A, day: 0xA8432F)
+    static let statusBlocked = moonlit(night: 0xF29A86, day: 0xA8432F)
 
     /// Unified-diff addition (`+`) line wash: mint.
     static let diffAdditionBackground = moonlit(
@@ -177,7 +177,7 @@ enum Theme {
 
     /// Unified-diff deletion (`-`) line wash: lacquer.
     static let diffDeletionBackground = moonlit(
-        night: UIColor(hex: 0xE8806A, alpha: 0.24),
+        night: UIColor(hex: 0xF29A86, alpha: 0.24),
         day: UIColor(hex: 0xA8432F, alpha: 0.18)
     )
 

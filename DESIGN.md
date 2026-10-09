@@ -151,7 +151,7 @@ img.pixel, canvas.pixel {
 ### Card
 - Background `night-900`, 1px border `night-800`, radius 16, padding 24.
 - Title `paper-50`, body `mint-200` or `teal-400` for secondary text.
-- **iOS app:** the canvas is one step deeper, `--bg-deep`, so cards on `--surface` lift slightly off it and keep the 1px `--border` outline. Fields recess to `--bg-deep`. Native Settings rows use `--surface` without an outline.
+- **iOS app:** the canvas is one step deeper, `--bg-deep`, and cards sit on a lifted night surface, `#31464E` (day `#F8FBF9`), so they stand off the canvas by fill. The 1px `--border` outline (`#325156` at night) is kept but is deliberately soft against that fill. Chips, pills and the selected pane use `#446670` at night so they stay visible on the card. Fields recess to `--bg-deep`; native Settings rows use the card fill without an outline.
 
 ### Circular emblem
 - Mascot icon inside a circle with a 3px `mint-200` stroke and a transparent fill.
@@ -161,10 +161,10 @@ Agent status, quota rings and destructive actions need four states that read at 
 
 | State | Night | Day | Also used for |
 |---|---|---|---|
-| Idle | `#7FB5A9` (lifted teal-400) | `#4C777D` | |
+| Idle | `#8CC2B6` (lifted teal-400) | `#4C777D` | |
 | Done | `#ABE0B6` | `#2F7148` | Quota on pace, diff `+` wash |
 | Working | `#E0B866` | `#865C0E` | Warnings, quota behind pace or 15–39% |
-| Blocked | `#E8806A` (bright lacquer) | `#A8432F` | Errors, destructive buttons, quota <15%, diff `−` wash |
+| Blocked | `#F29A86` (bright lacquer) | `#A8432F` | Errors, destructive buttons, quota <15%, diff `−` wash |
 
 ---
 
