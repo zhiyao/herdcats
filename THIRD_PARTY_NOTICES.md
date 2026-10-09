@@ -91,7 +91,12 @@ On 2026-10-04, the app icon and app/website logos were replaced with a three-cat
 pixel design generated with OpenAI's built-in image-generation tool and chosen
 by the maintainer. The standard agent logos are retained. Generation details for
 the new herd artwork are recorded in `licenses/artwork-provenance.json`.
-Future externally sourced assets need their source and license recorded here.
+On 2026-10-09, the app icon and app/website logos were replaced with the
+single pixel cat from the launch screen on the dark night canvas. The new art is
+rendered programmatically by `ios/scripts/generate_logo.py` from the launch-cat
+blocks; no new imagery was generated, retaining the launch cat's recorded AI origin
+and unknown provider terms. Future externally sourced assets need their source and
+license recorded here.
 
 ## Refresh the notices
 
