@@ -166,6 +166,8 @@ Agent status, quota rings and destructive actions need four states that read at 
 | Working | `#E0B866` | `#865C0E` | Warnings, quota behind pace or 15–39% |
 | Blocked | `#F29A86` (bright lacquer) | `#A8432F` | Errors, destructive buttons, quota <15%, diff `−` wash |
 
+Status badges and dots (Idle, Done, Working, Blocked) are the exception: they use the iOS system colours (green, teal, yellow, red; grey for unknown) to match the Herdr terminal app. The table above covers everything else.
+
 ---
 
 ## 7. Light mode ("day")
