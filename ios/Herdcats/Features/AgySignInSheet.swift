@@ -135,7 +135,6 @@ struct AgySignInSheet: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
                 .background(Theme.cardBackground)
-                .overlay(alignment: .top) { Theme.hairline.frame(height: 1) }
             }
             .navigationTitle("Sign in to Agy")
             .navigationBarTitleDisplayMode(.inline)

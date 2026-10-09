@@ -133,7 +133,6 @@ extension ConnectionSettingsView {
                     }
                     .padding(8)
                     .herdrField()
-                    .overlay(fieldShape.stroke(Theme.hairline, lineWidth: 1))
                     HStack {
                         Button {
                             keyImporterPresented = true
@@ -167,7 +166,6 @@ extension ConnectionSettingsView {
                                 .accessibilityLabel("Key passphrase")
                                 .padding(12)
                                 .herdrField()
-                                .overlay(fieldShape.stroke(Theme.hairline, lineWidth: 1))
                         }
                         if remember {
                             Toggle("Remember Passphrase", isOn: $rememberPassphrase)

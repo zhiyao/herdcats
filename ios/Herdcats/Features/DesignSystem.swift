@@ -334,9 +334,9 @@ extension RoundedRectangle {
 
 // MARK: - Card View Modifiers
 
-/// Standardizes card surfaces (workspace cards, agent triage cards) with continuous rounding,
-/// a stable fill, and a 1pt `--border` outline. Cards Herdr reports as focused carry the
-/// Herdr focus line.
+/// Standardizes card surfaces (workspace cards, agent triage cards) with continuous rounding
+/// and a stable fill. Unlike the website, app cards have no outline, matching the native
+/// Settings rows. Cards Herdr reports as focused carry the Herdr focus line.
 struct HerdrCardModifier: ViewModifier {
     var isFocused: Bool = false
     var cornerRadius: CGFloat = DesignSystem.CornerRadius.xl
@@ -345,7 +345,6 @@ struct HerdrCardModifier: ViewModifier {
         let shape = RoundedRectangle.continuous(cornerRadius)
         return content
             .background(shape.fill(Theme.cardBackground))
-            .overlay(shape.strokeBorder(Theme.hairline, lineWidth: 1).allowsHitTesting(false))
             .herdrFocusLine(isFocused, in: shape)
             .contentShape(shape)
     }

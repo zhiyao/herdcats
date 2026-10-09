@@ -151,6 +151,7 @@ img.pixel, canvas.pixel {
 ### Card
 - Background `night-900`, 1px border `night-800`, radius 16, padding 24.
 - Title `paper-50`, body `mint-200` or `teal-400` for secondary text.
+- **iOS app:** cards, fields and input bars have no border, on purpose. The fill against the deeper app background separates them, the same way native Settings rows do. Outlines are kept only for state: the selected pane (accent), secondary buttons, warnings and the focus line.
 
 ### Circular emblem
 - Mascot icon inside a circle with a 3px `mint-200` stroke and a transparent fill.
@@ -182,7 +183,7 @@ Pages use these tokens, never the raw ramp, so both themes come from one stylesh
 | `--sky-link` | `#ABE0B6` | `#325156` | Nav links and toggle over the sky |
 | `--bg` | `#26343D` | `#EEF6F1` | Page body |
 | `--bg-deep` | `#1B282E` | `#DCEBE2` | Footer, code blocks |
-| `--surface` | `#26343D` | `#F8FBF9` | Cards (always with a `--border` outline) |
+| `--surface` | `#26343D` | `#F8FBF9` | Cards (with a `--border` outline on the website; none in the iOS app, see §6 Card) |
 | `--raised` / `--border` | `#325156` | `#C5DCCF` | Active rows, chips, dividers |
 | `--text` | `#F8F8F8` | `#1B282E` | Body text |
 | `--text-muted` | paper at 72% | night-950 at 72% | Secondary text |

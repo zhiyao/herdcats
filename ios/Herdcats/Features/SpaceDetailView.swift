@@ -545,8 +545,8 @@ private struct PaneBottomDockHeightPreferenceKey: PreferenceKey {
 }
 
 /// Each selectable pane gets its own solid card in the expanded and compact rows:
-/// `--surface` with a `--border` outline, or `--raised` with an accent outline
-/// when selected, like the website's active rows. Moonlit uses no glass or blur.
+/// `--surface`, or `--raised` with an accent outline when selected, like the
+/// website's active rows. Moonlit uses no glass or blur.
 private struct PaneSwitcherGlassItem<S: InsettableShape>: ViewModifier {
     let shape: S
     var isSelected = false
@@ -554,10 +554,12 @@ private struct PaneSwitcherGlassItem<S: InsettableShape>: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(isSelected ? Theme.selectedFill : Theme.cardBackground, in: shape)
-            .overlay(
-                shape.strokeBorder(isSelected ? Theme.accent : Theme.hairline, lineWidth: isSelected ? 1.5 : 1)
-                    .allowsHitTesting(false)
-            )
+            .overlay {
+                if isSelected {
+                    shape.strokeBorder(Theme.accent, lineWidth: 1.5)
+                        .allowsHitTesting(false)
+                }
+            }
     }
 }
 
