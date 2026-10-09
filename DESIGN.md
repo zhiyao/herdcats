@@ -151,7 +151,7 @@ img.pixel, canvas.pixel {
 ### Card
 - Background `night-900`, 1px border `night-800`, radius 16, padding 24.
 - Title `paper-50`, body `mint-200` or `teal-400` for secondary text.
-- **iOS app:** the same treatment. The canvas is `--bg`, cards use `--surface` with the 1px `--border` outline, and fields recess to `--bg-deep`. Native Settings rows can't carry a section outline, so at night they recess to `--bg-deep` instead (like the website's code boxes); by day `--surface` already stands off the canvas.
+- **iOS app:** the canvas is one step deeper, `--bg-deep`, so cards on `--surface` lift slightly off it and keep the 1px `--border` outline. Fields recess to `--bg-deep`. Native Settings rows use `--surface` without an outline.
 
 ### Circular emblem
 - Mascot icon inside a circle with a 3px `mint-200` stroke and a transparent fill.

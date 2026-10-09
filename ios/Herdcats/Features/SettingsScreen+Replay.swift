@@ -9,7 +9,7 @@ struct OnboardingReplaySection: View {
             Button(action: action) {
                 Label("Replay Onboarding", systemImage: "arrow.counterclockwise.circle")
             }
-            .listRowBackground(Theme.groupedRowBackground)
+            .listRowBackground(Theme.cardBackground)
         } header: {
             Text("Debug")
                 .font(.jost(.footnote))

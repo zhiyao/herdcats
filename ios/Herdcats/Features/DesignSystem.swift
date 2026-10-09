@@ -100,9 +100,9 @@ enum Theme {
     /// `--sky`: hero and header field behind top-level screens.
     static let sky = moonlit(night: Palette.teal600, day: 0xD3EBDD)
 
-    /// `--bg`: the app canvas, as on the website. Cards share the night colour
-    /// and are outlined by `hairline`, so structure needs no shadows.
-    static let background = moonlit(night: Palette.night900, day: 0xEEF6F1)
+    /// `--bg-deep`: the app canvas. Cards sit one step lighter on `surface`
+    /// with a `hairline` outline, so structure needs no shadows.
+    static let background = moonlit(night: Palette.night950, day: 0xDCEBE2)
 
     static let backgroundGradient = LinearGradient(
         colors: [background, background],
@@ -115,13 +115,9 @@ enum Theme {
         background
     }
 
-    /// `--surface`: cards, always with a `hairline` outline (see `HerdrCardModifier`).
+    /// `--surface`: cards (with a `hairline` outline, see `HerdrCardModifier`)
+    /// and native Settings rows.
     static let cardBackground = moonlit(night: Palette.night900, day: 0xF8FBF9)
-
-    /// Native grouped rows (Settings), which cannot carry a section outline.
-    /// At night they recess to `--bg-deep`, like the website's code boxes;
-    /// by day `--surface` already stands off the canvas.
-    static let groupedRowBackground = moonlit(night: Palette.night950, day: 0xF8FBF9)
 
     /// Inset background for text inputs, search fields, and recessed areas
     /// (`--bg-deep` at night).
