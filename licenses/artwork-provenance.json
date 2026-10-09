@@ -1,7 +1,7 @@
 {
   "date": "2026-10-09",
   "asset": "Herdcats single pixel-cat logo on the dark night canvas",
-  "origin": "Rendered programmatically by ios/scripts/generate_logo.py from the launch-cat blocks in ios/scripts/generate_launch_cat.py; no generated imagery.",
+  "origin": "Rendered programmatically by ios/scripts/generate_logo.py from the launch-cat blocks in ios/scripts/generate_launch_cat.py; no new imagery was generated, retaining the launch cat's recorded AI origin and unknown provider terms.",
   "reference": "ios/scripts/generate_launch_cat.py",
   "exports": [
     "ios/Herdcats/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
