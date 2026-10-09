@@ -12,7 +12,7 @@ struct LicensesView: View {
     var body: some View {
         ScrollView {
             Text(verbatim: Self.notices)
-                .font(.footnote)
+                .font(.jost(.footnote))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()

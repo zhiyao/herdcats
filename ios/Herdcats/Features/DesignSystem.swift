@@ -9,21 +9,25 @@ enum DesignSystem {
 
     // MARK: - Corner Radii
 
+    /// DESIGN.md §5 uses three UI radii: 8pt controls, 16pt cards, and pills.
+    /// The named steps below map onto those so call sites keep their intent.
     enum CornerRadius {
         /// 0pt — edge-to-edge raw terminal output
         static let none: CGFloat = 0
-        /// 7pt — micro thumbnails, compact badge icons
+        /// 7pt — app-icon logo thumbnails, echoing the iOS icon mask
         static let xs: CGFloat = 7
-        /// 10pt — compact drawer buttons, follow-up chips
-        static let sm: CGFloat = 10
-        /// 12pt — standard text inputs, worktree rows
-        static let md: CGFloat = 12
-        /// 14pt — action buttons, error banners, pane switcher cards
-        static let lg: CGFloat = 14
-        /// 19pt — primary workspace cards and agent triage cards
-        static let xl: CGFloat = 19
-        /// 22pt — recent connection cards, connection setup sheet
-        static let xxl: CGFloat = 22
+        /// 8pt — compact drawer buttons, follow-up chips
+        static let sm: CGFloat = 8
+        /// 8pt — standard text inputs, worktree rows
+        static let md: CGFloat = 8
+        /// 16pt — error banners, code blocks, pane switcher cards
+        static let lg: CGFloat = 16
+        /// 16pt — primary workspace cards and agent triage cards
+        static let xl: CGFloat = 16
+        /// 16pt — recent connection cards, connection setup sheet
+        static let xxl: CGFloat = 16
+        /// 8pt — primary and secondary buttons
+        static let button: CGFloat = 8
         /// 9999pt — status pills, agent badges, circular action buttons
         static let full: CGFloat = 9999
     }
@@ -50,29 +54,55 @@ enum DesignSystem {
 
 // MARK: - Theme
 
+/// Raw "Moonlit" ramp from `DESIGN.md` §2. Views use the semantic `Theme`
+/// tokens below, never these directly, so night and day come from one place.
+enum Palette {
+    static let night950: UInt32 = 0x1B282E
+    static let night900: UInt32 = 0x26343D
+    static let night800: UInt32 = 0x325156
+    static let teal600: UInt32 = 0x4C777D
+    static let teal400: UInt32 = 0x63988E
+    static let mint200: UInt32 = 0xABE0B6
+    static let paper50: UInt32 = 0xF8F8F8
+    static let lacquer900: UInt32 = 0x4B221C
+}
+
+extension UIColor {
+    convenience init(hex: UInt32, alpha: CGFloat = 1) {
+        self.init(
+            red: CGFloat((hex >> 16) & 0xFF) / 255,
+            green: CGFloat((hex >> 8) & 0xFF) / 255,
+            blue: CGFloat(hex & 0xFF) / 255,
+            alpha: alpha
+        )
+    }
+}
+
 enum Theme {
-    /// Turquoise brand accent (#0EDCD5).
-    static let accent = Color(red: 0.055, green: 0.863, blue: 0.835)
+    /// A color that resolves to `night` in dark mode and `day` in light mode,
+    /// matching the website's semantic tokens (`DESIGN.md` §7).
+    private static func moonlit(night: UIColor, day: UIColor) -> Color {
+        Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark ? night : day
+        })
+    }
 
-    /// Deep cyan secondary brand accent (#0DB1C5).
-    static let accentSecondary = Color(red: 0.051, green: 0.694, blue: 0.773)
+    private static func moonlit(night: UInt32, day: UInt32) -> Color {
+        moonlit(night: UIColor(hex: night), day: UIColor(hex: day))
+    }
 
-    /// Dynamic linear accent gradient (Turquoise to Deep Cyan).
-    static let accentGradient = LinearGradient(
-        colors: [
-            accent,
-            accentSecondary,
-        ],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
+    /// `--accent`: links, labels, icons, Herdr focus (mint by night, night-800 by day).
+    static let accent = moonlit(night: Palette.mint200, day: Palette.night800)
 
-    /// Neutral canvas: black in dark mode, system grouped gray in light mode.
-    static let background = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? .black
-            : UIColor(white: 0.95, alpha: 1)
-    })
+    /// `--accent-fill`: primary button fill.
+    static let accentFill = moonlit(night: Palette.mint200, day: Palette.night800)
+
+    /// `--sky`: hero and header field behind top-level screens.
+    static let sky = moonlit(night: Palette.teal600, day: 0xD3EBDD)
+
+    /// `--bg-deep`: the app canvas. Cards sit one step lighter on `surface`
+    /// with a `hairline` outline, so structure needs no shadows.
+    static let background = moonlit(night: Palette.night950, day: 0xDCEBE2)
 
     static let backgroundGradient = LinearGradient(
         colors: [background, background],
@@ -80,102 +110,96 @@ enum Theme {
         endPoint: .bottom
     )
 
-    /// A soft accent glow behind top-level screens.
+    /// Flat canvas behind top-level screens. Moonlit uses no glows or gradients.
     static var listBackground: some View {
-        ZStack {
-            background
-            RadialGradient(
-                colors: [
-                    Color(uiColor: UIColor { traits in
-                        traits.userInterfaceStyle == .dark
-                            ? UIColor(red: 0.055, green: 0.863, blue: 0.835, alpha: 0.16)
-                            : UIColor(red: 0.055, green: 0.863, blue: 0.835, alpha: 0.12)
-                    }),
-                    .clear,
-                ],
-                center: .top,
-                startRadius: 0,
-                endRadius: 430
-            )
-        }
+        background
     }
 
-    /// Solid charcoal (#1C1C1E) cards, inspired by the iOS Health summary.
-    static let cardBackground = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor(red: 28 / 255, green: 28 / 255, blue: 30 / 255, alpha: 1)
-            : .white
-    })
+    /// `--surface`: cards (with a `hairline` outline, see `HerdrCardModifier`)
+    /// and native Settings rows.
+    static let cardBackground = moonlit(night: 0x31464E, day: 0xF8FBF9)
 
-    /// Inset background for text inputs, search fields, and recessed areas.
-    static let fieldBackground = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor(red: 44 / 255, green: 44 / 255, blue: 46 / 255, alpha: 1)
-            : UIColor.black.withAlphaComponent(0.05)
-    })
+    /// Inset background for text inputs, search fields, and recessed areas
+    /// (`--bg-deep` at night).
+    static let fieldBackground = moonlit(night: Palette.night950, day: 0xEEF6F1)
 
-    /// Subtle boundary hairline stroke (0.5pt-1pt).
-    static let hairline = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor.white.withAlphaComponent(0.07)
-            : UIColor.black.withAlphaComponent(0.08)
-    })
+    /// `--border`: 1pt dividers and card outlines.
+    static let hairline = moonlit(night: Palette.night800, day: 0xC5DCCF)
 
-    /// Soft fill for chips, pills, and secondary surfaces.
-    static let subtleFill = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor.white.withAlphaComponent(0.08)
-            : UIColor.black.withAlphaComponent(0.05)
-    })
+    /// `--raised`: chips, pills, and secondary surfaces.
+    static let subtleFill = moonlit(night: 0x446670, day: 0xC5DCCF)
 
     /// Rows and pane cards share the solid card surface.
     static let rowBackground = cardBackground
 
-    /// Neutral fill marking the pane selected on this phone, matching iOS
-    /// selected cells. Accent stays reserved for Herdr focus.
-    static let selectedFill = Color(uiColor: .systemGray4)
+    /// `--raised` fill marking the pane selected on this phone, like the
+    /// website's active rows. Accent stays reserved for Herdr focus.
+    static let selectedFill = subtleFill
 
-    /// Visible control border (selected-state companion).
-    static let border = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor.white.withAlphaComponent(0.12)
-            : UIColor.black.withAlphaComponent(0.12)
-    })
+    /// `--border`: visible control border and disabled fill.
+    static let border = hairline
 
-    /// Unified-diff addition (`+`) line wash.
-    static let diffAdditionBackground = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.12, green: 0.42, blue: 0.22, alpha: 0.72)
-            : UIColor(red: 0.20, green: 0.70, blue: 0.40, alpha: 0.28)
-    })
+    /// `--text`: body text (paper by night, night-950 by day).
+    static let text = moonlit(night: Palette.paper50, day: Palette.night950)
 
-    /// Unified-diff deletion (`-`) line wash.
-    static let diffDeletionBackground = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.42, green: 0.08, blue: 0.10, alpha: 0.85)
-            : UIColor(red: 0.85, green: 0.20, blue: 0.22, alpha: 0.28)
-    })
+    /// `--text-muted`: secondary text at 72% of `text`.
+    static let textMuted = moonlit(
+        night: UIColor(hex: Palette.paper50, alpha: 0.72),
+        day: UIColor(hex: Palette.night950, alpha: 0.72)
+    )
+
+    /// `--warm`: rare lacquer accent for sign badges.
+    static let warm = moonlit(night: Palette.lacquer900, day: 0x8A3324)
+
+    // MARK: - Status Colors
+    //
+    // Moonlit-tuned status set: the teal ramp and lacquer, plus one muted amber,
+    // so blocked / working / done / idle stay distinct at a glance. Each passes
+    // WCAG AA (4.5:1) as text on `cardBackground`; `onPrimary` reads on each fill.
+
+    /// Idle: lifted teal-400 by night, teal-600 by day.
+    static let statusIdle = moonlit(night: 0x8CC2B6, day: Palette.teal600)
+
+    /// Done: mint-200 by night, a deep mint by day.
+    static let statusDone = moonlit(night: Palette.mint200, day: 0x2F7148)
+
+    /// Working: muted amber, the one hue outside the ramp.
+    static let statusWorking = moonlit(night: 0xE0B866, day: 0x865C0E)
+
+    /// Blocked: lacquer brightened enough to read as an alert.
+    static let statusBlocked = moonlit(night: 0xF29A86, day: 0xA8432F)
+
+    /// Unified-diff addition (`+`) line wash: mint.
+    static let diffAdditionBackground = moonlit(
+        night: UIColor(hex: Palette.mint200, alpha: 0.22),
+        day: UIColor(hex: Palette.mint200, alpha: 0.6)
+    )
+
+    /// Unified-diff deletion (`-`) line wash: lacquer.
+    static let diffDeletionBackground = moonlit(
+        night: UIColor(hex: 0xF29A86, alpha: 0.24),
+        day: UIColor(hex: 0xA8432F, alpha: 0.18)
+    )
 
     // MARK: - Semantic & Action Colors
 
-    /// Destructive / critical error color (#FF453A / system red).
-    static let destructive = Color(red: 1.0, green: 0.27, blue: 0.23)
+    /// Destructive / critical error color.
+    static let destructive = statusBlocked
 
-    /// Warning alert color (#FF9F0A / system orange).
-    static let warning = Color(red: 1.0, green: 0.62, blue: 0.04)
+    /// Warning alert color.
+    static let warning = statusWorking
 
-    /// Text color on top of primary accent (#003E43, the icon's ink tone; 6.88:1 contrast ratio).
-    static let onPrimary = Color(red: 0.0, green: 0.243, blue: 0.263)
+    /// `--on-accent`: text on `accentFill` (night-950 on mint, paper on night-800).
+    static let onPrimary = moonlit(night: Palette.night950, day: Palette.paper50)
 
-    /// Soft heads-up yellow (#FFD60A) when remaining is healthy but burn is
-    /// ahead of the even-burn line.
-    static let quotaHeadsUp = Color(red: 1.0, green: 214.0 / 255.0, blue: 10.0 / 255.0)
+    /// Heads-up when remaining is healthy but burn is ahead of the even-burn line.
+    static let quotaHeadsUp = statusWorking
 
-    /// Hybrid quota color: green when remaining ≥ 40% and on pace; yellow when
-    /// ≥ 40% but behind pace; orange for 15–39%; red below 15%. A full window
+    /// Hybrid quota color: mint when remaining ≥ 40% and on pace; amber when
+    /// ≥ 40% but behind pace or at 15–39%; blocked red below 15%. A full window
     /// is always green. Outer and inner rings share the same semantic color
     /// (`inner` is ignored for hue). Windows without a schedule use the same
-    /// percent bands with no yellow path.
+    /// percent bands with no heads-up path.
     static func quotaColor(for chip: AgentUsageChip, now: Date = .now, inner: Bool = false) -> Color {
         _ = inner
         let remaining = chip.percentRemaining
@@ -188,8 +212,8 @@ enum Theme {
         return successGreen
     }
 
-    /// Countdown color: yellow when behind pace at ≥ 40% remaining; match
-    /// orange/red in the low band; otherwise secondary.
+    /// Countdown color: amber when behind pace at ≥ 40% remaining; match
+    /// amber/red in the low band; otherwise secondary.
     static func quotaCountdownStyle(for chip: AgentUsageChip, now: Date = .now, inner: Bool = false) -> AnyShapeStyle {
         _ = inner
         if chip.percentRemaining < 40 {
@@ -201,24 +225,104 @@ enum Theme {
         return AnyShapeStyle(.secondary)
     }
 
-    /// Affirming green used for on-pace / healthy quota chips.
-    static let successGreen = Color(red: 0.20, green: 0.78, blue: 0.35)
+    /// Affirming mint used for on-pace / healthy quota chips.
+    static let successGreen = statusDone
 }
 
 // MARK: - Typography Tokens
 
+/// Bundled typefaces from `DESIGN.md` §3: Jost for UI and body text, Silkscreen
+/// for tiny pixel labels. Jost ships as the unmodified variable font, whose named
+/// instances CoreText exposes as `JostRoman-<Weight>`; the default instance keeps
+/// the font's own name, `Jost-Regular`.
+enum AppTypeface {
+    static func jostName(_ weight: Font.Weight) -> String {
+        switch weight {
+        case .ultraLight: "JostRoman-ExtraLight"
+        case .thin: "JostRoman-Thin"
+        case .light: "JostRoman-Light"
+        case .medium: "JostRoman-Medium"
+        case .semibold: "JostRoman-SemiBold"
+        case .bold: "JostRoman-Bold"
+        case .heavy: "JostRoman-ExtraBold"
+        case .black: "JostRoman-Black"
+        default: "Jost-Regular"
+        }
+    }
+
+    static func silkscreenName(bold: Bool) -> String {
+        bold ? "Silkscreen-Bold" : "Silkscreen-Regular"
+    }
+
+    /// iOS default (Large) point size and weight for each text style, so
+    /// `Font.jost(.caption)` lines up with the system style it replaces.
+    static func metrics(for style: Font.TextStyle) -> (size: CGFloat, weight: Font.Weight) {
+        switch style {
+        case .largeTitle: (34, .regular)
+        case .title: (28, .regular)
+        case .title2: (22, .regular)
+        case .title3: (20, .regular)
+        case .headline: (17, .semibold)
+        case .callout: (16, .regular)
+        case .subheadline: (15, .regular)
+        case .footnote: (13, .regular)
+        case .caption: (12, .regular)
+        case .caption2: (11, .regular)
+        default: (17, .regular)
+        }
+    }
+
+    /// UIKit Jost for navigation bars and segmented controls.
+    static func uiJost(_ size: CGFloat, weight: Font.Weight = .regular) -> UIFont {
+        UIFont(name: jostName(weight), size: size) ?? .systemFont(ofSize: size)
+    }
+
+    /// SwiftUI draws navigation titles, tab labels, and segmented pickers with
+    /// UIKit, so they take Jost from appearance proxies rather than `.font`.
+    static func installUIKitAppearance() {
+        func scaled(_ size: CGFloat, _ weight: Font.Weight, _ style: UIFont.TextStyle) -> UIFont {
+            UIFontMetrics(forTextStyle: style).scaledFont(for: uiJost(size, weight: weight))
+        }
+        let navigationBar = UINavigationBar.appearance()
+        navigationBar.titleTextAttributes = [.font: scaled(17, .semibold, .headline)]
+        navigationBar.largeTitleTextAttributes = [.font: scaled(34, .semibold, .largeTitle)]
+
+        UITabBarItem.appearance().setTitleTextAttributes([.font: uiJost(10, weight: .medium)], for: .normal)
+
+        let segmented = UISegmentedControl.appearance()
+        segmented.setTitleTextAttributes([.font: scaled(13, .regular, .footnote)], for: .normal)
+        segmented.setTitleTextAttributes([.font: scaled(13, .semibold, .footnote)], for: .selected)
+    }
+}
+
 extension Font {
-    /// 27pt Bold Rounded — connection screen hero ("HerdrCat").
-    static let appDisplay = Font.system(size: 27, weight: .bold, design: .rounded)
+    /// Jost at a fixed point size, replacing `.system(size:weight:)`.
+    static func jost(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        .custom(AppTypeface.jostName(weight), fixedSize: size)
+    }
 
-    /// 17pt Semibold — workspace card titles, modal navigation bars.
-    static let appHeadlineMd = Font.system(size: 17, weight: .semibold)
+    /// Jost sized like a system text style and scaled with Dynamic Type.
+    static func jost(_ style: Font.TextStyle, weight: Font.Weight? = nil) -> Font {
+        let metrics = AppTypeface.metrics(for: style)
+        return .custom(AppTypeface.jostName(weight ?? metrics.weight), size: metrics.size, relativeTo: style)
+    }
 
-    /// 16pt Semibold Rounded — agent card titles, quota card headers.
-    static let appHeadlineSm = Font.system(size: 16, weight: .semibold, design: .rounded)
+    /// Silkscreen pixel label. Use only at 10 or 12pt for tags and counts, never paragraphs.
+    static func pixel(_ size: CGFloat, bold: Bool = false) -> Font {
+        .custom(AppTypeface.silkscreenName(bold: bold), fixedSize: size)
+    }
 
-    /// 10pt Bold Rounded — agent badge labels, stat count tags.
-    static let appLabelSm = Font.system(size: 10, weight: .bold, design: .rounded)
+    /// 27pt Bold Jost — connection screen hero ("HerdrCat").
+    static let appDisplay = Font.jost(27, weight: .bold)
+
+    /// 17pt Semibold Jost — workspace card titles, modal navigation bars.
+    static let appHeadlineMd = Font.jost(17, weight: .semibold)
+
+    /// 16pt Semibold Jost — agent card titles, quota card headers.
+    static let appHeadlineSm = Font.jost(16, weight: .semibold)
+
+    /// 10pt Silkscreen — agent badge labels, stat count tags.
+    static let appLabelSm = Font.pixel(10)
 }
 
 // MARK: - Shapes
@@ -232,8 +336,9 @@ extension RoundedRectangle {
 
 // MARK: - Card View Modifiers
 
-/// Standardizes card surfaces (workspace cards, agent triage cards) with continuous rounding
-/// and a stable fill. Cards Herdr reports as focused carry the Herdr focus line.
+/// Standardizes card surfaces (workspace cards, agent triage cards) with continuous rounding,
+/// a stable fill, and a 1pt `--border` outline, as on the website. Cards Herdr reports as
+/// focused carry the Herdr focus line.
 struct HerdrCardModifier: ViewModifier {
     var isFocused: Bool = false
     var cornerRadius: CGFloat = DesignSystem.CornerRadius.xl
@@ -242,6 +347,7 @@ struct HerdrCardModifier: ViewModifier {
         let shape = RoundedRectangle.continuous(cornerRadius)
         return content
             .background(shape.fill(Theme.cardBackground))
+            .overlay(shape.strokeBorder(Theme.hairline, lineWidth: 1).allowsHitTesting(false))
             .herdrFocusLine(isFocused, in: shape)
             .contentShape(shape)
     }
@@ -287,7 +393,7 @@ extension View {
         modifier(HerdrFocusLineModifier(isFocused: isFocused, shape: shape, thickness: thickness))
     }
 
-    /// Applies Herdr card styling (19pt continuous rounding and Herdr focus line).
+    /// Applies Herdr card styling (16pt continuous rounding, border, and Herdr focus line).
     func herdrCard(
         isFocused: Bool = false,
         cornerRadius: CGFloat = DesignSystem.CornerRadius.xl
@@ -303,18 +409,16 @@ extension View {
 
 // MARK: - Button Styles
 
-/// Primary button style according to HerdrCat design system:
-/// 14pt continuous rounded rectangle filled with accent or accent gradient,
-/// bold 14pt typography, 12pt vertical padding, and 44pt minimum height.
+/// Primary button style according to DESIGN.md: 8pt rounded rectangle with a solid
+/// `accentFill` and `onPrimary` label, bold 14pt typography, 12pt vertical padding,
+/// and 44pt minimum height. Pressing shifts it down 1pt (pixel "press"), no shadow.
 struct HerdrPrimaryButtonStyle: ButtonStyle {
     var fullWidth: Bool = true
-    var cornerRadius: CGFloat = DesignSystem.CornerRadius.lg
+    var cornerRadius: CGFloat = DesignSystem.CornerRadius.button
     var tint: Color? = nil
-    var useGradient: Bool = true
 
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.controlSize) private var controlSize
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var effectivePaddingVertical: CGFloat {
         switch controlSize {
@@ -345,17 +449,15 @@ struct HerdrPrimaryButtonStyle: ButtonStyle {
 
     private var effectiveFont: Font {
         switch controlSize {
-        case .mini: .system(size: 11, weight: .bold)
-        case .small: .system(size: 12, weight: .semibold)
-        case .regular, .large, .extraLarge: .system(size: 14, weight: .bold)
-        @unknown default: .system(size: 14, weight: .bold)
+        case .mini: .jost(11, weight: .bold)
+        case .small: .jost(12, weight: .semibold)
+        case .regular, .large, .extraLarge: .jost(14, weight: .bold)
+        @unknown default: .jost(14, weight: .bold)
         }
     }
 
     private var shape: RoundedRectangle {
-        RoundedRectangle.continuous(
-            controlSize == .small ? DesignSystem.CornerRadius.md : cornerRadius
-        )
+        RoundedRectangle.continuous(cornerRadius)
     }
 
     @ViewBuilder
@@ -364,21 +466,16 @@ struct HerdrPrimaryButtonStyle: ButtonStyle {
             shape.fill(Theme.border)
         } else if let tint {
             shape.fill(tint)
-        } else if useGradient {
-            shape.fill(Theme.accentGradient)
         } else {
-            shape.fill(Theme.accent)
+            shape.fill(Theme.accentFill)
         }
     }
 
     private var foregroundColor: Color {
         if !isEnabled {
-            return .secondary
+            return Theme.textMuted
         }
-        if tint == nil {
-            return Theme.onPrimary
-        }
-        return .white
+        return Theme.onPrimary
     }
 
     func makeBody(configuration: Configuration) -> some View {
@@ -391,25 +488,20 @@ struct HerdrPrimaryButtonStyle: ButtonStyle {
             .frame(minHeight: minHeight)
             .background(backgroundFill)
             .contentShape(shape)
-            .scaleEffect(!reduceMotion && configuration.isPressed ? 0.97 : 1.0)
-            .opacity(configuration.isPressed ? 0.9 : (isEnabled ? 1.0 : 0.6))
-            .animation(
-                reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.7),
-                value: configuration.isPressed
-            )
+            .offset(y: configuration.isPressed ? 1 : 0)
+            .opacity(isEnabled ? 1.0 : 0.6)
     }
 }
 
-/// Secondary button style according to HerdrCat design system:
-/// 14pt continuous rounded rectangle with borderless Theme.subtleFill,
-/// 14pt semibold typography, and 44pt minimum height.
+/// Secondary button style according to DESIGN.md: 8pt rounded rectangle with a
+/// transparent fill, 2pt `accent` outline and `accent` label, 14pt semibold typography,
+/// and 44pt minimum height. Pressing fills it with `--raised` and shifts it down 1pt.
 struct HerdrSecondaryButtonStyle: ButtonStyle {
     var fullWidth: Bool = true
-    var cornerRadius: CGFloat = DesignSystem.CornerRadius.lg
+    var cornerRadius: CGFloat = DesignSystem.CornerRadius.button
 
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.controlSize) private var controlSize
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var effectivePaddingVertical: CGFloat {
         switch controlSize {
@@ -440,35 +532,30 @@ struct HerdrSecondaryButtonStyle: ButtonStyle {
 
     private var effectiveFont: Font {
         switch controlSize {
-        case .mini: .system(size: 11, weight: .semibold)
-        case .small: .system(size: 12, weight: .semibold)
-        case .regular, .large, .extraLarge: .system(size: 14, weight: .semibold)
-        @unknown default: .system(size: 14, weight: .semibold)
+        case .mini: .jost(11, weight: .semibold)
+        case .small: .jost(12, weight: .semibold)
+        case .regular, .large, .extraLarge: .jost(14, weight: .semibold)
+        @unknown default: .jost(14, weight: .semibold)
         }
     }
 
     private var shape: RoundedRectangle {
-        RoundedRectangle.continuous(
-            controlSize == .small ? DesignSystem.CornerRadius.md : cornerRadius
-        )
+        RoundedRectangle.continuous(cornerRadius)
     }
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(effectiveFont)
-            .foregroundStyle(isEnabled ? Color.primary : Color.secondary)
+            .foregroundStyle(isEnabled ? Theme.accent : Theme.textMuted)
             .padding(.vertical, effectivePaddingVertical)
             .padding(.horizontal, effectivePaddingHorizontal)
             .frame(maxWidth: fullWidth ? .infinity : nil)
             .frame(minHeight: minHeight)
-            .background(shape.fill(Theme.subtleFill))
+            .background(shape.fill(configuration.isPressed ? Theme.subtleFill : .clear))
+            .overlay(shape.strokeBorder(isEnabled ? Theme.accent : Theme.border, lineWidth: 2))
             .contentShape(shape)
-            .scaleEffect(!reduceMotion && configuration.isPressed ? 0.97 : 1.0)
-            .opacity(configuration.isPressed ? 0.85 : (isEnabled ? 1.0 : 0.45))
-            .animation(
-                reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.7),
-                value: configuration.isPressed
-            )
+            .offset(y: configuration.isPressed ? 1 : 0)
+            .opacity(isEnabled ? 1.0 : 0.45)
     }
 }
 
@@ -482,8 +569,8 @@ struct HerdrGhostButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 14, weight: .medium))
-            .foregroundStyle(Color.secondary)
+            .font(.jost(14, weight: .medium))
+            .foregroundStyle(Theme.textMuted)
             .padding(.vertical, DesignSystem.Spacing.md)
             .padding(.horizontal, DesignSystem.Spacing.base)
             .frame(maxWidth: fullWidth ? .infinity : nil)
@@ -521,15 +608,13 @@ extension ButtonStyle where Self == HerdrPrimaryButtonStyle {
 
     static func herdrPrimary(
         fullWidth: Bool = true,
-        cornerRadius: CGFloat = DesignSystem.CornerRadius.lg,
-        tint: Color? = nil,
-        useGradient: Bool = true
+        cornerRadius: CGFloat = DesignSystem.CornerRadius.button,
+        tint: Color? = nil
     ) -> HerdrPrimaryButtonStyle {
         HerdrPrimaryButtonStyle(
             fullWidth: fullWidth,
             cornerRadius: cornerRadius,
-            tint: tint,
-            useGradient: useGradient
+            tint: tint
         )
     }
 }
@@ -539,7 +624,7 @@ extension ButtonStyle where Self == HerdrSecondaryButtonStyle {
 
     static func herdrSecondary(
         fullWidth: Bool = true,
-        cornerRadius: CGFloat = DesignSystem.CornerRadius.lg
+        cornerRadius: CGFloat = DesignSystem.CornerRadius.button
     ) -> HerdrSecondaryButtonStyle {
         HerdrSecondaryButtonStyle(
             fullWidth: fullWidth,
@@ -564,11 +649,8 @@ extension ButtonStyle where Self == HerdrCardButtonStyle {
 
 #Preview("Standard Buttons") {
     VStack(spacing: 16) {
-        Button("Primary (Gradient)") {}
+        Button("Primary") {}
             .buttonStyle(.herdrPrimary())
-
-        Button("Primary (Solid Accent)") {}
-            .buttonStyle(.herdrPrimary(useGradient: false))
 
         Button("Primary (Custom Tint)") {}
             .buttonStyle(.herdrPrimary(tint: Theme.destructive))

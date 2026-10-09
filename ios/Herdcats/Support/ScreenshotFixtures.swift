@@ -119,6 +119,8 @@ struct ScreenshotRootView: View {
         .environment(model)
         .preferredColorScheme(.dark)
         .tint(Theme.accent)
+        .foregroundStyle(Theme.text)
+        .font(.jost(.body))
     }
 }
 #endif

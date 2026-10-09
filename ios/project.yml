@@ -39,6 +39,10 @@ targets:
         NSMicrophoneUsageDescription: Use the microphone to dictate pane messages.
         NSSpeechRecognitionUsageDescription: Transcribe your speech into pane messages using Apple speech recognition.
         NSPhotoLibraryUsageDescription: Choose photos to send into Herdr panes.
+        UIAppFonts:
+          - Jost-Variable.ttf
+          - Silkscreen-Regular.ttf
+          - Silkscreen-Bold.ttf
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.enchantinglabs.herdrcat

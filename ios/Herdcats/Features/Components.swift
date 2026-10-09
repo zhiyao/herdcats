@@ -378,7 +378,9 @@ extension AgentUsageCard {
 // MARK: - Status visuals
 
 extension AgentStatus {
-    /// Matches Herdr TUI status colors (`state_dot` / `state_label_color`).
+    /// System colors for status badges and dots, matching the Herdr TUI
+    /// (`state_dot` / `state_label_color`). Quota, warnings and destructive
+    /// actions keep the Moonlit `Theme.status*` tokens.
     var color: Color {
         switch self {
         case .working: .yellow
@@ -493,11 +495,11 @@ struct StatusNavigationTitle: View {
             StatusDot(status: status, animated: status == .working)
             VStack(spacing: 1) {
                 Text(title)
-                    .font(.headline)
+                    .font(.jost(.headline))
                     .lineLimit(1)
                 if let subtitle, !subtitle.isEmpty {
                     Text(subtitle)
-                        .font(.caption2)
+                        .font(.jost(.caption2))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -525,7 +527,7 @@ struct StatusPill: View {
         HStack(spacing: 5) {
             StatusDot(status: status, animated: status == .working)
             Text(status.label)
-                .font(.caption2.weight(.semibold))
+                .font(.jost(.caption2, weight: .semibold))
                 .foregroundStyle(status.color)
         }
         .padding(.horizontal, 8)
@@ -547,7 +549,7 @@ struct AgentBadge: View {
         HStack(spacing: 4) {
             AgentKindIcon(kind: kind, size: 10)
             Text(AgentKindVisual.displayName(for: kind))
-                .font(.system(size: 10, weight: .bold))
+                .font(.jost(10, weight: .bold))
                 .foregroundStyle(tint)
         }
         .padding(.horizontal, 7)
@@ -565,11 +567,11 @@ struct CommandLineBadge: View {
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: "terminal")
-                .font(.system(size: 10, weight: .bold))
+                .font(.jost(10, weight: .bold))
                 .foregroundStyle(tint)
                 .accessibilityHidden(true)
             Text("Command line")
-                .font(.system(size: 10, weight: .bold))
+                .font(.jost(10, weight: .bold))
                 .foregroundStyle(tint)
         }
         .padding(.horizontal, 7)
@@ -607,7 +609,7 @@ struct AgentKindIcon: View {
             }
         } else {
             Image(systemName: AgentKindVisual.symbol(for: kind))
-                .font(.system(size: size, weight: .bold))
+                .font(.jost(size, weight: .bold))
                 .foregroundStyle(AgentKindVisual.color(for: kind))
                 .accessibilityHidden(true)
         }
@@ -624,10 +626,10 @@ struct StatChip: View {
     var body: some View {
         HStack(spacing: 5) {
             Image(systemName: icon)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.jost(10, weight: .semibold))
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .font(.jost(13, weight: .semibold))
                 .monospacedDigit()
                 .foregroundStyle(.primary)
         }
@@ -644,9 +646,9 @@ struct RepoPill: View {
     var body: some View {
         HStack(spacing: 5) {
             Image(systemName: worktree.isLinkedWorktree ? "arrow.triangle.branch" : "folder.fill")
-                .font(.system(size: 9, weight: .semibold))
+                .font(.jost(9, weight: .semibold))
             Text(worktree.repoName)
-                .font(.system(size: 11, weight: .medium))
+                .font(.jost(11, weight: .medium))
                 .lineLimit(1)
         }
         .foregroundStyle(.secondary)
@@ -666,9 +668,9 @@ struct ErrorBanner: View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(Theme.warning)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.jost(14, weight: .semibold))
             Text(message)
-                .font(.footnote)
+                .font(.jost(.footnote))
                 .foregroundStyle(.primary.opacity(0.85))
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -695,10 +697,10 @@ struct ConnectionStatusBar: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: banner.systemImage)
-                .font(.system(size: 13, weight: .bold))
+                .font(.jost(13, weight: .bold))
 
             Text(banner.message)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .font(.jost(13, weight: .semibold))
                 .lineLimit(1)
 
             if banner.showsProgress {
@@ -706,7 +708,7 @@ struct ConnectionStatusBar: View {
             } else if banner.canRetry, let retryAction {
                 Button(action: retryAction) {
                     Text("Retry")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .font(.jost(12, weight: .bold))
                         .foregroundStyle(banner.tintColor)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 3)
@@ -831,7 +833,7 @@ struct LazyCatLoadingView: View {
             .accessibilityHidden(true)
 
             Text(message)
-                .font(.footnote)
+                .font(.jost(.footnote))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -973,7 +975,7 @@ struct LaunchHerdLoadingView: View {
             VStack {
                 Spacer()
                 Text(message)
-                    .font(.footnote)
+                    .font(.jost(.footnote))
                     .foregroundStyle(.secondary)
                     .padding(.bottom, 48)
             }
@@ -1003,9 +1005,9 @@ struct OfflineHerdView: View {
                 .clipped()
 
             Text("The herd got loose")
-                .font(.headline)
+                .font(.jost(.headline))
             Text("You're offline. Reconnect to bring the cats back.")
-                .font(.subheadline)
+                .font(.jost(.subheadline))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1072,7 +1074,7 @@ struct CircularArcSpinner: View {
             VStack(spacing: 8) {
                 spinner
                 Text(label)
-                    .font(.footnote)
+                    .font(.jost(.footnote))
                     .foregroundStyle(.secondary)
             }
         } else {
@@ -1131,7 +1133,7 @@ private struct HostKeyApprovalView: View {
 
     private func fingerprint(_ value: String, label: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(label).font(.subheadline.weight(.semibold))
+            Text(label).font(.jost(.subheadline, weight: .semibold))
             Text(value)
                 .font(.system(.footnote, design: .monospaced))
                 .textSelection(.enabled)
@@ -1139,7 +1141,7 @@ private struct HostKeyApprovalView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     RoundedRectangle.continuous(DesignSystem.CornerRadius.lg)
-                        .fill(Color.secondary.opacity(0.12))
+                        .fill(Theme.fieldBackground)
                 )
         }
     }
@@ -1153,7 +1155,7 @@ private struct HostKeyApprovalView: View {
                             + "This can happen after a rebuild or key rotation, but could also mean someone is impersonating your computer."
                         : "Herdcats hasn't connected to \(challenge.host):\(challenge.port) before. "
                             + "Compare this fingerprint with the server's before you trust it.")
-                        .font(.subheadline)
+                        .font(.jost(.subheadline))
                         .foregroundStyle(.secondary)
                     if let previousFingerprint = challenge.previousFingerprint {
                         fingerprint(previousFingerprint, label: "Previously approved fingerprint")
@@ -1161,19 +1163,19 @@ private struct HostKeyApprovalView: View {
                     fingerprint(challenge.fingerprint, label: isReplacement ? "New fingerprint" : "Server fingerprint")
                     Text("Verify the fingerprint directly on your computer or with its administrator through a trusted channel. "
                         + "For an Ed25519 host key, run on the server: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub")
-                        .font(.footnote)
+                        .font(.jost(.footnote))
                         .foregroundStyle(.secondary)
                     if isReplacement {
                         Toggle("I verified the new fingerprint through a trusted channel", isOn: $verifiedReplacement)
-                            .font(.subheadline)
+                            .font(.jost(.subheadline))
                             .disabled(isApproving)
                         Text("Replacing this key updates trust only for this hostname and port. Your login credentials are kept.")
-                            .font(.footnote)
+                            .font(.jost(.footnote))
                             .foregroundStyle(.secondary)
                     }
                     if let error = approvalError {
                         Text(error)
-                            .font(.footnote)
+                            .font(.jost(.footnote))
                             .foregroundStyle(.secondary)
                     }
                     Button {
@@ -1204,7 +1206,7 @@ private struct HostKeyApprovalView: View {
                         appModel.cancelHostKeyApproval()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.jost(16, weight: .semibold))
                             .foregroundStyle(.primary)
                     }
                     .accessibilityLabel("Close")

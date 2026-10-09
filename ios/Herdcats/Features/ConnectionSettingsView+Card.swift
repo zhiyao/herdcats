@@ -66,7 +66,7 @@ extension ConnectionSettingsView {
                             showPassword.toggle()
                         } label: {
                             Image(systemName: showPassword ? "eye.slash" : "eye")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(.jost(14, weight: .medium))
                                 .foregroundStyle(.secondary)
                         }
                         .buttonStyle(.plain)
@@ -85,7 +85,7 @@ extension ConnectionSettingsView {
                                 showKey.toggle()
                             } label: {
                                 Image(systemName: showKey ? "eye.slash" : "eye")
-                                    .font(.system(size: 14, weight: .medium))
+                                    .font(.jost(14, weight: .medium))
                                     .foregroundStyle(.secondary)
                             }
                             .buttonStyle(.plain)
@@ -150,9 +150,9 @@ extension ConnectionSettingsView {
                                 Image(systemName: "questionmark.circle")
                                 Text("SSH Setup Guide")
                                 Image(systemName: "arrow.up.right")
-                                    .font(.system(size: 8, weight: .semibold))
+                                    .font(.jost(8, weight: .semibold))
                             }
-                            .font(.caption)
+                            .font(.jost(.caption))
                             .foregroundStyle(Theme.accent)
                         }
                     }
@@ -171,22 +171,22 @@ extension ConnectionSettingsView {
                         }
                         if remember {
                             Toggle("Remember Passphrase", isOn: $rememberPassphrase)
-                                .font(.footnote)
+                                .font(.jost(.footnote))
                                 .tint(Theme.accent)
                         }
                         Text("The key is unlocked on this device. Remember the passphrase to reconnect after restarting the app.")
-                            .font(.caption2)
+                            .font(.jost(.caption2))
                             .foregroundStyle(.secondary)
                     }
                     if let importError = importErrorMessage {
                         Text(importError)
-                            .font(.caption2)
+                            .font(.jost(.caption2))
                             .foregroundStyle(Theme.destructive)
                     }
                     if let pubKey = derivedPublicKey {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Matching public key (required in ~/.ssh/authorized_keys):")
-                                .font(.system(size: 11, weight: .medium))
+                                .font(.jost(11, weight: .medium))
                                 .foregroundStyle(.secondary)
                             HStack(spacing: 8) {
                                 Text(pubKey)
@@ -220,7 +220,7 @@ extension ConnectionSettingsView {
                         }
                     } else if let error = keyValidationError {
                         Text(error)
-                            .font(.caption2)
+                            .font(.jost(.caption2))
                             .foregroundStyle(Theme.warning)
                     }
                 }
@@ -239,7 +239,7 @@ extension ConnectionSettingsView {
             }
 
             Toggle("Remember on This Device", isOn: $remember)
-                .font(.footnote)
+                .font(.jost(.footnote))
                 .tint(Theme.accent)
 
             // Connect button
@@ -258,9 +258,6 @@ extension ConnectionSettingsView {
         }
         .disabled(appModel.isConnecting)
         .padding(18)
-        .background(
-            RoundedRectangle.continuous(DesignSystem.CornerRadius.xl)
-                .fill(Theme.cardBackground)
-        )
+        .herdrCard()
     }
 }

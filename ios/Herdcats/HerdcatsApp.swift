@@ -13,6 +13,7 @@ struct HerdcatsApp: App {
 
     init() {
         PlainTextInput.install()
+        AppTypeface.installUIKitAppearance()
     }
 
 #if DEBUG
@@ -39,6 +40,8 @@ struct HerdcatsApp: App {
                 QuotaNotSetupPreviewView()
                     .preferredColorScheme(appearance.colorScheme)
                     .tint(Theme.accent)
+                    .foregroundStyle(Theme.text)
+                    .font(.jost(.body))
             } else if ProcessInfo.processInfo.arguments.contains("-quotaRetryUITest")
                 || ProcessInfo.processInfo.arguments.contains("-quotaRetryErrorUITest") {
                 QuotaRetryUITestView()
@@ -47,12 +50,16 @@ struct HerdcatsApp: App {
                     .environment(appModel)
                     .preferredColorScheme(appearance.colorScheme)
                     .tint(Theme.accent)
+                    .foregroundStyle(Theme.text)
+                    .font(.jost(.body))
             }
 #else
             AppRootView()
                 .environment(appModel)
                 .preferredColorScheme(appearance.colorScheme)
                 .tint(Theme.accent)
+                .foregroundStyle(Theme.text)
+                .font(.jost(.body))
 #endif
         }
     }

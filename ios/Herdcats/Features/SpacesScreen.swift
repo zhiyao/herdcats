@@ -845,7 +845,7 @@ struct SpacesScreen: View {
                         Task { await appModel.disconnect() }
                     } label: {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.jost(16, weight: .semibold))
                             .foregroundStyle(.primary)
                     }
                     .accessibilityLabel("Back to Connections")
@@ -877,7 +877,7 @@ struct SpacesScreen: View {
                         }
                     } label: {
                         Image(systemName: "ellipsis")
-                            .font(.system(size: 16, weight: .medium))
+                            .font(.jost(16, weight: .medium))
                             .foregroundStyle(.primary)
                     }
                     .accessibilityLabel("Space List Options")
@@ -1050,12 +1050,12 @@ struct SpacesScreen: View {
     private var emptyState: some View {
         VStack(spacing: 14) {
             Image(systemName: "square.grid.3x3")
-                .font(.system(size: 42, weight: .light))
+                .font(.jost(42, weight: .light))
                 .foregroundStyle(.tertiary)
             Text("No Spaces Yet")
-                .font(.title3.weight(.semibold))
+                .font(.jost(.title3, weight: .semibold))
             Text("Start herdr on your remote machine and create a workspace,\nor tap ⋯ to create one from here.")
-                .font(.footnote)
+                .font(.jost(.footnote))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
@@ -1084,9 +1084,9 @@ private struct CreateSpaceDrawer: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("New Space")
-                .font(.title3.weight(.semibold))
+                .font(.jost(.title3, weight: .semibold))
             Text("Choose a space to base the new space on — it opens in the same directory. A blank space starts in the default one.")
-                .font(.subheadline)
+                .font(.jost(.subheadline))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -1096,7 +1096,7 @@ private struct CreateSpaceDrawer: View {
 
                     if !spaces.isEmpty {
                         Text("Base on an Existing Space")
-                            .font(.caption.weight(.semibold))
+                            .font(.jost(.caption, weight: .semibold))
                             .foregroundStyle(.secondary)
                             .padding(.top, 8)
                     }
@@ -1124,13 +1124,13 @@ private struct CreateSpaceDrawer: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "plus.square.dashed")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.jost(13, weight: .semibold))
                     .foregroundStyle(Theme.accent)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Blank Space")
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .font(.jost(15, weight: .semibold))
                     Text("Starts in the default directory")
-                        .font(.caption)
+                        .font(.jost(.caption))
                         .foregroundStyle(.tertiary)
                 }
                 Spacer(minLength: 0)
@@ -1151,11 +1151,11 @@ private struct CreateSpaceDrawer: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "square.grid.3x3")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.jost(12, weight: .semibold))
                     .foregroundStyle(.tertiary)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("#\(space.workspace.number) · \(space.label)")
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .font(.jost(15, weight: .semibold))
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
                     Text(directoryHint(for: space))
@@ -1233,7 +1233,7 @@ private struct OpenWorktreeDrawer: View {
                     VStack(alignment: .leading, spacing: 12) {
                         if !worktrees.isEmpty {
                             Text("Existing worktrees")
-                                .font(.caption.weight(.semibold))
+                                .font(.jost(.caption, weight: .semibold))
                                 .foregroundStyle(.secondary)
                                 .padding(.top, 4)
 
@@ -1272,9 +1272,9 @@ private struct OpenWorktreeDrawer: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Open Worktree")
-                .font(.title3.weight(.semibold))
+                .font(.jost(.title3, weight: .semibold))
             Text("Open an existing Git worktree in #\(space.workspace.number) · \(space.label) as a Herdr workspace.")
-                .font(.subheadline)
+                .font(.jost(.subheadline))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if let worktree = space.workspace.worktree {
@@ -1290,12 +1290,12 @@ private struct OpenWorktreeDrawer: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "arrow.triangle.branch")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.jost(13, weight: .semibold))
                     .foregroundStyle(Theme.accent)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(entry.displayTitle)
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .font(.jost(15, weight: .semibold))
                         .lineLimit(1)
                     Text(entry.path)
                         .font(.caption.monospaced())
@@ -1308,14 +1308,14 @@ private struct OpenWorktreeDrawer: View {
 
                 if let openId = entry.openWorkspaceId {
                     Text("Open (#\(openId))")
-                        .font(.caption2.weight(.semibold))
+                        .font(.jost(.caption2, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(Theme.subtleFill, in: Capsule())
                 } else if entry.isLinkedWorktree == false {
                     Text("Root")
-                        .font(.caption2.weight(.semibold))
+                        .font(.jost(.caption2, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
@@ -1335,7 +1335,7 @@ private struct OpenWorktreeDrawer: View {
     private var customInputSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Or open by branch or path")
-                .font(.caption.weight(.semibold))
+                .font(.jost(.caption, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .padding(.top, 8)
 
@@ -1415,7 +1415,7 @@ private struct CreateWorktreeDrawer: View {
                 VStack(alignment: .leading, spacing: 14) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Worktree name")
-                            .font(.caption.weight(.semibold))
+                            .font(.jost(.caption, weight: .semibold))
                             .foregroundStyle(.secondary)
                         TextField("e.g. my-feature (optional)", text: $name)
                             .textFieldStyle(.plain)
@@ -1433,19 +1433,19 @@ private struct CreateWorktreeDrawer: View {
                             .accessibilityIdentifier("create-worktree-name-input")
                         if let error = validationError {
                             Text(error)
-                                .font(.caption2)
+                                .font(.jost(.caption2))
                                 .foregroundStyle(Theme.warning)
                                 .accessibilityIdentifier("create-worktree-validation-error")
                         } else {
                             Text("Herdr will generate a worktree name if left blank.")
-                                .font(.caption2)
+                                .font(.jost(.caption2))
                                 .foregroundStyle(.tertiary)
                         }
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Workspace label")
-                            .font(.caption.weight(.semibold))
+                            .font(.jost(.caption, weight: .semibold))
                             .foregroundStyle(.secondary)
                         TextField("e.g. My Feature (optional)", text: $label)
                             .textFieldStyle(.plain)
@@ -1456,7 +1456,7 @@ private struct CreateWorktreeDrawer: View {
                             .herdrField()
                             .accessibilityIdentifier("create-worktree-label-input")
                         Text("Display title for the new workspace. Defaults to the worktree name.")
-                            .font(.caption2)
+                            .font(.jost(.caption2))
                             .foregroundStyle(.tertiary)
                     }
                 }
@@ -1493,9 +1493,9 @@ private struct CreateWorktreeDrawer: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("New Worktree")
-                .font(.title3.weight(.semibold))
+                .font(.jost(.title3, weight: .semibold))
             Text("Create a new Git worktree and open it in a workspace for #\(space.workspace.number) · \(space.label).")
-                .font(.subheadline)
+                .font(.jost(.subheadline))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if let worktree = space.workspace.worktree {
@@ -1515,7 +1515,7 @@ struct MachineSectionHeader: View {
 
     var body: some View {
         Label(name, systemImage: "desktopcomputer")
-            .font(.appLabelSm.weight(.semibold))
+            .font(.pixel(10, bold: true))
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 12)
@@ -1575,7 +1575,7 @@ struct SpaceCard: View {
                         Spacer(minLength: 4)
                         if workspace.focused {
                             Image(systemName: "scope")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.jost(11, weight: .semibold))
                                 .foregroundStyle(Theme.accent)
                         }
                     }
@@ -1617,7 +1617,7 @@ struct SpaceCard: View {
                     .accessibilityIdentifier("space-close-button-\(group.root.id)")
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.jost(14, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
@@ -1634,7 +1634,7 @@ struct SpaceCard: View {
                     }
                     if let machineLabel {
                         Label(machineLabel, systemImage: "desktopcomputer")
-                            .font(.caption2)
+                            .font(.jost(.caption2))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .truncationMode(.middle)
@@ -1719,7 +1719,7 @@ struct SpaceCard: View {
                 HStack(spacing: 8) {
                     CircularArcSpinner(size: 11)
                     Text(pendingWorktreeAction.title)
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .font(.jost(13, weight: .medium))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                     Spacer(minLength: 0)
@@ -1742,23 +1742,23 @@ struct SpaceCard: View {
     private func worktreeRow(_ space: Space) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "arrow.triangle.branch")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.jost(10, weight: .semibold))
                 .foregroundStyle(.secondary)
             Text("#\(space.workspace.number)")
-                .font(.system(size: 10, weight: .bold, design: .rounded).monospacedDigit())
+                .font(.jost(10, weight: .bold).monospacedDigit())
                 .foregroundStyle(.secondary)
             Text(space.label)
-                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .font(.jost(13, weight: .medium))
                 .lineLimit(1)
             if !space.agents.isEmpty {
                 Text("\(space.agents.count) agent\(space.agents.count == 1 ? "" : "s")")
-                    .font(.system(size: 10))
+                    .font(.jost(10))
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 6)
             if space.workspace.focused {
                 Image(systemName: "scope")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.jost(11, weight: .semibold))
                     .foregroundStyle(Theme.accent)
             }
             if !space.agents.isEmpty {

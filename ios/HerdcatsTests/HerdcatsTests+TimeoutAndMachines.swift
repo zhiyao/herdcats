@@ -133,34 +133,31 @@ struct ButtonStyleTests {
     @Test func primaryButtonStyleDefaultsAndCustomizations() {
         let defaultStyle = HerdrPrimaryButtonStyle()
         #expect(defaultStyle.fullWidth == true)
-        #expect(defaultStyle.cornerRadius == DesignSystem.CornerRadius.lg)
-        #expect(defaultStyle.cornerRadius == 14)
+        #expect(defaultStyle.cornerRadius == DesignSystem.CornerRadius.button)
+        #expect(defaultStyle.cornerRadius == 8)
         #expect(defaultStyle.tint == nil)
-        #expect(defaultStyle.useGradient == true)
 
         let customStyle = HerdrPrimaryButtonStyle(
             fullWidth: false,
             cornerRadius: DesignSystem.CornerRadius.md,
-            tint: .red,
-            useGradient: false
+            tint: .red
         )
         #expect(customStyle.fullWidth == false)
-        #expect(customStyle.cornerRadius == 12)
+        #expect(customStyle.cornerRadius == 8)
         #expect(customStyle.tint == .red)
-        #expect(customStyle.useGradient == false)
     }
 
     @Test func secondaryButtonStyleDefaultsAndCustomizations() {
         let defaultStyle = HerdrSecondaryButtonStyle()
         #expect(defaultStyle.fullWidth == true)
-        #expect(defaultStyle.cornerRadius == DesignSystem.CornerRadius.lg)
+        #expect(defaultStyle.cornerRadius == DesignSystem.CornerRadius.button)
 
         let customStyle = HerdrSecondaryButtonStyle(
             fullWidth: false,
-            cornerRadius: DesignSystem.CornerRadius.sm
+            cornerRadius: DesignSystem.CornerRadius.lg
         )
         #expect(customStyle.fullWidth == false)
-        #expect(customStyle.cornerRadius == 10)
+        #expect(customStyle.cornerRadius == 16)
     }
 
     @Test func ghostButtonStyleDefaults() {
@@ -182,9 +179,12 @@ struct ButtonStyleTests {
     }
 
     @Test func designTokensMatchSpecification() {
-        #expect(DesignSystem.CornerRadius.lg == 14)
-        #expect(DesignSystem.CornerRadius.md == 12)
-        #expect(DesignSystem.CornerRadius.sm == 10)
+        // DESIGN.md §5: 8pt controls, 16pt cards.
+        #expect(DesignSystem.CornerRadius.lg == 16)
+        #expect(DesignSystem.CornerRadius.md == 8)
+        #expect(DesignSystem.CornerRadius.sm == 8)
+        #expect(DesignSystem.CornerRadius.button == 8)
+        #expect(DesignSystem.CornerRadius.xl == 16)
         #expect(DesignSystem.Spacing.md == 12)
         #expect(DesignSystem.Spacing.base == 16)
     }
@@ -341,5 +341,32 @@ struct HerdrMachineTests {
         _ = await gateway.reserveConnectGeneration()
         await #expect(throws: HerdrError.notConnected) { try await routed.paneSendText(paneId: "w1:p1", text: "hello") }
         #expect(await gateway.generation == ConnectionGeneration(rawValue: 1))
+    }
+}
+
+@Suite("Bundled typefaces")
+struct BundledTypefaceTests {
+    /// Every name `Font.jost` and `Font.pixel` ask for must resolve, or SwiftUI
+    /// silently falls back to the system font.
+    @Test func jostAndSilkscreenResolve() {
+        let weights: [Font.Weight] = [.ultraLight, .thin, .light, .regular, .medium, .semibold, .bold, .heavy, .black]
+        for weight in weights {
+            let name = AppTypeface.jostName(weight)
+            #expect(UIFont(name: name, size: 17) != nil, "Missing \(name)")
+        }
+        #expect(UIFont(name: AppTypeface.silkscreenName(bold: false), size: 10) != nil)
+        #expect(UIFont(name: AppTypeface.silkscreenName(bold: true), size: 10) != nil)
+    }
+
+    /// Named instances of the variable font must render at their own weight,
+    /// not fall back to the default Regular instance.
+    @Test func jostWeightsRenderDistinctly() {
+        func width(_ weight: Font.Weight) -> CGFloat {
+            let font = AppTypeface.uiJost(17, weight: weight)
+            return ("Herdcats wrangles agents" as NSString).size(withAttributes: [.font: font]).width
+        }
+        #expect(width(.light) < width(.regular))
+        #expect(width(.regular) < width(.semibold))
+        #expect(width(.semibold) < width(.bold))
     }
 }

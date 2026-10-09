@@ -26,7 +26,7 @@ struct AgySignInSheet: View {
                         .foregroundStyle(.secondary)
 
                     if let error {
-                        Text(error).foregroundStyle(.red)
+                        Text(error).foregroundStyle(Theme.destructive)
                     }
 
                     if transcript.codeSubmitted {
@@ -43,13 +43,13 @@ struct AgySignInSheet: View {
                             }
                             .buttonStyle(.borderedProminent)
                             Text(url.host ?? "Google")
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.jost(.caption)).foregroundStyle(.secondary)
                         }
 
                         if transcript.showsCodeEntry {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Authorization Code")
-                                    .font(.headline)
+                                    .font(.jost(.headline))
                                 SecureField("Authorization code", text: $code,
                                             prompt: Text("Tap here to enter your code").foregroundStyle(.secondary))
                                     .textInputAutocapitalization(.never)
@@ -58,7 +58,7 @@ struct AgySignInSheet: View {
                                     .foregroundStyle(.primary)
                                     .padding(.horizontal, 12)
                                     .frame(minHeight: 48)
-                                    .background(Theme.fieldBackground, in: RoundedRectangle(cornerRadius: 10))
+                                    .background(Theme.fieldBackground, in: RoundedRectangle.continuous(DesignSystem.CornerRadius.sm))
                                     .accessibilityIdentifier("agy-authorization-code")
                             }
                             HStack {
@@ -72,7 +72,7 @@ struct AgySignInSheet: View {
                                     .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !transcript.awaitingCode || !isRunning || isSending)
                             }
                             Text(codeSubmissionStatus)
-                                .font(.callout)
+                                .font(.jost(.callout))
                                 .foregroundStyle(.secondary)
                                 .accessibilityIdentifier("agy-code-status")
                             if !isRunning {
@@ -82,7 +82,7 @@ struct AgySignInSheet: View {
                             }
                         } else if isRunning && transcript.isChoosingLoginMethod {
                             Text("Choose a login method with Up and Down, then tap Enter at the bottom of the screen.")
-                                .font(.callout).foregroundStyle(.secondary)
+                                .font(.jost(.callout)).foregroundStyle(.secondary)
                         }
 
                         if transcript.displayText.isEmpty {
@@ -134,7 +134,8 @@ struct AgySignInSheet: View {
                 .disabled(!isRunning || isSending || !transcript.isChoosingLoginMethod)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
-                .background(.regularMaterial)
+                .background(Theme.cardBackground)
+                .overlay(alignment: .top) { Theme.hairline.frame(height: 1) }
             }
             .navigationTitle("Sign in to Agy")
             .navigationBarTitleDisplayMode(.inline)
@@ -144,7 +145,7 @@ struct AgySignInSheet: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.jost(16, weight: .semibold))
                             .foregroundStyle(.primary)
                     }
                     .accessibilityLabel("Close")
@@ -172,7 +173,7 @@ struct AgySignInSheet: View {
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
-            .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+            .herdrCard()
     }
 
     private var codeSubmissionStatus: String {
