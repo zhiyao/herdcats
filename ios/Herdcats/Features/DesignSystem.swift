@@ -100,9 +100,9 @@ enum Theme {
     /// `--sky`: hero and header field behind top-level screens.
     static let sky = moonlit(night: Palette.teal600, day: 0xD3EBDD)
 
-    /// `--bg-deep`: the app canvas. Cards sit one step lighter on `surface`,
-    /// so grouped rows keep visible structure without shadows.
-    static let background = moonlit(night: Palette.night950, day: 0xDCEBE2)
+    /// `--bg`: the app canvas, as on the website. Cards share the night colour
+    /// and are outlined by `hairline`, so structure needs no shadows.
+    static let background = moonlit(night: Palette.night900, day: 0xEEF6F1)
 
     static let backgroundGradient = LinearGradient(
         colors: [background, background],
@@ -115,10 +115,16 @@ enum Theme {
         background
     }
 
-    /// `--surface`: cards and grouped rows.
+    /// `--surface`: cards, always with a `hairline` outline (see `HerdrCardModifier`).
     static let cardBackground = moonlit(night: Palette.night900, day: 0xF8FBF9)
 
-    /// Inset background for text inputs, search fields, and recessed areas.
+    /// Native grouped rows (Settings), which cannot carry a section outline.
+    /// At night they recess to `--bg-deep`, like the website's code boxes;
+    /// by day `--surface` already stands off the canvas.
+    static let groupedRowBackground = moonlit(night: Palette.night950, day: 0xF8FBF9)
+
+    /// Inset background for text inputs, search fields, and recessed areas
+    /// (`--bg-deep` at night).
     static let fieldBackground = moonlit(night: Palette.night950, day: 0xEEF6F1)
 
     /// `--border`: 1pt dividers and card outlines.
@@ -334,9 +340,9 @@ extension RoundedRectangle {
 
 // MARK: - Card View Modifiers
 
-/// Standardizes card surfaces (workspace cards, agent triage cards) with continuous rounding
-/// and a stable fill. Unlike the website, app cards have no outline, matching the native
-/// Settings rows. Cards Herdr reports as focused carry the Herdr focus line.
+/// Standardizes card surfaces (workspace cards, agent triage cards) with continuous rounding,
+/// a stable fill, and a 1pt `--border` outline, as on the website. Cards Herdr reports as
+/// focused carry the Herdr focus line.
 struct HerdrCardModifier: ViewModifier {
     var isFocused: Bool = false
     var cornerRadius: CGFloat = DesignSystem.CornerRadius.xl
@@ -345,6 +351,7 @@ struct HerdrCardModifier: ViewModifier {
         let shape = RoundedRectangle.continuous(cornerRadius)
         return content
             .background(shape.fill(Theme.cardBackground))
+            .overlay(shape.strokeBorder(Theme.hairline, lineWidth: 1).allowsHitTesting(false))
             .herdrFocusLine(isFocused, in: shape)
             .contentShape(shape)
     }

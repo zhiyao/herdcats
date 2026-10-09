@@ -192,8 +192,7 @@ struct ConnectView: View {
                         }
                         .frame(maxWidth: .infinity, minHeight: 126, alignment: .leading)
                         .padding(16)
-                        .background(Theme.cardBackground, in: RoundedRectangle.continuous(DesignSystem.CornerRadius.xl))
-                        .contentShape(RoundedRectangle.continuous(DesignSystem.CornerRadius.xl))
+                        .herdrCard()
                     }
                     .buttonStyle(.herdrCard)
                     .accessibilityLabel("\(connection.username) at \(connection.host), port \(connection.port)")
@@ -239,7 +238,7 @@ struct MissingHerdrRecoveryCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Theme.cardBackground, in: RoundedRectangle.continuous(DesignSystem.CornerRadius.xl))
+        .herdrCard()
     }
 }
 
@@ -264,7 +263,7 @@ struct SessionRecoveryCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Theme.cardBackground, in: RoundedRectangle.continuous(DesignSystem.CornerRadius.xl))
+        .herdrCard()
     }
 }
 

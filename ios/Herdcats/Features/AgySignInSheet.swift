@@ -135,6 +135,7 @@ struct AgySignInSheet: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
                 .background(Theme.cardBackground)
+                .overlay(alignment: .top) { Theme.hairline.frame(height: 1) }
             }
             .navigationTitle("Sign in to Agy")
             .navigationBarTitleDisplayMode(.inline)
@@ -172,7 +173,7 @@ struct AgySignInSheet: View {
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
-            .background(Theme.cardBackground, in: RoundedRectangle.continuous(DesignSystem.CornerRadius.xl))
+            .herdrCard()
     }
 
     private var codeSubmissionStatus: String {

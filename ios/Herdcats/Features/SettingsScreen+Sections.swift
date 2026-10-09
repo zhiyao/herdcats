@@ -8,7 +8,7 @@ extension SettingsScreen {
             Toggle(isOn: $model.autoRefreshEnabled.animation()) {
                 Label("Auto-refresh (5s)", systemImage: "arrow.triangle.2.circlepath")
             }
-            .listRowBackground(Theme.cardBackground)
+            .listRowBackground(Theme.groupedRowBackground)
 
             if !model.autoRefreshEnabled {
                 Button {
@@ -16,7 +16,7 @@ extension SettingsScreen {
                 } label: {
                     Label("Refresh Now", systemImage: "arrow.clockwise")
                 }
-                .listRowBackground(Theme.cardBackground)
+                .listRowBackground(Theme.groupedRowBackground)
             }
         } header: {
             Text("Refresh")
@@ -29,14 +29,14 @@ extension SettingsScreen {
             Toggle(isOn: paneContentSavingBinding) {
                 Label("Preserve Drafts and Command History", systemImage: "text.alignleft")
             }
-            .listRowBackground(Theme.cardBackground)
+            .listRowBackground(Theme.groupedRowBackground)
 
             Button(role: .destructive) {
                 confirmClearPaneContent = true
             } label: {
                 Label("Clear Saved Drafts and History", systemImage: "trash")
             }
-            .listRowBackground(Theme.cardBackground)
+            .listRowBackground(Theme.groupedRowBackground)
         } header: {
             Text("Pane Data & Privacy")
                 .font(.jost(.footnote))
@@ -57,7 +57,7 @@ extension SettingsScreen {
                 }
             }
             .pickerStyle(.segmented)
-            .listRowBackground(Theme.cardBackground)
+            .listRowBackground(Theme.groupedRowBackground)
         } header: {
             Text("Appearance")
                 .font(.jost(.footnote))
@@ -74,13 +74,13 @@ extension SettingsScreen {
                 }
             }
             .pickerStyle(.segmented)
-            .listRowBackground(Theme.cardBackground)
+            .listRowBackground(Theme.groupedRowBackground)
 
             Text("The quick brown fox jumps over the lazy dog")
                 .font(paneTextSize.wrappedValue.outputFont)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .listRowBackground(Theme.cardBackground)
+                .listRowBackground(Theme.groupedRowBackground)
                 .accessibilityLabel("Pane Text Preview")
 
             VStack(alignment: .leading, spacing: 8) {
@@ -99,7 +99,7 @@ extension SettingsScreen {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .listRowBackground(Theme.cardBackground)
+            .listRowBackground(Theme.groupedRowBackground)
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Mark as Read")
@@ -117,7 +117,7 @@ extension SettingsScreen {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .listRowBackground(Theme.cardBackground)
+            .listRowBackground(Theme.groupedRowBackground)
         } header: {
             Text("Pane")
                 .font(.jost(.footnote))
@@ -133,7 +133,7 @@ extension SettingsScreen {
             } label: {
                 Label("Agent Done", systemImage: "checkmark.circle")
             }
-            .listRowBackground(Theme.cardBackground)
+            .listRowBackground(Theme.groupedRowBackground)
 
             Picker(selection: blockedSound) {
                 ForEach(AgentAlertSound.allCases) { sound in
@@ -142,12 +142,12 @@ extension SettingsScreen {
             } label: {
                 Label("Agent Blocked", systemImage: "exclamationmark.triangle")
             }
-            .listRowBackground(Theme.cardBackground)
+            .listRowBackground(Theme.groupedRowBackground)
 
             Toggle(isOn: hapticBinding) {
                 Label("Haptic Feedback", systemImage: "iphone.radiowaves.left.and.right")
             }
-            .listRowBackground(Theme.cardBackground)
+            .listRowBackground(Theme.groupedRowBackground)
             .accessibilityIdentifier("haptic-toggle")
         } header: {
             Text("Sounds & Haptics")
@@ -170,7 +170,7 @@ extension SettingsScreen {
             }
             .pickerStyle(.inline)
             .labelsHidden()
-            .listRowBackground(Theme.cardBackground)
+            .listRowBackground(Theme.groupedRowBackground)
         } header: {
             Text("On Launch")
                 .font(.jost(.footnote))
@@ -181,22 +181,22 @@ extension SettingsScreen {
         Section {
             if let machine = appModel.selectedMachine {
                 Label(machine.label, systemImage: "desktopcomputer")
-                    .listRowBackground(Theme.cardBackground)
+                    .listRowBackground(Theme.groupedRowBackground)
                 Text("\(machine.target) · \(machine.session)")
                     .font(.jost(.caption))
-                    .listRowBackground(Theme.cardBackground)
+                    .listRowBackground(Theme.groupedRowBackground)
             }
             if case let .connected(host, username) = appModel.machineCatalog.phase {
                 Label("\(username)@\(host)", systemImage: "link")
-                    .listRowBackground(Theme.cardBackground)
+                    .listRowBackground(Theme.groupedRowBackground)
             } else if case let .offline(host, username) = appModel.machineCatalog.phase {
                 Label("\(username)@\(host) (offline)", systemImage: "link.badge.plus")
-                    .listRowBackground(Theme.cardBackground)
+                    .listRowBackground(Theme.groupedRowBackground)
             }
 
             if let version = appModel.herdrVersion {
                 Label(version, systemImage: "shippingbox")
-                    .listRowBackground(Theme.cardBackground)
+                    .listRowBackground(Theme.groupedRowBackground)
             }
 
             Button(role: .destructive) {
@@ -204,7 +204,7 @@ extension SettingsScreen {
             } label: {
                 Label("Disconnect", systemImage: "xmark.circle")
             }
-            .listRowBackground(Theme.cardBackground)
+            .listRowBackground(Theme.groupedRowBackground)
         } header: {
             Text("Connection")
                 .font(.jost(.footnote))
@@ -218,7 +218,7 @@ extension SettingsScreen {
             } label: {
                 Label("Licenses", systemImage: "doc.text")
             }
-            .listRowBackground(Theme.cardBackground)
+            .listRowBackground(Theme.groupedRowBackground)
 
             HStack {
                 Spacer()

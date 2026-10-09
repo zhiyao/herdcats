@@ -179,10 +179,7 @@ struct QuotaCardsView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-        .background(
-            RoundedRectangle.continuous(DesignSystem.CornerRadius.lg)
-                .fill(Theme.cardBackground)
-        )
+        .herdrCard(cornerRadius: DesignSystem.CornerRadius.lg)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(statusMessage)
         .accessibilityIdentifier("agent-usage-status-card")
@@ -352,10 +349,7 @@ struct QuotaAxiNotSetupView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle.continuous(DesignSystem.CornerRadius.lg)
-                .fill(Theme.cardBackground)
-        )
+        .herdrCard(cornerRadius: DesignSystem.CornerRadius.lg)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("agent-usage-status-card")
     }
@@ -415,10 +409,7 @@ private struct AgentUsageCardView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(
-            RoundedRectangle.continuous(DesignSystem.CornerRadius.lg)
-                .fill(Theme.cardBackground)
-        )
+        .herdrCard(cornerRadius: DesignSystem.CornerRadius.lg)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(card.accessibilityLabel(now: now))
     }

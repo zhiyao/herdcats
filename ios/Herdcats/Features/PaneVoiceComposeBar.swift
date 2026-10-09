@@ -32,13 +32,15 @@ enum PaneLiveModifier: String, CaseIterable, Identifiable, Hashable, Sendable {
 
 /// One solid surface for a whole pane input group. The controls inside keep
 /// their plain style so the Live row does not turn into separate pills.
-/// Moonlit uses no glass or blur: a plain `--surface` fill.
+/// Moonlit uses no glass or blur: `--surface` with a `--border` outline.
 private struct PaneInputGlassSurface: ViewModifier {
     let cornerRadius: CGFloat
 
     func body(content: Content) -> some View {
+        let shape = RoundedRectangle.continuous(cornerRadius)
         content
-            .background(Theme.cardBackground, in: RoundedRectangle.continuous(cornerRadius))
+            .background(Theme.cardBackground, in: shape)
+            .overlay(shape.strokeBorder(Theme.hairline, lineWidth: 1))
     }
 }
 
