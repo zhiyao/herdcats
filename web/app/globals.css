@@ -500,9 +500,14 @@ html:has(.landing) body {
     z-index: 110;
 }
 
-/* Mobile-only footer on the landing page (the header links hide on mobile) */
+/* Keep project attribution visible; mobile also uses the footer navigation. */
 .landing-footer {
-    display: none;
+    display: block;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: auto;
 }
 
 /* Responsive adjustments. lib/world.ts mirrors this breakpoint (MOBILE_LAYOUT_QUERY). */

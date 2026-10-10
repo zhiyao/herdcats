@@ -28,6 +28,7 @@ export function SiteFooter() {
     <footer className={styles.footer}>
       <div className={styles.footerInner}>
         <p>© {new Date().getFullYear()} Herdcats. Open source iOS client for Herdr.</p>
+        <p>Independent project, not affiliated with Herdr.</p>
         <div className={styles.footerLinks}>
           <Link href="/support" className={styles.footerLink}>Support</Link>
           <Link href="/about" className={styles.footerLink}>About</Link>

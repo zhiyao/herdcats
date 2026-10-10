@@ -22,6 +22,8 @@ Input remains acknowledged in order; uncertain sends are never replayed.
 [Tailscale](https://tailscale.com) is the recommended way to connect your phone
 and Herdr machine. Any network that can reach the SSH server also works.
 
+Herdcats is an independent project, not affiliated with Herdr.
+
 This is an early release. See the limitations below before using it.
 
 ## Screenshots
@@ -53,8 +55,8 @@ repository and clone your fork in place of the URL below.
 Run `ios/bin/setup` to check Xcode, install [XcodeGen](https://github.com/yonaskolb/XcodeGen)
 with Homebrew if needed, generate the project, and resolve Swift packages.
 If XcodeGen is missing, install [Homebrew](https://brew.sh) first. Citadel,
-the SSH dependency, is pinned to 0.12.1. Simulator development requires no
-Apple account or SSH server.
+the SSH dependency, is vendored at 0.12.1 with local OpenSSH fixes.
+Simulator development requires no Apple account or SSH server.
 
 ```sh
 git clone https://github.com/zhiyao/herdcats.git
@@ -192,6 +194,7 @@ hosted independently of the iPhone app.
   Automatic reconnects remain blocked until approval.
 - Uploaded photos remain under `~/.cache/herdrcat/attachments` on the connected
   machine until you remove them; the app does not automatically delete them.
+  The legacy `herdrcat` cache name is retained for compatibility with existing uploads.
 - Saved-machine routing uses the gateway machine's SSH configuration. Quota and
   photos are available only on the directly connected host.
 
