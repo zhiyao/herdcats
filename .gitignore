@@ -79,3 +79,6 @@ web/out/
 
 # Private marketing notes
 /marketing.md
+
+# Git worktrees (local isolation)
+.worktrees/
