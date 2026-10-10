@@ -306,7 +306,8 @@ extension HerdrConnection {
             throw HerdrError.unexpectedResponse("empty output")
         }
         var output = raw
-        while output.hasSuffix("\n") || output.hasSuffix("\r") {
+        // `\r\n` is a single Character in Swift, so check the CRLF suffix explicitly.
+        while output.hasSuffix("\r\n") || output.hasSuffix("\n") || output.hasSuffix("\r") {
             output.removeLast()
         }
         return output
