@@ -68,6 +68,8 @@ def swift_notices():
                            (ROOT / "licenses/catppuccin-MIT.txt").read_text()))
     notices.append(section("Solarized palette", "https://github.com/altercation/solarized",
                            (ROOT / "licenses/solarized-MIT.txt").read_text()))
+    inventory.append({"name": "Catppuccin palette", "version": "1.8.0", "repository": "https://github.com/catppuccin/palette", "license_sources": ["licenses/catppuccin-MIT.txt"]})
+    inventory.append({"name": "Solarized palette", "repository": "https://github.com/altercation/solarized", "license_sources": ["licenses/solarized-MIT.txt"]})
     notices.extend(font_notices(APP_FONTS))
     return inventory, "".join(notices)
 
