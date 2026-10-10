@@ -127,7 +127,11 @@ enum AppPalette: String, CaseIterable, Identifiable {
                 "red": 0xD20F39,
                 "green": 0x40A02B,
                 "yellow": 0xDF8E1D,
-                "teal": 0x179299
+                "teal": 0x179299,
+                "surface2": 0xACB0BE,
+                "subtext0": 0x6C6F85,
+                "blue": 0x1E66F5,
+                "pink": 0xEA76CB
             ]
         case .frappe:
             [
@@ -142,7 +146,11 @@ enum AppPalette: String, CaseIterable, Identifiable {
                 "red": 0xE78284,
                 "green": 0xA6D189,
                 "yellow": 0xE5C890,
-                "teal": 0x81C8BE
+                "teal": 0x81C8BE,
+                "surface2": 0x626880,
+                "subtext0": 0xA5ADCE,
+                "blue": 0x8CAAEE,
+                "pink": 0xF4B8E4
             ]
         case .macchiato:
             [
@@ -157,7 +165,11 @@ enum AppPalette: String, CaseIterable, Identifiable {
                 "red": 0xED8796,
                 "green": 0xA6DA95,
                 "yellow": 0xEED49F,
-                "teal": 0x8BD5CA
+                "teal": 0x8BD5CA,
+                "surface2": 0x5B6078,
+                "subtext0": 0xA5ADCB,
+                "blue": 0x8AADF4,
+                "pink": 0xF5BDE6
             ]
         case .mocha:
             [
@@ -172,9 +184,58 @@ enum AppPalette: String, CaseIterable, Identifiable {
                 "red": 0xF38BA8,
                 "green": 0xA6E3A1,
                 "yellow": 0xF9E2AF,
-                "teal": 0x94E2D5
+                "teal": 0x94E2D5,
+                "surface2": 0x585B70,
+                "subtext0": 0xA6ADC8,
+                "blue": 0x89B4FA,
+                "pink": 0xF5C2E7
             ]
         }
+    }
+}
+
+/// Immutable terminal rendering input and cache key. UI and terminal colors
+/// share the selected palette, while explicit RGB/extended ANSI remain intact.
+struct TerminalPalette: Equatable {
+    let colors: [UInt32]
+    let foreground: UInt32
+    let background: UInt32
+
+    init(palette: AppPalette, dark: Bool) {
+        foreground = Self.hex(Theme.paletteColor("text", palette: palette, dark: dark,
+                                                fallback: dark ? Palette.paper50 : Palette.night950))
+        background = Self.hex(Theme.paletteColor("background", palette: palette, dark: dark,
+                                                fallback: dark ? Palette.night950 : 0xDCEBE2))
+        switch palette {
+        case .moonlit:
+            if dark {
+                colors = [0x1B282E, 0xF29A86, 0xABE0B6, 0xE0B866, 0x8BB9D9, 0xC6A0C9, 0x8CC2B6, 0xD1DDD7,
+                          0x63988E, 0xFFC0AD, 0xC9EED0, 0xF0D39A, 0xB5D5EB, 0xDFC3E1, 0xB5DED2, 0xF8F8F8]
+            } else {
+                colors = [0x1B282E, 0xA8432F, 0x2F7148, 0x865C0E, 0x326688, 0x795080, 0x325156, 0xB4C9BE,
+                          0x4C777D, 0xB84D37, 0x387E52, 0x946715, 0x3C7296, 0x885B90, 0x3B6970, 0xF8FBF9]
+            }
+        case .solarizedLight, .solarizedDark:
+            // Solarized's canonical ANSI order intentionally places orange and
+            // violet in the bright red/magenta slots, and base tones elsewhere.
+            colors = [0x073642, 0xDC322F, 0x859900, 0xB58900, 0x268BD2, 0xD33682, 0x2AA198, 0xEEE8D5,
+                      0x002B36, 0xCB4B16, 0x586E75, 0x657B83, 0x839496, 0x6C71C4, 0x93A1A1, 0xFDF6E3]
+        default:
+            // Catppuccin's official Kitty ANSI mapping, using palette 1.8.0.
+            let c = palette.colors
+            let black = palette == .latte ? c["subtext1"]! : c["surface1"]!
+            let brightBlack = palette == .latte ? c["subtext0"]! : c["surface2"]!
+            let white = palette == .latte ? c["surface2"]! : c["subtext1"]!
+            let brightWhite = palette == .latte ? c["surface1"]! : c["subtext0"]!
+            let accents = [c["red"]!, c["green"]!, c["yellow"]!, c["blue"]!, c["pink"]!, c["teal"]!]
+            colors = [black] + accents + [white, brightBlack] + accents + [brightWhite]
+        }
+    }
+
+    private static func hex(_ color: UIColor) -> UInt32 {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        color.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return UInt32((r * 255).rounded()) << 16 | UInt32((g * 255).rounded()) << 8 | UInt32((b * 255).rounded())
     }
 }
 

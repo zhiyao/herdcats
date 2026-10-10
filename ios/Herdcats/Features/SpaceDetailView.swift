@@ -135,6 +135,7 @@ struct PaneDetailView: View {
                 } label: {
                     Label("Back", systemImage: "chevron.backward")
                 }
+                .tint(Color.primary)
                 .accessibilityIdentifier("pane-back-button")
             }
             ToolbarItem(placement: .principal) {
@@ -1091,8 +1092,14 @@ struct PaneSessionView: View {
         self.historyKey = state.historyKey
     }
 
+    private var terminalPalette: TerminalPalette {
+        let dark = colorScheme == .dark
+        let preferences = AppThemePreferences.shared
+        return TerminalPalette(palette: dark ? preferences.dark : preferences.light, dark: dark)
+    }
+
     private func updateSessionParsedOutput() {
-        session.updateParsedOutput(invertANSIForLightBackground: colorScheme == .light)
+        session.updateParsedOutput(palette: terminalPalette)
     }
 
     /// External send gate — the Compose bubble only *hides* Send for a blank
@@ -1429,7 +1436,7 @@ struct PaneSessionView: View {
         .onChange(of: session.output) { _, _ in
             updateSessionParsedOutput()
         }
-        .onChange(of: colorScheme) { _, _ in
+        .onChange(of: terminalPalette) { _, _ in
             updateSessionParsedOutput()
         }
         .onChange(of: doneClearRaw) { _, _ in

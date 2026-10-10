@@ -329,17 +329,26 @@ struct PaneSessionStateTests {
         #expect(state.outputLines.isEmpty)
         #expect(state.outputRevision == 0)
 
-        state.updateParsedOutput(invertANSIForLightBackground: false)
+        state.updateParsedOutput(palette: TerminalPalette(palette: .moonlit, dark: true))
         let initialRevision = state.outputRevision
         #expect(initialRevision == 1)
 
         // Calling again with identical inputs should be a no-op (no revision bump)
-        state.updateParsedOutput(invertANSIForLightBackground: false)
+        state.updateParsedOutput(palette: TerminalPalette(palette: .moonlit, dark: true))
         #expect(state.outputRevision == initialRevision)
 
-        // Inverting for light background should recompute and bump revision
-        state.updateParsedOutput(invertANSIForLightBackground: true)
+        // Changing appearance should recompute and bump revision
+        state.updateParsedOutput(palette: TerminalPalette(palette: .moonlit, dark: false))
         #expect(state.outputRevision == initialRevision + 1)
+
+        // Same output and dark appearance, but a different palette, must redraw.
+        let mocha = TerminalPalette(palette: .mocha, dark: true)
+        state.updateParsedOutput(palette: mocha)
+        let mochaRevision = state.outputRevision
+        state.updateParsedOutput(palette: mocha)
+        #expect(state.outputRevision == mochaRevision)
+        state.updateParsedOutput(palette: TerminalPalette(palette: .solarizedDark, dark: true))
+        #expect(state.outputRevision == mochaRevision + 1)
     }
 }
 
