@@ -338,3 +338,29 @@ The app bundles the same Jost (variable) and Silkscreen files as the site, from 
 ❌ Use pure black `#000` or pure white `#FFF` for large areas.
 ❌ Put `ink-700` or `mint-200` body text on `teal-600`, because contrast is too low.
 ❌ Round the corners of pixel art or scale it to fractional sizes.
+
+## 9. Optional iOS palettes
+
+Settings → Appearance keeps System / Light / Dark and independently saves a
+light and dark palette. Moonlit remains the fallback for existing installations.
+Light choices: Moonlit, Catppuccin Latte. Dark choices: Moonlit, Catppuccin Frappé,
+Macchiato, Mocha. Catppuccin 1.8.0 uses mauve as its primary accent, mantle for
+the canvas and inset fields, base for cards, surface0 for borders and raised
+controls, text/subtext1 for copy, and green/yellow/red for semantic states.
+Latte's idle/done/working text uses deeper teal/green/amber to retain AA contrast.
+Native status badges retain their established meanings and remote terminal ANSI
+colors remain supplied by the remote application. Artwork retains Moonlit colors.
+Palette changes redraw current views without replacing their identity or session.
+The MIT notice is bundled in Settings → Licenses.
+
+Solarized Light and Solarized Dark are also available as independent choices.
+They preserve Ethan Schoonover's cream and blue-green base colors, using blue
+for primary actions. Light cards use base3 over base2; dark cards use base02
+over base03. Body/secondary text use higher-contrast official base steps, and
+blue, cyan, green, yellow, and red action/status colors are tuned to meet AA
+on cards. Original green/red hues remain in translucent diff washes.
+The Solarized MIT notice is bundled offline and retained by the notice generator.
+
+Agent and space list cards use fill-only surfaces without perimeter borders.
+Pending cards use the same treatment. A newly opened root worktree is highlighted
+with the selected surface fill rather than an outline; agent focus icons remain.

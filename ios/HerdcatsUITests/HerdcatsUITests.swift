@@ -293,3 +293,62 @@ final class HerdcatsUITests: XCTestCase {
 
     /// Read-only smoke test; opt in with TEST_RUNNER_HC_MACHINE_LABEL.
 }
+
+@MainActor
+final class PaletteUITests: XCTestCase {
+    func testPaletteChangesKeepNavigationAndSurviveRelaunch() {
+        verifyPaletteSelections(dark: "mocha", light: "latte", name: "Catppuccin")
+    }
+
+    func testSolarizedSelectionsKeepNavigationAndSurviveRelaunch() {
+        verifyPaletteSelections(dark: "solarizedDark", light: "solarizedLight", name: "Solarized")
+    }
+
+    private func verifyPaletteSelections(dark: String, light: String, name: String) {
+        let app = XCUIApplication()
+        app.launchArguments = ["-quotaNotSetupPreview", "-appearancePreference", "dark"]
+        app.launch()
+        let settings = app.tabBars.buttons["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 10))
+        settings.tap()
+        let picker = app.buttons["dark-theme-picker"]
+        if !picker.isHittable { app.swipeUp() }
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        picker.tap()
+        let mocha = app.buttons["palette-\(dark)"]
+        XCTAssertTrue(mocha.waitForExistence(timeout: 5))
+        app.buttons["palette-moonlit"].tap()
+        if !mocha.isHittable { app.swipeUp() }
+        mocha.tap()
+        XCTAssertEqual(mocha.value as? String, "Selected")
+        XCTAssertTrue(app.navigationBars["Dark Theme"].exists, "Changing palette must retain the screen")
+        let preview = XCTAttachment(screenshot: app.screenshot())
+        preview.name = "\(name) dark palette chooser"
+        preview.lifetime = .keepAlways
+        add(preview)
+        app.terminate()
+        app.launch()
+        app.tabBars.buttons["Settings"].tap()
+        if !app.buttons["dark-theme-picker"].isHittable { app.swipeUp() }
+        app.buttons["dark-theme-picker"].tap()
+        if !app.buttons["palette-\(dark)"].isHittable { app.swipeUp() }
+        XCTAssertEqual(app.buttons["palette-\(dark)"].value as? String, "Selected")
+        if !app.buttons["palette-moonlit"].isHittable { app.swipeDown() }
+        app.buttons["palette-moonlit"].tap()
+        app.navigationBars["Dark Theme"].buttons.element(boundBy: 0).tap()
+        app.buttons["light-theme-picker"].tap()
+        app.buttons["palette-\(light)"].tap()
+        XCTAssertEqual(app.buttons["palette-\(light)"].value as? String, "Selected")
+        app.terminate()
+        app.launchArguments = ["-quotaNotSetupPreview", "-appearancePreference", "light"]
+        app.launch()
+        app.tabBars.buttons["Settings"].tap()
+        app.buttons["light-theme-picker"].tap()
+        XCTAssertEqual(app.buttons["palette-\(light)"].value as? String, "Selected")
+        let lightPreview = XCTAttachment(screenshot: app.screenshot())
+        lightPreview.name = "\(name) light palette chooser"
+        lightPreview.lifetime = .keepAlways
+        add(lightPreview)
+        app.buttons["palette-moonlit"].tap()
+    }
+}

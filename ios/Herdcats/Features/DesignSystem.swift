@@ -1,3 +1,4 @@
+import Observation
 import SwiftUI
 import UIKit
 
@@ -78,122 +79,271 @@ extension UIColor {
     }
 }
 
+// MARK: - Theme preferences
+
+enum AppPalette: String, CaseIterable, Identifiable {
+    case moonlit, latte, frappe, macchiato, mocha, solarizedLight, solarizedDark
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .moonlit: "Moonlit"
+        case .latte: "Catppuccin Latte"
+        case .frappe: "Catppuccin Frappé"
+        case .macchiato: "Catppuccin Macchiato"
+        case .mocha: "Catppuccin Mocha"
+        case .solarizedLight: "Solarized Light"
+        case .solarizedDark: "Solarized Dark"
+        }
+    }
+
+    static let lightChoices: [Self] = [.moonlit, .latte, .solarizedLight]
+    static let darkChoices: [Self] = [.moonlit, .frappe, .macchiato, .mocha, .solarizedDark]
+    static let lightStorageKey = "lightThemePalette"
+    static let darkStorageKey = "darkThemePalette"
+
+    static func restored(_ raw: String?, dark: Bool) -> Self {
+        let choices = dark ? darkChoices : lightChoices
+        guard let raw, let palette = Self(rawValue: raw), choices.contains(palette) else {
+            return .moonlit
+        }
+        return palette
+    }
+
+    /// Catppuccin palette 1.8.0, https://github.com/catppuccin/palette (MIT).
+    fileprivate var colors: [String: UInt32] {
+        switch self {
+        case .moonlit, .solarizedLight, .solarizedDark: [:]
+        case .latte:
+            [
+                "base": 0xEFF1F5,
+                "mantle": 0xE6E9EF,
+                "crust": 0xDCE0E8,
+                "surface0": 0xCCD0DA,
+                "surface1": 0xBCC0CC,
+                "text": 0x4C4F69,
+                "subtext1": 0x5C5F77,
+                "mauve": 0x8839EF,
+                "red": 0xD20F39,
+                "green": 0x40A02B,
+                "yellow": 0xDF8E1D,
+                "teal": 0x179299
+            ]
+        case .frappe:
+            [
+                "base": 0x303446,
+                "mantle": 0x292C3C,
+                "crust": 0x232634,
+                "surface0": 0x414559,
+                "surface1": 0x51576D,
+                "text": 0xC6D0F5,
+                "subtext1": 0xB5BFE2,
+                "mauve": 0xCA9EE6,
+                "red": 0xE78284,
+                "green": 0xA6D189,
+                "yellow": 0xE5C890,
+                "teal": 0x81C8BE
+            ]
+        case .macchiato:
+            [
+                "base": 0x24273A,
+                "mantle": 0x1E2030,
+                "crust": 0x181926,
+                "surface0": 0x363A4F,
+                "surface1": 0x494D64,
+                "text": 0xCAD3F5,
+                "subtext1": 0xB8C0E0,
+                "mauve": 0xC6A0F6,
+                "red": 0xED8796,
+                "green": 0xA6DA95,
+                "yellow": 0xEED49F,
+                "teal": 0x8BD5CA
+            ]
+        case .mocha:
+            [
+                "base": 0x1E1E2E,
+                "mantle": 0x181825,
+                "crust": 0x11111B,
+                "surface0": 0x313244,
+                "surface1": 0x45475A,
+                "text": 0xCDD6F4,
+                "subtext1": 0xBAC2DE,
+                "mauve": 0xCBA6F7,
+                "red": 0xF38BA8,
+                "green": 0xA6E3A1,
+                "yellow": 0xF9E2AF,
+                "teal": 0x94E2D5
+            ]
+        }
+    }
+}
+
+/// Shared observable palette choices. Reading Theme tokens registers a SwiftUI
+/// dependency, so a selection redraws existing screens without recreating them.
+@Observable
+final class AppThemePreferences {
+    static let shared = AppThemePreferences()
+    private let defaults: UserDefaults
+    private(set) var light: AppPalette
+    private(set) var dark: AppPalette
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        light = AppPalette.restored(defaults.string(forKey: AppPalette.lightStorageKey), dark: false)
+        dark = AppPalette.restored(defaults.string(forKey: AppPalette.darkStorageKey), dark: true)
+    }
+
+    func select(_ palette: AppPalette, dark isDark: Bool) {
+        guard (isDark ? AppPalette.darkChoices : AppPalette.lightChoices).contains(palette) else { return }
+        if isDark {
+            dark = palette
+            defaults.set(palette.rawValue, forKey: AppPalette.darkStorageKey)
+        } else {
+            light = palette
+            defaults.set(palette.rawValue, forKey: AppPalette.lightStorageKey)
+        }
+    }
+}
+
 enum Theme {
-    /// A color that resolves to `night` in dark mode and `day` in light mode,
-    /// matching the website's semantic tokens (`DESIGN.md` §7).
-    private static func moonlit(night: UIColor, day: UIColor) -> Color {
-        Color(uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark ? night : day
-        })
+    /// Stable Color values preserve equality and avoid creating UIKit providers
+    /// for every view update. The cache has no mutable shared state.
+    private static let colors: [String: Color] = {
+        let tokens: [(String, UInt32, UInt32, CGFloat, CGFloat)] = [
+            ("accent", Palette.mint200, Palette.night800, 1, 1),
+            ("accentFill", Palette.mint200, Palette.night800, 1, 1),
+            ("sky", Palette.teal600, 0xD3EBDD, 1, 1),
+            ("background", Palette.night950, 0xDCEBE2, 1, 1),
+            ("field", Palette.night950, 0xEEF6F1, 1, 1),
+            ("card", 0x31464E, 0xF8FBF9, 1, 1),
+            ("border", Palette.night800, 0xC5DCCF, 1, 1),
+            ("raised", 0x446670, 0xC5DCCF, 1, 1),
+            ("text", Palette.paper50, Palette.night950, 1, 1),
+            ("muted", Palette.paper50, Palette.night950, 0.72, 0.72),
+            ("warm", Palette.lacquer900, 0x8A3324, 1, 1),
+            ("idle", 0x8CC2B6, Palette.teal600, 1, 1),
+            ("done", Palette.mint200, 0x2F7148, 1, 1),
+            ("working", 0xE0B866, 0x865C0E, 1, 1),
+            ("blocked", 0xF29A86, 0xA8432F, 1, 1),
+            ("addition", Palette.mint200, Palette.mint200, 0.22, 0.6),
+            ("deletion", 0xF29A86, 0xA8432F, 0.24, 0.18),
+            ("onPrimary", Palette.night950, Palette.paper50, 1, 1)
+        ]
+        var result: [String: Color] = [:]
+        for light in AppPalette.lightChoices {
+            for dark in AppPalette.darkChoices {
+                for (token, night, day, nightAlpha, dayAlpha) in tokens {
+                    let darkColor = paletteColor(token, palette: dark, dark: true, fallback: night, alpha: nightAlpha)
+                    let lightColor = paletteColor(token, palette: light, dark: false, fallback: day, alpha: dayAlpha)
+                    result["\(light.rawValue)/\(dark.rawValue)/\(token)"] = Color(uiColor: UIColor {
+                        $0.userInterfaceStyle == .dark ? darkColor : lightColor
+                    })
+                }
+            }
+        }
+        return result
+    }()
+
+    private static func color(_ token: String) -> Color {
+        let preferences = AppThemePreferences.shared
+        return colors["\(preferences.light.rawValue)/\(preferences.dark.rawValue)/\(token)"]!
     }
 
-    private static func moonlit(night: UInt32, day: UInt32) -> Color {
-        moonlit(night: UIColor(hex: night), day: UIColor(hex: day))
+    static func paletteColor(_ token: String, palette: AppPalette, dark: Bool,
+                             fallback: UInt32, alpha: CGFloat = 1) -> UIColor {
+        guard palette != .moonlit else { return UIColor(hex: fallback, alpha: alpha) }
+        if palette == .solarizedLight || palette == .solarizedDark {
+            return solarizedColor(token, dark: palette == .solarizedDark, alpha: alpha)
+        }
+        let colors = palette.colors
+        let key: String
+        switch token {
+        case "accent", "accentFill": key = "mauve"
+        case "background", "field": key = "mantle"
+        case "card", "sky": key = "base"
+        case "border", "raised": key = "surface0"
+        case "text": key = "text"
+        case "muted": key = "subtext1"
+        case "idle": key = "teal"
+        case "done", "addition": key = "green"
+        case "working": key = "yellow"
+        case "blocked", "deletion", "warm": key = "red"
+        case "onPrimary": key = dark ? "crust" : "base"
+        default: key = "text"
+        }
+        // Accent text on a light card needs deeper status colors than Latte's
+        // bright green/yellow/teal. Keep the hue, lowering luminance for AA.
+        let lightStatus: [String: UInt32] = ["idle": 0x13777D, "done": 0x2C7A1F, "working": 0x8A5700]
+        let hex = palette == .latte ? (lightStatus[token] ?? colors[key]!) : colors[key]!
+        let effectiveAlpha: CGFloat
+        if token == "muted" {
+            effectiveAlpha = 1
+        } else if palette == .latte && (token == "addition" || token == "deletion") {
+            effectiveAlpha = 0.12
+        } else {
+            effectiveAlpha = alpha
+        }
+        return UIColor(hex: hex, alpha: effectiveAlpha)
     }
 
-    /// `--accent`: links, labels, icons, Herdr focus (mint by night, night-800 by day).
-    static let accent = moonlit(night: Palette.mint200, day: Palette.night800)
-
-    /// `--accent-fill`: primary button fill.
-    static let accentFill = moonlit(night: Palette.mint200, day: Palette.night800)
-
-    /// `--sky`: hero and header field behind top-level screens.
-    static let sky = moonlit(night: Palette.teal600, day: 0xD3EBDD)
-
-    /// `--bg-deep`: the app canvas. Cards sit one step lighter on `surface`
-    /// with a `hairline` outline, so structure needs no shadows.
-    static let background = moonlit(night: Palette.night950, day: 0xDCEBE2)
-
-    static let backgroundGradient = LinearGradient(
-        colors: [background, background],
-        startPoint: .top,
-        endPoint: .bottom
-    )
-
-    /// Flat canvas behind top-level screens. Moonlit uses no glows or gradients.
-    static var listBackground: some View {
-        background
+    /// Official Solarized bases; accents are tuned for AA on the app's cards.
+    /// https://ethanschoonover.com/solarized/ (MIT, Ethan Schoonover).
+    private static func solarizedColor(_ token: String, dark: Bool, alpha: CGFloat) -> UIColor {
+        let hex: UInt32
+        switch token {
+        case "background", "field": hex = dark ? 0x002B36 : 0xEEE8D5
+        case "card", "sky": hex = dark ? 0x073642 : 0xFDF6E3
+        case "border", "raised": hex = dark ? 0x586E75 : 0xEEE8D5
+        case "text": hex = dark ? 0x93A1A1 : 0x073642
+        case "muted": hex = dark ? 0x93A1A1 : 0x586E75
+        case "accent", "accentFill": hex = dark ? 0x4BA3DF : 0x1D6FA5
+        case "idle": hex = dark ? 0x3CB5AB : 0x167C75
+        case "done": hex = dark ? 0x9AAA22 : 0x627200
+        case "working": hex = dark ? 0xC69A18 : 0x866500
+        case "blocked", "warm": hex = dark ? 0xF07870 : 0xC02B29
+        case "addition": hex = 0x859900
+        case "deletion": hex = 0xDC322F
+        case "onPrimary": hex = dark ? 0x002B36 : 0xFDF6E3
+        default: hex = dark ? 0x93A1A1 : 0x586E75
+        }
+        let effectiveAlpha = token == "muted" ? 1 : (!dark && (token == "addition" || token == "deletion") ? 0.12 : alpha)
+        return UIColor(hex: hex, alpha: effectiveAlpha)
     }
 
-    /// `--surface`: cards (with a `hairline` outline, see `HerdrCardModifier`)
-    /// and native Settings rows.
-    static let cardBackground = moonlit(night: 0x31464E, day: 0xF8FBF9)
-
-    /// Inset background for text inputs, search fields, and recessed areas
-    /// (`--bg-deep` at night).
-    static let fieldBackground = moonlit(night: Palette.night950, day: 0xEEF6F1)
-
-    /// `--border`: 1pt dividers and card outlines.
-    static let hairline = moonlit(night: Palette.night800, day: 0xC5DCCF)
-
-    /// `--raised`: chips, pills, and secondary surfaces.
-    static let subtleFill = moonlit(night: 0x446670, day: 0xC5DCCF)
-
-    /// Rows and pane cards share the solid card surface.
-    static let rowBackground = cardBackground
-
-    /// `--raised` fill marking the pane selected on this phone, like the
-    /// website's active rows. Accent stays reserved for Herdr focus.
-    static let selectedFill = subtleFill
-
-    /// `--border`: visible control border and disabled fill.
-    static let border = hairline
-
-    /// `--text`: body text (paper by night, night-950 by day).
-    static let text = moonlit(night: Palette.paper50, day: Palette.night950)
-
-    /// `--text-muted`: secondary text at 72% of `text`.
-    static let textMuted = moonlit(
-        night: UIColor(hex: Palette.paper50, alpha: 0.72),
-        day: UIColor(hex: Palette.night950, alpha: 0.72)
-    )
-
-    /// `--warm`: rare lacquer accent for sign badges.
-    static let warm = moonlit(night: Palette.lacquer900, day: 0x8A3324)
-
-    // MARK: - Status Colors
-    //
-    // Moonlit-tuned status set: the teal ramp and lacquer, plus one muted amber,
-    // so blocked / working / done / idle stay distinct at a glance. Each passes
-    // WCAG AA (4.5:1) as text on `cardBackground`; `onPrimary` reads on each fill.
-
-    /// Idle: lifted teal-400 by night, teal-600 by day.
-    static let statusIdle = moonlit(night: 0x8CC2B6, day: Palette.teal600)
-
-    /// Done: mint-200 by night, a deep mint by day.
-    static let statusDone = moonlit(night: Palette.mint200, day: 0x2F7148)
-
-    /// Working: muted amber, the one hue outside the ramp.
-    static let statusWorking = moonlit(night: 0xE0B866, day: 0x865C0E)
-
-    /// Blocked: lacquer brightened enough to read as an alert.
-    static let statusBlocked = moonlit(night: 0xF29A86, day: 0xA8432F)
-
-    /// Unified-diff addition (`+`) line wash: mint.
-    static let diffAdditionBackground = moonlit(
-        night: UIColor(hex: Palette.mint200, alpha: 0.22),
-        day: UIColor(hex: Palette.mint200, alpha: 0.6)
-    )
-
-    /// Unified-diff deletion (`-`) line wash: lacquer.
-    static let diffDeletionBackground = moonlit(
-        night: UIColor(hex: 0xF29A86, alpha: 0.24),
-        day: UIColor(hex: 0xA8432F, alpha: 0.18)
-    )
-
-    // MARK: - Semantic & Action Colors
-
-    /// Destructive / critical error color.
-    static let destructive = statusBlocked
-
-    /// Warning alert color.
-    static let warning = statusWorking
-
-    /// `--on-accent`: text on `accentFill` (night-950 on mint, paper on night-800).
-    static let onPrimary = moonlit(night: Palette.night950, day: Palette.paper50)
-
-    /// Heads-up when remaining is healthy but burn is ahead of the even-burn line.
-    static let quotaHeadsUp = statusWorking
+    static var accent: Color { color("accent") }
+    static var accentFill: Color { color("accentFill") }
+    static var sky: Color { color("sky") }
+    static var background: Color { color("background") }
+    static var backgroundGradient: LinearGradient {
+        LinearGradient(colors: [background, background], startPoint: .top, endPoint: .bottom)
+    }
+    static var listBackground: some View { background }
+    static var cardBackground: Color { color("card") }
+    static var fieldBackground: Color { color("field") }
+    static var hairline: Color { color("border") }
+    static var subtleFill: Color { color("raised") }
+    static var rowBackground: Color { cardBackground }
+    static var selectedFill: Color { subtleFill }
+    static var border: Color { hairline }
+    static var text: Color { color("text") }
+    static var textMuted: Color {
+        color("muted")
+    }
+    static var warm: Color { color("warm") }
+    static var statusIdle: Color { color("idle") }
+    static var statusDone: Color { color("done") }
+    static var statusWorking: Color { color("working") }
+    static var statusBlocked: Color { color("blocked") }
+    static var diffAdditionBackground: Color {
+        color("addition")
+    }
+    static var diffDeletionBackground: Color {
+        color("deletion")
+    }
+    static var destructive: Color { statusBlocked }
+    static var warning: Color { statusWorking }
+    static var onPrimary: Color { color("onPrimary") }
+    static var quotaHeadsUp: Color { statusWorking }
 
     /// Hybrid quota color: mint when remaining ≥ 40% and on pace; amber when
     /// ≥ 40% but behind pace or at 15–39%; blocked red below 15%. A full window
@@ -226,7 +376,7 @@ enum Theme {
     }
 
     /// Affirming mint used for on-pace / healthy quota chips.
-    static let successGreen = statusDone
+    static var successGreen: Color { statusDone }
 }
 
 // MARK: - Typography Tokens
@@ -342,12 +492,17 @@ extension RoundedRectangle {
 struct HerdrCardModifier: ViewModifier {
     var isFocused: Bool = false
     var cornerRadius: CGFloat = DesignSystem.CornerRadius.xl
+    var showsBorder: Bool = true
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle.continuous(cornerRadius)
         return content
             .background(shape.fill(Theme.cardBackground))
-            .overlay(shape.strokeBorder(Theme.hairline, lineWidth: 1).allowsHitTesting(false))
+            .overlay {
+                if showsBorder {
+                    shape.strokeBorder(Theme.hairline, lineWidth: 1).allowsHitTesting(false)
+                }
+            }
             .herdrFocusLine(isFocused, in: shape)
             .contentShape(shape)
     }
@@ -396,9 +551,10 @@ extension View {
     /// Applies Herdr card styling (16pt continuous rounding, border, and Herdr focus line).
     func herdrCard(
         isFocused: Bool = false,
-        cornerRadius: CGFloat = DesignSystem.CornerRadius.xl
+        cornerRadius: CGFloat = DesignSystem.CornerRadius.xl,
+        showsBorder: Bool = true
     ) -> some View {
-        modifier(HerdrCardModifier(isFocused: isFocused, cornerRadius: cornerRadius))
+        modifier(HerdrCardModifier(isFocused: isFocused, cornerRadius: cornerRadius, showsBorder: showsBorder))
     }
 
     /// Applies Herdr input field styling (12pt continuous rounding, borderless field background).

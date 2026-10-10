@@ -177,7 +177,7 @@ final class LiveInputTextField: UITextField, UITextFieldDelegate {
         keyboardType = .default
         tintColor = UIColor(Theme.accent)
         font = UIFont.monospacedSystemFont(ofSize: 15, weight: .regular)
-        textColor = .label
+        textColor = UIColor(Theme.text)
         backgroundColor = .clear
 
         // Accessibility
@@ -544,6 +544,8 @@ private struct LiveInputRepresentable: UIViewRepresentable {
             context.coordinator.isUpdatingFromSwiftUI = false
         }
 
+        uiView.tintColor = UIColor(Theme.accent)
+        uiView.textColor = UIColor(Theme.text)
         uiView.onEvent = onEvent
         uiView.onCompositionChanged = onCompositionChanged
         uiView.isUserInteractionEnabled = isEnabled

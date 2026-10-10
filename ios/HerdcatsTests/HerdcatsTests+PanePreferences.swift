@@ -2,6 +2,7 @@ import Foundation
 import Security
 import NIOSSH
 import SwiftUI
+import UIKit
 import Testing
 @testable import Herdcats
 
@@ -343,3 +344,59 @@ struct PaneSessionStateTests {
 }
 
 // MARK: - Audit regression: timeout race, ownership, persistence
+
+@Suite("App palette preferences")
+struct AppPalettePreferenceTests {
+    @Test func validatesAndPersistsIndependentSelections() throws {
+        let name = "HerdcatsPaletteTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        defaults.set("mocha", forKey: AppPalette.lightStorageKey)
+        defaults.set("unknown", forKey: AppPalette.darkStorageKey)
+        let preferences = AppThemePreferences(defaults: defaults)
+        #expect(preferences.light == .moonlit)
+        #expect(preferences.dark == .moonlit)
+        preferences.select(.latte, dark: false)
+        preferences.select(.macchiato, dark: true)
+        preferences.select(.mocha, dark: false)
+        preferences.select(.latte, dark: true)
+        let restored = AppThemePreferences(defaults: defaults)
+        #expect(restored.light == .latte)
+        #expect(restored.dark == .macchiato)
+        preferences.select(.solarizedLight, dark: false)
+        preferences.select(.solarizedDark, dark: true)
+        preferences.select(.solarizedDark, dark: false)
+        preferences.select(.solarizedLight, dark: true)
+        let solarized = AppThemePreferences(defaults: defaults)
+        #expect(solarized.light == .solarizedLight)
+        #expect(solarized.dark == .solarizedDark)
+    }
+
+    @Test func paletteTextAndActionsMeetContrastOnCards() {
+        for palette in AppPalette.allCases where palette != .moonlit {
+            let dark = AppPalette.darkChoices.contains(palette)
+            func color(_ token: String) -> UIColor {
+                Theme.paletteColor(token, palette: palette, dark: dark, fallback: 0)
+            }
+            let card = color("card")
+            for token in ["text", "muted", "accent", "idle", "done", "working", "blocked"] {
+                #expect(contrast(color(token), card) >= 4.5, "\(palette.title) \(token)")
+            }
+            #expect(contrast(color("onPrimary"), color("accentFill")) >= 4.5)
+        }
+    }
+
+    private func contrast(_ first: UIColor, _ second: UIColor) -> Double {
+        func luminance(_ color: UIColor) -> Double {
+            var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+            color.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+            func linear(_ component: CGFloat) -> Double {
+                let c = Double(component)
+                return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+            }
+            return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+        }
+        let a = luminance(first), b = luminance(second)
+        return (max(a, b) + 0.05) / (min(a, b) + 0.05)
+    }
+}

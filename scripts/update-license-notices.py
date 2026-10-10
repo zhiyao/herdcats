@@ -64,6 +64,10 @@ def swift_notices():
             url = f"https://raw.githubusercontent.com/google/boringssl/{boring_rev}/LICENSE"
             notices.append(section(f"BoringSSL {boring_rev} (embedded in Swift Crypto)", url, fetch(url)))
             inventory.append({"name": "BoringSSL", "revision": boring_rev, "embedded_in": "swift-crypto", "license_sources": [url]})
+    notices.append(section("Catppuccin palette 1.8.0", "https://github.com/catppuccin/palette",
+                           (ROOT / "licenses/catppuccin-MIT.txt").read_text()))
+    notices.append(section("Solarized palette", "https://github.com/altercation/solarized",
+                           (ROOT / "licenses/solarized-MIT.txt").read_text()))
     notices.extend(font_notices(APP_FONTS))
     return inventory, "".join(notices)
 
