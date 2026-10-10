@@ -368,6 +368,20 @@ struct RemoteCommandTests {
             _ = try HerdrConnection.interpret("  \n")
         }
     }
+
+    @Test
+    func preservesLeadingWhitespaceAndIndentation() throws {
+        let input = "\r\n      Antigravity CLI 1.3.3\r\n     user@example.com\n"
+        let output = try HerdrConnection.interpret(input)
+        #expect(output == "\r\n      Antigravity CLI 1.3.3\r\n     user@example.com")
+    }
+
+    @Test
+    func stripsTrailingCRLFWithoutTouchingLeadingWhitespace() throws {
+        let input = "\r\n      Antigravity CLI 1.3.3\r\n"
+        let output = try HerdrConnection.interpret(input)
+        #expect(output == "\r\n      Antigravity CLI 1.3.3")
+    }
 }
 
 // MARK: - Space aggregation
