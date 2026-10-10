@@ -144,8 +144,70 @@ cmd_prepare() {
   echo "  3. ./ios/bin/deploy publish"
 }
 
+read_marketing_version() {
+  sed -n -E 's/^[[:space:]]*CFBundleShortVersionString:[[:space:]]*"?([^"]*)"?.*/\1/p' \
+    "$ROOT/ios/project.yml" | head -n 1
+}
+
 cmd_publish() {
-  abort "publish not implemented"
+  banner "herdrcat deploy publish"
+  require_clean_repo
+  require_branch "main"
+  ensure_main_not_behind_origin
+
+  local version tag
+  version="$(read_marketing_version)"
+  [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || abort "could not read CFBundleShortVersionString from ios/project.yml."
+  tag="herdrcat-v$version"
+
+  if git rev-parse --verify "$tag" >/dev/null 2>&1; then
+    abort "tag $tag already exists."
+  fi
+
+  banner "Step 1/4: tag $tag"
+  echo "Tagging HEAD as $tag (version from ios/project.yml)."
+  confirm "Create annotated tag $tag at HEAD?" || abort "user cancelled at tag step."
+  git tag -a "$tag" -m "Release $tag"
+
+  banner "Step 2/4: changelog"
+  "$BIN_DIR/changelog"
+  local changelog="$ROOT/ios/fastlane/changelog.txt"
+  [[ -f "$changelog" ]] || abort "changelog missing at $changelog."
+  echo ""
+  echo "Generated fastlane/changelog.txt:"
+  echo "--------------------------------------"
+  sed 's/^/  /' "$changelog"
+  echo "--------------------------------------"
+  while true; do
+    local changelog_reply
+    read -r -p "Changelog OK? (y=continue / e=edit / n=abort): " changelog_reply
+    case "$changelog_reply" in
+      y|Y) break ;;
+      e|E)
+        "${EDITOR:-vi}" "$changelog"
+        echo ""
+        echo "Updated changelog:"
+        echo "--------------------------------------"
+        sed 's/^/  /' "$changelog"
+        echo "--------------------------------------"
+        ;;
+      *) abort "user cancelled at changelog step." ;;
+    esac
+  done
+
+  banner "Step 3/4: TestFlight upload"
+  "$BIN_DIR/beta"
+
+  banner "Step 4/4: push tag"
+  if ! git remote get-url origin >/dev/null 2>&1; then
+    echo "No 'origin' remote configured; skipping tag push."
+  elif confirm "Push tag $tag to origin?"; then
+    git push origin "$tag"
+  else
+    echo "Skipping push. Run later with: git push origin $tag"
+  fi
+
+  banner "herdrcat $version published"
 }
 
 main() {
