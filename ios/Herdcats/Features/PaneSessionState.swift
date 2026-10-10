@@ -20,7 +20,7 @@ final class PaneSessionState {
     private(set) var outputRevision: UInt64 = 0
 
     private var lastParsedOutput: String?
-    private var lastParsedLightBackground: Bool?
+    private var lastParsedPalette: TerminalPalette?
 
     private var reloadGeneration = 0
 
@@ -37,16 +37,16 @@ final class PaneSessionState {
         self.pane = pane
     }
 
-    func updateParsedOutput(invertANSIForLightBackground: Bool) {
+    func updateParsedOutput(palette: TerminalPalette) {
         if lastParsedOutput == output,
-           lastParsedLightBackground == invertANSIForLightBackground {
+           lastParsedPalette == palette {
             return
         }
         lastParsedOutput = output
-        lastParsedLightBackground = invertANSIForLightBackground
+        lastParsedPalette = palette
         outputLines = PaneOutputPresentation.trimmedLines(
             from: output,
-            invertForLightBackground: invertANSIForLightBackground
+            palette: palette
         )
         outputRevision &+= 1
     }

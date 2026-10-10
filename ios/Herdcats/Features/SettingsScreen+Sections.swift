@@ -58,10 +58,29 @@ extension SettingsScreen {
             }
             .pickerStyle(.segmented)
             .listRowBackground(Theme.cardBackground)
+            palettePicker(dark: false)
+            palettePicker(dark: true)
         } header: {
             Text("Appearance")
                 .font(.jost(.footnote))
         }
+    }
+
+    private func palettePicker(dark: Bool) -> some View {
+        let preferences = AppThemePreferences.shared
+        return NavigationLink {
+            PaletteSelectionScreen(dark: dark)
+        } label: {
+            HStack {
+                Text(dark ? "Dark Theme" : "Light Theme")
+                Spacer()
+                Text((dark ? preferences.dark : preferences.light).title)
+                    .foregroundStyle(Theme.textMuted)
+                    .multilineTextAlignment(.trailing)
+            }
+        }
+        .listRowBackground(Theme.cardBackground)
+        .accessibilityIdentifier(dark ? "dark-theme-picker" : "light-theme-picker")
     }
 
     var paneSection: some View {
@@ -235,5 +254,80 @@ extension SettingsScreen {
             }
             .listRowBackground(Color.clear)
         }
+    }
+}
+
+/// Previews use their own explicit palette, independent of the active appearance.
+private struct PaletteSelectionScreen: View {
+    let dark: Bool
+
+    var body: some View {
+        List {
+            ForEach(dark ? AppPalette.darkChoices : AppPalette.lightChoices) { palette in
+                Button {
+                    AppThemePreferences.shared.select(palette, dark: dark)
+                } label: {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text(palette.title).font(.jost(.headline))
+                            Spacer()
+                            if (dark ? AppThemePreferences.shared.dark : AppThemePreferences.shared.light) == palette {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(Theme.accent)
+                            }
+                        }
+                        PalettePreview(palette: palette, dark: dark)
+                    }
+                    .padding(.vertical, 4)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(palette.title)
+                .accessibilityValue((dark ? AppThemePreferences.shared.dark : AppThemePreferences.shared.light) == palette ? "Selected" : "")
+                .accessibilityIdentifier("palette-\(palette.rawValue)")
+                .listRowBackground(Theme.cardBackground)
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(Theme.background)
+        .navigationTitle(dark ? "Dark Theme" : "Light Theme")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct PalettePreview: View {
+    let palette: AppPalette
+    let dark: Bool
+
+    private func color(_ token: String, night: UInt32, day: UInt32) -> Color {
+        Color(uiColor: Theme.paletteColor(token, palette: palette, dark: dark, fallback: dark ? night : day))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Your workspace").font(.jost(.subheadline, weight: .semibold))
+                    Text("Ready for your next idea")
+                        .font(.jost(.caption))
+                        .foregroundStyle(color("muted", night: 0xB6C4C9, day: 0x586B63))
+                }
+                Spacer()
+                Text("Open")
+                    .font(.jost(.caption, weight: .semibold))
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .foregroundStyle(color("onPrimary", night: Palette.night950, day: Palette.paper50))
+                    .background(color("accentFill", night: Palette.mint200, day: Palette.night800), in: RoundedRectangle(cornerRadius: 8))
+            }
+            .padding(12)
+            .background(color("card", night: 0x31464E, day: 0xF8FBF9), in: RoundedRectangle(cornerRadius: 8))
+            Text("$ herdr status")
+                .font(.system(.caption, design: .monospaced))
+                .padding(.horizontal, 4)
+        }
+        .foregroundStyle(color("text", night: Palette.paper50, day: Palette.night950))
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(color("background", night: Palette.night950, day: 0xDCEBE2), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityHidden(true)
     }
 }
