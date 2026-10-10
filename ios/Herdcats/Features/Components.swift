@@ -125,7 +125,7 @@ enum LaunchPreference: String, CaseIterable, Identifiable {
 /// Whether pane detail keeps its Compose field visible when idle.
 enum PaneComposePreference {
     static let storageKey = "paneShowComposeByDefault"
-    static let `default` = false
+    static let `default` = true
 }
 
 /// Monospaced pane output size. Persisted via `@AppStorage` using `rawValue`.

@@ -20,10 +20,10 @@ Herdr and SSH without Python, additional host packages, or an installed helper.
 Hosts that cannot open these channels use the existing SSH command path.
 Input remains acknowledged in order; uncertain sends are never replayed.
 
-Enable **Show Compose by Default** in pane options or Settings → Pane to open
-panes with the compose field and keyboard ready. Compose supports spelling
-correction and keyboard suggestions; Live terminal input stays literal. The
-setting is off by default.
+**Show Compose by Default** is enabled initially, so panes open with the compose
+field and keyboard ready. Turn it off in pane options or Settings → Pane to
+start with the Live toolbar. Compose supports spelling correction and keyboard
+suggestions; Live terminal input stays literal. Your saved preference is respected.
 
 [Tailscale](https://tailscale.com) is the recommended way to connect your phone
 and Herdr machine. Any network that can reach the SSH server also works.

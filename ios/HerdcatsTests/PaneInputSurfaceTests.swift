@@ -19,7 +19,7 @@ struct PaneInputSurfaceTests {
 
     @Test func visibleComposeDefaultSurvivesSendAndReset() {
         let model = PaneInputSurfaceModel()
-        model.setComposeVisibleByDefault(true)
+        model.setComposeVisibleByDefault(PaneComposePreference.default)
         #expect(model.isComposeSurface)
         model.noteSendSucceeded()
         #expect(model.isComposeSurface)
