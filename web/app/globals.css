@@ -500,14 +500,8 @@ html:has(.landing) body {
     z-index: 110;
 }
 
-/* Keep project attribution visible; mobile also uses the footer navigation. */
 .landing-footer {
-    display: block;
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    pointer-events: auto;
+    display: none;
 }
 
 /* Responsive adjustments. lib/world.ts mirrors this breakpoint (MOBILE_LAYOUT_QUERY). */
