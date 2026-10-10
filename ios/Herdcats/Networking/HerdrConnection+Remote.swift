@@ -282,15 +282,17 @@ extension HerdrConnection {
         return "\(header)\n\n\(trimmed)"
     }
 
-    /// Interprets wrapper output: strips markers, maps failures to typed errors.
+    /// Interprets wrapper output: strips markers, maps failures to typed errors,
+    /// while preserving leading indentation and blank lines in payload output.
     static func interpret(_ raw: String) throws -> String {
-        let output = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if output == notFoundMarker {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed == notFoundMarker {
             throw HerdrError.herdrNotFound
         }
-        if output.hasPrefix(exitMarkerPrefix) {
-            let firstLine = output.prefix { $0 != "\n" }
-            let rest = String(output.dropFirst(firstLine.count))
+        if raw.hasPrefix(exitMarkerPrefix) || trimmed.hasPrefix(exitMarkerPrefix) {
+            let normalized = raw.hasPrefix(exitMarkerPrefix) ? raw : trimmed
+            let firstLine = normalized.prefix { $0 != "\n" }
+            let rest = String(normalized.dropFirst(firstLine.count))
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let code = Int(firstLine.dropFirst(exitMarkerPrefix.count)) ?? -1
             if let data = rest.data(using: .utf8),
@@ -300,8 +302,12 @@ extension HerdrConnection {
             }
             throw HerdrError.herdrExit(code)
         }
-        if output.isEmpty {
+        if trimmed.isEmpty {
             throw HerdrError.unexpectedResponse("empty output")
+        }
+        var output = raw
+        while output.hasSuffix("\n") || output.hasSuffix("\r") {
+            output.removeLast()
         }
         return output
     }
