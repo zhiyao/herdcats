@@ -46,14 +46,17 @@ Use the two-step deploy helpers. CI still gates the bump before any tag or uploa
 git checkout main && git pull
 export DEVELOPMENT_TEAM=YOURTEAMID
 ./ios/bin/deploy publish
-# → tags herdrcat-vX.Y.Z, changelog, TestFlight upload, pushes tag
+# → tags herdcats-vX.Y.Z, changelog, TestFlight upload, pushes tag
 ```
+
+New tags use the `herdcats-v*` prefix. Helpers still recognize legacy `herdrcat-v*`
+tags when computing the next version or changelog ranges.
 
 `publish` requires local `main` to match `origin/main` when `origin` is configured
 (push merged commits before publishing). If a step fails after the local tag is
 created, the script prints recovery steps: retry with `./ios/bin/changelog` (if
-needed), `./ios/bin/beta`, and `git push origin herdrcat-vX.Y.Z`, or remove the
-local tag with `git tag -d herdrcat-vX.Y.Z` and run `publish` again.
+needed), `./ios/bin/beta`, and `git push origin herdcats-vX.Y.Z`, or remove the
+local tag with `git tag -d herdcats-vX.Y.Z` and run `publish` again.
 
 `ios/bin/release` remains the bump-only helper (release branch required, no tag).
 `ios/bin/changelog` and `ios/bin/beta` remain runnable on their own.

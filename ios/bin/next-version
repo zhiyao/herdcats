@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Print the suggested next semver for Herdrcat based on conventional commits
-# since the last herdrcat-v* tag.
+# Print the suggested next semver for Herdcats based on conventional commits
+# since the last herdcats-v* (or legacy herdrcat-v*) tag.
 #
 # Bump rules:
 #   feat(scope)?:, or BREAKING CHANGE / <type>!:        -> minor
 #   anything else (fix/perf/refactor/chore/docs/...)    -> patch
 #
 # Major bumps are never auto-suggested. Pass the version directly to
-# bin/release when you want one. With no herdrcat-v* tag yet, the version
+# bin/release when you want one. With no release tag yet, the version
 # already in project.yml is suggested for the first release.
 #
 # Usage: ./ios/bin/next-version
@@ -16,17 +16,19 @@ set -euo pipefail
 ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 cd "$ROOT"
 
-LAST_TAG="$(git describe --tags --abbrev=0 --match 'herdrcat-v*' 2>/dev/null || true)"
+# Newest by version among current and legacy prefixes.
+LAST_TAG="$(git tag --sort=-version:refname --list 'herdcats-v*' 'herdrcat-v*' | head -n 1)"
 
 if [[ -z "$LAST_TAG" ]]; then
   CURRENT="$(sed -n -E 's/^[[:space:]]*CFBundleShortVersionString:[[:space:]]*"?([^"]*)"?.*/\1/p' ios/project.yml | head -n 1)"
-  echo "No herdrcat-v* tag yet; this is the first release."
+  echo "No herdcats-v* (or legacy herdrcat-v*) tag yet; this is the first release."
   echo ""
   echo "Suggested next version: ${CURRENT:-0.1.0}"
   exit 0
 fi
 
-LAST_VERSION="${LAST_TAG#herdrcat-v}"
+LAST_VERSION="${LAST_TAG#herdcats-v}"
+LAST_VERSION="${LAST_VERSION#herdrcat-v}"
 RANGE="${LAST_TAG}..HEAD"
 
 if [[ -z "$(git log "$RANGE" --oneline -- ios/)" ]]; then

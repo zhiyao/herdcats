@@ -129,7 +129,7 @@ class ReleasePreparationTests(unittest.TestCase):
         # publish may ask changelog y/e/n then push-tag y/n — answer y, y
         result = self.run_helper('deploy', 'publish', input='y\ny\n')
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-        self.assertEqual(self.git('tag', '--list'), 'herdrcat-v0.3.2')
+        self.assertEqual(self.git('tag', '--list'), 'herdcats-v0.3.2')
         self.assertIn('stub-changelog', result.stdout)
         self.assertIn('stub-beta', result.stdout)
 

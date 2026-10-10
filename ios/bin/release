@@ -14,12 +14,12 @@ if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   exit 1
 fi
 
-TAG="herdrcat-v$VERSION"
+TAG="herdcats-v$VERSION"
 ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 IOS_DIR="$ROOT/ios"
 PROJECT_YML="$IOS_DIR/project.yml"
 
-echo "[herdrcat] Releasing $TAG"
+echo "[herdcats] Releasing $TAG"
 
 if ! git -C "$ROOT" rev-parse --verify HEAD >/dev/null 2>&1; then
   echo "Error: the repository has no commits yet. Make an initial commit first."
@@ -37,8 +37,9 @@ if [[ -z "$BRANCH" || "$BRANCH" == "main" ]]; then
   exit 1
 fi
 
-if git -C "$ROOT" rev-parse "$TAG" &>/dev/null; then
-  echo "Error: tag $TAG already exists."
+if git -C "$ROOT" rev-parse "$TAG" &>/dev/null \
+   || git -C "$ROOT" rev-parse "herdrcat-v$VERSION" &>/dev/null; then
+  echo "Error: tag $TAG (or legacy herdrcat-v$VERSION) already exists."
   exit 1
 fi
 

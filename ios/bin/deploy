@@ -102,7 +102,7 @@ ensure_main_matches_origin() {
 }
 
 cmd_prepare() {
-  banner "herdrcat deploy prepare"
+  banner "herdcats deploy prepare"
   require_clean_repo
   require_branch "main"
   ensure_main_not_behind_origin
@@ -131,12 +131,13 @@ cmd_prepare() {
   confirm "Proceed?" || abort "user cancelled."
 
   local branch="release/$version"
-  local tag="herdrcat-v$version"
+  local tag="herdcats-v$version"
   if git rev-parse --verify "$branch" >/dev/null 2>&1; then
     abort "branch $branch already exists."
   fi
-  if git rev-parse --verify "$tag" >/dev/null 2>&1; then
-    abort "tag $tag already exists."
+  if git rev-parse --verify "$tag" >/dev/null 2>&1 \
+     || git rev-parse --verify "herdrcat-v$version" >/dev/null 2>&1; then
+    abort "tag $tag (or legacy herdrcat-v$version) already exists."
   fi
 
   banner "Step 2/4: create $branch"
@@ -191,7 +192,7 @@ print_publish_recovery() {
 }
 
 cmd_publish() {
-  banner "herdrcat deploy publish"
+  banner "herdcats deploy publish"
   require_clean_repo
   require_branch "main"
   ensure_main_matches_origin
@@ -199,10 +200,11 @@ cmd_publish() {
   local version tag
   version="$(read_marketing_version)"
   [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || abort "could not read CFBundleShortVersionString from ios/project.yml."
-  tag="herdrcat-v$version"
+  tag="herdcats-v$version"
 
-  if git rev-parse --verify "$tag" >/dev/null 2>&1; then
-    abort "tag $tag already exists."
+  if git rev-parse --verify "$tag" >/dev/null 2>&1 \
+     || git rev-parse --verify "herdrcat-v$version" >/dev/null 2>&1; then
+    abort "tag $tag (or legacy herdrcat-v$version) already exists."
   fi
 
   banner "Step 1/4: tag $tag"
@@ -254,7 +256,7 @@ cmd_publish() {
   publish_failed_after_tag=0
   trap - EXIT
 
-  banner "herdrcat $version published"
+  banner "herdcats $version published"
 }
 
 main() {
