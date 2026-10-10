@@ -107,6 +107,19 @@ class ReleasePreparationTests(unittest.TestCase):
         self.assertEqual(self.git('tag', '--list'), '')
         self.assertIn('bin/deploy publish', result.stdout)
 
+    def test_deploy_publish_rejects_main_ahead_of_origin(self):
+        bare = Path(self.temp.name).parent / f'{self.root.name}-origin.git'
+        bare.mkdir()
+        subprocess.check_call(['git', 'init', '--bare', '-b', 'main', str(bare)])
+        self.git('remote', 'add', 'origin', str(bare))
+        self.git('push', '-u', 'origin', 'main')
+        self.git('commit', '--allow-empty', '-m', 'unpushed on main')
+        result = self.run_helper('deploy', 'publish', input='y\n')
+        self.assertNotEqual(result.returncode, 0)
+        combined = result.stdout + result.stderr
+        self.assertIn('ahead of origin/main', combined)
+        self.assertEqual(self.git('tag', '--list'), '')
+
     def test_deploy_publish_tags_on_main_and_runs_beta(self):
         self.git('switch', '-c', 'release/0.3.2')
         self.assertEqual(self.run_helper('release', '0.3.2').returncode, 0)

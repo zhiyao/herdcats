@@ -49,6 +49,12 @@ export DEVELOPMENT_TEAM=YOURTEAMID
 # → tags herdrcat-vX.Y.Z, changelog, TestFlight upload, pushes tag
 ```
 
+`publish` requires local `main` to match `origin/main` when `origin` is configured
+(push merged commits before publishing). If a step fails after the local tag is
+created, the script prints recovery steps: retry with `./ios/bin/changelog` (if
+needed), `./ios/bin/beta`, and `git push origin herdrcat-vX.Y.Z`, or remove the
+local tag with `git tag -d herdrcat-vX.Y.Z` and run `publish` again.
+
 `ios/bin/release` remains the bump-only helper (release branch required, no tag).
 `ios/bin/changelog` and `ios/bin/beta` remain runnable on their own.
 

@@ -74,6 +74,33 @@ ensure_main_not_behind_origin() {
   fi
 }
 
+# For publish: local main must match origin/main exactly (no unpushed commits).
+ensure_main_matches_origin() {
+  if ! git remote get-url origin >/dev/null 2>&1; then
+    return 0
+  fi
+  git fetch origin main --quiet 2>/dev/null || git fetch origin --quiet
+  if ! git rev-parse --verify origin/main >/dev/null 2>&1; then
+    return 0
+  fi
+  local local_head origin_head
+  local_head="$(git rev-parse HEAD)"
+  origin_head="$(git rev-parse origin/main)"
+  if [[ "$local_head" == "$origin_head" ]]; then
+    return 0
+  fi
+  local ahead behind
+  ahead="$(git rev-list --count origin/main..HEAD 2>/dev/null || echo 0)"
+  behind="$(git rev-list --count HEAD..origin/main 2>/dev/null || echo 0)"
+  if [[ "$ahead" != "0" && "$behind" != "0" ]]; then
+    abort "local main and origin/main have diverged (ahead ${ahead}, behind ${behind}). Reconcile with push/pull or merge first."
+  fi
+  if [[ "$ahead" != "0" ]]; then
+    abort "local main is ahead of origin/main by ${ahead} commit(s). Push to origin before publishing."
+  fi
+  abort "local main is behind origin/main by ${behind} commit(s). git pull first."
+}
+
 cmd_prepare() {
   banner "herdrcat deploy prepare"
   require_clean_repo
@@ -149,11 +176,25 @@ read_marketing_version() {
     "$ROOT/ios/project.yml" | head -n 1
 }
 
+publish_failed_after_tag=0
+
+print_publish_recovery() {
+  local ec=$?
+  if [[ "$publish_failed_after_tag" -eq 1 && "$ec" -ne 0 ]]; then
+    local recovery_tag="${PUBLISH_RECOVERY_TAG:-}"
+    echo "" >&2
+    echo "Publish failed after creating local tag ${recovery_tag}." >&2
+    echo "Recovery options:" >&2
+    echo "  • Retry upload: ./ios/bin/changelog (if needed), then ./ios/bin/beta, then git push origin ${recovery_tag}" >&2
+    echo "  • Or delete local tag and restart publish: git tag -d ${recovery_tag}" >&2
+  fi
+}
+
 cmd_publish() {
   banner "herdrcat deploy publish"
   require_clean_repo
   require_branch "main"
-  ensure_main_not_behind_origin
+  ensure_main_matches_origin
 
   local version tag
   version="$(read_marketing_version)"
@@ -168,6 +209,9 @@ cmd_publish() {
   echo "Tagging HEAD as $tag (version from ios/project.yml)."
   confirm "Create annotated tag $tag at HEAD?" || abort "user cancelled at tag step."
   git tag -a "$tag" -m "Release $tag"
+  PUBLISH_RECOVERY_TAG="$tag"
+  publish_failed_after_tag=1
+  trap print_publish_recovery EXIT
 
   banner "Step 2/4: changelog"
   "$BIN_DIR/changelog"
@@ -206,6 +250,9 @@ cmd_publish() {
   else
     echo "Skipping push. Run later with: git push origin $tag"
   fi
+
+  publish_failed_after_tag=0
+  trap - EXIT
 
   banner "herdrcat $version published"
 }
