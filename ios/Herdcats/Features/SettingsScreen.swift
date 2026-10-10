@@ -31,6 +31,8 @@ struct SettingsScreen: View {
     var paneTextSizeRaw = PaneTextSizePreference.default.rawValue
     @AppStorage(PaneScrollBehaviorPreference.storageKey)
     var paneScrollBehaviorRaw = PaneScrollBehaviorPreference.default.rawValue
+    @AppStorage(PaneComposePreference.storageKey)
+    var showComposeByDefault = PaneComposePreference.default
     @AppStorage(DoneClearPreference.storageKey)
     var doneClearRaw = DoneClearPreference.default.rawValue
     @AppStorage(AgentAlertSound.doneStorageKey)

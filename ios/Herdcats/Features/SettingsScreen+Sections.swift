@@ -66,6 +66,12 @@ extension SettingsScreen {
 
     var paneSection: some View {
         Section {
+            Toggle(isOn: $showComposeByDefault) {
+                Label("Show Compose by Default", systemImage: "square.and.pencil")
+            }
+            .listRowBackground(Theme.cardBackground)
+            .accessibilityIdentifier("pane-show-compose-toggle")
+
             Picker("Pane Text", selection: paneTextSize) {
                 ForEach(PaneTextSizePreference.allCases) { preference in
                     Text(preference.title)

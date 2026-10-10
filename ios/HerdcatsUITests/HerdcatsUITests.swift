@@ -164,7 +164,9 @@ final class HerdcatsUITests: XCTestCase {
             "-hc.user", username,
             "-hc.key", keyURL.path,
             // Autoconnect otherwise opens Agents; pane helpers need Spaces.
-            "-hc.tab", "spaces"
+            "-hc.tab", "spaces",
+            // These terminal-input tests explicitly start with the Live toolbar.
+            "-paneShowComposeByDefault", "NO"
         ]
         app.launch()
         return app
