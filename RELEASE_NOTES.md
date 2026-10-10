@@ -3,7 +3,22 @@
 - Support passphrase-protected OpenSSH ed25519 keys using AES-128-CTR or
   AES-256-CTR with bcrypt at 1–256 rounds. Optional device-only passphrase
   storage enables reconnects after relaunch.
-- Vendor Citadel 0.12.1 with fixes for its bcrypt round limit and OpenSSH padding.
+- Citadel 0.12.1 is vendored with fixes for its bcrypt round limit and OpenSSH padding.
+- Reduce Live pane latency by reusing separate persistent SSH shell channels for
+  input and output reads, with ordered acknowledgements and no replay of uncertain
+  sends ([#24](https://github.com/zhiyao/herdcats/pull/24)).
+- Keep the screen awake during voice dictation and restore Auto-Lock afterward
+  ([#25](https://github.com/zhiyao/herdcats/pull/25)).
+- Let users replace changed SSH host keys after verifying both fingerprints and
+  explicitly approving the replacement ([#29](https://github.com/zhiyao/herdcats/pull/29)).
+- Add Moonlit App Store screenshot artwork, a 6.3-inch iPhone target, and header
+  and search creative assets ([#30](https://github.com/zhiyao/herdcats/pull/30)).
+- Add Open Graph and X large-image preview metadata and `og.png`
+  ([#31](https://github.com/zhiyao/herdcats/pull/31)).
+- Link the SSH Setup Guide directly to the support connection instructions
+  ([#32](https://github.com/zhiyao/herdcats/pull/32)).
+- Align website copy with app behavior, add support contact details, and publish
+  robots.txt and a sitemap ([#33](https://github.com/zhiyao/herdcats/pull/33)).
 
 # Herdcats 0.3.1 — first public source preview
 

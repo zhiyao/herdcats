@@ -500,7 +500,6 @@ html:has(.landing) body {
     z-index: 110;
 }
 
-/* Mobile-only footer on the landing page (the header links hide on mobile) */
 .landing-footer {
     display: none;
 }
