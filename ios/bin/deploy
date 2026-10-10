@@ -75,7 +75,73 @@ ensure_main_not_behind_origin() {
 }
 
 cmd_prepare() {
-  abort "prepare not implemented"
+  banner "herdrcat deploy prepare"
+  require_clean_repo
+  require_branch "main"
+  ensure_main_not_behind_origin
+
+  banner "Step 1/4: choose version"
+  local next_output suggested version_reply version
+  next_output="$("$BIN_DIR/next-version")"
+  echo "$next_output"
+  echo ""
+  suggested="$(echo "$next_output" | sed -n 's/^Suggested next version: //p')"
+  [[ -n "$suggested" ]] || abort "could not determine suggested version."
+
+  read -r -p "Use $suggested? (y=use it / type a custom version / n=abort): " version_reply
+  case "$version_reply" in
+    y|Y) version="$suggested" ;;
+    n|N) abort "user cancelled at version step." ;;
+    "")  abort "no version entered." ;;
+    *)   version="$version_reply" ;;
+  esac
+  if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    abort "version must look like MAJOR.MINOR.PATCH (got '$version')."
+  fi
+
+  echo ""
+  echo "Preparing release: $version"
+  confirm "Proceed?" || abort "user cancelled."
+
+  local branch="release/$version"
+  local tag="herdrcat-v$version"
+  if git rev-parse --verify "$branch" >/dev/null 2>&1; then
+    abort "branch $branch already exists."
+  fi
+  if git rev-parse --verify "$tag" >/dev/null 2>&1; then
+    abort "tag $tag already exists."
+  fi
+
+  banner "Step 2/4: create $branch"
+  git switch -c "$branch"
+
+  banner "Step 3/4: bump and commit (no tag)"
+  "$BIN_DIR/release" "$version"
+
+  banner "Step 4/4: push and open PR"
+  echo "Release $version is prepared on $branch. No tag or upload was created."
+  if ! git remote get-url origin >/dev/null 2>&1; then
+    echo "No 'origin' remote configured; skipping push/PR."
+  elif confirm "Push branch to origin for a PR?"; then
+    git push -u origin "$branch"
+    if command -v gh >/dev/null 2>&1; then
+      gh pr create \
+        --base main \
+        --head "$branch" \
+        --title "chore(release): $tag" \
+        --body "Prepared by \`ios/bin/deploy prepare\`. After CI passes and this merges, run \`./ios/bin/deploy publish\` on updated main."
+    else
+      echo "gh not installed; open a PR manually for $branch → main."
+    fi
+  else
+    echo "Skipping push. Run later with: git push -u origin $branch"
+  fi
+
+  echo ""
+  echo "Next:"
+  echo "  1. Merge the release PR after CI passes"
+  echo "  2. git checkout main && git pull"
+  echo "  3. ./ios/bin/deploy publish"
 }
 
 cmd_publish() {
