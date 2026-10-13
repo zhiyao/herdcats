@@ -674,7 +674,8 @@ struct PaneVoiceComposeBar: View {
                 .lineLimit(1...6)
                 .focused($isComposeFieldFocused)
                 .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
+                .autocorrectionDisabled(false)
+                .background(ComposeTextInputMarker())
                 .disabled(isSending)
                 .submitLabel(.send)
                 .onSubmit {

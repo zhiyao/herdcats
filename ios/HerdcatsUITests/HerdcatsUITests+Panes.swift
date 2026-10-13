@@ -3,6 +3,19 @@ import UIKit
 import XCTest
 
 extension HerdcatsUITests {
+    func testDefaultComposeOpensKeyboardWithoutTappingField() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-hc.screenshots", "-hc.screen", "pane",
+            "-paneShowComposeByDefault", "YES"
+        ]
+        app.launch()
+        XCTAssertTrue(composeField(app).waitForExistence(timeout: 5))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5),
+                      "Default Compose should open the keyboard automatically")
+        app.terminate()
+    }
+
     func testPaneDetailShowsOutputAndInput() throws {
         let app = try launchConnectedApp()
         XCTAssertTrue(openFirstPane(app), "Could not open a pane detail view")

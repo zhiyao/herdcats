@@ -14,6 +14,8 @@ NOTICE files, runtime-library exceptions, and the embedded BoringSSL license.
 
 | Dependency | Locked version | License |
 | --- | --- | --- |
+| Solarized palette | Original 16-color palette | MIT |
+| Catppuccin palette | 1.8.0 | MIT |
 | BigInt | 5.7.0 | MIT |
 | Citadel (vendored, patched) | 0.12.1 | MIT |
 | Swift ASN.1 | 1.7.3 | Apache-2.0 |

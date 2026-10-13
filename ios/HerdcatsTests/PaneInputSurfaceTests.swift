@@ -1,4 +1,6 @@
 import Testing
+import SwiftUI
+import UIKit
 @testable import Herdcats
 
 /// Transition coverage for the pane input surface state machine that replaces
@@ -13,6 +15,101 @@ struct PaneInputSurfaceTests {
         #expect(model.isLiveKeyboardSurface)
         #expect(!model.isComposeSurface)
         #expect(!model.isDrainingDictation)
+    }
+
+    @Test func visibleComposeDefaultSurvivesSendAndReset() {
+        let model = PaneInputSurfaceModel()
+        model.setComposeVisibleByDefault(PaneComposePreference.default)
+        #expect(model.isComposeSurface)
+        model.noteSendSucceeded()
+        #expect(model.isComposeSurface)
+        // Tapping output can still explicitly enter the Live input surface.
+        model.collapseToLiveToolbar()
+        #expect(model.isLiveKeyboardSurface)
+        model.resetToDefaultSurface()
+        #expect(model.isComposeSurface)
+    }
+
+    @Test func changingDefaultDoesNotInterruptDictationOrDiscardCompose() {
+        let model = PaneInputSurfaceModel()
+        model.requestVoiceRecording()
+        model.requestFinishDictation()
+        model.setComposeVisibleByDefault(true)
+        #expect(model.surface == .voiceRecording)
+        #expect(model.isDrainingDictation)
+        model.noteDictationIdle()
+        model.setComposeVisibleByDefault(false)
+        #expect(model.isComposeSurface)
+        model.noteSendSucceeded()
+        #expect(model.isLiveKeyboardSurface)
+    }
+
+    @Test func composeTraitsDoNotApplyToNearbyTerminalInput() {
+        let container = UIView()
+        let composeContainer = UIView()
+        let compose = UITextView()
+        composeContainer.addSubview(compose)
+        composeContainer.addSubview(ComposeTextInputMarker.MarkerView())
+        container.addSubview(composeContainer)
+        let live = LiveInputTextField()
+        container.addSubview(live)
+        PlainTextInput.apply(to: compose)
+        PlainTextInput.apply(to: live)
+        #expect(compose.autocorrectionType == .yes)
+        #expect(compose.spellCheckingType == .yes)
+        #expect(compose.inlinePredictionType == .yes)
+        #expect(compose.smartQuotesType == .no)
+        #expect(live.autocorrectionType == .no)
+        #expect(live.spellCheckingType == .no)
+        #expect(live.inlinePredictionType == .no)
+    }
+
+    @Test func swiftUIMultilineComposeReceivesSpellingAssistance() async throws {
+        let host = UIHostingController(rootView:
+            TextField("Message", text: .constant("hello"), axis: .vertical)
+                .autocorrectionDisabled(false)
+                .background(ComposeTextInputMarker())
+        )
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.isHidden = false
+        defer { window.isHidden = true }
+        host.view.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
+        let input = try #require(PlainTextInput.textInputs(in: host.view).first as? UITextView)
+        // Reproduce the app-wide begin-editing observer after SwiftUI layout.
+        PlainTextInput.apply(to: input)
+        #expect(input.autocorrectionType == .yes)
+        #expect(input.spellCheckingType == .yes)
+        #expect(input.inlinePredictionType == .yes)
+    }
+
+    @Test func composeBarKeepsSpellingAssistanceWhileEditing() async throws {
+        PlainTextInput.install()
+        let host = UIHostingController(rootView: ComposeEditingHarness())
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        host.view.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
+        let inputs = PlainTextInput.textInputs(in: host.view)
+        let compose = try #require(inputs.first { !($0 is LiveInputTextField) } as? UITextView)
+        let live = try #require(inputs.first { $0 is LiveInputTextField } as? UITextField)
+        #expect(compose.autocorrectionType == .yes, "Before focus")
+        #expect(compose.spellCheckingType == .yes, "Before focus")
+        #expect(compose.becomeFirstResponder())
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(compose.autocorrectionType == .yes, "After focus")
+        #expect(compose.spellCheckingType == .yes, "After focus")
+        for letter in "toda " {
+            compose.insertText(String(letter))
+            try await Task.sleep(for: .milliseconds(50))
+            #expect(compose.autocorrectionType == .yes, "After typing \(letter)")
+            #expect(compose.spellCheckingType == .yes, "After typing \(letter)")
+        }
+        #expect(live.autocorrectionType == .no)
+        #expect(live.spellCheckingType == .no)
     }
 
     @Test func keyboardOpensComposeDirectly() {
@@ -161,8 +258,31 @@ struct PaneInputSurfaceTests {
         model.requestVoiceRecording()
         model.requestFinishDictation()
 
-        model.resetToLiveToolbar()
+        model.resetToDefaultSurface()
         #expect(model.surface == .liveToolbar)
         #expect(!model.isDrainingDictation)
+    }
+}
+
+
+private struct ComposeEditingHarness: View {
+    @State private var draft = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        PaneVoiceComposeBar(
+            mode: .constant(.compose),
+            draft: $draft,
+            isLiveKeyboardFocused: .constant(false),
+            isComposeFieldFocused: $focused,
+            armedModifiers: .constant([]),
+            onLiveKey: { _ in },
+            onLiveEvent: { _ in },
+            onStartVoice: {},
+            onFinishVoice: {},
+            onOpenCompose: {},
+            isPhotoPickerPresented: .constant(false),
+            onSend: {}
+        )
     }
 }
