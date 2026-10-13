@@ -9,8 +9,8 @@ enum ANSIText {
     struct Line: Equatable {
         var plain: String
         var attributed: AttributedString
-        /// Background of the line's first character as `#rrggbb`, before any
-        /// light-mode inversion. Some agents mark user messages only this way.
+        /// Background of the line's first character as `#rrggbb`.
+        /// Explicit RGB values stay intact for agents that mark user messages this way.
         var background: String? = nil
 
         static func == (lhs: Line, rhs: Line) -> Bool {
@@ -21,10 +21,10 @@ enum ANSIText {
 
     /// Splits ANSI text into lines, preserving per-run colors across the stream.
     ///
-    /// - Parameter invertForLightBackground: Agents paint for dark terminals
-    ///   (black/grey washes). When `true`, RGB channels are inverted so those
-    ///   colors remain readable on the app's light theme.
-    static func lines(from ansi: String, invertForLightBackground: Bool = false) -> [Line] {
+    /// Standard ANSI slots follow the supplied palette. Extended colors and
+    /// explicit RGB values preserve the remote application's requested colors,
+    /// with foreground-only contrast correction when needed in either appearance.
+    static func lines(from ansi: String, palette: TerminalPalette = TerminalPalette(palette: .moonlit, dark: true)) -> [Line] {
         let normalized: String
         // Scalar check: Swift treats "\r\n" as one Character, so
         // `ansi.contains("\r")` misses CRLF rows and every row would merge
@@ -41,7 +41,7 @@ enum ANSIText {
         var currentPlain = ""
         var currentAttributed = AttributedString()
         var currentBackground: String?
-        var style = Style(invertForLightBackground: invertForLightBackground)
+        var style = Style(palette: palette)
         var index = normalized.startIndex
 
         func commitLine() {
@@ -162,7 +162,7 @@ enum ANSIText {
     // MARK: - Style
 
     private struct Style {
-        var invertForLightBackground = false
+        let palette: TerminalPalette
         var bold = false
         var dim = false
         var reverse = false
@@ -196,19 +196,20 @@ enum ANSIText {
                 case 49:
                     background = nil
                 case 30...37:
-                    foreground = .ansi16(code - 30, bright: false)
+                    foreground = ansi16(code - 30)
                 case 90...97:
-                    foreground = .ansi16(code - 90, bright: true)
+                    foreground = ansi16(code - 90 + 8)
                 case 40...47:
-                    background = .ansi16(code - 40, bright: false)
+                    background = ansi16(code - 40)
                 case 100...107:
-                    background = .ansi16(code - 100, bright: true)
+                    background = ansi16(code - 100 + 8)
                 case 38, 48:
                     let isForeground = code == 38
                     if i + 1 < params.count {
                         let mode = params[i + 1]
                         if mode == 5, i + 2 < params.count {
-                            let color = RGBA.ansi256(params[i + 2])
+                            let index = min(max(params[i + 2], 0), 255)
+                            let color = index < 16 ? ansi16(index) : RGBA.ansi256(index)
                             if isForeground { foreground = color } else { background = color }
                             i += 2
                         } else if mode == 2, i + 4 < params.count {
@@ -234,27 +235,24 @@ enum ANSIText {
             background = nil
         }
 
+        private func ansi16(_ index: Int) -> RGBA {
+            RGBA(hex: palette.colors[min(max(index, 0), 15)])
+        }
+
         func apply(to attributed: inout AttributedString) {
-            var fg = foreground
+            var fg = foreground ?? RGBA(hex: palette.foreground)
             var bg = background
             if reverse {
-                swap(&fg, &bg)
-                if fg == nil { fg = .ansi16(7, bright: false) }
-                if bg == nil { bg = .ansi16(0, bright: false) }
+                let originalForeground = fg
+                fg = bg ?? RGBA(hex: palette.background)
+                bg = originalForeground
             }
 
-            if invertForLightBackground {
-                fg = fg?.inverted
-                bg = bg?.inverted
-            }
-
-            if var color = fg?.color {
-                if dim { color = color.opacity(0.55) }
-                attributed.foregroundColor = color
-            } else if dim {
-                attributed.foregroundColor = Color.primary.opacity(0.55)
-            }
-
+            let backdrop = bg ?? RGBA(hex: palette.background)
+            // Resolve dimming into an opaque color first: applying opacity
+            // after contrast correction would make small text faint again.
+            let displayed = dim ? fg.blended(toward: backdrop, fraction: 0.45) : fg
+            attributed.foregroundColor = displayed.readable(on: backdrop).color
             if let color = bg?.color {
                 attributed.backgroundColor = color
             }
@@ -282,46 +280,67 @@ enum ANSIText {
             String(format: "#%02x%02x%02x", clamped(r), clamped(g), clamped(b))
         }
 
-        /// Flips each channel so dark-terminal paints read on a light surface.
-        var inverted: RGBA {
-            RGBA(r: 255 - clamped(r), g: 255 - clamped(g), b: 255 - clamped(b))
+        init(r: Int, g: Int, b: Int) {
+            self.r = r
+            self.g = g
+            self.b = b
+        }
+
+        init(hex: UInt32) {
+            r = Int((hex >> 16) & 0xFF)
+            g = Int((hex >> 8) & 0xFF)
+            b = Int(hex & 0xFF)
+        }
+
+        private var luminance: Double {
+            func linear(_ channel: Int) -> Double {
+                let c = Double(min(255, max(0, channel))) / 255
+                return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+            }
+            return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
+        }
+
+        private func contrast(on background: RGBA) -> Double {
+            let first = luminance, second = background.luminance
+            return (max(first, second) + 0.05) / (min(first, second) + 0.05)
+        }
+
+        func blended(toward target: RGBA, fraction: Double) -> RGBA {
+            func mix(_ source: Int, _ destination: Int) -> Int {
+                Int((Double(clamped(source)) * (1 - fraction) + Double(destination) * fraction).rounded())
+            }
+            return RGBA(r: mix(r, target.r), g: mix(g, target.g), b: mix(b, target.b))
+        }
+
+        /// Keep colors that already pass AA. Otherwise find the smallest blend
+        /// toward black/white that passes, preserving the original hue direction.
+        /// Backgrounds and source metadata are never changed.
+        func readable(on background: RGBA) -> RGBA {
+            guard contrast(on: background) < 4.5 else { return self }
+            let black = RGBA(r: 0, g: 0, b: 0)
+            let white = RGBA(r: 255, g: 255, b: 255)
+            let target = black.contrast(on: background) >= white.contrast(on: background) ? black : white
+            var low = 0.0, high = 1.0
+            var result = target
+            for _ in 0..<12 {
+                let fraction = (low + high) / 2
+                let candidate = blended(toward: target, fraction: fraction)
+                if candidate.contrast(on: background) >= 4.5 {
+                    high = fraction
+                    result = candidate
+                } else {
+                    low = fraction
+                }
+            }
+            return result
         }
 
         private func clamped(_ value: Int) -> Int {
             min(255, max(0, value))
         }
 
-        static func ansi16(_ index: Int, bright: Bool) -> RGBA {
-            let base: [(Int, Int, Int)] = [
-                (0, 0, 0),
-                (205, 49, 49),
-                (13, 188, 121),
-                (229, 229, 16),
-                (36, 114, 200),
-                (188, 63, 188),
-                (17, 168, 205),
-                (229, 229, 229),
-            ]
-            let brightBase: [(Int, Int, Int)] = [
-                (102, 102, 102),
-                (241, 76, 76),
-                (35, 209, 139),
-                (245, 245, 67),
-                (59, 142, 234),
-                (214, 112, 214),
-                (41, 184, 219),
-                (255, 255, 255),
-            ]
-            let palette = bright ? brightBase : base
-            let rgb = palette[min(max(index, 0), 7)]
-            return RGBA(r: rgb.0, g: rgb.1, b: rgb.2)
-        }
-
         static func ansi256(_ index: Int) -> RGBA {
             let i = min(max(index, 0), 255)
-            if i < 16 {
-                return ansi16(i % 8, bright: i >= 8)
-            }
             if i < 232 {
                 let mapped = i - 16
                 let r = mapped / 36
