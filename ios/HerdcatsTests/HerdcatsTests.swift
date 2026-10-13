@@ -2,6 +2,7 @@ import Foundation
 import Security
 import NIOSSH
 import SwiftUI
+import UIKit
 import Testing
 @testable import Herdcats
 
@@ -9,7 +10,7 @@ import Testing
 struct PaneOutputPresentationTests {
     @Test func trimsTrailingSpacesButPreservesText() {
         let ansi = "\u{1B}[32mcolored\u{1B}[0m" + String(repeating: " ", count: 12)
-        let lines = PaneOutputPresentation.trimmedLines(from: ansi, invertForLightBackground: false)
+        let lines = PaneOutputPresentation.trimmedLines(from: ansi, palette: TerminalPalette(palette: .moonlit, dark: true))
         #expect(lines.count == 1)
         #expect(lines[0].plain == "colored")
         #expect(String(lines[0].attributed.characters) == "colored")
@@ -37,17 +38,17 @@ struct PaneOutputPresentationTests {
         #expect(tints == [nil, .deletion, .addition, nil, nil, nil])
     }
 
-    @Test func trimmedLinesEmptyAndInvertPath() {
-        #expect(PaneOutputPresentation.trimmedLines(from: "", invertForLightBackground: false).isEmpty)
+    @Test func trimmedLinesPreserveExplicitBackgroundInBothAppearances() {
+        #expect(PaneOutputPresentation.trimmedLines(from: "", palette: TerminalPalette(palette: .moonlit, dark: true)).isEmpty)
 
         let ansi = "\u{1B}[48;2;0;0;0mblack bg\u{1B}[0m  "
-        let dark = PaneOutputPresentation.trimmedLines(from: ansi, invertForLightBackground: false)
-        let light = PaneOutputPresentation.trimmedLines(from: ansi, invertForLightBackground: true)
+        let dark = PaneOutputPresentation.trimmedLines(from: ansi, palette: TerminalPalette(palette: .moonlit, dark: true))
+        let light = PaneOutputPresentation.trimmedLines(from: ansi, palette: TerminalPalette(palette: .moonlit, dark: false))
         #expect(dark.map(\.plain) == ["black bg"])
         #expect(light.map(\.plain) == ["black bg"])
         #expect(dark[0].attributed.backgroundColor != nil)
         #expect(light[0].attributed.backgroundColor != nil)
-        #expect(dark[0].attributed.backgroundColor != light[0].attributed.backgroundColor)
+        #expect(dark[0].attributed.backgroundColor == light[0].attributed.backgroundColor)
     }
 }
 
@@ -68,18 +69,116 @@ struct ANSITextTests {
         #expect(lines[1].attributed.backgroundColor != nil)
     }
 
-    @Test func invertsColorsForLightBackground() {
+    @Test func preservesExplicitColorsForLightBackground() {
         let ansi = "\u{1B}[48;2;0;0;0mblack bg\u{1B}[0m"
         let dark = ANSIText.lines(from: ansi)
-        let light = ANSIText.lines(from: ansi, invertForLightBackground: true)
+        let light = ANSIText.lines(from: ansi, palette: TerminalPalette(palette: .moonlit, dark: false))
         #expect(dark[0].attributed.backgroundColor != nil)
         #expect(light[0].attributed.backgroundColor != nil)
-        #expect(dark[0].attributed.backgroundColor != light[0].attributed.backgroundColor)
+        #expect(dark[0].attributed.backgroundColor == light[0].attributed.backgroundColor)
+    }
+
+    @Test func standardAndIndexedSlotsFollowEachPalette() {
+        for (palette, dark) in AppPalette.lightChoices.map({ ($0, false) }) + AppPalette.darkChoices.map({ ($0, true) }) {
+            let terminal = TerminalPalette(palette: palette, dark: dark)
+            #expect(terminal.colors.count == 16)
+            for slot in 0..<16 {
+                let foregroundCode = slot < 8 ? 30 + slot : 90 + slot - 8
+                let backgroundCode = slot < 8 ? 40 + slot : 100 + slot - 8
+                let direct = ANSIText.lines(from: "\u{1B}[\(foregroundCode);\(backgroundCode)mtest", palette: terminal)[0]
+                let indexed = ANSIText.lines(from: "\u{1B}[38;5;\(slot);48;5;\(slot)mtest", palette: terminal)[0]
+                #expect(direct.attributed.foregroundColor == indexed.attributed.foregroundColor)
+                #expect(direct.attributed.backgroundColor == indexed.attributed.backgroundColor)
+            }
+        }
+        let mocha = TerminalPalette(palette: .mocha, dark: true)
+        #expect(mocha.colors[1] == 0xF38BA8)
+        let solarized = TerminalPalette(palette: .solarizedDark, dark: true)
+        #expect(solarized.colors[4] == 0x268BD2)
+        let red = "\u{1B}[31merror"
+        #expect(ANSIText.lines(from: red, palette: mocha)[0].attributed.foregroundColor
+                != ANSIText.lines(from: red, palette: solarized)[0].attributed.foregroundColor)
+    }
+
+    @Test func readableExplicitAndExtendedColorsStayExactAcrossThemes() {
+        for (palette, dark) in AppPalette.lightChoices.map({ ($0, false) }) + AppPalette.darkChoices.map({ ($0, true) }) {
+            let terminal = TerminalPalette(palette: palette, dark: dark)
+            let lines = ANSIText.lines(from: "\u{1B}[38;2;240;224;208;48;2;0;43;54mrgb\n\u{1B}[38;5;196;48;5;232mindexed", palette: terminal)
+            #expect(lines[0].attributed.foregroundColor == Color(red: 240.0 / 255, green: 224.0 / 255, blue: 208.0 / 255))
+            #expect(lines[0].attributed.backgroundColor == Color(red: 0, green: 43.0 / 255, blue: 54.0 / 255))
+            #expect(lines[0].background == "#002b36")
+            #expect(lines[1].attributed.foregroundColor == Color(red: 1, green: 0, blue: 0))
+            #expect(lines[1].attributed.backgroundColor == Color(red: 8.0 / 255, green: 8.0 / 255, blue: 8.0 / 255))
+        }
+    }
+
+    @Test func foregroundsMeetContrastInBothAppearancesWithoutChangingBackgrounds() throws {
+        for (palette, dark) in AppPalette.lightChoices.map({ ($0, false) }) + AppPalette.darkChoices.map({ ($0, true) }) {
+            let terminal = TerminalPalette(palette: palette, dark: dark)
+            let backdrop = Color(uiColor: UIColor(hex: terminal.background))
+            // Standard slots, extended indexed colors, pastel RGB, and dim text
+            // reproduce the faint command/status colors in the reported screen.
+            let samples = (0..<16).map { "\u{1B}[38;5;\($0)mtest" } + [
+                "\u{1B}[38;5;231mwhite", "\u{1B}[38;5;229myellow",
+                "\u{1B}[38;2;166;227;161mgreen", "\u{1B}[38;2;137;180;250mblue",
+                "\u{1B}[38;2;249;226;175myellow", "\u{1B}[2mdim",
+                "\u{1B}[2;38;2;166;227;161mdim green",
+                "\u{1B}[38;2;20;30;40mdark text", "\u{1B}[2;38;5;232mdim black"
+            ]
+            for sample in samples {
+                let run = ANSIText.lines(from: sample, palette: terminal)[0].attributed
+                let foreground = try #require(run.foregroundColor)
+                #expect(colorContrast(foreground, backdrop) >= 4.5)
+                #expect(run.backgroundColor == nil)
+            }
+            let highlighted = ANSIText.lines(from: "\u{1B}[38;2;30;30;30;48;2;0;43;54mhighlight", palette: terminal)[0]
+            let foreground = try #require(highlighted.attributed.foregroundColor)
+            let background = try #require(highlighted.attributed.backgroundColor)
+            #expect(colorContrast(foreground, background) >= 4.5)
+            #expect(highlighted.background == "#002b36")
+            #expect(background == Color(red: 0, green: 43.0 / 255, blue: 54.0 / 255))
+            let lightHighlight = ANSIText.lines(from: "\u{1B}[38;2;240;240;240;48;2;253;246;227mlight highlight", palette: terminal)[0]
+            let lightForeground = try #require(lightHighlight.attributed.foregroundColor)
+            let lightBackground = try #require(lightHighlight.attributed.backgroundColor)
+            #expect(colorContrast(lightForeground, lightBackground) >= 4.5)
+            #expect(lightHighlight.background == "#fdf6e3")
+        }
+        // Already readable remote colors remain exact, including in dark themes.
+        let dark = ANSIText.lines(from: "\u{1B}[38;2;166;227;161mgreen", palette: TerminalPalette(palette: .mocha, dark: true))[0]
+        #expect(dark.attributed.foregroundColor == Color(red: 166.0 / 255, green: 227.0 / 255, blue: 161.0 / 255))
+    }
+
+    private func colorContrast(_ foreground: Color, _ background: Color) -> Double {
+        func luminance(_ color: Color) -> Double {
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            UIColor(color).getRed(&r, green: &g, blue: &b, alpha: &a)
+            func linear(_ c: CGFloat) -> Double {
+                let value = Double(c)
+                return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+            }
+            return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
+        }
+        let first = luminance(foreground), second = luminance(background)
+        return (max(first, second) + 0.05) / (min(first, second) + 0.05)
+    }
+
+    @Test func resetsAndReverseVideoUseThemeDefaults() {
+        let palette = TerminalPalette(palette: .latte, dark: false)
+        let normal = ANSIText.lines(from: "default", palette: palette)[0].attributed
+        let reset = ANSIText.lines(from: "\u{1B}[31;44m\u{1B}[39;49mdefault", palette: palette)[0].attributed
+        #expect(reset.foregroundColor == normal.foregroundColor)
+        #expect(reset.backgroundColor == nil)
+        let reverse = ANSIText.lines(from: "\u{1B}[7mdefault", palette: palette)[0].attributed
+        #expect(reverse.backgroundColor == normal.foregroundColor)
+        #expect(reverse.foregroundColor != normal.foregroundColor)
+        let restored = ANSIText.lines(from: "\u{1B}[7m\u{1B}[27mdefault", palette: palette)[0].attributed
+        #expect(restored.foregroundColor == normal.foregroundColor)
+        #expect(restored.backgroundColor == nil)
     }
 
     @Test func panePresentationKeepsANSIRuns() {
         let ansi = "hello \u{1B}[38;5;2mcolored\u{1B}[0m world"
-        let lines = PaneOutputPresentation.trimmedLines(from: ansi, invertForLightBackground: false)
+        let lines = PaneOutputPresentation.trimmedLines(from: ansi, palette: TerminalPalette(palette: .moonlit, dark: true))
         #expect(lines.count == 1)
         #expect(lines[0].plain == "hello colored world")
         #expect(String(lines[0].attributed.characters) == "hello colored world")

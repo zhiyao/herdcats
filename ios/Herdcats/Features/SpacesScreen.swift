@@ -1539,7 +1539,7 @@ private struct PendingSpaceCard: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, minHeight: 78, alignment: .leading)
-        .herdrCard()
+        .herdrCard(showsBorder: false)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityIdentifier("space-pending-card")
@@ -1664,14 +1664,11 @@ struct SpaceCard: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .herdrCard()
-        .overlay {
-            if highlightedWorktreeID == group.root.id {
-                RoundedRectangle.continuous(DesignSystem.CornerRadius.xl)
-                    .stroke(Theme.accent.opacity(0.7), lineWidth: 2)
-                    .allowsHitTesting(false)
-            }
-        }
+        .background(
+            highlightedWorktreeID == group.root.id ? Theme.selectedFill : Theme.cardBackground,
+            in: RoundedRectangle.continuous(DesignSystem.CornerRadius.xl)
+        )
+        .contentShape(RoundedRectangle.continuous(DesignSystem.CornerRadius.xl))
     }
 
     private var counts: some View {

@@ -104,6 +104,21 @@
       "license_sources": [
         "https://raw.githubusercontent.com/apple/swift-system/869129b7bf4ecc57b97d0193ad29690ca2134750/LICENSE.txt"
       ]
+    },
+    {
+      "name": "Catppuccin palette",
+      "version": "1.8.0",
+      "repository": "https://github.com/catppuccin/palette",
+      "license_sources": [
+        "licenses/catppuccin-MIT.txt"
+      ]
+    },
+    {
+      "name": "Solarized palette",
+      "repository": "https://github.com/altercation/solarized",
+      "license_sources": [
+        "licenses/solarized-MIT.txt"
+      ]
     }
   ],
   "app_fonts": [
