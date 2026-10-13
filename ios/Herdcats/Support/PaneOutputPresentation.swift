@@ -26,10 +26,10 @@ enum PaneOutputPresentation {
 
     static func trimmedLines(
         from output: String,
-        invertForLightBackground: Bool
+        palette: TerminalPalette
     ) -> [ANSIText.Line] {
         guard !output.isEmpty else { return [] }
-        return ANSIText.lines(from: output, invertForLightBackground: invertForLightBackground)
+        return ANSIText.lines(from: output, palette: palette)
             .map(trimmed)
     }
 

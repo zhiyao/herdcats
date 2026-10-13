@@ -69,9 +69,10 @@ struct HerdcatsApp: App {
 private struct QuotaNotSetupPreviewView: View {
     @State private var model = SpacesModel()
     @State private var appModel = AppModel()
+    @State private var selectedTab = ConnectedTabsView.MainTab.quota
 
     var body: some View {
-        TabView(selection: .constant(ConnectedTabsView.MainTab.quota)) {
+        TabView(selection: $selectedTab) {
             SpacesScreen(model: model)
                 .tabItem {
                     Label("Spaces", systemImage: "square.grid.3x3")

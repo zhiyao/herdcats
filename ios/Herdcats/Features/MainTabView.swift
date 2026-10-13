@@ -298,7 +298,7 @@ struct AgentsScreen: View {
                     }
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .herdrCard()
+                    .herdrCard(showsBorder: false)
                 }
             }
             .padding(.horizontal, 16)
@@ -488,7 +488,7 @@ struct AgentListRow: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .herdrCard()
+        .herdrCard(showsBorder: false)
     }
 }
 

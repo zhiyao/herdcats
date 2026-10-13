@@ -25,6 +25,8 @@ struct PaneDetailView: View {
     @ScaledMetric(relativeTo: .subheadline) private var paneCardHeight = 100
     @ScaledMetric(relativeTo: .caption) private var paneChipHeight = 30
     @State private var showLiveDiagnostics = false
+    @AppStorage(PaneComposePreference.storageKey)
+    private var showComposeByDefault = PaneComposePreference.default
 
     @State private var isShowingRenameAlert = false
     @State private var renameText = ""
@@ -133,6 +135,7 @@ struct PaneDetailView: View {
                 } label: {
                     Label("Back", systemImage: "chevron.backward")
                 }
+                .tint(Color.primary)
                 .accessibilityIdentifier("pane-back-button")
             }
             ToolbarItem(placement: .principal) {
@@ -144,6 +147,10 @@ struct PaneDetailView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    Toggle("Show Compose by Default", isOn: $showComposeByDefault)
+                        .accessibilityIdentifier("pane-show-compose-toggle")
+                    Divider()
+
                     Button {
                         if let workspace {
                             pendingWorkspaceAction = .rename(workspace)
@@ -1009,6 +1016,8 @@ struct PaneSessionView: View {
     private var paneTextSizeRaw = PaneTextSizePreference.default.rawValue
     @AppStorage(PaneScrollBehaviorPreference.storageKey)
     private var paneScrollBehaviorRaw = PaneScrollBehaviorPreference.default.rawValue
+    @AppStorage(PaneComposePreference.storageKey)
+    private var showComposeByDefault = PaneComposePreference.default
     @AppStorage(DoneClearPreference.storageKey)
     private var doneClearRaw = DoneClearPreference.default.rawValue
 
@@ -1083,8 +1092,14 @@ struct PaneSessionView: View {
         self.historyKey = state.historyKey
     }
 
+    private var terminalPalette: TerminalPalette {
+        let dark = colorScheme == .dark
+        let preferences = AppThemePreferences.shared
+        return TerminalPalette(palette: dark ? preferences.dark : preferences.light, dark: dark)
+    }
+
     private func updateSessionParsedOutput() {
-        session.updateParsedOutput(invertANSIForLightBackground: colorScheme == .light)
+        session.updateParsedOutput(palette: terminalPalette)
     }
 
     /// External send gate — the Compose bubble only *hides* Send for a blank
@@ -1392,12 +1407,27 @@ struct PaneSessionView: View {
 
     private var outputWithLifecycle: some View {
         outputWithLiveTasks
+        .task(id: showComposeByDefault) {
+            surfaceModel.setComposeVisibleByDefault(showComposeByDefault)
+            guard showComposeByDefault else { return }
+            // Let SwiftUI mount the Compose field before requesting focus.
+            await Task.yield()
+            guard !Task.isCancelled, surfaceModel.isComposeSurface else { return }
+            dismissLiveKeyboard()
+            composeFieldFocused = true
+        }
+        .onChange(of: showComposeByDefault) { _, visible in
+            surfaceModel.setComposeVisibleByDefault(visible)
+            if !visible, trimmedDraft.isEmpty, attachment == nil {
+                surfaceModel.collapseToLiveToolbar()
+            }
+        }
         .onDisappear {
             flushDraftSave()
             dictation.cancel()
             attachmentUploadTask?.cancel()
             abandonLiveInput()
-            surfaceModel.resetToLiveToolbar()
+            surfaceModel.resetToDefaultSurface()
             resetLiveModifiers()
         }
         .onChange(of: pane) { _, newPane in
@@ -1406,7 +1436,7 @@ struct PaneSessionView: View {
         .onChange(of: session.output) { _, _ in
             updateSessionParsedOutput()
         }
-        .onChange(of: colorScheme) { _, _ in
+        .onChange(of: terminalPalette) { _, _ in
             updateSessionParsedOutput()
         }
         .onChange(of: doneClearRaw) { _, _ in
@@ -1426,7 +1456,7 @@ struct PaneSessionView: View {
             // stale session token, an armed modifier, or another pane's
             // input surface.
             abandonLiveInput()
-            surfaceModel.resetToLiveToolbar()
+            surfaceModel.resetToDefaultSurface()
             resetLiveModifiers()
         }
         .onChange(of: scenePhase) { _, phase in
@@ -1468,6 +1498,7 @@ struct PaneSessionView: View {
             if focused {
                 onOutputInteraction?()
             } else if surfaceModel.isComposeSurface,
+                      !showComposeByDefault,
                       trimmedDraft.isEmpty,
                       !isPhotoPickerPresented,
                       !isLoadingPhoto,
@@ -1851,8 +1882,8 @@ struct PaneSessionView: View {
             draft = ""
             clearAttachment()
             shouldPinToBottom = true
-            // Return to the Live toolbar only after a successful send; the
-            // keyboard yields first so the blank bubble cannot linger.
+            // Return to the preferred idle surface only after a successful send,
+            // dismissing the keyboard while keeping Compose visible if enabled.
             surfaceModel.noteSendSucceeded()
             composeFieldFocused = false
             liveInputFocused = false
@@ -1953,6 +1984,15 @@ final class PaneInputSurfaceModel {
     }
 
     private(set) var surface: Surface = .liveToolbar
+    private var composeVisibleByDefault = false
+
+    /// Applies the saved default without interrupting recording or discarding a draft.
+    func setComposeVisibleByDefault(_ visible: Bool) {
+        composeVisibleByDefault = visible
+        if visible, surface == .liveToolbar {
+            surface = .composeDraft
+        }
+    }
     /// True after the recording bar's checkmark stops capture and while final
     /// recognition drains — `PaneDictation.finish()` returns immediately but
     /// `isBusy` stays true up to ~15s until the final transcript lands. The
@@ -2011,12 +2051,12 @@ final class PaneInputSurfaceModel {
         surface = .composeDraft
     }
 
-    /// Send success returns to the Live toolbar. Failures never call this,
+    /// Send success returns to the preferred idle surface. Failures never call this,
     /// so the bubble (with its retained draft and attachment) stays up for a
     /// retry alongside the existing error banner.
     func noteSendSucceeded() {
         guard surface == .composeDraft else { return }
-        surface = .liveToolbar
+        surface = composeVisibleByDefault ? .composeDraft : .liveToolbar
     }
 
     /// Explicit collapse from the Compose bubble back to the Live toolbar
@@ -2026,9 +2066,9 @@ final class PaneInputSurfaceModel {
         surface = .liveToolbar
     }
 
-    /// Pane switches and view teardown reset to the default surface.
-    func resetToLiveToolbar() {
-        surface = .liveToolbar
+    /// Pane switches and view teardown reset to the preferred default surface.
+    func resetToDefaultSurface() {
+        surface = composeVisibleByDefault ? .composeDraft : .liveToolbar
         isDrainingDictation = false
     }
 }
