@@ -9,7 +9,7 @@ IOS_DIR="$ROOT/ios"
 CHANGELOG="$IOS_DIR/fastlane/changelog.txt"
 PROJECT_YML="$IOS_DIR/project.yml"
 
-echo "[herdrcat] TestFlight beta push"
+echo "[herdcats] TestFlight beta push"
 
 if [[ ! "${DEVELOPMENT_TEAM:-}" =~ ^[A-Z0-9]{10}$ ]]; then
   echo "Error: set DEVELOPMENT_TEAM to your 10-character Apple Team ID before uploading." >&2
@@ -38,7 +38,7 @@ MARKETING_VERSION="$(sed -n -E 's/^[[:space:]]*CFBundleShortVersionString:[[:spa
 BUILD_NUMBER="$(sed -n -E 's/^[[:space:]]*CFBundleVersion:[[:space:]]*"?([^"]*)"?.*/\1/p' "$PROJECT_YML" | head -n 1)"
 
 echo "======================================"
-echo "    herdrcat TestFlight beta push"
+echo "    herdcats TestFlight beta push"
 echo "======================================"
 echo ""
 echo "  Marketing version : $MARKETING_VERSION"
@@ -67,7 +67,7 @@ case "$CHANGELOG_OK" in
   *) echo "Aborted."; exit 1 ;;
 esac
 
-read -r -p "Push herdrcat $MARKETING_VERSION ($BUILD_NUMBER) to TestFlight? (y/n): " FINAL
+read -r -p "Push herdcats $MARKETING_VERSION ($BUILD_NUMBER) to TestFlight? (y/n): " FINAL
 [[ "$FINAL" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 1; }
 
 echo ""
@@ -83,4 +83,4 @@ echo "Running fastlane ios beta..."
 (cd "$IOS_DIR" && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 bundle exec fastlane ios beta)
 
 echo ""
-echo "Done. herdrcat build submitted to TestFlight."
+echo "Done. herdcats build submitted to TestFlight."

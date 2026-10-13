@@ -33,25 +33,45 @@ gh release create herdrcat-v0.3.1 \
   --notes-file RELEASE_NOTES.md
 ```
 
-## Later versions
+## Later versions (app + TestFlight)
 
-Create a branch, then run `./ios/bin/release MAJOR.MINOR.PATCH`. The helper
-increments the current build number (or uses a higher commit-derived number),
-regenerates the project, and commits the bump. It requires a clean PR branch
-and does not create a tag. Push the branch, review the generated files, and
-merge through the same checks. Only then prepare a draft at the tested main SHA.
+Use the two-step deploy helpers. CI still gates the bump before any tag or upload.
 
-Fresh public history has fewer commits than the old private repository. Preserve
-build-number monotonicity rather than deriving it solely from the new history.
-For App Store or TestFlight uploads, also check the highest build already uploaded
-and choose a higher number. Do not assume this repository knows every uploaded build.
+```sh
+# On up-to-date main, clean tree:
+./ios/bin/deploy prepare
+# → creates release/X.Y.Z, bumps version/build, pushes, opens PR
 
-`ios/bin/deploy` now guides branch preparation and optional branch push; it
-ends at the PR stage instead of tagging or uploading before CI.
+# After the PR is merged and CI is green:
+git checkout main && git pull
+export DEVELOPMENT_TEAM=YOURTEAMID
+./ios/bin/deploy publish
+# → tags herdcats-vX.Y.Z, changelog, TestFlight upload, pushes tag
+```
 
-Signed app distribution is a separate task requiring your own Apple credentials
-and signing configuration. `ios/bin/beta` uploads to TestFlight; it is not part
-of preparing a GitHub source release.
+New tags use the `herdcats-v*` prefix. Helpers still recognize legacy `herdrcat-v*`
+tags when computing the next version or changelog ranges.
+
+`publish` requires local `main` to match `origin/main` when `origin` is configured
+(push merged commits before publishing). If a step fails after the local tag is
+created, the script prints recovery steps: retry with `./ios/bin/changelog` (if
+needed), `./ios/bin/beta`, and `git push origin herdcats-vX.Y.Z`, or remove the
+local tag with `git tag -d herdcats-vX.Y.Z` and run `publish` again.
+
+`ios/bin/release` remains the bump-only helper (release branch required, no tag).
+`ios/bin/changelog` and `ios/bin/beta` remain runnable on their own.
+
+Fresh public history has fewer commits than the old private repository. The bump
+helper preserves build-number monotonicity via
+`max(CFBundleVersion+1, commitCount+1)`. For App Store or TestFlight uploads,
+also check the highest build already uploaded in App Store Connect if uploads
+came from another machine or history.
+
+App Store **review** submission stays manual in App Store Connect after the
+TestFlight build is processed.
+
+GitHub source releases (draft prerelease at a tested SHA) remain separate from
+signed TestFlight builds; use the checklist above for source previews.
 
 ## Local signing for TestFlight
 
@@ -72,6 +92,6 @@ API private keys and Apple sessions outside Git. Existing
 `APP_STORE_CONNECT_API_KEY_*` environment variables remain supported; without
 an API key, fastlane falls back to Apple session authentication.
 
-`./ios/bin/deploy` only prepares a release PR and does not need Apple credentials.
-After the PR is merged and CI passes, use `./ios/bin/beta` separately for an
-authorized TestFlight upload.
+`./ios/bin/deploy prepare` does not need Apple credentials.
+`./ios/bin/deploy publish` (and `./ios/bin/beta`) require `DEVELOPMENT_TEAM` and
+authorized App Store Connect authentication.

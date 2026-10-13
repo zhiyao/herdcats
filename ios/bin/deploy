@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
-# Prepare a release through the protected PR workflow:
+# Herdrcat release orchestration:
 #
-#   1. next-version - suggest a version
-#   2. release      - bump and commit on a PR branch, without tagging
-#   3. push         - optionally push the branch for review and CI
+#   prepare  - create release/X.Y.Z from main, bump/commit, push, open PR
+#   publish  - on merged main: tag, changelog, TestFlight upload, push tag
 #
-# After merge, follow RELEASING.md. TestFlight uploads use bin/beta separately.
-# Any "n" response or sub-script failure aborts the remaining flow.
-#
-# Usage: ./ios/bin/deploy
+# Usage:
+#   ./ios/bin/deploy prepare
+#   ./ios/bin/deploy publish
 set -euo pipefail
 
 BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -34,56 +32,242 @@ confirm() {
   [[ "$reply" =~ ^[Yy]$ ]]
 }
 
-banner "herdrcat deploy"
+usage() {
+  cat >&2 <<'EOF'
+Usage:
+  ./ios/bin/deploy prepare   # bump on release/* branch, push, open PR
+  ./ios/bin/deploy publish   # tag merged main, changelog, TestFlight, push tag
+EOF
+  exit 2
+}
 
-# Fail before any release preparation changes.
-if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
-  abort "the repository has no commits yet. Make an initial commit first."
-fi
-if [[ -n "$(git status --porcelain)" ]]; then
-  abort "working tree is dirty. Commit or stash changes first."
-fi
+require_clean_repo() {
+  if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
+    abort "the repository has no commits yet. Make an initial commit first."
+  fi
+  if [[ -n "$(git status --porcelain)" ]]; then
+    abort "working tree is dirty. Commit or stash changes first."
+  fi
+}
 
-BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
-if [[ -z "$BRANCH" || "$BRANCH" == "main" ]]; then
-  abort "create a release branch first. main requires a PR."
-fi
+require_branch() {
+  local expected="$1"
+  local branch
+  branch="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+  if [[ "$branch" != "$expected" ]]; then
+    abort "must be on ${expected} (current: ${branch:-detached})."
+  fi
+}
 
-# ----- 1. Version ----------------------------------------------------------
-banner "Step 1/3: choose version"
-NEXT_OUTPUT="$("$BIN_DIR/next-version")"
-echo "$NEXT_OUTPUT"
-echo ""
+# Abort when origin/main exists and local main is behind it.
+ensure_main_not_behind_origin() {
+  if ! git remote get-url origin >/dev/null 2>&1; then
+    return 0
+  fi
+  git fetch origin main --quiet 2>/dev/null || git fetch origin --quiet
+  if git rev-parse --verify origin/main >/dev/null 2>&1; then
+    local behind
+    behind="$(git rev-list --count HEAD..origin/main 2>/dev/null || echo 0)"
+    if [[ "$behind" != "0" ]]; then
+      abort "local main is behind origin/main by ${behind} commit(s). git pull first."
+    fi
+  fi
+}
 
-SUGGESTED="$(echo "$NEXT_OUTPUT" | sed -n 's/^Suggested next version: //p')"
-[[ -n "$SUGGESTED" ]] || abort "could not determine suggested version."
+# For publish: local main must match origin/main exactly (no unpushed commits).
+ensure_main_matches_origin() {
+  if ! git remote get-url origin >/dev/null 2>&1; then
+    return 0
+  fi
+  git fetch origin main --quiet 2>/dev/null || git fetch origin --quiet
+  if ! git rev-parse --verify origin/main >/dev/null 2>&1; then
+    return 0
+  fi
+  local local_head origin_head
+  local_head="$(git rev-parse HEAD)"
+  origin_head="$(git rev-parse origin/main)"
+  if [[ "$local_head" == "$origin_head" ]]; then
+    return 0
+  fi
+  local ahead behind
+  ahead="$(git rev-list --count origin/main..HEAD 2>/dev/null || echo 0)"
+  behind="$(git rev-list --count HEAD..origin/main 2>/dev/null || echo 0)"
+  if [[ "$ahead" != "0" && "$behind" != "0" ]]; then
+    abort "local main and origin/main have diverged (ahead ${ahead}, behind ${behind}). Reconcile with push/pull or merge first."
+  fi
+  if [[ "$ahead" != "0" ]]; then
+    abort "local main is ahead of origin/main by ${ahead} commit(s). Push to origin before publishing."
+  fi
+  abort "local main is behind origin/main by ${behind} commit(s). git pull first."
+}
 
-read -r -p "Use $SUGGESTED? (y=use it / type a custom version / n=abort): " VERSION_REPLY
-case "$VERSION_REPLY" in
-  y|Y) VERSION="$SUGGESTED" ;;
-  n|N) abort "user cancelled at version step." ;;
-  "")  abort "no version entered." ;;
-  *)   VERSION="$VERSION_REPLY" ;;
-esac
+cmd_prepare() {
+  banner "herdcats deploy prepare"
+  require_clean_repo
+  require_branch "main"
+  ensure_main_not_behind_origin
 
-echo ""
-echo "Releasing version: $VERSION"
-confirm "Proceed?" || abort "user cancelled."
+  banner "Step 1/4: choose version"
+  local next_output suggested version_reply version
+  next_output="$("$BIN_DIR/next-version")"
+  echo "$next_output"
+  echo ""
+  suggested="$(echo "$next_output" | sed -n 's/^Suggested next version: //p')"
+  [[ -n "$suggested" ]] || abort "could not determine suggested version."
 
-# ----- 2. Release ----------------------------------------------------------
-banner "Step 2/3: prepare release (bump and commit)"
-"$BIN_DIR/release" "$VERSION"
+  read -r -p "Use $suggested? (y=use it / type a custom version / n=abort): " version_reply
+  case "$version_reply" in
+    y|Y) version="$suggested" ;;
+    n|N) abort "user cancelled at version step." ;;
+    "")  abort "no version entered." ;;
+    *)   version="$version_reply" ;;
+  esac
+  if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    abort "version must look like MAJOR.MINOR.PATCH (got '$version')."
+  fi
 
-# ----- 3. Push PR branch ---------------------------------------------------
-banner "Step 3/3: push branch for review"
-echo "Release $VERSION is prepared on $BRANCH. No tag or upload was created."
-if ! git remote get-url origin >/dev/null 2>&1; then
-  echo "No 'origin' remote configured; skipping push."
-elif confirm "Push branch to origin for a PR?"; then
-  git push -u origin "$BRANCH"
-else
-  echo "Skipping push. Run later with: git push -u origin $BRANCH"
-fi
+  echo ""
+  echo "Preparing release: $version"
+  confirm "Proceed?" || abort "user cancelled."
 
-echo "Open a PR, wait for CI, and merge before preparing a release at the tested commit."
-echo "See RELEASING.md. Use bin/beta separately for an authorized TestFlight upload."
+  local branch="release/$version"
+  local tag="herdcats-v$version"
+  if git rev-parse --verify "$branch" >/dev/null 2>&1; then
+    abort "branch $branch already exists."
+  fi
+  if git rev-parse --verify "$tag" >/dev/null 2>&1 \
+     || git rev-parse --verify "herdrcat-v$version" >/dev/null 2>&1; then
+    abort "tag $tag (or legacy herdrcat-v$version) already exists."
+  fi
+
+  banner "Step 2/4: create $branch"
+  git switch -c "$branch"
+
+  banner "Step 3/4: bump and commit (no tag)"
+  "$BIN_DIR/release" "$version"
+
+  banner "Step 4/4: push and open PR"
+  echo "Release $version is prepared on $branch. No tag or upload was created."
+  if ! git remote get-url origin >/dev/null 2>&1; then
+    echo "No 'origin' remote configured; skipping push/PR."
+  elif confirm "Push branch to origin for a PR?"; then
+    git push -u origin "$branch"
+    if command -v gh >/dev/null 2>&1; then
+      gh pr create \
+        --base main \
+        --head "$branch" \
+        --title "chore(release): $tag" \
+        --body "Prepared by \`ios/bin/deploy prepare\`. After CI passes and this merges, run \`./ios/bin/deploy publish\` on updated main."
+    else
+      echo "gh not installed; open a PR manually for $branch → main."
+    fi
+  else
+    echo "Skipping push. Run later with: git push -u origin $branch"
+  fi
+
+  echo ""
+  echo "Next:"
+  echo "  1. Merge the release PR after CI passes"
+  echo "  2. git checkout main && git pull"
+  echo "  3. ./ios/bin/deploy publish"
+}
+
+read_marketing_version() {
+  sed -n -E 's/^[[:space:]]*CFBundleShortVersionString:[[:space:]]*"?([^"]*)"?.*/\1/p' \
+    "$ROOT/ios/project.yml" | head -n 1
+}
+
+publish_failed_after_tag=0
+
+print_publish_recovery() {
+  local ec=$?
+  if [[ "$publish_failed_after_tag" -eq 1 && "$ec" -ne 0 ]]; then
+    local recovery_tag="${PUBLISH_RECOVERY_TAG:-}"
+    echo "" >&2
+    echo "Publish failed after creating local tag ${recovery_tag}." >&2
+    echo "Recovery options:" >&2
+    echo "  • Retry upload: ./ios/bin/changelog (if needed), then ./ios/bin/beta, then git push origin ${recovery_tag}" >&2
+    echo "  • Or delete local tag and restart publish: git tag -d ${recovery_tag}" >&2
+  fi
+}
+
+cmd_publish() {
+  banner "herdcats deploy publish"
+  require_clean_repo
+  require_branch "main"
+  ensure_main_matches_origin
+
+  local version tag
+  version="$(read_marketing_version)"
+  [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || abort "could not read CFBundleShortVersionString from ios/project.yml."
+  tag="herdcats-v$version"
+
+  if git rev-parse --verify "$tag" >/dev/null 2>&1 \
+     || git rev-parse --verify "herdrcat-v$version" >/dev/null 2>&1; then
+    abort "tag $tag (or legacy herdrcat-v$version) already exists."
+  fi
+
+  banner "Step 1/4: tag $tag"
+  echo "Tagging HEAD as $tag (version from ios/project.yml)."
+  confirm "Create annotated tag $tag at HEAD?" || abort "user cancelled at tag step."
+  git tag -a "$tag" -m "Release $tag"
+  PUBLISH_RECOVERY_TAG="$tag"
+  publish_failed_after_tag=1
+  trap print_publish_recovery EXIT
+
+  banner "Step 2/4: changelog"
+  "$BIN_DIR/changelog"
+  local changelog="$ROOT/ios/fastlane/changelog.txt"
+  [[ -f "$changelog" ]] || abort "changelog missing at $changelog."
+  echo ""
+  echo "Generated fastlane/changelog.txt:"
+  echo "--------------------------------------"
+  sed 's/^/  /' "$changelog"
+  echo "--------------------------------------"
+  while true; do
+    local changelog_reply
+    read -r -p "Changelog OK? (y=continue / e=edit / n=abort): " changelog_reply
+    case "$changelog_reply" in
+      y|Y) break ;;
+      e|E)
+        "${EDITOR:-vi}" "$changelog"
+        echo ""
+        echo "Updated changelog:"
+        echo "--------------------------------------"
+        sed 's/^/  /' "$changelog"
+        echo "--------------------------------------"
+        ;;
+      *) abort "user cancelled at changelog step." ;;
+    esac
+  done
+
+  banner "Step 3/4: TestFlight upload"
+  "$BIN_DIR/beta"
+
+  banner "Step 4/4: push tag"
+  if ! git remote get-url origin >/dev/null 2>&1; then
+    echo "No 'origin' remote configured; skipping tag push."
+  elif confirm "Push tag $tag to origin?"; then
+    git push origin "$tag"
+  else
+    echo "Skipping push. Run later with: git push origin $tag"
+  fi
+
+  publish_failed_after_tag=0
+  trap - EXIT
+
+  banner "herdcats $version published"
+}
+
+main() {
+  local cmd="${1:-}"
+  case "$cmd" in
+    prepare) shift; cmd_prepare "$@" ;;
+    publish) shift; cmd_publish "$@" ;;
+    -h|--help|help) usage ;;
+    "") usage ;;
+    *) echo "Unknown command: $cmd" >&2; usage ;;
+  esac
+}
+
+main "$@"

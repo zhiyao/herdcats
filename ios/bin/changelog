@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Generate a user-facing changelog between Herdrcat release tags and write it to
+# Generate a user-facing changelog between Herdcats release tags and write it to
 # fastlane/changelog.txt (the TestFlight "What to Test" notes) via opencode.
 # Falls back to the raw commit subjects when opencode is unavailable.
 #
+# New tags use herdcats-v*; legacy herdrcat-v* tags are still resolved.
+#
 # Usage:
-#   ./ios/bin/changelog                  # last two herdrcat-v* tags (or all history up to the only tag)
+#   ./ios/bin/changelog                  # last two release tags (or all history up to the only tag)
 #   ./ios/bin/changelog 0.3.1            # from that tag to HEAD
 #   ./ios/bin/changelog 0.3.0 0.3.1      # explicit versions (without prefix)
 
@@ -14,16 +16,39 @@ ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 cd "$ROOT"
 CHANGELOG="$ROOT/ios/fastlane/changelog.txt"
 
+resolve_release_tag() {
+  local version="$1"
+  if git rev-parse --verify "herdcats-v${version}" >/dev/null 2>&1; then
+    echo "herdcats-v${version}"
+  elif git rev-parse --verify "herdrcat-v${version}" >/dev/null 2>&1; then
+    echo "herdrcat-v${version}"
+  else
+    return 1
+  fi
+}
+
 if [[ $# -eq 2 ]]; then
-  RANGE="herdrcat-v$1..herdrcat-v$2"
+  FROM_TAG="$(resolve_release_tag "$1")" || {
+    echo "Error: no herdcats-v$1 or herdrcat-v$1 tag found." >&2
+    exit 1
+  }
+  TO_TAG="$(resolve_release_tag "$2")" || {
+    echo "Error: no herdcats-v$2 or herdrcat-v$2 tag found." >&2
+    exit 1
+  }
+  RANGE="${FROM_TAG}..${TO_TAG}"
 elif [[ $# -eq 1 ]]; then
-  RANGE="herdrcat-v$1..HEAD"
+  FROM_TAG="$(resolve_release_tag "$1")" || {
+    echo "Error: no herdcats-v$1 or herdrcat-v$1 tag found." >&2
+    exit 1
+  }
+  RANGE="${FROM_TAG}..HEAD"
 elif [[ $# -eq 0 ]]; then
-  TAGS="$(git tag --sort=-version:refname --list 'herdrcat-v*')"
+  TAGS="$(git tag --sort=-version:refname --list 'herdcats-v*' 'herdrcat-v*')"
   TO_TAG="$(head -n 1 <<< "$TAGS")"
   FROM_TAG="$(sed -n 2p <<< "$TAGS")"
   if [[ -z "$TO_TAG" ]]; then
-    echo "Error: no herdrcat-v* tags found. Publish a tested release tag first; see RELEASING.md." >&2
+    echo "Error: no herdcats-v* (or legacy herdrcat-v*) tags found. Publish a tested release tag first; see RELEASING.md." >&2
     exit 1
   fi
   # First release: everything up to the only tag.
@@ -55,7 +80,7 @@ SUMMARY=""
 if command -v opencode >/dev/null 2>&1; then
   echo "Asking opencode to summarize..."
 
-  PROMPT="You are writing the 'What to Test' section of an iOS TestFlight release note for Herdrcat, an iPhone client that controls Herdr coding-agent sessions over SSH.
+  PROMPT="You are writing the 'What to Test' section of an iOS TestFlight release note for Herdcats, an iPhone client that controls Herdr coding-agent sessions over SSH.
 
 Given these git commit messages, produce 2-4 concise plain-text lines (no bullet symbols, no markdown) describing the changes in plain English for a TestFlight tester. Focus on user-visible changes. Omit internal/infrastructure changes unless they are directly user-facing. Be brief. Output only the lines.
 
