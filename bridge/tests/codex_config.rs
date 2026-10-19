@@ -1208,14 +1208,16 @@ rm -f "$CODEX_HOME/app-server-daemon/daemon.pid"
     let updater_file = temp.path.join("app-server-daemon/daemon-updater.pid");
     let saved_file = temp.path.join("updater-saved.json");
     let flap_marker = temp.path.join("updater-flapped");
-    // The first TERM produces one Unknown observation, then restores the
-    // verified pid file. The updater ignores subsequent TERM and stays alive.
+    // The first TERM briefly invalidates the pid file, then restores the
+    // verified one. The window must stay well under one poll step, or two
+    // consecutive polls confirm a real exit. The updater ignores subsequent
+    // TERM and stays alive.
     let handler = format!(
-        r#"trap "" TERM; printf invalid > "{}"; touch "{}"; sleep 0.12; cp "{}" "{}""#,
+        r#"trap "" TERM; printf invalid > "{}"; cp "{}" "{}"; touch "{}""#,
         updater_file.display(),
-        flap_marker.display(),
         saved_file.display(),
         updater_file.display(),
+        flap_marker.display(),
     );
     let updater = spawn_orphan_in_packages(
         &temp.path,
