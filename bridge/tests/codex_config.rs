@@ -1210,8 +1210,10 @@ rm -f "$CODEX_HOME/app-server-daemon/daemon.pid"
     let flap_marker = temp.path.join("updater-flapped");
     // The first TERM briefly invalidates the pid file, then restores the
     // verified one. The window must stay well under one poll step, or two
-    // consecutive polls confirm a real exit. The updater ignores subsequent
-    // TERM and stays alive.
+    // consecutive polls confirm a real exit. Polling rarely lands inside it;
+    // the single-observation rule itself is pinned by the StatusPoll unit
+    // tests in src/codex_config.rs. Here, the updater ignores subsequent TERM
+    // and stays alive, which must block `daemon stop`.
     let handler = format!(
         r#"trap "" TERM; printf invalid > "{}"; cp "{}" "{}"; touch "{}""#,
         updater_file.display(),
