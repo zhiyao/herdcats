@@ -29,7 +29,10 @@ class MobileHelperInstallationTests(unittest.TestCase):
         self.destination = self.home / '.local/bin/herdcats-bridge'
         self.fake = self.root / 'bin'
         self.fake.mkdir()
-        self.report = {'agents':['claude'], 'herdr_protocol':22, 'name':'herdcats-bridge', 'protocol':1, 'version':'0.1.4'}
+        source = SOURCE.read_text()
+        version = re.search(r'static let version = "([^"]+)"', source)[1]
+        agents = ['claude', 'codex'] if version != '0.1.4' else ['claude']
+        self.report = {'agents': agents, 'herdr_protocol': 22, 'name': 'herdcats-bridge', 'protocol': 1, 'version': version}
         self.binary = self.root / 'binary'
         self.binary.write_text('#!/bin/sh\nprintf \'%s\\n\' \'' + json.dumps(self.report, separators=(',', ':')) + "'\n")
         self.binary.chmod(0o755)
@@ -51,7 +54,26 @@ else: data=pathlib.Path(os.environ['HC_BINARY']).read_bytes()
 out.write_bytes(data)
 ''')
         curl.chmod(0o755)
-        self.env = {**os.environ, 'HOME':str(self.home), 'PATH':str(self.fake)+':'+os.environ['PATH'], 'HC_INSTALLER':str(ROOT/'bridge/scripts/install.sh'), 'HC_BINARY':str(self.binary), 'TMPDIR':str(self.root)}
+        installer_path = ROOT / 'bridge/scripts/install.sh'
+        digest = re.search(r'static let installerSHA256 = "([^"]+)"', source)[1]
+        if hashlib.sha256(installer_path.read_bytes()).hexdigest() != digest:
+            text = re.sub(r'^HB_VERSION=.*$', f'HB_VERSION={version}', installer_path.read_text(), flags=re.M)
+            if version.startswith('0.1.'):
+                text = re.sub(
+                    r'case "\$HB_VERSION" in\n  0\.1\.\*\) HB_CONTRACT=.*?\n  \*\) HB_CONTRACT=.*?\nesac',
+                    'HB_CONTRACT=\'{"agents":["claude"],"herdr_protocol":22,"name":"herdcats-bridge","protocol":1,"version":"\'"$HB_VERSION"\'"}\'',
+                    text,
+                )
+            pinned = self.root / 'pinned_install.sh'
+            pinned.write_text(text)
+            rebuilt_digest = hashlib.sha256(pinned.read_bytes()).hexdigest()
+            self.assertEqual(
+                rebuilt_digest,
+                digest,
+                f'Rebuilt installer for pinned version {version} sha256 {rebuilt_digest} does not match pinned installerSHA256 {digest}',
+            )
+            installer_path = pinned
+        self.env = {**os.environ, 'HOME':str(self.home), 'PATH':str(self.fake)+':'+os.environ['PATH'], 'HC_INSTALLER':str(installer_path), 'HC_BINARY':str(self.binary), 'TMPDIR':str(self.root)}
 
     def run_install(self, replace=False, case=''):
         return subprocess.run(['/bin/sh','-c',self.script(replace)], env={**self.env,'HC_CASE':case}, capture_output=True,text=True,timeout=10)
@@ -62,7 +84,8 @@ out.write_bytes(data)
         self.assertTrue(self.destination.is_file(), result.stdout)
         self.assertEqual(self.destination.read_bytes(), self.binary.read_bytes())
         self.assertIn('HC_HELPER_INSTALLED', result.stdout)
-        self.assertIn('"version":"0.1.4"', result.stdout)
+        ver = self.report['version']
+        self.assertIn(f'"version":"{ver}"', result.stdout)
 
     def test_untrusted_download_is_never_executed(self):
         result = self.run_install(case='tampered')
@@ -111,7 +134,8 @@ out.write_bytes(data)
         before=self.destination.read_bytes()
         result=self.probe()
         self.assertTrue(result.stdout.startswith('HC_HELPER_MANAGED\n'), result.stderr)
-        self.assertIn('"version":"0.1.4"',result.stdout)
+        ver = self.report['version']
+        self.assertIn(f'"version":"{ver}"', result.stdout)
         self.assertEqual(before,self.destination.read_bytes())
 
     def test_probe_never_executes_a_symlink_destination(self):

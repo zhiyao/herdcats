@@ -1,5 +1,20 @@
 import Foundation
+import Observation
 import OSLog
+
+@Observable final class TimelineBridgeUpgrade {
+    var bridgeVersion: String?
+    var requested: Bool
+
+    init(bridgeVersion: String? = nil, requested: Bool = false) {
+        self.bridgeVersion = bridgeVersion
+        self.requested = requested
+    }
+
+    func requestUpgrade() {
+        requested = true
+    }
+}
 
 enum AgentBridgeError: Error, LocalizedError, Equatable, Sendable {
     case invalidFrame, frameTooLarge, incompleteFrame, protocolMismatch, sequenceGap, identityMismatch
@@ -28,6 +43,13 @@ struct AgentTimelineEntry: Codable, Identifiable, Equatable, Sendable {
     let truncated: Bool
     var contentRef: String? = nil
     var recordRefs: [String]? = nil
+
+    /// Only Codex turn-abort markers render as the interrupted status line.
+    /// Error records are also assistant/failed but keep normal message
+    /// rendering, so the marker is keyed on the entry id.
+    var isTurnInterrupted: Bool {
+        id.hasPrefix("turn_aborted:") && role == "assistant" && status == "failed"
+    }
 }
 struct AgentTimelineIdentity: Codable, Equatable, Sendable {
     let paneId: String
@@ -35,9 +57,139 @@ struct AgentTimelineIdentity: Codable, Equatable, Sendable {
     let agent: String
     let nativeSessionId: String
 }
-struct AgentBridgeCapabilities: Codable, Sendable { let claudeTimeline: Bool; var recordContent: Bool? = nil }
+struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
+    let claudeTimeline: Bool
+    var codexTimeline: Bool? = false
+    var codexDaemonConfig: Bool? = false
+    var codexDaemonStop: Bool? = false
+    var approvals: Bool? = nil
+    var recordContent: Bool? = nil
+
+    init(
+        claudeTimeline: Bool,
+        codexTimeline: Bool? = false,
+        codexDaemonConfig: Bool? = false,
+        codexDaemonStop: Bool? = false,
+        recordContent: Bool? = nil,
+        approvals: Bool? = nil
+    ) {
+        self.claudeTimeline = claudeTimeline
+        self.codexTimeline = codexTimeline
+        self.codexDaemonConfig = codexDaemonConfig
+        self.codexDaemonStop = codexDaemonStop
+        self.approvals = approvals
+        self.recordContent = recordContent
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.claudeTimeline = try container.decode(Bool.self, forKey: .claudeTimeline)
+        self.codexTimeline = try container.decodeIfPresent(Bool.self, forKey: .codexTimeline) ?? false
+        self.codexDaemonConfig = try container.decodeIfPresent(Bool.self, forKey: .codexDaemonConfig) ?? false
+        self.codexDaemonStop = try container.decodeIfPresent(Bool.self, forKey: .codexDaemonStop) ?? false
+        self.approvals = try container.decodeIfPresent(Bool.self, forKey: .approvals)
+        self.recordContent = try container.decodeIfPresent(Bool.self, forKey: .recordContent)
+    }
+}
+
+struct CodexDaemonConfigResult: Decodable, Equatable, Sendable {
+    let status: String?
+    let backup: String?
+    let error: String?
+    /// `stopped`/`not_running`/`stop_failed`/`unknown`; present only with
+    /// --stop-running and only when the config step succeeded.
+    var daemon: String? = nil
+    var updater: String? = nil
+
+    static func parse(_ raw: String) throws -> CodexDaemonConfigResult {
+        let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            .components(separatedBy: .newlines)
+            .last(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) ?? ""
+        guard let data = line.data(using: .utf8) else {
+            throw HerdrError.unexpectedResponse("Invalid response encoding")
+        }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try decoder.decode(CodexDaemonConfigResult.self, from: data)
+    }
+
+    static func message(for result: CodexDaemonConfigResult) -> String {
+        if let err = result.error {
+            switch err {
+            case "config_invalid":
+                return "Could not update Codex config: config.toml contains invalid TOML."
+            case "features_not_table":
+                return "Could not update Codex config: features in config.toml is not a table."
+            case "daemon_setting_unsupported":
+                return "Could not update Codex config: daemon_auto_start in config.toml has an unsupported shape. Edit it by hand."
+            case "config_symlink":
+                return "Could not update Codex config: config.toml is a symbolic link."
+            case "write_failed":
+                return "Could not update Codex config: failed to write file."
+            case "verification_failed":
+                return "Could not update Codex config: verification failed, restored from backup."
+            case "helper_missing":
+                return "Could not update Codex config: herdcats-bridge was not found."
+            default:
+                return "Could not update Codex config: \(err)."
+            }
+        }
+        // The updater is checked first: the bridge never runs `daemon stop`
+        // while the updater is alive (it TERM-and-waits precisely so the
+        // updater cannot restart the daemon), so an updater failure is the
+        // root cause whenever it appears — including the both-stop_failed
+        // shape — and recovery must go through the updater-aware command.
+        if result.updater == "stop_failed" || result.updater == "unknown" {
+            let updaterSurvived = result.updater == "stop_failed"
+            let daemonOff = result.daemon == "stopped" || result.daemon == "not_running"
+            switch (updaterSurvived, daemonOff) {
+            case (true, true):
+                return "Codex's shared server was stopped, but its updater is still running and may restart it. Copy the turn-off command below and run it on this computer to stop the updater too, then restart Codex in this pane."
+            case (true, false):
+                return "Herdcats couldn't stop the updater that keeps Codex's shared server running. Copy the turn-off command below and run it on this computer to stop the updater and the server, then restart Codex in this pane."
+            case (false, true):
+                return "Codex's shared server was stopped, but Herdcats couldn't confirm the state of its updater, which may restart it. Copy the turn-off command below and run it on this computer, then restart Codex in this pane."
+            case (false, false):
+                return "Herdcats couldn't confirm the state of Codex's shared server or its updater. Copy the turn-off command below and run it on this computer, then restart Codex in this pane."
+            }
+        }
+        if result.daemon == "stop_failed" {
+            return "Codex's shared server is still running. Run `codex app-server daemon stop` on this computer, then restart Codex in this pane."
+        }
+        if result.daemon == "unknown" {
+            return "Herdcats couldn't confirm the running server belongs to Codex, so it left it running. Run `codex app-server daemon stop` on this computer, then restart Codex in this pane."
+        }
+        switch result.status {
+        case "codex_not_installed":
+            return "Codex directory was not found on this host."
+        default:
+            // stopped, not_running, or a legacy reply without daemon fields.
+            return "Codex's shared server is off. Quit Codex in this pane and start it again so Herdcats can identify the session."
+        }
+    }
+
+    /// The updater survived the stop or could not be verified — on its own or
+    /// alongside a daemon failure (the bridge refuses to stop the daemon
+    /// while the updater is alive). Codex's own `daemon stop` cannot address
+    /// the updater, so recovery always goes through the updater-aware bridge
+    /// command.
+    static func showsUpdaterStopCommand(for result: CodexDaemonConfigResult) -> Bool {
+        guard result.error == nil else { return false }
+        return result.updater == "stop_failed" || result.updater == "unknown"
+    }
+
+    /// The daemon itself survived the stop (or could not be verified) while
+    /// the updater was handled: pair the message with Codex's own stop
+    /// command.
+    static func showsStopCommand(for result: CodexDaemonConfigResult) -> Bool {
+        guard result.error == nil, !showsUpdaterStopCommand(for: result) else { return false }
+        return result.daemon == "stop_failed" || result.daemon == "unknown"
+    }
+}
 struct AgentBridgePayload: Codable, Sendable {
     var `protocol`: Int?
+    var bridgeVersion: String?
+    var version: String?
     var epoch: String?
     var capabilities: AgentBridgeCapabilities?
     var identity: AgentTimelineIdentity?
@@ -52,11 +204,25 @@ struct AgentBridgePayload: Codable, Sendable {
     var delayed: Bool?
     var paneId: String?
     var code: String?
+    var codexDaemon: String?
     var contentRef: String?
     var offset: Int?
     var nextOffset: Int?
     var total: Int?
     var hex: String?
+    var requestId: String?
+    var kind: String?
+    var agent: String?
+    var toolName: String?
+    var command: String?
+    var description: String?
+    var justification: String?
+    var environment: String?
+    var title: String?
+    var options: [AgentApprovalOption]?
+    var selected: Int?
+    var sent: String?
+    var confirmed: Bool?
 }
 struct AgentBridgeRemoteError: Codable, Sendable { let code: String }
 struct AgentBridgeFrame: Decodable, Sendable {
@@ -120,7 +286,7 @@ enum TimelineComposePolicy {
     static func canSend(identity: AgentTimelineIdentity?, paneId: String, status: String?, connected: Bool)
         -> Bool
     {
-        connected && identity?.paneId == paneId && identity?.agent == "claude"
+        connected && identity?.paneId == paneId && TimelineAgentAvailability.supports(agent: identity?.agent)
             && ["idle", "done", "working"].contains(status ?? "")
     }
 }
@@ -134,7 +300,7 @@ enum HostHelperProbe: Equatable, Sendable {
     case missing
     case present(version: String?, managed: Bool, compatible: Bool)
 
-    init(output: String) throws {
+    init(output: String, agent: String? = nil) throws {
         let lines = output.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n", omittingEmptySubsequences: false)
         guard let marker = lines.first else { throw HostHelperSetupError.invalidResponse }
         if marker == "HC_HELPER_MISSING", lines.count == 1 { self = .missing; return }
@@ -152,28 +318,66 @@ enum HostHelperProbe: Equatable, Sendable {
         let bytes = Data(lines.dropFirst().joined(separator: "\n").utf8)
         let report = try? decoder.decode(Report.self, from: bytes)
         let version = report.flatMap { Self.versionNumbers($0.version) == nil ? nil : $0.version }
+        let targetAgent = agent ?? "claude"
         let compatible = report.map {
             $0.name == "herdcats-bridge" && $0.protocol == 1 && $0.herdrProtocol == 22
-                && $0.agents.contains("claude") && Self.isAtLeastPinned($0.version)
+                && $0.agents.contains(targetAgent) && Self.isAtLeastMinimum($0.version)
         } ?? false
         self = .present(version: version, managed: marker == "HC_HELPER_MANAGED", compatible: compatible)
     }
-    private static func versionNumbers(_ version: String) -> [Int]? {
+    static func versionNumbers(_ version: String) -> [Int]? {
         guard version.utf8.count <= 64 else { return nil }
         let parts = version.split(separator: ".", omittingEmptySubsequences: false)
         guard parts.count == 3, parts.allSatisfy({ !$0.isEmpty && $0.allSatisfy({ $0.isASCII && $0.isNumber }) }) else { return nil }
         let numbers = parts.compactMap { Int($0) }
         return numbers.count == 3 ? numbers : nil
     }
-    private static func isAtLeastPinned(_ version: String) -> Bool {
-        guard let current = versionNumbers(version), let minimum = versionNumbers(HostHelperSetupPlan.version) else { return false }
+    static func isAtLeastMinimum(_ version: String?) -> Bool {
+        guard let version,
+              let current = versionNumbers(version),
+              let minimum = versionNumbers(HostHelperSetupPlan.minimumVersion)
+        else { return false }
         return current == minimum || minimum.lexicographicallyPrecedes(current)
+    }
+    static func isOlderThanMinimum(_ version: String?) -> Bool {
+        guard let version,
+              let current = versionNumbers(version),
+              let minimum = versionNumbers(HostHelperSetupPlan.minimumVersion)
+        else { return false }
+        return current.lexicographicallyPrecedes(minimum)
+    }
+    static func isAtLeastPinned(_ version: String?) -> Bool {
+        guard let version,
+              let current = versionNumbers(version),
+              let pinned = versionNumbers(HostHelperSetupPlan.version)
+        else { return false }
+        return current == pinned || pinned.lexicographicallyPrecedes(current)
+    }
+    static func isOlderThanPinned(_ version: String?) -> Bool {
+        guard let version,
+              let current = versionNumbers(version),
+              let pinned = versionNumbers(HostHelperSetupPlan.version)
+        else { return false }
+        return current.lexicographicallyPrecedes(pinned)
     }
 }
 enum HostHelperSetupDecision: Equatable, Sendable {
     case ready, missing
     case replacementRequired(HostHelperProbe)
     case install(replace: Bool)
+    case unsupportedByPinnedInstaller(String)
+}
+enum HostHelperSetupReason: String, Equatable, Sendable {
+    case missing = "helper_missing"
+    case updateRequired = "helper_update_required"
+
+    init(code: String?) {
+        if code == "helper_update_required" {
+            self = .updateRequired
+        } else {
+            self = .missing
+        }
+    }
 }
 enum HostHelperSetupStage: Equatable, Sendable {
     case idle, checking, installing, verifying, uncertain, installed
@@ -185,11 +389,11 @@ enum HostHelperSetupError: Error, LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .unsafeDestination: "The install location is a link or another nonregular file. Use manual setup to choose a safe location."
-        case .invalidResponse: "The helper could not be verified. Check the installation or use manual setup."
-        case .busy: "A helper setup is already running on this connection. Check again when it finishes."
+        case .invalidResponse: "Herdcats Bridge could not be verified. Check the installation or use manual setup."
+        case .busy: "A Herdcats Bridge setup is already running on this connection. Check again when it finishes."
         case .failed(let code):
             switch code {
-            case "curl_missing": "This host needs curl to download the helper. Use manual setup to install it."
+            case "curl_missing": "This host needs curl to download Herdcats Bridge. Use manual setup to install it."
             case "checksum_tool_missing": "This host needs shasum or sha256sum to verify the download."
             case "download_failed": "The host could not download the installer. Check its network access, or use manual setup."
             case "checksum_mismatch": "The installer did not match the app’s pinned checksum. Nothing was executed. Use manual setup or update Herdcats."
@@ -202,7 +406,7 @@ enum HostHelperSetupError: Error, LocalizedError, Equatable {
 /// Mirrors adapters implemented by the current bridge; agent detection alone
 /// does not imply that native session history is available.
 enum TimelineAgentAvailability {
-    static func supports(agent: String?) -> Bool { agent == "claude" }
+    static func supports(agent: String?) -> Bool { agent == "claude" || agent == "codex" }
 }
 
 /// Only references into the bridge's bounded, verified source snapshot.
@@ -237,9 +441,10 @@ struct TimelineConversationItem: Identifiable {
     var id: String { entries[0].id }
     var isActivity: Bool { entries[0].kind == "tool" }
 
-    static func group(_ entries: [AgentTimelineEntry]) -> [Self] {
+    /// Fallback `record` entries stay hidden unless the caller opts in (Codex timelines).
+    static func group(_ entries: [AgentTimelineEntry], showsRecords: Bool = false) -> [Self] {
         var items: [Self] = []
-        for entry in entries where entry.kind != "record" {
+        for entry in entries where showsRecords || entry.kind != "record" {
             if entry.kind == "tool", items.last?.isActivity == true {
                 items[items.count - 1].entries.append(entry)
             } else {

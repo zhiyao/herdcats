@@ -1,15 +1,21 @@
 use crate::{
     Result,
-    claude::Entry,
+    adapter::Adapter,
+    approval_match::{self, PendingRequest, Resolution},
+    approval_screen::{self, ApprovalDialog, OptionKey},
+    claude::{ClaudeAdapter, Entry},
+    codex::{CodexAdapter, CodexResolver},
     follower::{Follower, MAX_RECORD},
-    herdr::Client,
+    herdr::{Client, Pane},
+    hooks::Agent,
     resolver::Resolver,
+    spool,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
     io::{self, BufRead, BufReader, Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::mpsc,
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -21,6 +27,79 @@ struct Identity {
     terminal_id: String,
     agent: String,
     native_session_id: String,
+}
+struct PendingApproval {
+    identity: Identity,
+    generation: u64,
+    request: PendingRequest,
+    dialog: ApprovalDialog,
+}
+impl PendingApproval {
+    fn response_key(&self, params: &Value) -> Result<String> {
+        let number = params["option"].as_u64().ok_or("mismatch")?;
+        let option = self.dialog.options.iter()
+            .find(|option| u64::from(option.number) == number).ok_or("mismatch")?;
+        let rows = params["label_lines"].as_array().ok_or("mismatch")?;
+        if rows.len() != option.label_lines.len()
+            || !rows.iter().zip(&option.label_lines).all(|(row, label)| row.as_str() == Some(label))
+        {
+            return Err("mismatch");
+        }
+        match (self.request.agent, &option.key) {
+            (Agent::Claude, OptionKey::Digit(n)) if *n > 0 => Ok(n.to_string()),
+            (Agent::Codex, OptionKey::Letter(c)) if c.is_ascii_alphabetic() => Ok(c.to_string()),
+            (Agent::Codex, OptionKey::Escape) => Ok("esc".into()),
+            _ => Err("mismatch"),
+        }
+    }
+    fn data(&self) -> Value {
+        let options: Vec<_> = self.dialog.options.iter().map(|option| {
+            let key = match option.key {
+                OptionKey::Digit(n) => n.to_string(),
+                OptionKey::Letter(c) => c.to_string(),
+                OptionKey::Escape => "esc".into(),
+            };
+            json!({"number":option.number,"label_lines":option.label_lines,"key":key})
+        }).collect();
+        json!({
+            "identity":self.identity,"generation":self.generation,"kind":"approval",
+            "request_id":self.request.request_id,"agent":self.request.agent.name(),
+            "tool_name":self.request.tool_name,"command":self.request.tool_input["command"],
+            "description":if self.request.agent == Agent::Claude {
+                self.request.tool_input.get("description").and_then(Value::as_str)
+            } else { None },
+            "justification":self.request.justification,"environment":self.dialog.environment,
+            "title":self.dialog.title,"options":options,"selected":self.dialog.selected
+        })
+    }
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ApprovalFileStamp {
+    dev: u64,
+    ino: u64,
+    len: u64,
+    mtime: (i64, i64),
+    ctime: (i64, i64),
+}
+impl ApprovalFileStamp {
+    fn of(metadata: &std::fs::Metadata) -> Self {
+        use std::os::unix::fs::MetadataExt;
+        Self {
+            dev: metadata.dev(), ino: metadata.ino(), len: metadata.len(),
+            mtime: (metadata.mtime(), metadata.mtime_nsec()),
+            ctime: (metadata.ctime(), metadata.ctime_nsec()),
+        }
+    }
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ApprovalInputStamp {
+    spool: ApprovalFileStamp,
+    transcript: ApprovalFileStamp,
+}
+struct ApprovalMatchCache {
+    identity: Identity,
+    stamp: ApprovalInputStamp,
+    request: Option<PendingRequest>,
 }
 struct Watch {
     pane_id: String,
@@ -34,18 +113,42 @@ struct Watch {
     dropped_entries: usize,
     source_changing_count: u32,
     delayed: bool,
+    agent: Option<String>,
+    // What was last EMITTED as the unavailable state, so a change of any
+    // component re-emits: the code, the occupant agent, and the Codex daemon
+    // status. Without the agent component, a pane that swaps its occupant
+    // codex <-> claude while both fail with the same no-session code would
+    // keep the stale event (including the Codex-only codex_daemon field) and
+    // would not reset the generation for the new occupant.
+    unavailable_agent: Option<String>,
+    last_daemon_status: Option<&'static str>,
+    pending: Option<PendingApproval>,
+    approval_cache: Option<ApprovalMatchCache>,
+    source_pane: Option<Pane>,
 }
 pub struct Service {
     pub client: Client,
     pub resolver: Option<Resolver>,
+    pub codex_resolver: Option<CodexResolver>,
+    adapters: Vec<Box<dyn Adapter>>,
     epoch: String,
     sequence: u64,
     generation: u64,
     initialized: bool,
     include_content: bool,
+    include_approvals: bool,
     watch: Option<Watch>,
+    codex_daemon_cache: Option<(std::time::Instant, &'static str)>,
+    // The CONFIGURED (never canonicalized) Codex home. CodexResolver::new
+    // canonicalizes the sessions root, so deriving the home from
+    // `codex_resolver.root.parent()` would follow a symlinked sessions dir
+    // (e.g. ~/.codex/sessions -> another volume) and check the WRONG
+    // app-server-daemon/daemon.pid — reporting not_running while the real
+    // daemon runs under the configured home.
+    codex_home: Option<PathBuf>,
+    spool_dir: Option<PathBuf>,
 }
-fn page(entries: &[Entry], before: usize) -> Value {
+pub fn page(entries: &[Entry], before: usize) -> Value {
     let mut start = before.saturating_sub(100);
     // Leave room for envelope and identity; JSON escaping can expand source text.
     while start < before
@@ -58,6 +161,30 @@ fn page(entries: &[Entry], before: usize) -> Value {
 }
 impl Service {
     pub fn new(socket: PathBuf, root: PathBuf) -> Self {
+        let resolver = Resolver::new(&root).ok();
+        let codex_home = crate::codex_config::resolve_codex_dir();
+        let codex_root = codex_home.clone().map(|p| p.join("sessions"));
+        let codex_resolver = codex_root.and_then(|r| CodexResolver::new(&r).ok());
+        let mut service = Self::with_resolvers(socket, resolver, codex_resolver);
+        service.codex_home = codex_home;
+        service
+    }
+
+    pub fn codex_root_default() -> Option<PathBuf> {
+        crate::codex_config::resolve_codex_dir().map(|p| p.join("sessions"))
+    }
+
+    pub fn codex_root_default_from(
+        codex_home: Option<impl AsRef<Path>>,
+        home: Option<impl AsRef<Path>>,
+    ) -> Option<PathBuf> {
+        crate::codex_config::resolve_codex_dir_from(codex_home, home).map(|p| p.join("sessions"))
+    }
+    pub fn with_resolvers(
+        socket: PathBuf,
+        resolver: Option<Resolver>,
+        codex_resolver: Option<CodexResolver>,
+    ) -> Self {
         let epoch = format!(
             "{}-{}",
             SystemTime::now()
@@ -66,16 +193,77 @@ impl Service {
                 .as_nanos(),
             std::process::id()
         );
+        let adapters: Vec<Box<dyn Adapter>> = vec![
+            Box::new(ClaudeAdapter::new(resolver.clone())),
+            Box::new(CodexAdapter::new(codex_resolver.clone())),
+        ];
         Self {
             client: Client { socket },
-            resolver: Resolver::new(&root).ok(),
+            resolver,
+            codex_resolver,
+            adapters,
             epoch,
             sequence: 0,
             generation: 0,
             initialized: false,
             include_content: false,
+            include_approvals: false,
             watch: None,
+            codex_daemon_cache: None,
+            codex_home: None,
+            spool_dir: spool::resolve_spool_dir(),
         }
+    }
+    pub fn invalidate_codex_daemon_cache(&mut self) {
+        self.codex_daemon_cache = None;
+    }
+    fn cached_codex_daemon_status(&mut self) -> &'static str {
+        if let Some((cached_at, status)) = self.codex_daemon_cache {
+            // Monotonic clock: wall-clock jumps must not extend or shrink the TTL.
+            if cached_at.elapsed() < Duration::from_secs(3) {
+                return status;
+            }
+        }
+        // Resolve from the CONFIGURED home, not the canonicalized resolver
+        // root's parent: a symlinked sessions dir must not redirect the
+        // daemon pid lookup to the symlink target's parent.
+        let codex_dir = self
+            .codex_home
+            .clone()
+            .or_else(crate::codex_config::resolve_codex_dir);
+        let status = match codex_dir {
+            Some(dir) => {
+                let pid_file = dir.join("app-server-daemon").join("daemon.pid");
+                match crate::codex_config::check_process(&pid_file, &dir) {
+                    crate::codex_config::ProcessStatus::Running => "running",
+                    crate::codex_config::ProcessStatus::NotRunning => "not_running",
+                    crate::codex_config::ProcessStatus::Unknown => "unknown",
+                }
+            }
+            None => "not_running",
+        };
+        self.codex_daemon_cache = Some((std::time::Instant::now(), status));
+        status
+    }
+    #[doc(hidden)]
+    pub fn with_codex_home(mut self, home: PathBuf) -> Self {
+        self.codex_home = Some(home);
+        self.invalidate_codex_daemon_cache();
+        self
+    }
+    pub fn with_codex_root(mut self, root: PathBuf) -> Self {
+        self.codex_resolver = CodexResolver::new(&root).ok();
+        self.adapters = vec![
+            Box::new(ClaudeAdapter::new(self.resolver.clone())),
+            Box::new(CodexAdapter::new(self.codex_resolver.clone())),
+        ];
+        self
+    }
+    fn adapter_for(&self, agent: &str) -> Option<&dyn Adapter> {
+        self.adapters
+            .iter()
+            .find(|a| a.supports(agent))
+            .map(|a| a.as_ref())
     }
     fn write(out: &mut impl Write, frame: &Value) -> io::Result<()> {
         let bytes = serde_json::to_vec(frame)?;
@@ -100,28 +288,17 @@ impl Service {
         &self,
         watch: &mut Watch,
         refresh: &mut impl FnMut(&mut Follower, std::fs::File, &str) -> Result<bool>,
-    ) -> Result<(Identity, bool, String)> {
+    ) -> Result<(Identity, bool, String, Option<std::fs::File>)> {
         let snapshot = self.client.snapshot()?;
         let pane = snapshot
             .panes
             .iter()
             .find(|p| p.pane_id == watch.pane_id)
             .ok_or("pane_unavailable")?;
-        if pane.agent.as_deref() != Some("claude") {
-            return Err("unsupported_agent");
-        }
-        let reference = pane
-            .agent_session
-            .as_ref()
-            .ok_or("session_reference_unavailable")?;
-        if reference.agent != "claude" || reference.source != "herdr:claude" {
-            return Err("unsupported_session_source");
-        }
-        let resolver = self
-            .resolver
-            .as_ref()
-            .ok_or("transcript_root_unavailable")?;
-        let (session, path) = resolver.resolve(&reference.kind, &reference.value)?;
+        watch.agent = pane.agent.clone();
+        let agent = pane.agent.as_deref().ok_or("unsupported_agent")?;
+        let adapter = self.adapter_for(agent).ok_or("unsupported_agent")?;
+        let (session, file) = adapter.resolve_and_open(pane)?;
         if pane.terminal_id.is_empty()
             || pane.terminal_id.len() > 256
             || pane.agent_status.len() > 256
@@ -131,24 +308,32 @@ impl Service {
         let identity = Identity {
             pane_id: pane.pane_id.clone(),
             terminal_id: pane.terminal_id.clone(),
-            agent: "claude".into(),
+            agent: adapter.name().into(),
             native_session_id: session.clone(),
         };
         if watch.identity.as_ref() != Some(&identity) {
-            watch.follower = if self.include_content {
-                Follower::with_content()
-            } else {
-                Follower::default()
-            };
+            watch.follower = adapter.new_follower(self.include_content);
             // A transient read of a new occupant cannot authorize serving the
             // previous occupant's cached transcript.
             watch.identity = None;
+            watch.approval_cache = None;
         }
-        refresh(&mut watch.follower, resolver.open(&path)?, &session)?;
+        if pane.agent_status != "blocked" {
+            watch.approval_cache = None;
+        }
+        watch.source_pane = Some(pane.clone());
+        // Clone only the descriptor. Tail reading happens after timeline work,
+        // using the same adapter-verified source and no additional path lookup.
+        let approval_file = if self.include_approvals && pane.agent_status == "blocked" {
+            file.try_clone().ok()
+        } else {
+            None
+        };
+        refresh(&mut watch.follower, file, &session)?;
         let reset = watch.identity.as_ref() != Some(&identity)
             || watch.unavailable.is_some()
             || watch.follower.generation != watch.generation;
-        Ok((identity, reset, pane.agent_status.clone()))
+        Ok((identity, reset, pane.agent_status.clone(), approval_file))
     }
     pub fn poll(&mut self, out: &mut impl Write) -> io::Result<()> {
         self.poll_with_refresh(out, |follower, file, session| {
@@ -163,8 +348,11 @@ impl Service {
         let Some(mut watch) = self.watch.take() else {
             return Ok(());
         };
+        let mut pending = None;
+        let mut preserve_pending = false;
         match self.poll_inner(&mut watch, &mut refresh) {
             Err("source_changing") if watch.identity.is_some() && watch.unavailable.is_none() => {
+                preserve_pending = true;
                 watch.source_changing_count += 1;
                 if watch.source_changing_count >= 10 && !watch.delayed {
                     watch.delayed = true;
@@ -187,9 +375,32 @@ impl Service {
                 }
             }
             Err(code) => {
+                watch.source_pane = None;
+                watch.approval_cache = None;
                 watch.source_changing_count = 0;
                 watch.delayed = false;
-                if watch.unavailable != Some(code) {
+                let is_codex_no_session = watch.agent.as_deref() == Some("codex")
+                    && matches!(
+                        code,
+                        "session_reference_unavailable"
+                            | "ambiguous_session"
+                            | "invalid_session_reference"
+                    );
+                let current_daemon_status = if is_codex_no_session {
+                    Some(self.cached_codex_daemon_status())
+                } else {
+                    None
+                };
+
+                // Emit whenever the emitted-unavailable triple changed: the
+                // code, the occupant agent, or the daemon status. An agent
+                // change goes through the same generation/reset path below as
+                // any other occupant change.
+                let should_emit = watch.unavailable != Some(code)
+                    || watch.unavailable_agent != watch.agent
+                    || watch.last_daemon_status != current_daemon_status;
+
+                if should_emit {
                     self.generation += 1;
                     watch.identity = None;
                     watch.previous.clear();
@@ -199,14 +410,20 @@ impl Service {
                         Follower::default()
                     };
                     watch.unavailable = Some(code);
-                    self.event(
-                        out,
-                        "timeline.unavailable",
-                        json!({"pane_id":watch.pane_id,"generation":self.generation,"code":code}),
-                    )?;
+                    watch.unavailable_agent = watch.agent.clone();
+                    watch.last_daemon_status = current_daemon_status;
+                    let mut data = json!({
+                        "pane_id": watch.pane_id,
+                        "generation": self.generation,
+                        "code": code
+                    });
+                    if let Some(daemon_status) = current_daemon_status {
+                        data["codex_daemon"] = json!(daemon_status);
+                    }
+                    self.event(out, "timeline.unavailable", data)?;
                 }
             }
-            Ok((identity, reset, status)) => {
+            Ok((identity, reset, status, approval_file)) => {
                 let was_delayed = watch.delayed;
                 watch.source_changing_count = 0;
                 watch.delayed = false;
@@ -218,6 +435,7 @@ impl Service {
                     .map(|old| old.id.clone())
                     .collect();
                 if reset {
+                    watch.approval_cache = None;
                     self.generation += 1;
                     let mut body = page(&data.entries, data.entries.len());
                     body["identity"] = json!(identity);
@@ -277,14 +495,226 @@ impl Service {
                 watch.unknown_records = data.unknown_records;
                 watch.dropped_entries = data.dropped_entries;
                 watch.previous = data.entries.clone();
+                if self.include_approvals && status == "blocked" {
+                    pending = approval_file.and_then(|file| {
+                        self.read_pending(&identity, file, &mut watch.approval_cache)
+                    });
+                }
                 watch.identity = Some(identity);
                 watch.status = status;
                 watch.unavailable = None;
+                watch.unavailable_agent = None;
+                watch.last_daemon_status = None;
                 watch.generation = watch.follower.generation;
             }
         }
+        if self.include_approvals && !preserve_pending {
+            self.update_pending(out, &mut watch, pending)?;
+        }
         self.watch = Some(watch);
         Ok(())
+    }
+    fn approval_input_stamp(
+        &self,
+        identity: &Identity,
+        file: &std::fs::File,
+    ) -> Option<ApprovalInputStamp> {
+        let dir = self.spool_dir.as_deref()?;
+        let directory = std::fs::symlink_metadata(dir).ok()?;
+        if !directory.is_dir() || directory.file_type().is_symlink() {
+            return None;
+        }
+        let path = dir.join(format!("{}-{}.jsonl", identity.agent, identity.native_session_id));
+        let spool = std::fs::symlink_metadata(path).ok()?;
+        let transcript = file.metadata().ok()?;
+        if !spool.is_file() || !transcript.is_file() {
+            return None;
+        }
+        Some(ApprovalInputStamp {
+            spool: ApprovalFileStamp::of(&spool),
+            transcript: ApprovalFileStamp::of(&transcript),
+        })
+    }
+    // Match only when the source files changed; the visible dialog remains a
+    // live read in read_pending. The tail I/O boundary mirrors poll's refresh
+    // boundary so tests can verify that cache hits do no tail reading.
+    fn matched_request(
+        &self,
+        identity: &Identity,
+        file: std::fs::File,
+        cache: &mut Option<ApprovalMatchCache>,
+        mut read_tail: impl FnMut(std::fs::File) -> Result<Vec<Value>>,
+    ) -> Option<PendingRequest> {
+        let stamp = match self.approval_input_stamp(identity, &file) {
+            Some(stamp) => stamp,
+            None => {
+                *cache = None;
+                return None;
+            }
+        };
+        if let Some(cached) = cache.as_ref().filter(|c| c.identity == *identity && c.stamp == stamp) {
+            return cached.request.clone();
+        }
+        *cache = None;
+        let agent = Agent::parse(&identity.agent)?;
+        let mut records = spool::read_session(
+            self.spool_dir.as_deref()?, agent, &identity.native_session_id,
+        );
+        records.retain(|record| {
+            record["session_id"] == identity.native_session_id
+                && record["payload"]["session_id"] == identity.native_session_id
+        });
+        if records.is_empty() {
+            return None;
+        }
+        let history = read_tail(file.try_clone().ok()?).ok()?;
+        let requests = match agent {
+            Agent::Claude => approval_match::match_claude_records(&records, &history),
+            Agent::Codex => approval_match::match_codex_records(&records, &history),
+        };
+        let request = requests.into_iter().rfind(|request| {
+            let resolution = match agent {
+                Agent::Claude => approval_match::claude_resolution(&request.request_id, &history),
+                Agent::Codex => match request.turn_id.as_deref() {
+                    Some(turn) => approval_match::codex_resolution(&request.request_id, turn, &history),
+                    None => return false,
+                },
+            };
+            resolution == Resolution::Pending
+        });
+        // Never retain a result assembled while either input was changing.
+        if self.approval_input_stamp(identity, &file).as_ref() != Some(&stamp) {
+            return None;
+        }
+        *cache = Some(ApprovalMatchCache {
+            identity: identity.clone(), stamp, request: request.clone(),
+        });
+        request
+    }
+    fn read_pending(
+        &self,
+        identity: &Identity,
+        file: std::fs::File,
+        cache: &mut Option<ApprovalMatchCache>,
+    ) -> Option<PendingApproval> {
+        let request = self.matched_request(identity, file, cache, crate::follower::read_tail)?;
+        let agent = request.agent;
+        let command = request.tool_input["command"].as_str()?;
+        let screen = self.client.read_visible(&identity.pane_id).ok()?;
+        let dialog = approval_screen::parse(agent, &screen, command)?;
+        Some(PendingApproval {
+            identity: identity.clone(), generation: self.generation, request, dialog,
+        })
+    }
+    fn update_pending(
+        &mut self,
+        out: &mut impl Write,
+        watch: &mut Watch,
+        pending: Option<PendingApproval>,
+    ) -> io::Result<()> {
+        // Include the actual event envelope and a possible preceding resolved
+        // event's sequence increment when checking the bounded wire frame.
+        let pending = pending.filter(|pending| {
+            let frame = json!({"event":"interaction.pending","epoch":self.epoch,
+                "seq":self.sequence.saturating_add(2),"data":pending.data()});
+            serde_json::to_vec(&frame).is_ok_and(|bytes| bytes.len() < MAX_RECORD)
+        });
+        let same_request = match (&watch.pending, &pending) {
+            (Some(old), Some(new)) => old.identity == new.identity
+                && old.generation == new.generation
+                && old.request.request_id == new.request.request_id,
+            _ => false,
+        };
+        if !same_request {
+            if let Some(old) = watch.pending.take() {
+                self.event(out, "interaction.resolved", json!({"identity":old.identity,
+                    "generation":old.generation,"request_id":old.request.request_id}))?;
+            }
+        }
+        if let Some(new) = pending {
+            let changed = watch.pending.as_ref().is_none_or(|old| {
+                old.dialog.canonical() != new.dialog.canonical()
+                    || old.dialog.selected != new.dialog.selected
+            });
+            if changed {
+                self.event(out, "interaction.pending", new.data())?;
+                watch.pending = Some(new);
+            }
+        }
+        Ok(())
+    }
+    fn respond_interaction(&self, params: &Value) -> Result<Value> {
+        if !self.include_approvals {
+            return Err("unsupported_capability");
+        }
+        let watch = self.watch.as_ref().ok_or("not_watching")?;
+        let identity = watch.identity.as_ref().filter(|_| watch.unavailable.is_none())
+            .ok_or("timeline_unavailable")?;
+        let pending = watch.pending.as_ref().ok_or("stale")?;
+        if params["request_id"].as_str() != Some(&pending.request.request_id)
+            || pending.identity != *identity || pending.generation != self.generation
+        {
+            return Err("stale");
+        }
+        let command = pending.request.tool_input["command"].as_str().ok_or("stale")?;
+        let screen = self.client.read_visible(&identity.pane_id).map_err(|_| "stale")?;
+        let current = approval_screen::parse(pending.request.agent, &screen, command).ok_or("stale")?;
+        if !pending.dialog.same_dialog(&current) {
+            return Err("stale");
+        }
+        let key = pending.response_key(params)?;
+
+        // Reopen through the adapter using the last verified pane reference.
+        // A response always bypasses the polling cache and rechecks both files.
+        let source = watch.source_pane.as_ref().ok_or("stale")?;
+        let adapter = self.adapter_for(&identity.agent).ok_or("stale")?;
+        let (session, file) = adapter.resolve_and_open(source).map_err(|_| "stale")?;
+        if session != identity.native_session_id {
+            return Err("stale");
+        }
+        let newest = self.matched_request(identity, file, &mut None, crate::follower::read_tail)
+            .ok_or("stale")?;
+        if newest.request_id != pending.request.request_id
+            || newest.tool_name != pending.request.tool_name
+            || newest.tool_input != pending.request.tool_input
+            || newest.turn_id != pending.request.turn_id
+        {
+            return Err("stale");
+        }
+
+        // Verify the live occupant as well as blocked status immediately before
+        // sending. The adapter validates the fresh session reference and cwd.
+        let snapshot = self.client.snapshot().map_err(|_| "stale")?;
+        let pane = snapshot.panes.iter().find(|p| p.pane_id == identity.pane_id)
+            .ok_or("stale")?;
+        if pane.agent_status != "blocked" || pane.terminal_id != identity.terminal_id
+            || pane.agent.as_deref() != Some(&identity.agent)
+        {
+            return Err("stale");
+        }
+        let (session, _) = adapter.resolve_and_open(pane).map_err(|_| "stale")?;
+        if session != identity.native_session_id {
+            return Err("stale");
+        }
+        self.client.send_keys(&identity.pane_id, &[key.as_str()])?;
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let mut confirmed = false;
+        for _ in 0..20 {
+            let Ok(screen) = self.client.read_visible(&identity.pane_id) else { break };
+            let same = approval_screen::parse(pending.request.agent, &screen, command)
+                .is_some_and(|dialog| pending.dialog.same_dialog(&dialog));
+            if !same {
+                confirmed = true;
+                break;
+            }
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(100).min(remaining));
+        }
+        Ok(json!({"request_id":pending.request.request_id,"sent":key,"confirmed":confirmed}))
     }
     pub fn request(&mut self, bytes: &[u8], out: &mut impl Write) -> io::Result<()> {
         self.request_with_refresh(bytes, out, |follower, file, session| {
@@ -310,6 +740,7 @@ impl Service {
         if method == "initialize" {
             self.initialized = false;
             self.include_content = params["record_content"] == true;
+            self.include_approvals = params["approvals"] == true;
             self.watch = None;
             if params["protocol"] != 1 {
                 return Self::error(out, id, "protocol_mismatch");
@@ -318,15 +749,24 @@ impl Service {
                 return Self::error(out, id, code);
             }
             self.initialized = true;
+            let claude_available = self.adapter_for("claude").is_some_and(|a| a.is_available());
+            let codex_available = self.adapter_for("codex").is_some_and(|a| a.is_available());
             return Self::write(
                 out,
-                &json!({"id":id,"result":{"protocol":1,"bridge_version":env!("CARGO_PKG_VERSION"),"epoch":self.epoch,"capabilities":{"claude_timeline":self.resolver.is_some(),"record_content":true,"codex_timeline":false,"git":false,"prompts":false,"approvals":false,"questions":false,"routed_hosts":false}}}),
+                &json!({"id":id,"result":{"protocol":1,"bridge_version":env!("CARGO_PKG_VERSION"),"epoch":self.epoch,"capabilities":{"claude_timeline":claude_available,"record_content":true,"codex_timeline":codex_available,"codex_daemon_config":true,"codex_daemon_stop":true,"git":false,"prompts":false,"approvals":true,"questions":false,"routed_hosts":false}}}),
             );
         }
         if !self.initialized {
             return Self::error(out, id, "not_initialized");
         }
         match method {
+            "interaction.respond" => match self.respond_interaction(params) {
+                Ok(result) => {
+                    Self::write(out, &json!({"id":id,"result":result}))?;
+                    self.poll(out)
+                }
+                Err(code) => Self::error(out, id, code),
+            },
             "watch" => {
                 let Some(pane) = params["pane_id"]
                     .as_str()
@@ -350,6 +790,12 @@ impl Service {
                     dropped_entries: 0,
                     source_changing_count: 0,
                     delayed: false,
+                    agent: None,
+                    unavailable_agent: None,
+                    last_daemon_status: None,
+                    pending: None,
+                    approval_cache: None,
+                    source_pane: None,
                 });
                 Self::write(out, &json!({"id":id,"result":{"watching":pane}}))?;
                 self.poll(out)
@@ -485,9 +931,54 @@ mod tests {
     const SESSION: &str = "16246b9d-4c3d-54fc-b6d3-2a765d418491";
     const OTHER: &str = "11111111-1111-4111-8111-111111111111";
 
+    #[test]
+    fn transcript_override_keeps_daemon_home_and_home_override_invalidates_cache() {
+        let root = std::env::temp_dir().join(format!(
+            "service-home-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+        ));
+        let home = root.join("home");
+        let transcripts = root.join("other-volume/transcripts");
+        fs::create_dir_all(home.join("app-server-daemon")).unwrap();
+        fs::create_dir_all(&transcripts).unwrap();
+        // A malformed home pid file gives Unknown; the unrelated transcript
+        // parent has no pid file and would incorrectly give NotRunning.
+        fs::write(home.join("app-server-daemon/daemon.pid"), "invalid").unwrap();
+        let mut service = Service::with_resolvers(root.join("unused.sock"), None, None)
+            .with_codex_home(root.join("empty-home"));
+        assert_eq!(service.cached_codex_daemon_status(), "not_running");
+        service = service.with_codex_home(home).with_codex_root(transcripts);
+        let status = service.cached_codex_daemon_status();
+        fs::remove_dir_all(root).unwrap();
+        assert_eq!(status, "unknown");
+    }
+
     // Return snapshots synchronously for each explicit poll. The injected
     // refresh boundary makes source_changing independent of timing/file races.
+    #[derive(Default)]
+    struct HerdrState {
+        agent: Option<String>,
+        status: Option<String>,
+        screen: String,
+        reads: usize,
+        read_error: bool,
+        read_error_after_send: bool,
+        keys: Vec<Value>,
+        screens_after_send: std::collections::VecDeque<String>,
+        hide_pane: bool,
+        terminal_id: Option<String>,
+        session_override: Option<String>,
+    }
+    type SharedHerdr = std::sync::Arc<std::sync::Mutex<HerdrState>>;
     fn fixture() -> (Service, PathBuf, std::sync::Arc<std::sync::Mutex<String>>) {
+        let (service, root, session, _) = fixture_with_herdr();
+        (service, root, session)
+    }
+    fn fixture_with_herdr() -> (Service, PathBuf, std::sync::Arc<std::sync::Mutex<String>>, SharedHerdr) {
         static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let root = std::env::temp_dir().join(format!(
             "service-test-{}-{}-{}",
@@ -506,7 +997,9 @@ mod tests {
         let socket = root.join("h.sock");
         let listener = UnixListener::bind(&socket).unwrap();
         let session = std::sync::Arc::new(std::sync::Mutex::new(SESSION.to_owned()));
-        let state = session.clone();
+        let session_for_server = session.clone();
+        let herdr = SharedHerdr::default();
+        let server_state = herdr.clone();
         // Cleanup wakes this blocking listener with an empty request.
         thread::spawn(move || {
             for stream in listener.incoming() {
@@ -520,8 +1013,43 @@ mod tests {
                     break;
                 }
                 let request: Value = serde_json::from_str(&line).unwrap();
-                let snapshot = json!({"protocol":22,"version":"0.9.3","panes":[{"pane_id":"w1:p1","terminal_id":"terminal-one","workspace_id":"w1","tab_id":"w1:t1","agent":"claude","agent_status":"idle","revision":1,"agent_session":{"agent":"claude","source":"herdr:claude","kind":"id","value":state.lock().unwrap().clone()}}]});
-                writeln!(stream, "{}", json!({"id":request["id"],"result":{"type":"session_snapshot","snapshot":snapshot}})).unwrap();
+                let mut state = server_state.lock().unwrap();
+                let result = match request["method"].as_str().unwrap() {
+                    "pane.read" => {
+                        assert_eq!(request["params"], json!({"pane_id":"w1:p1","source":"visible"}));
+                        state.reads += 1;
+                        if !state.keys.is_empty() {
+                            if let Some(screen) = state.screens_after_send.pop_front() {
+                                state.screen = screen;
+                            }
+                        }
+                        json!({"read":{"text":state.screen}})
+                    }
+                    "pane.send_keys" => {
+                        let keys = request["params"]["keys"].as_array().unwrap();
+                        assert_eq!(keys.len(), 1);
+                        assert!(keys.iter().all(|key| !["enter", "\n", "\r"].contains(&key.as_str().unwrap())));
+                        state.keys.push(request["params"].clone());
+                        json!({})
+                    }
+                    "session.snapshot" => {
+                        let agent = state.agent.as_deref().unwrap_or("claude");
+                        let mut snapshot = json!({"protocol":22,"version":"0.9.3","panes":[{"pane_id":"w1:p1","terminal_id":state.terminal_id.as_deref().unwrap_or("terminal-one"),"workspace_id":"w1","tab_id":"w1:t1","agent":agent,"agent_status":state.status.as_deref().unwrap_or("idle"),"foreground_cwd":"/fixture/work","revision":1,"agent_session":{"agent":agent,"source":format!("herdr:{agent}"),"kind":"id","value":state.session_override.clone().unwrap_or_else(|| session_for_server.lock().unwrap().clone())}}]});
+                        if state.hide_pane {
+                            snapshot["panes"] = json!([]);
+                        }
+                        json!({"type":"session_snapshot","snapshot":snapshot})
+                    }
+                    method => panic!("unexpected method: {method}"),
+                };
+                let frame = if request["method"] == "pane.read"
+                    && (state.read_error || state.read_error_after_send && !state.keys.is_empty())
+                {
+                    json!({"id":request["id"],"error":{"code":"pane_not_found"}})
+                } else {
+                    json!({"id":request["id"],"result":result})
+                };
+                writeln!(stream, "{frame}").unwrap();
             }
         });
         let mut service = Service::new(socket, root.join("projects"));
@@ -532,8 +1060,10 @@ mod tests {
                 &mut Vec::new(),
             )
             .unwrap();
-        (service, root, session)
+        (service, root, session, herdr)
     }
+    include!("service_approval_tests.rs");
+    include!("service_response_tests.rs");
     fn cleanup(service: &Service, root: PathBuf) {
         // Wake and terminate the fixture thread without a valid request.
         drop(std::os::unix::net::UnixStream::connect(&service.client.socket).unwrap());

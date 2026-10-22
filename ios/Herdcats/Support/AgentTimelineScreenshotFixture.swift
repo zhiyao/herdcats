@@ -38,7 +38,7 @@
             }
             let data = try JSONSerialization.data(withJSONObject: [
                 "generation": generation,
-                "identity": ["pane_id": paneId, "terminal_id": "fixture-terminal", "agent": "claude",
+                "identity": ["pane_id": paneId, "terminal_id": "fixture-terminal", "agent": ScreenshotFixtures.paneAgent,
                              "native_session_id": "fixture-session"],
                 "entries": rows,
                 "has_more": false
@@ -47,19 +47,58 @@
             decoder.keyDecodingStrategy = .convertFromSnakeCase
             return try decoder.decode(AgentBridgePayload.self, from: data)
         }
+        static var showsApproval: Bool {
+            ["timeline-approval-codex", "timeline-approval-claude"].contains(ScreenshotFixtures.screen)
+        }
+        static func approvalFrame(paneId: String, agent: String) throws -> AgentBridgeFrame {
+            let codex = agent == "codex"
+            let options: [[String: Any]] = codex ? [
+                ["number": 1, "label_lines": ["Yes, proceed"], "key": "y"],
+                ["number": 2, "label_lines": ["Yes, and don't ask again for commands that start with", "`touch herdcats-live-4.txt`"], "key": "p"],
+                ["number": 3, "label_lines": ["No, and tell Codex what to do differently"], "key": "esc"],
+            ] : [
+                ["number": 1, "label_lines": ["Yes"], "key": "1"],
+                ["number": 2, "label_lines": ["Yes, and don't ask again for", "this command in this project"], "key": "2"],
+                ["number": 3, "label_lines": ["No"], "key": "3"],
+            ]
+            var data: [String: Any] = [
+                "identity": ["pane_id": paneId, "terminal_id": "fixture-terminal", "agent": agent, "native_session_id": "fixture-session"],
+                "generation": 1, "kind": "approval", "request_id": "fixture-approval-\(agent)", "agent": agent,
+                "tool_name": "Bash", "command": "touch herdcats-live-4.txt",
+                "title": codex ? "Would you like to run the following command?" : "Do you want to proceed?",
+                "environment": "local", "options": options, "selected": 0,
+            ]
+            data[codex ? "justification" : "description"] = codex
+                ? "Allow creating herdcats-live-4.txt in this read-only workspace?"
+                : "Create herdcats-live-4.txt in the workspace."
+            return try AgentBridgeFrame.decode(JSONSerialization.data(withJSONObject: [
+                "event": "interaction.pending", "epoch": "fixture", "seq": 2, "data": data,
+            ]))
+        }
         static func frame(paneId: String, helperInstalled: Bool = false) throws -> AgentBridgeFrame {
             if ScreenshotFixtures.screen == "timeline-disconnected" { throw AgentBridgeError.closed }
             let unavailableCode: String? = switch ScreenshotFixtures.screen {
             case "timeline-unavailable": "unsupported_agent"
+            case "timeline-routed-host": "routed_host_unsupported"
+            case "timeline-codex-no-session": "session_reference_unavailable"
+            case "timeline-codex-helper-old" where !helperInstalled: "helper_update_required"
+            case "timeline-codex-needs-upgrade" where !helperInstalled: "helper_update_required"
+            case "timeline-pane-missing" where !helperInstalled: "helper_missing"
             case "timeline-pending": "transcript_unavailable"
             case "timeline-helper-missing" where !helperInstalled: "helper_missing"
             default: nil
             }
             if let unavailableCode {
+                var unavailableData: [String: Any] = [
+                    "pane_id": paneId, "generation": 1, "code": unavailableCode,
+                ]
+                if ScreenshotFixtures.screen == "timeline-codex-no-session" {
+                    unavailableData["codex_daemon"] = "running"
+                }
                 return try AgentBridgeFrame.decode(
                     JSONSerialization.data(withJSONObject: [
                         "event": "timeline.unavailable", "epoch": "fixture", "seq": 1,
-                        "data": ["pane_id": paneId, "generation": 1, "code": unavailableCode],
+                        "data": unavailableData,
                     ]))
             }
             var entries: [[String: Any]] =
@@ -87,10 +126,18 @@
                     [
                         "id": "message:summary", "kind": "message", "role": "assistant",
                         "text":
-                            "The changes are ready for review.\n\nUse Terminal to send a message or respond to the current request.",
+                            "The changes are ready for review.",
                         "truncated": false,
                     ],
                 ]
+            if ScreenshotFixtures.screen == "turn-interrupted" || ScreenshotFixtures.screen == "timeline-turn-interrupted" {
+                entries = [
+                    ["id": "message:user", "kind": "message", "role": "user", "text": "Run the integration test suite and prepare the deployment checklist.", "truncated": false],
+                    ["id": "turn_aborted:1", "kind": "message", "role": "assistant", "status": "failed", "text": "Turn interrupted", "truncated": false],
+                    ["id": "message:user-followup", "kind": "message", "role": "user", "text": "Focus on the connection tests first.", "truncated": false],
+                    ["id": "message:assistant-followup", "kind": "message", "role": "assistant", "text": "Running connection tests now. 24 passed.", "truncated": false],
+                ]
+            }
             if ScreenshotFixtures.screen == "timeline-large-write" {
                 entries = [
                     ["id": "message:user", "kind": "message", "role": "user", "text": "Create the paywall view.", "truncated": false],
@@ -151,9 +198,9 @@
                     "event": "timeline.snapshot", "epoch": "fixture", "seq": 1,
                     "data": [
                         "identity": [
-                            "pane_id": paneId, "terminal_id": "fixture-terminal", "agent": "claude",
+                            "pane_id": paneId, "terminal_id": "fixture-terminal", "agent": ScreenshotFixtures.paneAgent,
                             "native_session_id": "fixture-session",
-                        ], "generation": 1, "entries": entries, "has_more": ScreenshotFixtures.screen.hasPrefix("timeline-history"), "before": "message:user", "agent_status": "idle",
+                        ], "generation": 1, "entries": entries, "has_more": ScreenshotFixtures.screen.hasPrefix("timeline-history"), "before": "message:user", "agent_status": showsApproval ? "blocked" : "idle",
                         "unknown_records": ProcessInfo.processInfo.arguments.contains("-hc.timeline-long") ? 2 : 0, "dropped_entries": 0,
                     ],
                 ]))

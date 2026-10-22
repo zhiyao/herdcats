@@ -10,10 +10,14 @@ struct AgentBridgeParams: Encodable, Sendable {
     var recordContent: Bool? = nil
     var contentRef: String? = nil
     var offset: Int? = nil
+    var approvals: Bool? = nil
+    var requestId: String? = nil
+    var option: UInt32? = nil
+    var labelLines: [String]? = nil
 }
-enum AgentBridgeMethod: String, Sendable { case initialize, watch, history, content }
+enum AgentBridgeMethod: String, Sendable { case initialize, watch, history, content; case respond = "interaction.respond" }
 
-/// One non-PTY channel, with bounded request correlation and no agent mutations.
+/// One non-PTY channel, with bounded requests and guarded approval responses.
 /// Cancellation closes this channel explicitly: canceling an async iterator
 /// alone cannot be relied upon to wake an idle SSH read.
 actor AgentBridgeClient {
@@ -39,6 +43,7 @@ actor AgentBridgeClient {
     private var openTimeout: Task<Void, Never>?
     private var closedError: AgentBridgeError?
     private var waiters: [CheckedContinuation<Void, Error>] = []
+    private(set) var capabilities: AgentBridgeCapabilities?
 
     init(id: UUID = UUID(), onEvent: @escaping @Sendable (AgentBridgeFrame) async throws -> Void) {
         self.id = id
@@ -53,7 +58,48 @@ actor AgentBridgeClient {
         self.closeTransport = close
         self.onEvent = onEvent
     }
-    func open(client: SSHClient, command: String, paneId: String) async throws {
+    func performHandshakeAndWatch(
+        paneId: String,
+        agent: String? = nil,
+        onHandshake: (@Sendable (AgentBridgeCapabilities?, String?) async -> Void)? = nil
+    ) async throws {
+        let handshake = try await request(.initialize, params: AgentBridgeParams(protocol: 1, recordContent: true, approvals: true))
+        guard handshake.protocol == 1, handshake.epoch?.isEmpty == false else {
+            throw AgentBridgeError.protocolMismatch
+        }
+        self.capabilities = handshake.capabilities
+        let version = handshake.bridgeVersion ?? handshake.version
+        await onHandshake?(handshake.capabilities, version)
+        if agent == "codex" {
+            guard handshake.capabilities?.codexTimeline == true else {
+                throw AgentBridgeError.unavailable(Self.unavailableCodeForCodex(handshake: handshake))
+            }
+        } else {
+            guard handshake.capabilities?.claudeTimeline == true else {
+                throw AgentBridgeError.unavailable("transcript_root_unavailable")
+            }
+        }
+        guard handshake.capabilities?.recordContent == true else {
+            throw AgentBridgeError.unavailable("helper_update_required")
+        }
+        _ = try await request(.watch, params: AgentBridgeParams(paneId: paneId))
+        try Task.checkCancellation()
+    }
+
+    func respond(requestId: String, option: UInt32, labelLines: [String]) async throws -> AgentApprovalResponse {
+        let reply = try await request(.respond, params: AgentBridgeParams(requestId: requestId, option: option, labelLines: labelLines))
+        guard reply.requestId == requestId, let sent = reply.sent, AgentApprovalOption.validKey(sent),
+            let confirmed = reply.confirmed else { throw AgentBridgeError.invalidFrame }
+        return AgentApprovalResponse(requestId: requestId, sent: sent, confirmed: confirmed)
+    }
+
+    func open(
+        client: SSHClient,
+        command: String,
+        paneId: String,
+        agent: String? = nil,
+        onHandshake: (@Sendable (AgentBridgeCapabilities?, String?) async -> Void)? = nil
+    ) async throws {
         try await withTaskCancellationHandler {
             try Task.checkCancellation()
             guard closedError == nil else { throw AgentBridgeError.closed }
@@ -79,18 +125,7 @@ actor AgentBridgeClient {
                     } catch { await self.stop((error as? AgentBridgeError) ?? .closed) }
                 }
             }
-            let handshake = try await request(.initialize, params: AgentBridgeParams(protocol: 1, recordContent: true))
-            guard handshake.protocol == 1, handshake.epoch?.isEmpty == false else {
-                throw AgentBridgeError.protocolMismatch
-            }
-            guard handshake.capabilities?.claudeTimeline == true else {
-                throw AgentBridgeError.unavailable("transcript_root_unavailable")
-            }
-            guard handshake.capabilities?.recordContent == true else {
-                throw AgentBridgeError.unavailable("helper_update_required")
-            }
-            _ = try await request(.watch, params: AgentBridgeParams(paneId: paneId))
-            try Task.checkCancellation()
+            try await performHandshakeAndWatch(paneId: paneId, agent: agent, onHandshake: onHandshake)
         } onCancel: {
             Task { await self.close() }
         }
@@ -268,7 +303,7 @@ extension HerdrConnection {
     /// Default direct-host session only. Routed machines are rejected before
     /// dialing; an optional helper failure never closes the shared SSH client.
     func openAgentTimeline(
-        paneId: String, onEvent: @escaping @Sendable (AgentBridgeFrame) async throws -> Void
+        paneId: String, agent: String? = nil, onEvent: @escaping @Sendable (AgentBridgeFrame) async throws -> Void
     ) async throws -> AgentBridgeClient {
         guard route == nil else { throw AgentBridgeError.routedHostUnsupported }
         guard let client else { throw AgentBridgeError.closed }
@@ -284,7 +319,15 @@ extension HerdrConnection {
             })
         agentBridges[bridge.id] = bridge
         do {
-            try await bridge.open(client: client, command: Self.agentBridgeCommand, paneId: paneId)
+            try await bridge.open(
+                client: client,
+                command: Self.agentBridgeCommand,
+                paneId: paneId,
+                agent: agent,
+                onHandshake: { [weak self] capabilities, version in
+                    await self?.recordAgentBridgeHandshake(capabilities: capabilities, version: version, generation: owned)
+                }
+            )
             try requireGeneration(owned)
             try Task.checkCancellation()
             guard agentBridges[bridge.id] != nil else { throw AgentBridgeError.closed }
@@ -302,10 +345,17 @@ extension HerdrConnection {
     func closeAllAgentBridges() {
         let bridges = Array(agentBridges.values)
         agentBridges.removeAll()
+        clearAgentBridgeCapabilities()
         Task { for bridge in bridges { await bridge.close() } }
     }
-    static var agentBridgeCommand: String {
-        let script = """
+    static func helperScript(
+        exec: String,
+        missingPayload: String,
+        readStdinOnMissing: Bool,
+        missingExitCode: Int
+    ) -> String {
+        let drain = readStdinOnMissing ? "  IFS= read -r HB_REQUEST || exit \(missingExitCode)\n" : ""
+        return """
             B=
             if [ -x "$HOME/.local/bin/herdcats-bridge" ]; then
               B="$HOME/.local/bin/herdcats-bridge"
@@ -318,14 +368,43 @@ extension HerdrConnection {
               done
             fi
             if [ -z "$B" ]; then
-              IFS= read -r HB_REQUEST || exit 127
-              printf '%s\\n' '{"error":{"code":"helper_missing"}}'
-              exit 127
+            \(drain)  printf '%s\\n' '\(missingPayload)'
+              exit \(missingExitCode)
             fi
+            \(exec)
+            """
+    }
+
+    static func helperCommand(
+        exec: String,
+        missingPayload: String,
+        readStdinOnMissing: Bool,
+        missingExitCode: Int
+    ) -> String {
+        let script = helperScript(
+            exec: exec,
+            missingPayload: missingPayload,
+            readStdinOnMissing: readStdinOnMissing,
+            missingExitCode: missingExitCode
+        )
+        return "exec /bin/sh -c \(shellSafeArgument(script))"
+    }
+
+    static var agentBridgeScript: String {
+        let exec = """
             S=${HERDR_SOCKET_PATH:-${XDG_CONFIG_HOME:-$HOME/.config}/herdr/herdr.sock}
             exec "$B" serve --stdio --socket "$S"
             """
-        return "exec /bin/sh -c \(shellSafeArgument(script))"
+        return helperScript(
+            exec: exec,
+            missingPayload: "{\"error\":{\"code\":\"helper_missing\"}}",
+            readStdinOnMissing: true,
+            missingExitCode: 127
+        )
+    }
+
+    static var agentBridgeCommand: String {
+        "exec /bin/sh -c \(shellSafeArgument(agentBridgeScript))"
     }
 }
 
@@ -335,10 +414,33 @@ extension HerdrConnection {
     }
 }
 
+extension AgentBridgeClient {
+    static func unavailableCodeForCodex(handshake: AgentBridgePayload) -> String {
+        let isOldHelper = !HostHelperProbe.isAtLeastMinimum(handshake.bridgeVersion ?? handshake.version)
+        return isOldHelper ? "helper_update_required" : "transcript_root_unavailable"
+    }
+
+    static func isVersionAtLeast(_ version: String?, major: Int, minor: Int) -> Bool {
+        guard let version else { return false }
+        let numbers = version.split(separator: ".").compactMap { Int($0) }
+        guard numbers.count >= 2 else { return false }
+        if numbers[0] > major { return true }
+        if numbers[0] == major && numbers[1] >= minor { return true }
+        return false
+    }
+}
+
 /// Immutable release selected by this app build, not a host-supplied URL.
 enum HostHelperSetupPlan {
-    static let version = "0.1.4"
-    static let installerSHA256 = "979c4a0fa8a6620c1748e76ceaa4be0b90b8e7dba13538202ed8c540656092a3"
+    static let version = "0.2.2"
+    /// The oldest bridge this app works with; bump only when the app needs a newer bridge feature.
+    static let minimumVersion = "0.2.0"
+    static let installerSHA256 = "be2ae7715ffe3ef793565e4a171fe36c47fb562bb62f595bdcca3a8f49119289"
+    /// Supported agents bundled in this pinned release. Must be updated when bumping version / installerSHA256.
+    static let agents: [String] = ["claude", "codex"]
+    static func manualInstallCommand(reason: HostHelperSetupReason, pinnedVersion: String = version) -> String {
+        "curl -fsSL https://github.com/zhiyao/herdcats/releases/download/herdcats-bridge-v\(pinnedVersion)/install.sh | sh -s -- --version \(pinnedVersion)" + (reason == .updateRequired ? " --replace" : "")
+    }
     static func installationScript(replace: Bool) -> String {
         return #"""
         set -eu
@@ -367,13 +469,79 @@ enum HostHelperSetupPlan {
 }
 
 extension HostHelperSetupPlan {
-    static func decision(probe: HostHelperProbe, replace: Bool, checkOnly: Bool) -> HostHelperSetupDecision {
+    static func decision(
+        probe: HostHelperProbe,
+        replace: Bool,
+        checkOnly: Bool,
+        agent: String? = nil,
+        reason: HostHelperSetupReason = .missing
+    ) -> HostHelperSetupDecision {
+        if let agent, !agents.contains(agent) {
+            return .unsupportedByPinnedInstaller(agent)
+        }
         switch probe {
-        case .missing: return checkOnly ? .missing : .install(replace: false)
-        case .present(_, let managed, let compatible):
+        case .missing:
+            return checkOnly ? .missing : .install(replace: false)
+        case .present(let version, let managed, let compatible):
+            if checkOnly {
+                return compatible ? .ready : .replacementRequired(probe)
+            }
+            if reason == .updateRequired && HostHelperProbe.isOlderThanPinned(version) {
+                if managed {
+                    return .install(replace: true)
+                }
+                return replace ? .install(replace: false) : .replacementRequired(probe)
+            }
             if compatible { return .ready }
-            if checkOnly || !replace { return .replacementRequired(probe) }
-            return .install(replace: managed)
+            if replace {
+                return .install(replace: managed)
+            }
+            return .replacementRequired(probe)
+        }
+    }
+
+    static func installLabel(
+        stage: HostHelperSetupStage,
+        reason: HostHelperSetupReason = .missing,
+        pinnedVersion: String = HostHelperSetupPlan.version
+    ) -> String {
+        switch stage {
+        case .idle:
+            switch reason {
+            case .updateRequired:
+                return "Upgrade to \(pinnedVersion)"
+            case .missing:
+                return "Install Herdcats Bridge"
+            }
+        case .checking:
+            return "Checking host…"
+        case .installing:
+            return reason == .updateRequired ? "Upgrading Herdcats Bridge…" : "Installing Herdcats Bridge…"
+        case .verifying:
+            return "Verifying installation…"
+        case .uncertain:
+            return "Check installation"
+        case .installed:
+            return "Open Timeline"
+        case .replacementRequired(let probe):
+            if case .present(_, true, _) = probe {
+                return "Replace Herdcats Bridge with \(pinnedVersion)"
+            } else {
+                return "Install managed Herdcats Bridge"
+            }
+        }
+    }
+
+    static func replacementFeedback(probe: HostHelperProbe) -> String? {
+        guard case .present(let version, let managed, _) = probe else { return nil }
+        if managed {
+            if let version, !version.isEmpty {
+                return "Found Herdcats Bridge \(version) on this host. Tap Replace to upgrade it at the location shown."
+            } else {
+                return "Existing Herdcats Bridge will be replaced at the location shown. Tap Replace to upgrade it."
+            }
+        } else {
+            return "An existing Herdcats Bridge was found elsewhere. Install a managed copy at the location shown; the other copy will remain unchanged."
         }
     }
 }
@@ -470,14 +638,14 @@ extension HostHelperSetupPlan {
         "$B" --version-json 2>/dev/null || printf '%s\n' HC_HELPER_PROBE_FAILED
         """#
     }
-    static func verifyInstallation(_ output: String) throws {
+    static func verifyInstallation(_ output: String, agent: String? = nil) throws {
         if output.hasPrefix("HC_HELPER_ERROR:") {
             let code = output.dropFirst("HC_HELPER_ERROR:".count).trimmingCharacters(in: .whitespacesAndNewlines)
             throw HostHelperSetupError.failed(code)
         }
         guard output.hasPrefix("HC_HELPER_INSTALLED\n") else { throw HostHelperSetupError.invalidResponse }
         let report = String(output.dropFirst("HC_HELPER_INSTALLED\n".count))
-        let probe = try HostHelperProbe(output: "HC_HELPER_MANAGED\n" + report)
+        let probe = try HostHelperProbe(output: "HC_HELPER_MANAGED\n" + report, agent: agent)
         guard case .present(_, true, true) = probe else { throw HostHelperSetupError.invalidResponse }
     }
 }
@@ -487,6 +655,8 @@ extension HerdrConnection {
     /// probing, and revalidates both immediately before a mutating command.
     func setUpHostHelper(
         replace: Bool, checkOnly: Bool, target: ConnectionIdentity, owned: ConnectionGeneration,
+        agent: String? = nil,
+        reason: HostHelperSetupReason = .missing,
         onStage: @escaping @Sendable (HostHelperSetupStage) async -> Void
     ) async throws -> HostHelperSetupDecision {
         guard route == nil else { throw AgentBridgeError.routedHostUnsupported }
@@ -504,8 +674,8 @@ extension HerdrConnection {
         let output = try await HostHelperCommand().run(client: client, script: HostHelperSetupPlan.probeScript, timeout: 10)
         try Task.checkCancellation()
         try requireGeneration(owned)
-        let probe = try HostHelperProbe(output: output)
-        let decision = HostHelperSetupPlan.decision(probe: probe, replace: replace, checkOnly: checkOnly)
+        let probe = try HostHelperProbe(output: output, agent: agent)
+        let decision = HostHelperSetupPlan.decision(probe: probe, replace: replace, checkOnly: checkOnly, agent: agent, reason: reason)
         guard case .install(let replaceManaged) = decision else { return decision }
         await onStage(.installing)
         try Task.checkCancellation()
@@ -515,8 +685,103 @@ extension HerdrConnection {
         try Task.checkCancellation()
         try requireGeneration(owned)
         await onStage(.verifying)
-        try HostHelperSetupPlan.verifyInstallation(result)
+        try HostHelperSetupPlan.verifyInstallation(result, agent: agent)
         try requireGeneration(owned)
         return .ready
+    }
+
+    func disableCodexDaemon(
+        target: ConnectionIdentity, owned: ConnectionGeneration, stopRunning: Bool = false
+    ) async throws -> CodexDaemonConfigResult {
+        guard route == nil else { throw AgentBridgeError.routedHostUnsupported }
+        try requireGeneration(owned)
+        guard identity == target else { throw HerdrError.notConnected }
+        let client = try slot.ownedClient(owned)
+        guard helperSetupOperation == nil else { throw HostHelperSetupError.busy }
+        let operation = UUID()
+        helperSetupOperation = operation
+        defer { if helperSetupOperation == operation { helperSetupOperation = nil } }
+        try Task.checkCancellation()
+        try requireGeneration(owned)
+        guard identity == target else { throw HerdrError.notConnected }
+        let output = try await HostHelperCommand().run(
+            client: client,
+            script: stopRunning ? Self.codexDisableDaemonStopScript : Self.codexDisableDaemonScript,
+            timeout: Self.codexDisableDaemonTimeout(stopRunning: stopRunning)
+        )
+        try Task.checkCancellation()
+        try requireGeneration(owned)
+        guard identity == target else { throw HerdrError.notConnected }
+        return try CodexDaemonConfigResult.parse(output)
+    }
+
+    /// The bridge's stop pass can take ~60 s (updater wait, two stop passes,
+    /// recheck); keep the app-side bound above its own worst case.
+    static func codexDisableDaemonTimeout(stopRunning: Bool) -> TimeInterval {
+        stopRunning ? 90 : 15
+    }
+
+    static var codexDisableDaemonScript: String {
+        helperScript(
+            exec: "exec \"$B\" codex-config disable-daemon",
+            missingPayload: "{\"error\":\"helper_missing\"}",
+            readStdinOnMissing: false,
+            missingExitCode: 0
+        )
+    }
+
+    static var codexDisableDaemonStopScript: String {
+        helperScript(
+            exec: "exec \"$B\" codex-config disable-daemon --stop-running",
+            missingPayload: "{\"error\":\"helper_missing\"}",
+            readStdinOnMissing: false,
+            missingExitCode: 0
+        )
+    }
+
+    static var codexDisableDaemonCommand: String {
+        "exec /bin/sh -c \(shellSafeArgument(codexDisableDaemonScript))"
+    }
+
+    static var codexDisableDaemonStopCommand: String {
+        "exec /bin/sh -c \(shellSafeArgument(codexDisableDaemonStopScript))"
+    }
+}
+
+extension HerdrConnection {
+    func hooksStatus(agent: ApprovalAgent, target: ConnectionIdentity, owned: ConnectionGeneration) async throws -> AgentHooksResult {
+        try await runHooks(agent: agent, operation: .status, target: target, owned: owned)
+    }
+    func installHooks(agent: ApprovalAgent, target: ConnectionIdentity, owned: ConnectionGeneration) async throws -> AgentHooksResult {
+        try await runHooks(agent: agent, operation: .install, target: target, owned: owned)
+    }
+    func uninstallHooks(agent: ApprovalAgent, target: ConnectionIdentity, owned: ConnectionGeneration) async throws -> AgentHooksResult {
+        try await runHooks(agent: agent, operation: .uninstall, target: target, owned: owned)
+    }
+    private func runHooks(agent: ApprovalAgent, operation: AgentHooksOperation, target: ConnectionIdentity, owned: ConnectionGeneration) async throws -> AgentHooksResult {
+        guard route == nil else { throw AgentBridgeError.routedHostUnsupported }
+        try requireGeneration(owned)
+        guard identity == target else { throw HerdrError.notConnected }
+        let client = try slot.ownedClient(owned)
+        guard helperSetupOperation == nil else { throw HostHelperSetupError.busy }
+        let token = UUID()
+        helperSetupOperation = token
+        defer { if helperSetupOperation == token { helperSetupOperation = nil } }
+        try Task.checkCancellation()
+        try requireGeneration(owned)
+        guard identity == target else { throw HerdrError.notConnected }
+        let output = try await HostHelperCommand().run(client: client, script: Self.hooksScript(agent: agent, operation: operation), timeout: 15)
+        try Task.checkCancellation()
+        try requireGeneration(owned)
+        guard identity == target else { throw HerdrError.notConnected }
+        return try AgentHooksResult.parse(output)
+    }
+    static func hooksScript(agent: ApprovalAgent, operation: AgentHooksOperation) -> String {
+        helperScript(
+            exec: "exec \"$B\" hooks \(operation.rawValue) --agent \(agent.rawValue)",
+            missingPayload: "{\"error\":\"helper_missing\"}",
+            readStdinOnMissing: false,
+            missingExitCode: 0
+        )
     }
 }

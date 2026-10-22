@@ -9,6 +9,7 @@ import Observation
         case unavailable(String)
         case disconnected
     }
+    private(set) var pendingApproval: AgentPendingApproval?
     private(set) var entries: [AgentTimelineEntry] = []
     private(set) var identity: AgentTimelineIdentity?
     private(set) var phase: Phase = .loading
@@ -19,6 +20,9 @@ import Observation
     private(set) var unknownRecords = 0
     private(set) var droppedEntries = 0
     private(set) var delayed = false
+    /// `codex_daemon` carried by the latest unavailable event (running /
+    /// not_running / unknown); nil otherwise, including unrecognized values.
+    private(set) var codexDaemon: String?
     private(set) var revision: UInt64 = 0
     private var owner: UUID?
     private var paneId = ""
@@ -50,10 +54,11 @@ import Observation
             }
             clear()
             generation = next
+            codexDaemon = Self.normalizedCodexDaemon(data.codexDaemon)
             phase = .unavailable(data.code ?? "timeline_unavailable")
         case "timeline.snapshot":
             guard let nextIdentity = data.identity, nextIdentity.paneId == paneId,
-                nextIdentity.agent == "claude", let next = data.generation, let rows = data.entries
+                TimelineAgentAvailability.supports(agent: nextIdentity.agent), let next = data.generation, let rows = data.entries
             else { throw AgentBridgeError.identityMismatch }
             try validate(rows)
             clear()
@@ -104,6 +109,21 @@ import Observation
             droppedEntries = data.droppedEntries ?? droppedEntries
             delayed = data.delayed ?? delayed
             revision += 1
+        case "interaction.pending":
+            guard phase == .ready, data.identity == identity, data.generation == generation else {
+                throw AgentBridgeError.identityMismatch
+            }
+            pendingApproval = try AgentPendingApproval.decode(data)
+            revision += 1
+        case "interaction.resolved":
+            guard let requestId = data.requestId, !requestId.isEmpty, requestId.utf8.count <= 264 else {
+                throw AgentBridgeError.invalidFrame
+            }
+            if let pending = pendingApproval, pending.requestId == requestId,
+                pending.identity == data.identity, pending.generation == data.generation {
+                pendingApproval = nil
+                revision += 1
+            }
         default: throw AgentBridgeError.invalidFrame
         }
     }
@@ -130,6 +150,7 @@ import Observation
         phase = error == .closed ? .disconnected : .unavailable(error.code)
     }
     private func clear() {
+        pendingApproval = nil
         evictedIds.removeAll()
         entries = []
         identity = nil
@@ -140,7 +161,15 @@ import Observation
         unknownRecords = 0
         droppedEntries = 0
         delayed = false
+        codexDaemon = nil
         revision += 1
+    }
+
+    /// Older bridges omit `codex_daemon`; future values the app does not know
+    /// stay nil so the pane never offers an action from an unverified state.
+    static func normalizedCodexDaemon(_ value: String?) -> String? {
+        guard ["running", "not_running", "unknown"].contains(value ?? "") else { return nil }
+        return value
     }
     private func validate(_ rows: [AgentTimelineEntry]) throws {
         guard rows.count <= 1000, Set(rows.map(\.id)).count == rows.count,
