@@ -665,7 +665,7 @@ struct RowTimestamp: View {
     var body: some View {
         if let date {
             Text(PaneUpdatedFormat.label(for: date))
-                .font(.jost(.caption))
+                .font(.jost(.footnote))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .fixedSize()
