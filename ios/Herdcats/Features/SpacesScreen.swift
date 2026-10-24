@@ -1079,9 +1079,8 @@ struct SpacesScreen: View {
     /// Opens a space on tap, its More drawer on long press, and offers
     /// trailing swipe actions: More and Close.
     private func spaceLink<Row: View>(_ space: Space, @ViewBuilder row: () -> Row) -> some View {
-        // A direct NavigationLink keeps the tap on UIKit's cell selection.
-        // Any SwiftUI gesture on the row content (tap, Button, drag) can win
-        // over the List's swipe recognizer on device and open the space.
+        // Keep native cell selection and swipe handling. The long press must
+        // be simultaneous so it doesn't consume the NavigationLink's tap.
         NavigationLink(value: space) {
             row()
         }
@@ -1092,9 +1091,11 @@ struct SpacesScreen: View {
             swipeCloseButton(space)
             swipeMoreButton(space)
         }
-        .onLongPressGesture {
-            actionsTarget = space
-        }
+        .simultaneousGesture(
+            LongPressGesture().onEnded { _ in
+                actionsTarget = space
+            }
+        )
         .accessibilityAction(named: "More") {
             actionsTarget = space
         }
