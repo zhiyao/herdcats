@@ -55,9 +55,13 @@ enum ScreenshotFixtures {
         if args == "workspace list" { result = ["workspaces": workspaces] }
         else if args == "agent list" { result = ["agents": panes] }
         else if args.hasPrefix("pane list") {
-            result = ["panes": panes.filter { args.contains($0["workspace_id"] as! String) }]
+            result = ["panes": panes.filter {
+                args.contains(HerdrConnection.shellSafeArgument($0["workspace_id"] as! String))
+            }]
         } else if args.hasPrefix("tab list") {
-            result = ["tabs": projects.indices.filter { args.contains("w\($0)") }.map { index in
+            result = ["tabs": projects.indices.filter {
+                args.contains(HerdrConnection.shellSafeArgument("w\($0)"))
+            }.map { index in
                 ["tab_id": "t\(index)", "workspace_id": "w\(index)", "label": "Agent", "number": 1,
                  "pane_count": 1, "agent_status": statuses[index], "focused": true] as [String: Any]
             }]

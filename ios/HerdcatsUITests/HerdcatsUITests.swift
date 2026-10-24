@@ -24,6 +24,48 @@ func openNewConnection(in app: XCUIApplication) {
 ///
 ///     TEST_RUNNER_HC_USER=$USER xcodebuild test -only-testing:HerdcatsUITests
 final class HerdcatsUITests: XCTestCase {
+    func testSpaceRowTapOpensDetail() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "spaces", "-hc.tab", "spaces"]
+        app.launch()
+
+        let row = app.descendants(matching: .any)["space-row-1"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.tap()
+        XCTAssertTrue(app.buttons["pane-back-button"].waitForExistence(timeout: 10),
+                      "Tapping a space must open its workspace detail")
+    }
+
+    func testSpaceRowTapAfterDismissingSwipeActionsOpensDetail() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "spaces", "-hc.tab", "spaces"]
+        app.launch()
+
+        let row = app.descendants(matching: .any)["space-row-1"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.swipeLeft()
+        XCTAssertTrue(app.buttons["space-swipe-more-w0"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["space-swipe-close-w0"].exists)
+        row.swipeRight()
+        row.tap()
+        XCTAssertTrue(app.buttons["pane-back-button"].waitForExistence(timeout: 10))
+    }
+
+    func testSpaceRowLongPressOpensActionsWithoutNavigating() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "spaces", "-hc.tab", "spaces"]
+        app.launch()
+
+        let row = app.descendants(matching: .any)["space-row-1"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.press(forDuration: 0.8)
+        XCTAssertTrue(app.buttons["space-rename-button-w0"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["pane-back-button"].exists)
+        app.buttons["Cancel"].tap()
+        row.tap()
+        XCTAssertTrue(app.buttons["pane-back-button"].waitForExistence(timeout: 10))
+    }
+
     func fixtureEnvironment(_ name: String) -> String? {
         let environment = ProcessInfo.processInfo.environment
         return environment["TEST_RUNNER_HC_\(name)"] ?? environment["HC_\(name)"]
