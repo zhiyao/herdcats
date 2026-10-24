@@ -1743,6 +1743,99 @@ private struct TimelineActivityDrawer: View {
     }
 }
 
+/// Parses agent-authored inline markdown and drops any link that could be used
+/// to launch other apps (`shortcuts://`, `tel:`, `sms:`, custom deep links) or to
+/// disguise its destination behind a URL-looking label.
+enum TimelineMarkdown {
+    static func sanitized(_ text: String) -> AttributedString {
+        var attributed = (try? AttributedString(
+            markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(text)
+        // Bidi controls in unlinked text can reorder a neighboring link too.
+        // Remove them across the rendered string; preserve ordinary whitespace
+        // and joiners outside links. Capture ranges before replacing in reverse.
+        let runs = attributed.runs.map {
+            (range: $0.range, attributes: $0.attributes, linked: $0.link != nil)
+        }
+        for run in runs.reversed() {
+            let original = String(attributed[run.range].characters)
+            let cleaned = run.linked ? droppingInvisibleCharacters(original)
+                : String(original.unicodeScalars.filter { !$0.properties.isBidiControl })
+            guard cleaned != original else { continue }
+            attributed.replaceSubrange(
+                run.range, with: AttributedString(cleaned, attributes: run.attributes))
+        }
+        // Inline styling (`**bold**`, `_em_`, `code`) splits one link into several runs
+        // that share the same URL. Coalesce adjacent runs so the complete visible label
+        // is validated, not each styled fragment on its own.
+        var unsafeRanges: [Range<AttributedString.Index>] = []
+        var group: (url: URL, range: Range<AttributedString.Index>)?
+        func flush() {
+            guard let current = group else { return }
+            let label = String(attributed[current.range].characters)
+            if !isSafe(current.url, label: label) { unsafeRanges.append(current.range) }
+            group = nil
+        }
+        for run in attributed.runs {
+            guard let url = run.link else { flush(); continue }
+            if let current = group, current.url == url {
+                group = (url, current.range.lowerBound..<run.range.upperBound)
+            } else {
+                flush()
+                group = (url, run.range)
+            }
+        }
+        flush()
+        for range in unsafeRanges { attributed[range].link = nil }
+        return attributed
+    }
+
+    private static func isSafe(_ url: URL, label: String) -> Bool {
+        guard let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http",
+              let host = url.host?.lowercased(), !host.isEmpty else { return false }
+        let visible = visibleText(of: label)
+        let lowered = visible.lowercased()
+        guard lowered.hasPrefix("http://") || lowered.hasPrefix("https://") || hasSchemeAndHost(visible) else {
+            return true
+        }
+        // The label presents itself as a URL: it must point at the same host.
+        guard let labelHost = URL(string: visible)?.host?.lowercased(), !labelHost.isEmpty else { return false }
+        return labelHost == host
+    }
+
+    /// The label as a reader perceives it: invisible Unicode format characters
+    /// (zero-width joiners/non-joiners, bidi marks, BOM, ...), other default-
+    /// ignorable scalars (variation selectors, combining grapheme joiner, ...),
+    /// and control characters are dropped so they cannot hide a URL-looking
+    /// label from the check.
+    private static func visibleText(of label: String) -> String {
+        droppingInvisibleCharacters(label).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Drops every scalar that never renders visibly: format and control
+    /// characters, bidi overrides/isolates, and other default-ignorable code
+    /// points (variation selectors, combining grapheme joiner, ...).
+    private static func droppingInvisibleCharacters(_ text: String) -> String {
+        var scalars = String.UnicodeScalarView()
+        for scalar in text.unicodeScalars {
+            // Braille blank renders as empty space but is neither whitespace
+            // nor default-ignorable, and can conceal a URL prefix.
+            if scalar.value == 0x2800 || scalar.properties.isDefaultIgnorableCodePoint { continue }
+            switch scalar.properties.generalCategory {
+            case .format, .control: continue
+            default: scalars.append(scalar)
+            }
+        }
+        return String(scalars)
+    }
+
+    private static func hasSchemeAndHost(_ text: String) -> Bool {
+        guard let url = URL(string: text), let scheme = url.scheme, !scheme.isEmpty,
+              let host = url.host, !host.isEmpty else { return false }
+        return true
+    }
+}
+
 private struct AgentTimelineEntryView: View {
     let entry: AgentTimelineEntry
     let files: TimelineContentFiles
@@ -1831,11 +1924,8 @@ private struct AgentTimelineEntryView: View {
             if !Task.isCancelled { imageError = "This image could not be displayed. Try loading it again." }
         }
     }
-    private var markdown: AttributedString {
-        (try? AttributedString(
-            markdown: entry.text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-            ?? AttributedString(entry.text)
-    }
+    private var markdown: AttributedString { Self.sanitizedMarkdown(entry.text) }
+    static func sanitizedMarkdown(_ text: String) -> AttributedString { TimelineMarkdown.sanitized(text) }
 }
 
 /// Explicit opt-in installation on the displayed SSH endpoint; manual setup stays available.

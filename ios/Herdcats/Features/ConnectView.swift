@@ -163,6 +163,16 @@ struct ConnectView: View {
         .padding(.top, 14)
     }
 
+    private func forget(_ connection: RecentConnection) {
+        guard !replay else { return }
+        do {
+            recentConnections = try RecentConnectionStore.remove(connection)
+        } catch {
+            appModel.lastError = error.localizedDescription
+            recentConnections = (try? RecentConnectionStore.load()) ?? recentConnections
+        }
+    }
+
     private var recentConnectionsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             if !recentConnections.isEmpty {
@@ -197,6 +207,13 @@ struct ConnectView: View {
                     .buttonStyle(.herdrCard)
                     .accessibilityLabel("\(connection.username) at \(connection.host), port \(connection.port)")
                     .accessibilityHint("Opens connection settings")
+                    .contextMenu {
+                        if !replay {
+                            Button("Forget Connection", systemImage: "trash", role: .destructive) {
+                                forget(connection)
+                            }
+                        }
+                    }
                 }
             }
 

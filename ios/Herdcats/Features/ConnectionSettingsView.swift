@@ -251,10 +251,18 @@ struct ConnectionSettingsView: View {
             authMode: authModeRaw, remember: remember, in: loaded
         )
         let secret = authMode == .password ? password : keyPEM
-        if !isReplay && !remember {
+        if !isReplay {
             do {
-                try KeychainStore.delete(account: entry.secretAccount)
-                try KeychainStore.delete(account: entry.secretAccount + ".passphrase")
+                if !remember {
+                    try KeychainStore.delete(account: entry.secretAccount)
+                    try KeychainStore.delete(account: entry.secretAccount + ".passphrase")
+                    // Keep saved metadata in sync even if the connection attempt fails.
+                    try RecentConnectionStore.disableRemembering(entry)
+                }
+                // When remember stays on but the passphrase is no longer wanted, its
+                // deletion is deferred to after a successful connection: deleting here
+                // would strand a still-saved encrypted-key profile without the passphrase
+                // it needs if the connection attempt fails.
             } catch {
                 appModel.lastError = error.localizedDescription
                 return
