@@ -65,10 +65,10 @@ struct ConnectView: View {
                         .buttonStyle(.herdrSecondary())
                     }
                     recentConnectionsSection
-                    Button(recentConnections.isEmpty ? "Connection Setup Help" : "Set Up Another Remote Machine") {
-                        showingSetupGuide = true
+                    if recentConnections.isEmpty {
+                        Button("Connection Setup Help") { showingSetupGuide = true }
+                            .font(.jost(.subheadline))
                     }
-                    .font(.jost(.subheadline))
                 }
             }
             .padding(.horizontal, 22)
@@ -241,7 +241,7 @@ struct ConnectView: View {
     }
 
     private var recentConnectionsSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
             if !recentConnections.isEmpty && !replay {
                 HStack {
                     Spacer()
@@ -251,7 +251,7 @@ struct ConnectView: View {
                 }
             }
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .top), count: dynamicTypeSize.isAccessibilitySize ? 1 : 2), spacing: 14) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14, alignment: .top), count: dynamicTypeSize.isAccessibilitySize ? 1 : 2), spacing: 14) {
                 ForEach(recentConnections) { connection in
                     ZStack(alignment: .topTrailing) {
                         Button {
@@ -306,8 +306,19 @@ struct ConnectView: View {
                     recentConnections.isEmpty ? "Connect to a Remote Machine" : "New Connection",
                     systemImage: "plus"
                 )
+                .font(.jost(.headline))
+                .foregroundStyle(Theme.accent)
+                .frame(maxWidth: .infinity, minHeight: 60)
+                .padding(.horizontal, 16)
+                .background(RoundedRectangle.continuous(DesignSystem.CornerRadius.xl).fill(Theme.cardBackground))
+                .overlay {
+                    RoundedRectangle.continuous(DesignSystem.CornerRadius.xl)
+                        .strokeBorder(Theme.accent.opacity(0.65),
+                            style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [0.1, 7]))
+                        .allowsHitTesting(false)
+                }
             }
-            .buttonStyle(.herdrPrimary())
+            .buttonStyle(.herdrCard)
         }
         .disabled(appModel.isConnecting || attempting)
     }
