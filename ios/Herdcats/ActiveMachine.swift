@@ -9,6 +9,12 @@ final class ActiveMachine {
     private(set) var pendingLabel: String?
     var switchError: String?
     var pendingHostKeyOwnedByForm = false
+    private(set) var signInFailure: SignInFailure?
+
+    struct SignInFailure: Equatable {
+        let needsSignIn: Bool
+        let passphraseRejected: Bool
+    }
 
     enum SwitchOutcome: Equatable {
         case switched, alreadyActive, needsCredentials, failed, superseded
@@ -58,6 +64,7 @@ final class ActiveMachine {
             ? (try? RecentConnectionStore.load()) ?? [] : RecentConnectionStore.snapshot())
         target = (entry, config, recordConnection)
         switchError = nil
+        signInFailure = nil
         return await dialAndFinish(candidate, entry: entry, config: config, revision: currentRevision, recordConnection: recordConnection)
     }
 
@@ -67,6 +74,7 @@ final class ActiveMachine {
     }
 
     func cancelSwitch() async {
+        signInFailure = nil
         revision += 1
         let candidate = pending
         clearPending()
@@ -104,6 +112,8 @@ final class ActiveMachine {
             return .switched
         }
 
+        signInFailure = SignInFailure(needsSignIn: candidate.lastConnectNeedsSignIn,
+            passphraseRejected: candidate.lastConnectPassphraseRejected)
         switchError = "Couldn't reach \(entry.displayName): \(candidate.lastError ?? "Connection failed")"
         clearPending()
         await candidate.disconnect()

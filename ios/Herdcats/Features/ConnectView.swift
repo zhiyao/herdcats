@@ -541,6 +541,12 @@ struct SavedConnectionSignInView: View {
     @State private var keyImporterPresented = false
     @State private var importError: String?
     private var showsKeyEditor: Bool { value.isKey && (requestsSecret || editingRejectedSecret) }
+    private var needsSignIn: Bool {
+        switcher.map { $0.signInFailure?.needsSignIn ?? false } ?? appModel.lastConnectNeedsSignIn
+    }
+    private var passphraseRejected: Bool {
+        switcher.map { $0.signInFailure?.passphraseRejected ?? false } ?? appModel.lastConnectPassphraseRejected
+    }
 
     init(initial: ConnectionSignIn, replay: Bool, switcher: ActiveMachine? = nil) {
         self.replay = replay
@@ -592,9 +598,9 @@ struct SavedConnectionSignInView: View {
                         }
                     }
                     Toggle("Save credentials on this iPhone", isOn: $value.entry.remember)
-                    if appModel.lastConnectNeedsSignIn {
+                    if needsSignIn {
                         Button("Update sign-in") {
-                            editingRejectedSecret = !appModel.lastConnectPassphraseRejected
+                            editingRejectedSecret = !passphraseRejected
                             if editingRejectedSecret { value.secret = "" }
                             value.passphrase = ""
                         }

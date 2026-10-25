@@ -273,14 +273,18 @@ struct ConnectionFieldHeader<Controls: View>: View {
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
-            .padding(.trailing, CGFloat(controlCount * 44 + (controlCount - 1) * 8 + 8))
-            .overlay(alignment: .trailing) {
-                HStack(spacing: 8, content: controls)
-                    .font(.jost(14, weight: .medium))
-                    .imageScale(.medium)
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-            }
+            .padding(.trailing, controlsWidth)
+            .overlay(alignment: .trailing) { headerControls }
+    }
+
+    private var controlsWidth: CGFloat { CGFloat(controlCount) * 52 }
+
+    private var headerControls: some View {
+        HStack(spacing: 8) { controls() }
+            .font(Font.jost(14, weight: .medium))
+            .imageScale(.medium)
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
     }
 }
 

@@ -82,6 +82,29 @@ struct MachineSwitchingTests {
         }
     }
 
+    @Test func rejectedCandidateRetainsSignInRecoveryAfterTeardown() async throws {
+        try await withConnections { entries in
+            let old = currentModel()
+            // Recovery must follow the failed candidate, not the connected machine.
+            old.lastConnectPassphraseRejected = true
+            var rejectPassphrase = false
+            let active = ActiveMachine(model: old, dial: { model, _ in
+                model.lastError = "Authentication rejected"
+                model.lastConnectNeedsSignIn = true
+                model.lastConnectPassphraseRejected = rejectPassphrase
+            })
+            #expect(await active.switchMachine(to: entries[0]) == .failed)
+            #expect(active.pending == nil)
+            #expect(active.model === old)
+            #expect(active.signInFailure == .init(needsSignIn: true, passphraseRejected: false))
+            rejectPassphrase = true
+            #expect(await active.switchMachine(to: entries[0]) == .failed)
+            #expect(active.signInFailure == .init(needsSignIn: true, passphraseRejected: true))
+            await active.cancelSwitch()
+            #expect(active.signInFailure == nil)
+        }
+    }
+
     @Test func laterSelectionSupersedesEarlier() async throws {
         try await withConnections { (entries: [RecentConnection]) async throws in
             let started = ExternallyReleasedWait<Bool>()
