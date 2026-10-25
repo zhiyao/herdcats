@@ -204,6 +204,10 @@ struct ConnectionPrivateKeyField: View {
                     onImport()
                 } label: {
                     Image(systemName: "square.and.arrow.down")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 18, height: 18)
+                        .offset(y: -2.0 / 3.0) // Align the SF symbol's optical center with the eye.
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
@@ -213,6 +217,9 @@ struct ConnectionPrivateKeyField: View {
                     revealed.toggle()
                 } label: {
                     Image(systemName: revealed ? "eye.slash" : "eye")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 18, height: 18)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
@@ -289,6 +296,9 @@ struct ConnectionPassphraseField: View {
                     revealed.toggle()
                 } label: {
                     Image(systemName: revealed ? "eye.slash" : "eye")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 18, height: 18)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
