@@ -14,8 +14,9 @@ struct LiveSessionTaskKey: Equatable {
 }
 
 struct LiveRefreshTaskKey: Equatable {
+    let paneId: String
     let isActive: Bool
-    let lastAck: TimeInterval?
+    let hasActiveAck: Bool
 }
 
 extension PaneSessionView {
@@ -53,8 +54,9 @@ extension PaneSessionView {
     /// background so rapid reads never run there.
     var liveRefreshTaskKey: LiveRefreshTaskKey {
         LiveRefreshTaskKey(
+            paneId: pane.paneId,
             isActive: appModel.isSceneActive,
-            lastAck: lastLiveAckAt
+            hasActiveAck: lastLiveAckAt != nil
         )
     }
 
@@ -250,8 +252,9 @@ extension PaneSessionView {
     /// stops; the five-second lifecycle-aware poll remains the fallback.
     func runLiveForegroundRefresh() async {
         while !Task.isCancelled {
-            guard let ackAt = lastLiveAckAt,
-                  ProcessInfo.processInfo.systemUptime - ackAt <= PaneLiveRefreshPolicy.activityWindow else {
+            guard appModel.isSceneActive, let ackAt = lastLiveAckAt else { return }
+            if ProcessInfo.processInfo.systemUptime - ackAt > PaneLiveRefreshPolicy.activityWindow {
+                lastLiveAckAt = nil
                 return
             }
             do {
