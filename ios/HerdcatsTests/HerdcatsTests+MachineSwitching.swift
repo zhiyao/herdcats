@@ -175,6 +175,15 @@ struct MachineSwitchingTests {
         }
     }
 
+    @Test func sessionSubtreeSurvivesFailedReconnectButNotSwitch() {
+        let model = currentModel()
+        let before = MainTabView.subtreeID(for: model)
+        model.connectionIdentity = nil
+        model.phase = .offline(host: "current.example", username: "tester")
+        #expect(MainTabView.subtreeID(for: model) == before)
+        #expect(MainTabView.subtreeID(for: currentModel()) != before)
+    }
+
     @Test func disconnectCancelsPendingSwitch() async throws {
         try await withConnections { (entries: [RecentConnection]) async throws in
             let started = ExternallyReleasedWait<Bool>()

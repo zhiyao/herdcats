@@ -9,10 +9,14 @@ struct MainTabView: View {
     @Environment(ActiveMachine.self) private var active: ActiveMachine?
     @State private var selectedTab = ConnectedTabsView.MainTab.requestedInitialTab()
 
+    /// A switch installs a new `AppModel`; reconnects (even failed ones that
+    /// clear `connectionIdentity`) keep the same model, so navigation survives.
+    static func subtreeID(for model: AppModel) -> ObjectIdentifier { ObjectIdentifier(model) }
+
     var body: some View {
         ConnectedTabsView(selectedTab: $selectedTab)
             .environment(appModel)
-            .id(appModel.connectionIdentity?.storageKey ?? "none")
+            .id(Self.subtreeID(for: appModel))
             .safeAreaInset(edge: .top, spacing: 0) {
                 if let label = active?.pendingLabel {
                     ConnectionStatusBar(banner: .connecting(message: "Connecting to \(label)…"))
