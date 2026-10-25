@@ -220,6 +220,7 @@ struct ConnectionPrivateKeyField: View {
                         .resizable()
                         .scaledToFit()
                         .frame(width: 18, height: 18)
+                        .offset(y: 1)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
@@ -299,6 +300,7 @@ struct ConnectionPassphraseField: View {
                         .resizable()
                         .scaledToFit()
                         .frame(width: 18, height: 18)
+                        .offset(y: 1)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }

@@ -269,7 +269,11 @@ struct ConnectView: View {
                                 Image(systemName: "server.rack")
                                     .font(.jost(.title2))
                                     .foregroundStyle(Theme.accent)
-                                Text(connection.username).font(.jost(.subheadline)).lineLimit(1)
+                                Text("\(connection.username)@\(connection.host)")
+                                    .font(.jost(.subheadline))
+                                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .truncationMode(.middle)
                                 Text("Port \(String(connection.port))").font(.jost(.caption)).foregroundStyle(.secondary)
                             }
                             .frame(maxWidth: .infinity, minHeight: 126, alignment: .leading)
@@ -288,6 +292,7 @@ struct ConnectView: View {
                         Button { selectedConnection = connection } label: {
                             Image(systemName: "gearshape")
                                 .font(.system(size: 20, weight: .medium))
+                                .offset(y: 6)
                                 .frame(width: 44, height: 44)
                                 .contentShape(Rectangle())
                         }
