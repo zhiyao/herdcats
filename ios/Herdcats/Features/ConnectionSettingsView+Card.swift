@@ -5,6 +5,17 @@ import UniformTypeIdentifiers
 extension ConnectionSettingsView {
     var connectionCard: some View {
         VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                fieldLabel("Name (optional)")
+                TextField("e.g. Studio", text: $name)
+                    .textFieldStyle(.plain)
+                    .foregroundStyle(.primary)
+                    .autocorrectionDisabled()
+                    .accessibilityLabel("Name")
+            }
+            .padding(12)
+            .background(fieldShape.fill(Theme.fieldBackground))
+
             // Host + port
             VStack(alignment: .leading, spacing: 8) {
                 fieldLabel("Host")

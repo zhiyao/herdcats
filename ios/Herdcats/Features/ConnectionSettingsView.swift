@@ -6,6 +6,7 @@ struct ConnectionSettingsView: View {
     @Environment(AppModel.self) var appModel
     @Environment(\.dismiss) var dismiss
     let isReplay: Bool
+    @State var name = ""
     @State var host = ""
     @State var port = "22"
     @State var username = ""
@@ -69,6 +70,7 @@ struct ConnectionSettingsView: View {
 
     init(connection: RecentConnection, isReplay: Bool = false) {
         self.isReplay = isReplay
+        _name = State(initialValue: connection.name ?? "")
         _host = State(initialValue: connection.host)
         _port = State(initialValue: String(connection.port))
         _username = State(initialValue: connection.username)
@@ -248,7 +250,7 @@ struct ConnectionSettingsView: View {
         let loaded = (try? RecentConnectionStore.load()) ?? []
         let entry = RecentConnectionStore.entry(
             host: config.host, port: config.port, username: config.username,
-            authMode: authModeRaw, remember: remember, in: loaded
+            authMode: authModeRaw, remember: remember, name: name, in: loaded
         )
         let secret = authMode == .password ? password : keyPEM
         if !isReplay {

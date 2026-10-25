@@ -228,7 +228,7 @@ struct CardReorderMotionTests {
 
 @Suite("Recent connections")
 struct RecentConnectionTests {
-    @Test func reconnectMovesExistingProfileToFrontAndPreservesCredentialAccount() throws {
+    @Test func reconnectKeepsExistingProfilePositionAndPreservesCredentialAccount() throws {
         let defaults = try #require(UserDefaults(suiteName: "RecentConnectionTests.\(UUID())"))
         defer { defaults.removeObject(forKey: RecentConnectionStore.storageKey) }
         let first = RecentConnection(
@@ -244,7 +244,7 @@ struct RecentConnectionTests {
         #expect(updated.authMode == "privateKey")
         #expect(!updated.remember)
         let entries = try RecentConnectionStore.record(updated, in: [second, first], defaults: defaults)
-        #expect(entries.map(\.id) == [first.id, second.id])
+        #expect(entries.map(\.id) == [second.id, first.id])
         #expect(try RecentConnectionStore.load(defaults: defaults) == entries)
     }
 
@@ -290,9 +290,9 @@ struct RecentConnectionTests {
             host: "mac.local", port: 22, username: "alice", authMode: "password", remember: false)
         let stranger = RecentConnection(
             host: "other.local", port: 22, username: "eve", authMode: "password", remember: true)
-        _ = try RecentConnectionStore.record(saved, in: [], defaults: defaults)
+        let persisted = try RecentConnectionStore.record(saved, in: [], defaults: defaults)
 
-        #expect(try RecentConnectionStore.remove(stranger, defaults: defaults, using: keychain) == [saved])
+        #expect(try RecentConnectionStore.remove(stranger, defaults: defaults, using: keychain) == persisted)
     }
 
     @Test func removeKeepsEntryWhenKeychainDeletionFails() throws {
@@ -301,14 +301,14 @@ struct RecentConnectionTests {
         let keychain = FakeKeychainOperations()
         let saved = RecentConnection(
             host: "mac.local", port: 22, username: "alice", authMode: "password", remember: true)
-        _ = try RecentConnectionStore.record(saved, in: [], defaults: defaults)
+        let persisted = try RecentConnectionStore.record(saved, in: [], defaults: defaults)
         try KeychainStore.save("secret", account: saved.secretAccount, using: keychain)
         keychain.nextDeleteStatus = errSecInteractionNotAllowed
 
         #expect(throws: KeychainStore.StoreError.self) {
             try RecentConnectionStore.remove(saved, defaults: defaults, using: keychain)
         }
-        #expect(try RecentConnectionStore.load(defaults: defaults, using: keychain) == [saved])
+        #expect(try RecentConnectionStore.load(defaults: defaults, using: keychain) == persisted)
     }
 
     @Test func disableRememberingUpdatesSavedEntryInPlaceWithoutReordering() throws {
@@ -323,7 +323,7 @@ struct RecentConnectionTests {
 
         let entries = try RecentConnectionStore.disableRemembering(first, defaults: defaults, using: keychain)
 
-        #expect(entries.map(\.id) == [second.id, first.id])
+        #expect(entries.map(\.id) == [first.id, second.id])
         #expect(entries.first { $0.id == first.id }?.remember == false)
         #expect(entries.first { $0.id == second.id }?.remember == true)
         #expect(try RecentConnectionStore.load(defaults: defaults, using: keychain) == entries)

@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import SwiftUI
 
 /// Minimal Keychain wrapper for remembering connection secrets.
 protocol KeychainOperations {
@@ -121,6 +122,15 @@ struct RecentConnection: Codable, Identifiable, Equatable {
     var username: String
     var authMode: String
     var remember: Bool
+    var name: String?
+    var lastConnectedAt: Date?
+
+    var displayName: String {
+        if let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            return name
+        }
+        return "\(username)@\(host)" + (port == 22 ? "" : ":\(port)")
+    }
 
     var secretAccount: String { "connection.\(id.uuidString).secret" }
 }
@@ -190,17 +200,19 @@ enum RecentConnectionStore {
                 guard try KeychainStore.load(account: entry.secretAccount, using: keychain) == secret else {
                     throw KeychainStore.StoreError(status: errSecDecode)
                 }
-                _ = try record(entry, in: [], defaults: defaults)
+                // Migration preserves the pending profile exactly; it is not a new connection.
+                try persist([entry], defaults: defaults)
                 try finishPendingMigration(defaults: defaults, using: keychain)
                 return [entry]
             }
         }
-        return try record(entry, in: [], defaults: defaults)
+        try persist([entry], defaults: defaults)
+        return [entry]
     }
 
     static func entry(
         host: String, port: Int, username: String, authMode: String,
-        remember: Bool, in entries: [RecentConnection]
+        remember: Bool, name: String? = nil, in entries: [RecentConnection]
     ) -> RecentConnection {
         let host = host.trimmingCharacters(in: .whitespaces)
         let username = username.trimmingCharacters(in: .whitespaces)
@@ -209,16 +221,35 @@ enum RecentConnectionStore {
         } ?? RecentConnection(host: host, port: port, username: username, authMode: authMode, remember: remember)
         entry.authMode = authMode
         entry.remember = remember
+        if let name { entry.name = name }
         return entry
     }
 
     @discardableResult
     static func record(
-        _ entry: RecentConnection, in entries: [RecentConnection], defaults: UserDefaults = .standard
+        _ entry: RecentConnection, in entries: [RecentConnection], defaults: UserDefaults = .standard,
+        now: Date = .now
     ) throws -> [RecentConnection] {
-        let updated = [entry] + entries.filter { $0.id != entry.id }
+        var entry = entry
+        entry.lastConnectedAt = now
+        var updated = entries
+        if let index = updated.firstIndex(where: { $0.id == entry.id }) {
+            updated[index] = entry
+        } else {
+            updated.append(entry)
+        }
         try persist(updated, defaults: defaults)
         return updated
+    }
+
+    static func move(
+        fromOffsets: IndexSet, toOffset: Int, defaults: UserDefaults = .standard,
+        using keychain: KeychainOperations = KeychainStore.operations
+    ) throws -> [RecentConnection] {
+        var entries = try load(defaults: defaults, using: keychain)
+        entries.move(fromOffsets: fromOffsets, toOffset: toOffset)
+        try persist(entries, defaults: defaults)
+        return entries
     }
 
     /// Records that a saved connection must no longer remember credentials, in place.
@@ -314,7 +345,7 @@ enum RecentConnectionStore {
         }
         if !hasCommittedProfile {
             let entries = try defaults.data(forKey: storageKey).map { try JSONDecoder().decode([RecentConnection].self, from: $0) } ?? []
-            _ = try record(pending.entry, in: entries, defaults: defaults)
+            try persist(entries + [pending.entry], defaults: defaults)
         }
         try KeychainStore.delete(account: pending.sourceAccount, using: keychain)
         defaults.removeObject(forKey: pendingMigrationKey)

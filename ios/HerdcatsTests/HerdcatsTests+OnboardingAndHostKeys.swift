@@ -103,6 +103,114 @@ struct AllMachinesTests {
     }
 }
 
+@Suite("Saved machine order and names")
+struct SavedMachineOrderTests {
+    private func machine(_ host: String) -> RecentConnection {
+        RecentConnection(host: host, port: 22, username: "u", authMode: "password", remember: true)
+    }
+
+    private func withDefaults(_ test: (UserDefaults) throws -> Void) throws {
+        let suite = "SavedMachineOrderTests.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        try test(defaults)
+    }
+
+    @Test func recordKeepsPositionAndStampsLastConnected() throws {
+        try withDefaults { defaults in
+            let entries = [machine("a"), machine("b"), machine("c")]
+            let now = Date(timeIntervalSince1970: 1234)
+            let updated = try RecentConnectionStore.record(entries[1], in: entries, defaults: defaults, now: now)
+            #expect(updated.map(\.id) == entries.map(\.id))
+            #expect(updated[1].lastConnectedAt == now)
+            #expect(try RecentConnectionStore.load(defaults: defaults, using: FakeKeychainOperations()) == updated)
+        }
+    }
+
+    @Test func recordAppendsNewMachine() throws {
+        try withDefaults { defaults in
+            let entries = [machine("a"), machine("b"), machine("c")]
+            let added = machine("d")
+            let updated = try RecentConnectionStore.record(added, in: entries, defaults: defaults)
+            #expect(updated.map(\.id) == (entries + [added]).map(\.id))
+        }
+    }
+
+    @Test func movePersistsOrder() throws {
+        try withDefaults { defaults in
+            var entries = [machine("a"), machine("b"), machine("c")]
+            entries[0].lastConnectedAt = Date(timeIntervalSince1970: 100)
+            defaults.set(try JSONEncoder().encode(entries), forKey: RecentConnectionStore.storageKey)
+            defaults.set(LaunchPreference.autoConnect.rawValue, forKey: LaunchPreference.storageKey)
+            let keychain = FakeKeychainOperations()
+            for entry in entries { keychain.items[entry.secretAccount] = Data("pw".utf8) }
+            let moved = try RecentConnectionStore.move(fromOffsets: IndexSet(integer: 2), toOffset: 0,
+                defaults: defaults, using: keychain)
+            #expect(moved == [entries[2], entries[0], entries[1]])
+            #expect(try RecentConnectionStore.load(defaults: defaults, using: keychain) == moved)
+            #expect(LaunchPreference.autoConnectConfig(defaults: defaults, keychain: keychain)?.host == "a")
+        }
+    }
+
+    @Test func autoConnectUsesLastUsedNotFirst() throws {
+        try withDefaults { (defaults: UserDefaults) throws in
+            var a = machine("a")
+            var b = machine("b")
+            a.lastConnectedAt = Date(timeIntervalSince1970: 1)
+            b.lastConnectedAt = Date(timeIntervalSince1970: 2)
+            defaults.set(LaunchPreference.autoConnect.rawValue, forKey: LaunchPreference.storageKey)
+            let keychain = FakeKeychainOperations()
+            for entry in [a, b] { keychain.items[entry.secretAccount] = Data("pw".utf8) }
+            func selected(_ entries: [RecentConnection]) throws -> String? {
+                defaults.set(try JSONEncoder().encode(entries), forKey: RecentConnectionStore.storageKey)
+                return LaunchPreference.autoConnectConfig(defaults: defaults, keychain: keychain)?.host
+            }
+            #expect(try selected([a, b]) == "b")
+            a.lastConnectedAt = nil
+            #expect(try selected([a, b]) == "b")
+            a.lastConnectedAt = b.lastConnectedAt
+            #expect(try selected([a, b]) == "a")
+            a.lastConnectedAt = nil
+            b.lastConnectedAt = nil
+            #expect(try selected([b, a]) == "b")
+            b.remember = false
+            b.lastConnectedAt = Date(timeIntervalSince1970: 3)
+            #expect(try selected([b, a]) == "a")
+        }
+    }
+
+    @Test func decodesLegacyRecentConnectionWithoutNewFields() throws {
+        let json = """
+        {"id":"00000000-0000-0000-0000-000000000001","host":"h","port":22,"username":"u","authMode":"password","remember":true}
+        """
+        let entry = try JSONDecoder().decode(RecentConnection.self, from: Data(json.utf8))
+        #expect(entry.name == nil)
+        #expect(entry.lastConnectedAt == nil)
+    }
+
+    @Test func displayNamePrefersNameThenUserHostPort() {
+        var entry = machine("h")
+        entry.name = "  "
+        #expect(entry.displayName == "u@h")
+        entry.port = 2222
+        #expect(entry.displayName == "u@h:2222")
+        entry.name = "  Studio \n"
+        #expect(entry.displayName == "Studio")
+    }
+
+    @Test func entryPreservesOrUpdatesName() {
+        var saved = machine("h")
+        saved.name = "Studio"
+        let unchanged = RecentConnectionStore.entry(host: "h", port: 22, username: "u",
+            authMode: "password", remember: true, in: [saved])
+        #expect(unchanged.name == "Studio")
+        let cleared = RecentConnectionStore.entry(host: "h", port: 22, username: "u",
+            authMode: "password", remember: true, name: "", in: [saved])
+        #expect(cleared.displayName == "u@h")
+        #expect(cleared.id == saved.id)
+    }
+}
+
 @Suite("Saved connection configuration")
 struct SavedConnectionConfigTests {
     @Test func savedConnectionConfigUsesRememberedPassword() throws {

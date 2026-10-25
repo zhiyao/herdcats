@@ -25,15 +25,16 @@ struct ConnectView: View {
     @State private var showingSetupGuide = false
     @State private var openFormAfterSetup = false
     @State private var route: OnboardingRoute?
+    @State private var editMode: EditMode = .inactive
 
     init(replay: Bool = false) {
         self.replay = replay
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 26) {
-                if let error = appModel.lastError {
+        List {
+            if let error = appModel.lastError {
+                Group {
                     if appModel.herdrMissingOnLastConnect {
                         MissingHerdrRecoveryCard(inForm: false) { showingSetupGuide = true }
                     } else if appModel.herdrSessionUnavailableOnLastConnect {
@@ -42,24 +43,36 @@ struct ConnectView: View {
                         ErrorBanner(message: error)
                     }
                 }
-                switch route {
-                case nil:
-                    EmptyView()
-                case .intro:
-                    introScreen
-                case .connectionSelection:
-                    header
-                    recentConnectionsSection
-                    Button(recentConnections.isEmpty ? "Connection Setup Help" : "Set Up Another Remote Machine") {
-                        showingSetupGuide = true
-                    }
-                    .font(.jost(.subheadline))
-                }
+                .padding(.vertical, 12)
+                .quietListRow()
             }
-            .padding(.horizontal, 22)
-            .padding(.top, 30)
-            .padding(.bottom, 40)
+            switch route {
+            case nil:
+                EmptyView()
+            case .intro:
+                introScreen
+                    .quietListRow()
+            case .connectionSelection:
+                header
+                    .frame(maxWidth: .infinity)
+                    .padding(.bottom, 26)
+                    .quietListRow()
+                recentConnectionsSection
+                Button(recentConnections.isEmpty ? "Connection Setup Help" : "Set Up Another Remote Machine") {
+                    showingSetupGuide = true
+                }
+                .font(.jost(.subheadline))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 20)
+                .quietListRow()
+            }
         }
+        .environment(\.editMode, $editMode)
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .environment(\.defaultMinListRowHeight, 0)
+        .contentMargins(.top, 30, for: .scrollContent)
+        .contentMargins(.bottom, 40, for: .scrollContent)
         .safeAreaInset(edge: .bottom) {
             if route == .intro {
                 VStack(spacing: 4) {
@@ -95,7 +108,9 @@ struct ConnectView: View {
                     .background(Theme.backgroundGradient.ignoresSafeArea())
             }
         }
-        .sheet(item: $selectedConnection) { connection in
+        .sheet(item: $selectedConnection, onDismiss: {
+            recentConnections = (try? RecentConnectionStore.load()) ?? recentConnections
+        }) { connection in
             ConnectionSettingsView(connection: connection, isReplay: replay)
         }
         .sheet(isPresented: $showingSetupGuide, onDismiss: {
@@ -173,49 +188,83 @@ struct ConnectView: View {
         }
     }
 
+    private func moveConnections(fromOffsets: IndexSet, toOffset: Int) {
+        guard !replay else { return }
+        do {
+            recentConnections = try RecentConnectionStore.move(fromOffsets: fromOffsets, toOffset: toOffset)
+        } catch {
+            appModel.lastError = error.localizedDescription
+            recentConnections = (try? RecentConnectionStore.load()) ?? recentConnections
+        }
+    }
+
+    private func forgetConnections(at offsets: IndexSet) {
+        let connections = offsets.map { recentConnections[$0] }
+        for connection in connections { forget(connection) }
+    }
+
     private var recentConnectionsSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        Group {
             if !recentConnections.isEmpty {
-                Text("Recent Connections")
-                    .font(.jost(.title2, weight: .bold))
+                HStack {
+                    Text("Saved Connections")
+                        .font(.jost(.title2, weight: .bold))
+                    Spacer()
+                    if !replay { EditButton() }
+                }
+                .padding(.bottom, 12)
+                .quietListRow()
             }
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
-                ForEach(recentConnections) { connection in
-                    Button {
-                        selectedConnection = connection
-                    } label: {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Image(systemName: "server.rack")
-                                .font(.jost(.title2))
-                                .foregroundStyle(Theme.accent)
-                            Text(connection.host)
+            ForEach(recentConnections) { connection in
+                Button {
+                    selectedConnection = connection
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "server.rack")
+                            .font(.jost(.title2))
+                            .foregroundStyle(Theme.accent)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(connection.displayName)
                                 .font(.jost(.headline))
-                                .lineLimit(2)
-                                .truncationMode(.middle)
-                            Text(connection.username)
-                                .font(.jost(.subheadline))
+                                .foregroundStyle(Theme.text)
                                 .lineLimit(1)
-                            Text("Port \(connection.port)")
-                                .font(.jost(.caption))
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 126, alignment: .leading)
-                        .padding(16)
-                        .herdrCard()
-                    }
-                    .buttonStyle(.herdrCard)
-                    .accessibilityLabel("\(connection.username) at \(connection.host), port \(connection.port)")
-                    .accessibilityHint("Opens connection settings")
-                    .contextMenu {
-                        if !replay {
-                            Button("Forget Connection", systemImage: "trash", role: .destructive) {
-                                forget(connection)
+                                .truncationMode(.middle)
+                            if let name = connection.name?.trimmingCharacters(in: .whitespacesAndNewlines),
+                               !name.isEmpty {
+                                Text("\(connection.username)@\(connection.host) · Port \(connection.port)")
+                                    .font(.jost(.subheadline))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
                             }
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right")
+                            .font(.jost(12, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                            .accessibilityHidden(true)
+                    }
+                    .padding(.vertical, 16)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(connection.displayName), \(connection.username) at \(connection.host), port \(connection.port)")
+                .accessibilityHint("Opens connection settings")
+                .contextMenu {
+                    if !replay {
+                        Button("Forget Connection", systemImage: "trash", role: .destructive) {
+                            forget(connection)
                         }
                     }
                 }
+                .moveDisabled(replay)
+                .deleteDisabled(replay)
+                .quietListRow()
             }
+            .onMove(perform: moveConnections)
+            .onDelete(perform: forgetConnections)
 
             Button {
                 openNewConnection()
@@ -226,6 +275,8 @@ struct ConnectView: View {
                 )
             }
             .buttonStyle(.herdrPrimary())
+            .padding(.top, 16)
+            .quietListRow()
         }
         .disabled(appModel.isConnecting)
     }
