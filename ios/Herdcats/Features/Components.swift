@@ -338,6 +338,7 @@ struct RepoPill: View {
 
 struct ErrorBanner: View {
     let message: String
+    var dismiss: (() -> Void)? = nil
     var retry: (() -> Void)?
 
     var body: some View {
@@ -354,6 +355,13 @@ struct ErrorBanner: View {
                 Button("Retry", action: retry)
                     .buttonStyle(.herdrSecondary(fullWidth: false))
                     .controlSize(.small)
+            }
+            if let dismiss {
+                Button(action: dismiss) {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss error")
             }
         }
         .padding(12)
@@ -429,12 +437,34 @@ extension View {
         modifier(ConnectionStatusBannerModifier(banner: banner, retryAction: retryAction))
     }
 
-    /// Convenience overload resolving the active gateway session from the given `AppModel`.
+    /// Convenience overload resolving the current session from the given `AppModel`.
+    /// A machine switch in progress (or its failure) takes this slot too, so it
+    /// sits beneath each screen's navigation bar like every other status.
     func connectionStatusBanner(appModel: AppModel) -> some View {
-        let sessionModel = appModel.machineCatalog
-        return connectionStatusBanner(banner: sessionModel.connectionBanner) {
-            Task { await sessionModel.reconnect() }
-        }
+        modifier(SessionStatusBannerModifier(appModel: appModel))
+    }
+}
+
+private struct SessionStatusBannerModifier: ViewModifier {
+    let appModel: AppModel
+    @Environment(ActiveMachine.self) private var active: ActiveMachine?
+
+    func body(content: Content) -> some View {
+        content
+            .connectionStatusBanner(
+                banner: active?.pendingLabel.map { .connecting(message: "Connecting to \($0)…") }
+                    ?? appModel.connectionBanner
+            ) {
+                Task { await appModel.reconnect() }
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if let active, let error = active.switchError {
+                    ErrorBanner(message: error, dismiss: { active.switchError = nil })
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .accessibilityIdentifier("machine-switch-error")
+                }
+            }
     }
 }
 
@@ -442,20 +472,28 @@ extension View {
 
 extension View {
     /// Presents SSH host key approval or verified replacement; `onApproved` retries the connection.
-    func hostKeyApprovalSheet(onApproved: @escaping @MainActor () async -> Void) -> some View {
-        modifier(HostKeyApprovalModifier(onApproved: onApproved))
+    func hostKeyApprovalSheet(
+        onCancelled: (@MainActor () async -> Void)? = nil,
+        onApproved: @escaping @MainActor () async -> Void
+    ) -> some View {
+        modifier(HostKeyApprovalModifier(onCancelled: onCancelled, onApproved: onApproved))
     }
 }
 
 private struct HostKeyApprovalModifier: ViewModifier {
     @Environment(AppModel.self) private var appModel
+    let onCancelled: (@MainActor () async -> Void)?
     let onApproved: @MainActor () async -> Void
 
     func body(content: Content) -> some View {
         content.sheet(item: Binding(
             get: { appModel.hostKeyChallenge.map(HostKeyApprovalItem.init) },
             set: { if $0 == nil, appModel.hostKeyChallenge != nil { appModel.cancelHostKeyApproval() } }
-        )) { item in
+        ), onDismiss: {
+            if appModel.hostKeyVerificationBlocked {
+                Task { await onCancelled?() }
+            }
+        }) { item in
             HostKeyApprovalView(challenge: item.challenge, onApproved: onApproved)
                 .id(item.id)
         }

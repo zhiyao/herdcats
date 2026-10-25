@@ -6,6 +6,19 @@ struct ConnectionSettingsView: View {
     @Environment(AppModel.self) var appModel
     @Environment(\.dismiss) var dismiss
     let isReplay: Bool
+    let switcher: ActiveMachine?
+    @State var switchConnectionError: String?
+    @State var isSwitching = false
+    @State private var pendingSubmission: Submission?
+
+    private struct Submission {
+        let entry: RecentConnection
+        let config: ConnectionConfig
+        let rememberPassphrase: Bool
+    }
+
+    var isConnecting: Bool { switcher == nil ? appModel.isConnecting : isSwitching }
+    @State var name = ""
     @State var host = ""
     @State var port = "22"
     @State var username = ""
@@ -67,8 +80,10 @@ struct ConnectionSettingsView: View {
 
     static let documentationURL = URL(string: "https://herdcats.dev/support/#connect")!
 
-    init(connection: RecentConnection, isReplay: Bool = false) {
+    init(connection: RecentConnection, isReplay: Bool = false, switcher: ActiveMachine? = nil) {
         self.isReplay = isReplay
+        self.switcher = switcher
+        _name = State(initialValue: connection.name ?? "")
         _host = State(initialValue: connection.host)
         _port = State(initialValue: String(connection.port))
         _username = State(initialValue: connection.username)
@@ -122,7 +137,9 @@ struct ConnectionSettingsView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
-                    if let error = appModel.lastError {
+                    if let error = switchConnectionError {
+                        ErrorBanner(message: error)
+                    } else if switcher == nil, let error = appModel.lastError {
                         if appModel.herdrMissingOnLastConnect {
                             MissingHerdrRecoveryCard(inForm: true) { showingSetupGuide = true }
                         } else if appModel.herdrSessionUnavailableOnLastConnect {
@@ -150,27 +167,48 @@ struct ConnectionSettingsView: View {
                             .foregroundStyle(.primary)
                     }
                     .accessibilityLabel("Close")
-                    .disabled(appModel.isConnecting)
+                    .disabled(isConnecting)
                 }
             }
         }
         .overlay {
             // A sheet is presented above the root view, so it needs its own
             // loading surface while authentication and the Herdr check run.
-            if appModel.isConnecting {
-                LazyCatLoadingView(message: appModel.connectionProgressMessage)
+            if isConnecting {
+                LazyCatLoadingView(message: switcher?.pending?.connectionProgressMessage ?? appModel.connectionProgressMessage)
                     .background(Theme.backgroundGradient.ignoresSafeArea())
             }
         }
         .hostKeyApprovalSheet {
             await connect()
         }
+        .background {
+            if let switcher, let pending = switcher.pending {
+                Color.clear
+                    .frame(width: 0, height: 0)
+                    .hostKeyApprovalSheet(onCancelled: {
+                        guard switcher.pending === pending else { return }
+                        await switcher.cancelSwitch()
+                        pendingSubmission = nil
+                    }, onApproved: {
+                        guard switcher.pending === pending, let submission = pendingSubmission else { return }
+                        isSwitching = true
+                        defer { isSwitching = false }
+                        let outcome = await switcher.finishPendingSwitch()
+                        handleSwitchOutcome(outcome, submission: submission)
+                    })
+                    .environment(pending)
+                    .id(ObjectIdentifier(pending))
+            }
+        }
+        .onAppear { switcher?.pendingHostKeyOwnedByForm = true }
+        .onDisappear { switcher?.pendingHostKeyOwnedByForm = false }
         .sheet(isPresented: $showingSetupGuide) {
             HerdrSetupGuideView()
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
-        .interactiveDismissDisabled(appModel.isConnecting)
+        .interactiveDismissDisabled(isConnecting)
     }
 
     var footer: some View {
@@ -232,7 +270,19 @@ struct ConnectionSettingsView: View {
         }
     }
 
+    private func showConnectionError(_ message: String) {
+        if switcher != nil {
+            switchConnectionError = message
+        } else {
+            appModel.lastError = message
+        }
+    }
+
     func connect() async {
+        guard !isConnecting else { return }
+        switchConnectionError = nil
+        isSwitching = switcher != nil
+        defer { isSwitching = false }
         let config = ConnectionConfig(
             host: host.trimmingCharacters(in: .whitespaces),
             port: portNumber ?? 22,
@@ -248,9 +298,8 @@ struct ConnectionSettingsView: View {
         let loaded = (try? RecentConnectionStore.load()) ?? []
         let entry = RecentConnectionStore.entry(
             host: config.host, port: config.port, username: config.username,
-            authMode: authModeRaw, remember: remember, in: loaded
+            authMode: authModeRaw, remember: remember, name: name, in: loaded
         )
-        let secret = authMode == .password ? password : keyPEM
         if !isReplay {
             do {
                 if !remember {
@@ -264,25 +313,61 @@ struct ConnectionSettingsView: View {
                 // would strand a still-saved encrypted-key profile without the passphrase
                 // it needs if the connection attempt fails.
             } catch {
-                appModel.lastError = error.localizedDescription
+                showConnectionError(error.localizedDescription)
                 return
             }
         }
-        await appModel.connect(config: config)
-        guard case .connected = appModel.phase else { return }
+        let submission = Submission(entry: entry, config: config, rememberPassphrase: rememberPassphrase)
+        if let switcher {
+            pendingSubmission = submission
+            let outcome = await switcher.switchMachine(to: entry, config: config)
+            handleSwitchOutcome(outcome, submission: submission)
+        } else {
+            await appModel.connect(config: config)
+            guard case .connected = appModel.phase else { return }
+            persistAndDismiss(submission)
+        }
+    }
+
+    private func handleSwitchOutcome(_ outcome: ActiveMachine.SwitchOutcome, submission: Submission) {
+        guard let switcher else { return }
+        switch outcome {
+        case .switched:
+            persistAndDismiss(submission)
+        case .failed:
+            if switcher.pending?.hostKeyChallenge == nil {
+                switchConnectionError = switcher.switchError ?? "Connection failed"
+                switcher.switchError = nil
+                pendingSubmission = nil
+            }
+        case .alreadyActive:
+            dismiss()
+        case .needsCredentials, .superseded:
+            pendingSubmission = nil
+        }
+    }
+
+    private func persistAndDismiss(_ submission: Submission) {
+        let entry = submission.entry
         if !isReplay {
             do {
                 if entry.remember {
-                    try KeychainStore.save(secret, account: entry.secretAccount)
-                    if authMode == .privateKey && keyIsEncrypted && rememberPassphrase {
-                        try KeychainStore.save(keyPassphrase, account: entry.secretAccount + ".passphrase")
-                    } else {
+                    switch submission.config.auth {
+                    case let .password(secret):
+                        try KeychainStore.save(secret, account: entry.secretAccount)
                         try KeychainStore.delete(account: entry.secretAccount + ".passphrase")
+                    case let .privateKey(secret, passphrase):
+                        try KeychainStore.save(secret, account: entry.secretAccount)
+                        if submission.rememberPassphrase, let passphrase {
+                            try KeychainStore.save(passphrase, account: entry.secretAccount + ".passphrase")
+                        } else {
+                            try KeychainStore.delete(account: entry.secretAccount + ".passphrase")
+                        }
                     }
                 }
                 _ = try RecentConnectionStore.record(entry, in: RecentConnectionStore.load())
             } catch {
-                appModel.lastError = error.localizedDescription
+                showConnectionError(error.localizedDescription)
                 return
             }
         }

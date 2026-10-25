@@ -38,31 +38,10 @@ extension HerdrConnection {
         _ args: String, timeout: TimeInterval = 20, allowEmptyOutput: Bool = false,
         timeoutPolicy: HerdrCommandTimeoutPolicy = .teardownAndNotify
     ) async throws -> String {
-        if let route {
-            return try await route.gateway.runMachineCommand(
-                args, machine: route.machine, expected: route.generation,
-                timeout: timeout, allowEmptyOutput: allowEmptyOutput
-            )
-        }
         return try await executeHerdr(
             args, timeout: timeout, allowEmptyOutput: allowEmptyOutput,
             timeoutPolicy: timeoutPolicy
         )
-    }
-
-    func runMachineCommand(
-        _ args: String, machine: HerdrMachine, expected: ConnectionGeneration,
-        timeout: TimeInterval, allowEmptyOutput: Bool
-    ) async throws -> String {
-        try requireGeneration(expected)
-        return try await executeHerdr(
-            Self.machineArguments(args, machineID: machine.id), timeout: timeout,
-            allowEmptyOutput: allowEmptyOutput, timeoutPolicy: .preserveConnection
-        )
-    }
-
-    static func machineArguments(_ args: String, machineID: String) -> String {
-        "--machine \(shellSafeArgument(machineID)) \(args)"
     }
 
     /// Keeps arbitrary CLI arguments, which may contain user messages, out of
@@ -116,15 +95,6 @@ extension HerdrConnection {
     }
 
     // MARK: - Typed herdr queries
-
-    func machineList() async throws -> [HerdrMachine] {
-        try requireHostServices()
-        let output = try await executeHerdr(
-            "machine list --json", timeout: 10, allowEmptyOutput: false,
-            timeoutPolicy: .preserveConnection
-        )
-        return try JSONDecoder().decode([HerdrMachine].self, from: Data(output.utf8))
-    }
 
     func serverVersion(
         timeoutPolicy: HerdrCommandTimeoutPolicy = .teardownAndNotify

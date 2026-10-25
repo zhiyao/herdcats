@@ -2,20 +2,6 @@ import SwiftUI
 
 // MARK: - Space row
 
-struct MachineSectionHeader: View {
-    let name: String
-
-    var body: some View {
-        Label(name, systemImage: "desktopcomputer")
-            .font(.pixel(10, bold: true))
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 12)
-            .padding(.bottom, 2)
-            .accessibilityAddTraits(.isHeader)
-    }
-}
-
 struct PendingSpaceRow: View {
     let title: String
 
@@ -41,7 +27,6 @@ struct PendingSpaceRow: View {
 /// last-activity time pinned top-right, and a line of tab/pane/agent counts.
 struct SpaceRow: View {
     let group: SpaceGroup
-    var machineLabel: String? = nil
     var isHighlighted = false
     var lastUpdated: Date? = nil
 
@@ -67,13 +52,6 @@ struct SpaceRow: View {
                     StatChip(icon: "rectangle.split.3x1", value: "\(workspace.tabCount)", caption: "tabs")
                     StatChip(icon: "rectangle.split.2x2", value: "\(workspace.paneCount)", caption: "panes")
                     StatChip(icon: "sparkles", value: "\(group.root.agents.count)", caption: "agents")
-                    if let machineLabel {
-                        Label(machineLabel, systemImage: "desktopcomputer")
-                            .font(.jost(.caption))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
                 }
             }
         }

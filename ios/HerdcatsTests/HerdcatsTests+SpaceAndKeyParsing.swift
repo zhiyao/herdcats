@@ -111,12 +111,7 @@ struct WorktreePresentationTests {
                 isLinkedWorktree: false
             )
         )
-        let machine = SpaceMachine(
-            scope: ConnectionIdentity(host: "example.test", port: 22, username: "tester"),
-            label: "Test machine",
-            order: 0
-        )
-        let source = Space(workspace: sourceWorkspace, agents: [], machine: machine)
+        let source = Space(workspace: sourceWorkspace, agents: [])
         let returnedWorkspace = Workspace(
             workspaceId: "linked",
             label: "Feature",
@@ -139,7 +134,7 @@ struct WorktreePresentationTests {
             openWorkspaceId: "linked"
         )
         let presented = WorktreePresentation.space(returnedWorkspace, entry: entry, source: source)
-        #expect(presented.machine == machine && presented.workspace.worktree?.repoRoot == "/repo")
+        #expect(presented.workspace.worktree?.repoRoot == "/repo")
         let groups = SpaceGroup.group(SpacePresentationOverlay.visibleSpaces([source], unconfirmed: [presented]))
         #expect(groups.count == 1)
         #expect(groups[0].worktrees.map(\.id) == [presented.id])

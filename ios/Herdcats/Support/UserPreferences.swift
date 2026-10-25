@@ -69,7 +69,7 @@ enum AppearancePreference: String, CaseIterable, Identifiable {
 enum LaunchPreference: String, CaseIterable, Identifiable {
     /// Show the recent-connections selection screen.
     case connectionSelection
-    /// Connect immediately using the most recent remembered connection.
+    /// Connect immediately using the last-used remembered connection.
     case autoConnect
 
     var id: String { rawValue }
@@ -91,7 +91,7 @@ enum LaunchPreference: String, CaseIterable, Identifiable {
     static let storageKey = "launchPreference"
     static let `default`: LaunchPreference = .connectionSelection
 
-    /// Builds a config for the newest remembered connection, if credentials exist.
+    /// Builds a config for the last-used remembered connection, if credentials exist.
     static func autoConnectConfig(
         defaults: UserDefaults = .standard,
         keychain: KeychainOperations = KeychainStore.operations
@@ -100,24 +100,16 @@ enum LaunchPreference: String, CaseIterable, Identifiable {
         guard LaunchPreference(rawValue: raw) == .autoConnect else { return nil }
 
         let entries = (try? RecentConnectionStore.load(defaults: defaults, using: keychain)) ?? []
-        guard let entry = entries.first(where: \.remember),
-              let secret = try? KeychainStore.load(account: entry.secretAccount, using: keychain),
-              !secret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return nil
+        let remembered = entries.enumerated().filter { $0.element.remember }.sorted { lhs, rhs in
+            switch (lhs.element.lastConnectedAt, rhs.element.lastConnectedAt) {
+            case let (left?, right?) where left != right: return left > right
+            case (_?, nil): return true
+            case (nil, _?): return false
+            default: return lhs.offset < rhs.offset
+            }
         }
-
-        let passphrase = try? KeychainStore.load(account: entry.secretAccount + ".passphrase", using: keychain)
-        if entry.authMode == "privateKey", (try? OpenSSHEd25519.isEncrypted(pem: secret)) == true,
-           passphrase == nil || passphrase?.isEmpty == true { return nil }
-        let auth: ConnectionConfig.AuthMethod = entry.authMode == "privateKey"
-            ? .privateKey(secret, passphrase: passphrase)
-            : .password(secret)
-        return ConnectionConfig(
-            host: entry.host,
-            port: entry.port,
-            username: entry.username,
-            auth: auth
-        )
+        guard let entry = remembered.first?.element else { return nil }
+        return RecentConnectionStore.config(for: entry, using: keychain)
     }
 }
 

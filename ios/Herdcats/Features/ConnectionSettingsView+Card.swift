@@ -5,6 +5,17 @@ import UniformTypeIdentifiers
 extension ConnectionSettingsView {
     var connectionCard: some View {
         VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                fieldLabel("Name (optional)")
+                TextField("e.g. Studio", text: $name)
+                    .textFieldStyle(.plain)
+                    .foregroundStyle(.primary)
+                    .autocorrectionDisabled()
+                    .accessibilityLabel("Name")
+            }
+            .padding(12)
+            .background(fieldShape.fill(Theme.fieldBackground))
+
             // Host + port
             VStack(alignment: .leading, spacing: 8) {
                 fieldLabel("Host")
@@ -247,16 +258,16 @@ extension ConnectionSettingsView {
                 Task { await connect() }
             } label: {
                 HStack(spacing: 8) {
-                    if appModel.isConnecting {
+                    if isConnecting {
                         CircularArcSpinner(size: 16)
                     }
-                    Text(appModel.isConnecting ? "Connecting…" : "Connect")
+                    Text(isConnecting ? "Connecting…" : "Connect")
                 }
             }
             .buttonStyle(.herdrPrimary())
-            .disabled(!canConnect || appModel.isConnecting)
+            .disabled(!canConnect || isConnecting)
         }
-        .disabled(appModel.isConnecting)
+        .disabled(isConnecting)
         .padding(18)
         .herdrCard()
     }

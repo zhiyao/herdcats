@@ -21,12 +21,10 @@ enum AgentBridgeError: Error, LocalizedError, Equatable, Sendable {
     case closed, timeout
     case unavailable(String)
     case questionFailure(code: String, stepsSent: Int?)
-    case routedHostUnsupported
     var code: String {
         switch self {
         case .unavailable(let code): return code
         case .questionFailure(let code, _): return code
-        case .routedHostUnsupported: return "routed_host_unsupported"
         case .timeout: return "bridge_timeout"
         case .protocolMismatch: return "protocol_mismatch"
         default: return "bridge_unavailable"
@@ -576,7 +574,6 @@ enum TimelineHistoryDiagnostics {
         case .incompleteFrame: return "incomplete_frame"
         case .protocolMismatch: return "protocol_mismatch"
         case .sequenceGap: return "sequence_gap"
-        case .routedHostUnsupported: return "routed_host_unsupported"
         case .unavailable(let code), .questionFailure(let code, _):
             let safe = code.prefix(64).filter { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_") }
             return "remote_\(safe)"

@@ -171,7 +171,6 @@ extension HerdrConnection {
         data: Data,
         fileExtension: String
     ) async throws -> String {
-        try requireHostServices()
         guard let client else { throw HerdrError.notConnected }
         guard !data.isEmpty else {
             throw HerdrError.invalidConfiguration("Image data is empty.")
@@ -238,7 +237,6 @@ extension HerdrConnection {
     /// Native composition uses the existing prompt API, with a fresh occupant
     /// check. It never falls back to shell input or answers a blocked request.
     func submitTimelinePrompt(text: String, identity: AgentTimelineIdentity, owned: ConnectionGeneration) async throws {
-        guard route == nil else {throw AgentBridgeError.routedHostUnsupported}
         try await paneInput.run(paneId: identity.paneId) {
             try await self.requireGeneration(owned)
             let live = try await self.fetch(TimelinePromptAgentResult.self,args:"agent get \(Self.shellSafeArgument(identity.paneId))").agent

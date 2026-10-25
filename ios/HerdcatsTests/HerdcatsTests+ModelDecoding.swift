@@ -313,32 +313,6 @@ struct TabPaneListCommandTests {
             #expect(!paneArgs.contains("\n"))
         }
     }
-
-    @Test
-    func listArgumentsRemainEscapedWhenRoutedThroughMachineArguments() {
-        let workspaceId = "w4; $(touch /tmp/unsafe); `whoami`\n'\" "
-        let machineID = "mini'; $(id); `uname`\n"
-        let tabRouted = HerdrConnection.machineArguments(
-            HerdrConnection.tabListArguments(workspaceId: workspaceId),
-            machineID: machineID
-        )
-        let paneRouted = HerdrConnection.machineArguments(
-            HerdrConnection.paneListArguments(workspaceId: workspaceId),
-            machineID: machineID
-        )
-        #expect(tabRouted.hasPrefix("--machine "))
-        #expect(paneRouted.hasPrefix("--machine "))
-        #expect(tabRouted.contains(HerdrConnection.tabListArguments(workspaceId: workspaceId)))
-        #expect(paneRouted.contains(HerdrConnection.paneListArguments(workspaceId: workspaceId)))
-        #expect(!tabRouted.contains("touch"))
-        #expect(!tabRouted.contains("whoami"))
-        #expect(!tabRouted.contains("uname"))
-        #expect(!paneRouted.contains("touch"))
-        #expect(!paneRouted.contains("whoami"))
-        #expect(!paneRouted.contains("uname"))
-        #expect(!tabRouted.contains("'"))
-        #expect(!paneRouted.contains("'"))
-    }
 }
 
 // MARK: - Worktree commands and decoding

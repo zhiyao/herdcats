@@ -334,7 +334,6 @@ final class HerdcatsUITests: XCTestCase {
     }
     #endif
 
-    /// Read-only smoke test; opt in with TEST_RUNNER_HC_MACHINE_LABEL.
 }
 
 @MainActor
