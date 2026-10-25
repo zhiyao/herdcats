@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		BDE48C705B6F459A99DF3804 /* HerdcatsTests+MachineSwitching.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDE48C705B6F459A99DF3803 /* HerdcatsTests+MachineSwitching.swift */; };
+		BDE48C705B6F459A99DF3802 /* ActiveMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDE48C705B6F459A99DF3801 /* ActiveMachine.swift */; };
 		03B01A98BE18ECBE68F528C5 /* HerdcatsTests+SpaceAndKeyParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = EED17C5CD76FB35981A9D96C /* HerdcatsTests+SpaceAndKeyParsing.swift */; };
 		0457B7BC4DFDD531B8EC972E /* ApprovalResponseState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88DBA9853C7313FB0D808A34 /* ApprovalResponseState.swift */; };
 		04BFEF8F00C2DBAAD2B5C701 /* AppModel+Recovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B1CD175F0F284E79DA115DD /* AppModel+Recovery.swift */; };
@@ -159,6 +161,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		BDE48C705B6F459A99DF3803 /* HerdcatsTests+MachineSwitching.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdcatsTests+MachineSwitching.swift"; sourceTree = "<group>"; };
+		BDE48C705B6F459A99DF3801 /* ActiveMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ActiveMachine.swift"; sourceTree = "<group>"; };
 		02E13CEE155B9581892D6C37 /* PaneSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneSessionView.swift; sourceTree = "<group>"; };
 		03D86B705A4E80AB24216844 /* OpenSSHKeyParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenSSHKeyParser.swift; sourceTree = "<group>"; };
 		08F22D067F6E76605909958F /* HerdcatsTests+RefreshGeneration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdcatsTests+RefreshGeneration.swift"; sourceTree = "<group>"; };
@@ -472,6 +476,7 @@
 		A2734D0A6BBA6C67D746242C /* Herdcats */ = {
 			isa = PBXGroup;
 			children = (
+				BDE48C705B6F459A99DF3801 /* ActiveMachine.swift */,
 				960C17FAAD7D9802E6C317C3 /* AppModel.swift */,
 				4F08939634B4BDB715233641 /* AppModel+Connection.swift */,
 				7B1CD175F0F284E79DA115DD /* AppModel+Recovery.swift */,
@@ -524,6 +529,7 @@
 				CBCEFE9A7B22D06413A9E138 /* HerdcatsTests+CredentialMigration.swift */,
 				7475F5A880AB410731990323 /* HerdcatsTests+DictationAndHistory.swift */,
 				C7D8691E59345CB8F559F5BB /* HerdcatsTests+ModelDecoding.swift */,
+				BDE48C705B6F459A99DF3803 /* HerdcatsTests+MachineSwitching.swift */,
 				2F13BDB183FEA9BA4E3B3340 /* HerdcatsTests+OnboardingAndHostKeys.swift */,
 				E6753FF3AF90C184EEA13570 /* HerdcatsTests+PaneInputCoordinator.swift */,
 				565E52FF93633CC2CB6D65E5 /* HerdcatsTests+PaneLiveInput.swift */,
@@ -730,6 +736,7 @@
 				1F71E22873C5D58371B6731E /* AgySignInSheet.swift in Sources */,
 				50A0DEA7145EF0ED649928E9 /* AppModel+Connection.swift in Sources */,
 				04BFEF8F00C2DBAAD2B5C701 /* AppModel+Recovery.swift in Sources */,
+				BDE48C705B6F459A99DF3802 /* ActiveMachine.swift in Sources */,
 				E9F55171BA8B03A66229D51D /* AppModel.swift in Sources */,
 				44870A910D3FE712E51842CA /* ApprovalCard.swift in Sources */,
 				E7ECB28545947D0CCD8D04C9 /* ApprovalModels.swift in Sources */,
@@ -822,6 +829,7 @@
 				85480D39459046813F07E9E7 /* HerdcatsTests+CredentialMigration.swift in Sources */,
 				2B3A742B2DDD9B5702E52638 /* HerdcatsTests+DictationAndHistory.swift in Sources */,
 				66A6D27875DD944D947DFC86 /* HerdcatsTests+ModelDecoding.swift in Sources */,
+				BDE48C705B6F459A99DF3804 /* HerdcatsTests+MachineSwitching.swift in Sources */,
 				07B6DC3D2E655393132F1045 /* HerdcatsTests+OnboardingAndHostKeys.swift in Sources */,
 				71D6C3379E617A45C50CF8C6 /* HerdcatsTests+PaneInputCoordinator.swift in Sources */,
 				D9236D424B2DBFF26A50E066 /* HerdcatsTests+PaneLiveInput.swift in Sources */,
