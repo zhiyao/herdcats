@@ -17,17 +17,7 @@ struct MainTabView: View {
         ConnectedTabsView(selectedTab: $selectedTab)
             .environment(appModel)
             .id(Self.subtreeID(for: appModel))
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if let label = active?.pendingLabel {
-                    ConnectionStatusBar(banner: .connecting(message: "Connecting to \(label)…"))
-                }
-                if let active, let error = active.switchError {
-                    ErrorBanner(message: error, dismiss: { active.switchError = nil })
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .accessibilityIdentifier("machine-switch-error")
-                }
-            }
+            // Switch progress and errors render per screen via `connectionStatusBanner(appModel:)`.
             .background {
                 if let active, !active.pendingHostKeyOwnedByForm, let pending = active.pending {
                     Color.clear

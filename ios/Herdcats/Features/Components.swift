@@ -438,10 +438,33 @@ extension View {
     }
 
     /// Convenience overload resolving the current session from the given `AppModel`.
+    /// A machine switch in progress (or its failure) takes this slot too, so it
+    /// sits beneath each screen's navigation bar like every other status.
     func connectionStatusBanner(appModel: AppModel) -> some View {
-        connectionStatusBanner(banner: appModel.connectionBanner) {
-            Task { await appModel.reconnect() }
-        }
+        modifier(SessionStatusBannerModifier(appModel: appModel))
+    }
+}
+
+private struct SessionStatusBannerModifier: ViewModifier {
+    let appModel: AppModel
+    @Environment(ActiveMachine.self) private var active: ActiveMachine?
+
+    func body(content: Content) -> some View {
+        content
+            .connectionStatusBanner(
+                banner: active?.pendingLabel.map { .connecting(message: "Connecting to \($0)…") }
+                    ?? appModel.connectionBanner
+            ) {
+                Task { await appModel.reconnect() }
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if let active, let error = active.switchError {
+                    ErrorBanner(message: error, dismiss: { active.switchError = nil })
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .accessibilityIdentifier("machine-switch-error")
+                }
+            }
     }
 }
 

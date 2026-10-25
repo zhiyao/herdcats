@@ -54,7 +54,7 @@ final class ActiveMachine {
 
         let candidate = makeModel()
         pending = candidate
-        pendingLabel = entry.displayName
+        pendingLabel = entry.shortDisplayName(among: (try? RecentConnectionStore.load()) ?? [])
         target = (entry, config)
         switchError = nil
         return await dialAndFinish(candidate, entry: entry, config: config, revision: currentRevision)
