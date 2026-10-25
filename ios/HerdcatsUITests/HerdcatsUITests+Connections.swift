@@ -4,46 +4,56 @@ import XCTest
 
 extension HerdcatsUITests {
     func testSavedConnectionCardAndGear() {
-        let app = XCUIApplication()
-        app.launchArguments = ["-connectionSelectionUITest", "-launchPreference", "connectionSelection"]
-        app.launch()
-        defer { app.terminate() }
-        let first = app.buttons["connect-machine-00000000-0000-0000-0000-000000000001"]
-        let second = app.buttons["connect-machine-00000000-0000-0000-0000-000000000002"]
-        XCTAssertTrue(first.waitForExistence(timeout: 8))
-        XCTAssertTrue(second.exists)
-        XCTAssertEqual(first.frame.minY, second.frame.minY, accuracy: 2)
-        XCTAssertLessThan(first.frame.maxX, second.frame.minX)
-        attachConnectionScreenshot(app, name: "Saved machines two column grid")
-        let gear = app.buttons["settings-machine-00000000-0000-0000-0000-000000000001"]
-        XCTAssertGreaterThanOrEqual(gear.frame.height, 44)
-        gear.tap()
-        XCTAssertTrue(app.buttons["Save changes"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["Connect"].exists)
-        attachConnectionScreenshot(app, name: "Saved machine settings")
-        app.buttons["Close"].tap()
-        first.tap()
-        XCTAssertTrue(app.secureTextFields["Password"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.navigationBars["Sign in"].exists)
-        XCTAssertFalse(app.textFields["192.168.1.42"].exists)
-        XCTAssertFalse(app.textFields["whoami"].exists)
-        attachConnectionScreenshot(app, name: "Destination sign in sheet")
+        for appearance in ["dark", "light"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-connectionSelectionUITest", "-launchPreference", "connectionSelection",
+                                   "-appearancePreference", appearance, "-lightThemePalette", "moonlit", "-darkThemePalette", "moonlit"]
+            app.launch()
+            defer { app.terminate() }
+            let first = app.buttons["connect-machine-00000000-0000-0000-0000-000000000001"]
+            let second = app.buttons["connect-machine-00000000-0000-0000-0000-000000000002"]
+            XCTAssertTrue(first.waitForExistence(timeout: 8))
+            XCTAssertTrue(second.exists)
+            XCTAssertEqual(first.frame.minY, second.frame.minY, accuracy: 2)
+            XCTAssertLessThan(first.frame.maxX, second.frame.minX)
+            attachConnectionScreenshot(app, name: "\(appearance) Moonlit grid")
+            let gear = app.buttons["settings-machine-00000000-0000-0000-0000-000000000001"]
+            XCTAssertGreaterThanOrEqual(gear.frame.height, 44)
+            gear.tap()
+            XCTAssertTrue(app.buttons["Save changes"].waitForExistence(timeout: 5))
+            XCTAssertFalse(app.buttons["Connect"].exists)
+            attachConnectionScreenshot(app, name: "\(appearance) Moonlit settings")
+            app.segmentedControls.buttons["Private Key"].tap()
+            assertConnectionKeyField(in: app)
+            attachConnectionScreenshot(app, name: "\(appearance) Moonlit settings key field")
+            app.buttons["Close"].tap()
+            first.tap()
+            XCTAssertTrue(app.secureTextFields["Password"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.navigationBars["Sign in"].exists)
+            XCTAssertFalse(app.textFields["192.168.1.42"].exists)
+            XCTAssertFalse(app.textFields["whoami"].exists)
+            attachConnectionScreenshot(app, name: "\(appearance) Moonlit password sign in")
+        }
     }
 
     func testMissingPrivateKeyUsesImportFirstSignIn() {
-        let app = XCUIApplication()
-        app.launchArguments = ["-connectionSelectionUITest", "-launchPreference", "connectionSelection"]
-        app.launch()
-        defer { app.terminate() }
-        let card = app.buttons["connect-machine-00000000-0000-0000-0000-000000000002"]
-        XCTAssertTrue(card.waitForExistence(timeout: 8))
-        XCTAssertTrue(app.staticTexts["Port 2222"].exists)
-        card.tap()
-        XCTAssertTrue(app.buttons["Import Private Key…"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.textViews["Private key"].exists)
-        attachConnectionScreenshot(app, name: "Private key import first sign in")
-        app.buttons["Paste or edit private key"].tap()
-        XCTAssertTrue(app.textViews["Private key"].waitForExistence(timeout: 5))
+        for appearance in ["dark", "light"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-connectionSelectionUITest", "-launchPreference", "connectionSelection",
+                                   "-appearancePreference", appearance, "-lightThemePalette", "moonlit", "-darkThemePalette", "moonlit"]
+            app.launch()
+            defer { app.terminate() }
+            let card = app.buttons["connect-machine-00000000-0000-0000-0000-000000000002"]
+            XCTAssertTrue(card.waitForExistence(timeout: 8))
+            XCTAssertTrue(app.staticTexts["Port 2222"].exists)
+            card.tap()
+            assertConnectionKeyField(in: app)
+            XCTAssertFalse(app.buttons["Paste or edit private key"].exists)
+            let saveCredentials = app.switches["Save credentials on this iPhone"]
+            XCTAssertTrue(saveCredentials.waitForExistence(timeout: 5))
+            XCTAssertTrue(saveCredentials.isHittable)
+            attachConnectionScreenshot(app, name: "\(appearance) Moonlit sign in key field")
+        }
     }
 
     func testReadySavedCardOwnsHostTrustAndRetriesWithoutSettings() throws {
@@ -87,7 +97,8 @@ extension HerdcatsUITests {
     func testLargeTypeConnectionActionsStayReachableWithKeyboard() {
         let app = XCUIApplication()
         app.launchArguments = ["-connectionSelectionUITest", "-launchPreference", "connectionSelection",
-                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL",
+                               "-appearancePreference", "dark", "-darkThemePalette", "moonlit"]
         app.launch()
         defer { app.terminate() }
         let gear = app.buttons["settings-machine-00000000-0000-0000-0000-000000000001"]
@@ -109,6 +120,8 @@ extension HerdcatsUITests {
         gear.tap()
         let user = app.textFields["whoami"]
         XCTAssertTrue(user.waitForExistence(timeout: 5))
+        user.tap()
+        user.typeText("x")
         user.tap()
         assertVisibleKeyboard(in: app)
         let save = app.buttons["Save changes"]
@@ -178,6 +191,19 @@ extension HerdcatsUITests {
         app.buttons["manage-machines-close"].tap()
         XCTAssertTrue(first.waitForNonExistence(timeout: 5))
         XCTAssertTrue(second.exists)
+    }
+
+    private func assertConnectionKeyField(in app: XCUIApplication) {
+        let editor = app.textViews["Private key"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        let importer = app.buttons["Import Private Key"]
+        for _ in 0..<2 where !importer.isHittable { app.swipeUp() }
+        XCTAssertTrue(importer.isHittable)
+        XCTAssertGreaterThanOrEqual(importer.frame.height, 44 - 0.01)
+        XCTAssertGreaterThanOrEqual(importer.frame.width, 44 - 0.01)
+        XCTAssertEqual(importer.frame.maxX, editor.frame.maxX, accuracy: 2)
+        XCTAssertLessThanOrEqual(importer.frame.maxY, editor.frame.minY)
+        XCTAssertTrue(app.staticTexts["SSH private key"].exists)
     }
 
     private func assertVisibleKeyboard(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {

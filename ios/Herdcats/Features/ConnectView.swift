@@ -528,6 +528,7 @@ struct SavedConnectionSignInView: View {
     @State private var editingRejectedSecret = false
     @State private var keyImporterPresented = false
     @State private var importError: String?
+    private var showsKeyEditor: Bool { value.isKey && (requestsSecret || editingRejectedSecret) }
 
     init(initial: ConnectionSignIn, replay: Bool, switcher: ActiveMachine? = nil) {
         self.replay = replay
@@ -554,32 +555,31 @@ struct SavedConnectionSignInView: View {
                     }
                     if requestsSecret || editingRejectedSecret {
                         if value.isKey {
-                            Button { keyImporterPresented = true } label: {
-                                Label("Import Private Key…", systemImage: "square.and.arrow.down")
-                            }
-                            .buttonStyle(.herdrSecondary(fullWidth: false))
+                            ConnectionPrivateKeyField(key: $value.secret) { keyImporterPresented = true }
                             if !value.secret.isEmpty && !value.needsSecret {
                                 Label(value.encrypted ? "Encrypted ed25519 key loaded" : "ed25519 key loaded", systemImage: "key")
                                     .font(.jost(.subheadline))
-                            }
-                            DisclosureGroup("Paste or edit private key") {
-                                TextEditor(text: $value.secret)
-                                    .font(.system(.footnote, design: .monospaced))
-                                    .frame(minHeight: 110)
-                                    .autocorrectionDisabled()
-                                    .textInputAutocapitalization(.never)
-                                    .accessibilityLabel("Private key")
                             }
                             if let importError { Text(importError).foregroundStyle(Theme.destructive) }
                             if !value.secret.isEmpty && value.needsSecret {
                                 Text("Enter a valid OpenSSH ed25519 private key.").foregroundStyle(Theme.warning)
                             }
                         } else {
-                            SecureField("Password", text: $value.secret).textContentType(.password)
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Password").font(.jost(.subheadline, weight: .medium)).foregroundStyle(.secondary)
+                                SecureField("Password", text: $value.secret).textContentType(.password)
+                            }
+                            .padding(12)
+                            .modifier(ConnectionInputSurface())
                         }
                     }
                     if value.encrypted {
-                        SecureField("Key passphrase", text: $value.passphrase)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Key passphrase").font(.jost(.subheadline, weight: .medium)).foregroundStyle(.secondary)
+                            SecureField("Key passphrase", text: $value.passphrase)
+                        }
+                        .padding(12)
+                        .modifier(ConnectionInputSurface())
                         if value.entry.remember {
                             Toggle("Save passphrase on this iPhone", isOn: $value.savePassphrase)
                         }
@@ -660,7 +660,7 @@ struct SavedConnectionSignInView: View {
                 Task { if switcher.pending === pending { await switcher.cancelSwitch() } }
             }
         }
-        .presentationDetents(dynamicTypeSize.isAccessibilitySize ? [.large] : [.medium, .large])
+        .presentationDetents(dynamicTypeSize.isAccessibilitySize || showsKeyEditor ? [.large] : [.medium, .large])
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(attempting)
     }

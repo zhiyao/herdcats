@@ -11,7 +11,7 @@ extension ConnectionSettingsView {
                     .textFieldStyle(.plain)
             }
             .padding(12)
-            .background(fieldShape.fill(Theme.fieldBackground))
+            .modifier(ConnectionInputSurface())
 
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -31,7 +31,7 @@ extension ConnectionSettingsView {
             }
             .textFieldStyle(.plain)
             .padding(12)
-            .background(fieldShape.fill(Theme.fieldBackground))
+            .modifier(ConnectionInputSurface())
 
             // Username
             VStack(alignment: .leading, spacing: 8) {
@@ -43,7 +43,7 @@ extension ConnectionSettingsView {
                     .textInputAutocapitalization(.never)
             }
             .padding(12)
-            .background(fieldShape.fill(Theme.fieldBackground))
+            .modifier(ConnectionInputSurface())
 
             // Auth mode
             Picker("Authentication", selection: $authModeRaw) {
@@ -80,29 +80,16 @@ extension ConnectionSettingsView {
                     }
                 }
                 .padding(12)
-                .background(fieldShape.fill(Theme.fieldBackground))
+                .modifier(ConnectionInputSurface())
 
             case .privateKey:
                 VStack(alignment: .leading, spacing: 8) {
-                    Button {
-                        keyImporterPresented = true
-                    } label: {
-                        Label("Import Private Key…", systemImage: "square.and.arrow.down")
-                    }
-                    .buttonStyle(.herdrSecondary(fullWidth: false))
+                    ConnectionPrivateKeyField(key: $keyPEM) { keyImporterPresented = true }
                     if !keyPEM.isEmpty {
                         Label(keyValidationError == nil
                               ? (keyIsEncrypted ? "Encrypted ed25519 key loaded" : "ed25519 key loaded")
                               : "Check private key", systemImage: "key")
                             .font(.jost(.subheadline))
-                    }
-                    DisclosureGroup("Paste or edit private key") {
-                        TextEditor(text: $keyPEM)
-                            .font(.system(.footnote, design: .monospaced))
-                            .frame(minHeight: 110)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                            .accessibilityLabel("Private key")
                     }
                     if keyIsEncrypted {
                         VStack(alignment: .leading, spacing: 8) {
@@ -113,10 +100,9 @@ extension ConnectionSettingsView {
                                 .autocorrectionDisabled()
                                 .textInputAutocapitalization(.never)
                                 .accessibilityLabel("Key passphrase")
-                                .padding(12)
-                                .herdrField()
-                                .overlay(fieldShape.stroke(Theme.hairline, lineWidth: 1))
                         }
+                        .padding(12)
+                        .modifier(ConnectionInputSurface())
                         if remember {
                             Toggle("Save passphrase on this iPhone", isOn: $rememberPassphrase)
                                 .font(.jost(.footnote))
@@ -193,5 +179,51 @@ extension ConnectionSettingsView {
         }
         .disabled(isConnecting)
 
+    }
+}
+
+/// Connection-only field surface: lifted from the sheet canvas in every palette.
+struct ConnectionInputSurface: ViewModifier {
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle.continuous(DesignSystem.CornerRadius.md)
+        content
+            .background(shape.fill(Theme.cardBackground))
+            .overlay(shape.strokeBorder(Theme.hairline, lineWidth: 1).allowsHitTesting(false))
+    }
+}
+
+/// Keep the editable key visible; Import belongs to its header, outside the editor.
+struct ConnectionPrivateKeyField: View {
+    @Binding var key: String
+    let onImport: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top) {
+                Text("SSH private key")
+                    .font(.jost(.subheadline, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                Button(action: onImport) {
+                    Label("Import", systemImage: "square.and.arrow.down")
+                        .font(.jost(.subheadline))
+                        .frame(minWidth: 48, minHeight: 48)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.accent)
+                .accessibilityLabel("Import Private Key")
+            }
+            TextEditor(text: $key)
+                .font(.system(.footnote, design: .monospaced))
+                .frame(minHeight: 130)
+                .scrollContentBackground(.hidden)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .accessibilityLabel("Private key")
+        }
+        .padding(12)
+        .modifier(ConnectionInputSurface())
     }
 }
