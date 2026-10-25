@@ -581,12 +581,7 @@ struct SavedConnectionSignInView: View {
                         }
                     }
                     if value.encrypted {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Key passphrase").font(.jost(.subheadline, weight: .medium)).foregroundStyle(.secondary)
-                            SecureField("Key passphrase", text: $value.passphrase)
-                        }
-                        .padding(12)
-                        .modifier(ConnectionInputSurface())
+                        ConnectionPassphraseField(passphrase: $value.passphrase)
                         if value.entry.remember {
                             Toggle("Save passphrase on this iPhone", isOn: $value.savePassphrase)
                         }

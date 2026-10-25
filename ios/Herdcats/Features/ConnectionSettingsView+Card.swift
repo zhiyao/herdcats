@@ -92,17 +92,7 @@ extension ConnectionSettingsView {
                             .font(.jost(.subheadline))
                     }
                     if keyIsEncrypted {
-                        VStack(alignment: .leading, spacing: 8) {
-                            fieldLabel("Key Passphrase")
-                            SecureField("Enter key passphrase", text: $keyPassphrase)
-                                .textFieldStyle(.plain)
-                                .foregroundStyle(.primary)
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
-                                .accessibilityLabel("Key passphrase")
-                        }
-                        .padding(12)
-                        .modifier(ConnectionInputSurface())
+                        ConnectionPassphraseField(passphrase: $keyPassphrase)
                         if remember {
                             Toggle("Save passphrase on this iPhone", isOn: $rememberPassphrase)
                                 .font(.jost(.footnote))
@@ -207,38 +197,27 @@ struct ConnectionPrivateKeyField: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 8) {
-                Text("SSH private key")
-                    .font(.jost(.subheadline, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
-                Button {
-                    editing = false
-                    revealed.toggle()
-                } label: {
-                    Image(systemName: revealed ? "eye.slash" : "eye")
-                        .font(.system(size: 18, weight: .medium))
-                        .frame(width: 48, height: 48)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Theme.accent)
-                .accessibilityLabel(revealed ? "Hide Private Key" : "Show Private Key")
-                .accessibilityValue(revealed ? "Visible" : "Hidden")
+            ConnectionFieldHeader(title: "SSH private key", controlCount: 2) {
                 Button {
                     editing = false
                     revealed = false
                     onImport()
                 } label: {
                     Image(systemName: "square.and.arrow.down")
-                        .font(.system(size: 18, weight: .medium))
-                        .frame(width: 48, height: 48)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(Theme.accent)
                 .accessibilityLabel("Import Private Key")
+                Button {
+                    editing = false
+                    revealed.toggle()
+                } label: {
+                    Image(systemName: revealed ? "eye.slash" : "eye")
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel(revealed ? "Hide Private Key" : "Show Private Key")
+                .accessibilityValue(revealed ? "Visible" : "Hidden")
             }
             Group {
                 if revealed {
@@ -267,6 +246,63 @@ struct ConnectionPrivateKeyField: View {
             }
             .frame(height: bodyHeight)
             .accessibilityIdentifier("connection-private-key-body")
+        }
+        .padding(12)
+        .modifier(ConnectionInputSurface())
+    }
+}
+
+/// Controls borrow space from the field padding, not the header's intrinsic row.
+/// 28 + the 8pt content gap leaves a full 44pt target clear of the editor.
+struct ConnectionFieldHeader<Controls: View>: View {
+    let title: String
+    var controlCount = 1
+    @ViewBuilder let controls: () -> Controls
+
+    var body: some View {
+        Text(title)
+            .font(.jost(.subheadline, weight: .medium))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
+            .padding(.trailing, CGFloat(controlCount * 44 + (controlCount - 1) * 8 + 8))
+            .overlay(alignment: .trailing) {
+                HStack(spacing: 8, content: controls)
+                    .font(.system(size: 18, weight: .medium))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.accent)
+            }
+    }
+}
+
+struct ConnectionPassphraseField: View {
+    @Binding var passphrase: String
+    @State private var revealed = false
+    @FocusState private var editing: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ConnectionFieldHeader(title: "Key passphrase") {
+                Button {
+                    editing = false
+                    revealed.toggle()
+                } label: {
+                    Image(systemName: revealed ? "eye.slash" : "eye")
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel(revealed ? "Hide Key Passphrase" : "Show Key Passphrase")
+                .accessibilityValue(revealed ? "Visible" : "Hidden")
+            }
+            Group {
+                if revealed { TextField("Key passphrase", text: $passphrase) }
+                else { SecureField("Key passphrase", text: $passphrase) }
+            }
+            .textFieldStyle(.plain)
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(.never)
+            .focused($editing)
+            .accessibilityLabel("Key passphrase")
         }
         .padding(12)
         .modifier(ConnectionInputSurface())

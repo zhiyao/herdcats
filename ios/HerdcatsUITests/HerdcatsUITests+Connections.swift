@@ -245,7 +245,7 @@ extension HerdcatsUITests {
         }
         XCTAssertEqual(importer.frame.midY, eye.frame.midY, accuracy: 2)
         XCTAssertEqual(title.frame.midY, eye.frame.midY, accuracy: 2)
-        XCTAssertLessThan(eye.frame.maxX, importer.frame.maxX)
+        XCTAssertLessThanOrEqual(importer.frame.maxX, eye.frame.minX)
         XCTAssertLessThanOrEqual(importer.frame.maxY, body.frame.minY)
         XCTAssertFalse(app.staticTexts["Import"].exists)
         XCTAssertEqual(body.frame.height, keyBodyHeight(category: category), accuracy: 2)
@@ -259,25 +259,49 @@ extension HerdcatsUITests {
     }
 
     private func exerciseKeyVisibility(in app: XCUIApplication, name: String, category: UIContentSizeCategory) {
-        let fixture = "KEY_MASK_FIXTURE_alpha\nKEY_MASK_FIXTURE_beta\nKEY_MASK_FIXTURE_gamma\nKEY_MASK_FIXTURE_delta"
+        let encrypted = fixtureEnvironment("ENCRYPTED_KEY")
+        let fixture = encrypted ?? "KEY_MASK_FIXTURE_alpha\nKEY_MASK_FIXTURE_beta\nKEY_MASK_FIXTURE_gamma\nKEY_MASK_FIXTURE_delta"
+        let suffix = encrypted == nil ? "_edited" : "\n"
         app.buttons["Show Private Key"].tap()
         let editor = app.textViews["Private key"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
         XCTAssertEqual(editor.frame.height, keyBodyHeight(category: category), accuracy: 2)
         editor.tap()
         editor.typeText(fixture)
-        editor.typeText("_edited")
+        editor.typeText(suffix)
         XCTAssertTrue(app.buttons["Hide Private Key"].exists)
-        XCTAssertEqual(editor.value as? String, fixture + "_edited")
+        XCTAssertEqual(editor.value as? String, fixture + suffix)
         app.buttons["Hide Private Key"].tap()
         XCTAssertTrue(editor.waitForNonExistence(timeout: 5))
-        XCTAssertFalse(app.debugDescription.contains("KEY_MASK_FIXTURE"))
+        XCTAssertFalse(app.debugDescription.contains(encrypted == nil ? "KEY_MASK_FIXTURE" : "b3BlbnNzaC1rZXktdjE"))
         attachConnectionScreenshot(app, name: "\(name) hidden key field")
         app.buttons["Show Private Key"].tap()
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        XCTAssertEqual(editor.value as? String, fixture + "_edited")
+        XCTAssertEqual(editor.value as? String, fixture + suffix)
         attachConnectionScreenshot(app, name: "\(name) revealed key field")
         app.buttons["Hide Private Key"].tap()
+        if encrypted != nil {
+            let secret = "PASSPHRASE_VISIBILITY_FIXTURE"
+            let secure = app.secureTextFields["Key passphrase"]
+            for _ in 0..<3 where !secure.isHittable { app.swipeUp() }
+            XCTAssertTrue(secure.isHittable)
+            secure.tap()
+            secure.typeText(secret)
+            XCTAssertFalse(app.debugDescription.contains(secret))
+            app.buttons["Show Key Passphrase"].tap()
+            XCTAssertEqual(app.textFields["Key passphrase"].value as? String, secret)
+            // iOS may offer to save this synthetic credential after the secure field resigns.
+            let notNow = app.buttons["Not Now"]
+            if notNow.waitForExistence(timeout: 2) { notNow.tap() }
+            attachConnectionScreenshot(app, name: "\(name) revealed passphrase")
+            let hide = app.buttons["Hide Key Passphrase"]
+            for _ in 0..<3 where !hide.isHittable { app.swipeUp() }
+            XCTAssertTrue(hide.isHittable)
+            hide.tap()
+            XCTAssertTrue(app.textFields["Key passphrase"].waitForNonExistence(timeout: 5))
+            XCTAssertFalse(app.debugDescription.contains(secret))
+            attachConnectionScreenshot(app, name: "\(name) hidden passphrase")
+        }
     }
 
     private func assertVisibleKeyboard(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
