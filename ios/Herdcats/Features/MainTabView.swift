@@ -555,8 +555,12 @@ struct HerdrcatBrandMark: View {
                     }
                     Divider()
                     Button("Add Machine…", systemImage: "plus") {
-                        selectedConnection = RecentConnection(host: "", port: 22, username: "",
-                            authMode: "password", remember: true)
+                        Task {
+                            // The new form owns the next switch; an earlier one must not finish under it.
+                            await active?.cancelSwitch()
+                            selectedConnection = RecentConnection(host: "", port: 22, username: "",
+                                authMode: "password", remember: true)
+                        }
                     }
                 } label: {
                     HStack(spacing: 4) {

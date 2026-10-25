@@ -175,6 +175,31 @@ struct MachineSwitchingTests {
         }
     }
 
+    @Test func selectingActiveMachineCancelsPendingSwitch() async throws {
+        try await withConnections { (entries: [RecentConnection]) async throws in
+            let started = ExternallyReleasedWait<Bool>()
+            let resume = ExternallyReleasedWait<Bool>()
+            var calls = 0
+            let old = currentModel()
+            let active = ActiveMachine(model: old, dial: { model, config in
+                calls += 1
+                started.release(true)
+                _ = try? await resume.wait()
+                self.connected(model, to: config)
+            })
+            let first = Task { await active.switchMachine(to: entries[0]) }
+            _ = try await started.wait()
+            let current = RecentConnection(host: "current.example", port: 22, username: "tester",
+                authMode: "password", remember: true)
+            #expect(await active.switchMachine(to: current) == .alreadyActive)
+            #expect(active.pending == nil)
+            resume.release(true)
+            #expect(await first.value == .superseded)
+            #expect(active.model === old)
+            #expect(calls == 1)
+        }
+    }
+
     @Test func sessionSubtreeSurvivesFailedReconnectButNotSwitch() {
         let model = currentModel()
         let before = MainTabView.subtreeID(for: model)

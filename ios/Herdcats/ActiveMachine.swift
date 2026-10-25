@@ -32,7 +32,11 @@ final class ActiveMachine {
 
     func switchMachine(to entry: RecentConnection, config: ConnectionConfig? = nil) async -> SwitchOutcome {
         let identity = ConnectionIdentity(host: entry.host, port: entry.port, username: entry.username)
-        if identity == model.connectionIdentity, case .connected = model.phase { return .alreadyActive }
+        if identity == model.connectionIdentity, case .connected = model.phase {
+            // Re-selecting the current machine is the latest choice; drop any switch in flight.
+            await cancelSwitch()
+            return .alreadyActive
+        }
         if let target, identity == ConnectionIdentity(target.config) { return .superseded }
         guard let config = config ?? RecentConnectionStore.config(for: entry) else {
             // The form opened for this machine replaces any earlier selection.
