@@ -295,7 +295,9 @@ extension SettingsScreen {
             }
 
             Button(role: .destructive) {
-                Task { await appModel.disconnect() }
+                Task {
+                    if let activeMachine { await activeMachine.disconnect() } else { await appModel.disconnect() }
+                }
             } label: {
                 Label("Disconnect", systemImage: "xmark.circle")
             }

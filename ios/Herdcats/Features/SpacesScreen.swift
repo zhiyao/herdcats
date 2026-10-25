@@ -5,6 +5,7 @@ import SwiftUI
 
 struct SpacesScreen: View {
     @Environment(AppModel.self) private var appModel
+    @Environment(ActiveMachine.self) private var activeMachine: ActiveMachine?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let model: SpacesModel
 
@@ -141,7 +142,9 @@ struct SpacesScreen: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
-                        Task { await appModel.disconnect() }
+                        Task {
+                            if let activeMachine { await activeMachine.disconnect() } else { await appModel.disconnect() }
+                        }
                     } label: {
                         Image(systemName: "chevron.left")
                             .font(.jost(16, weight: .semibold))

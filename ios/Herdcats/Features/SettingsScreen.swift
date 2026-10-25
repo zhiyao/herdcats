@@ -5,6 +5,7 @@ import UIKit
 
 struct SettingsScreen: View {
     @Environment(AppModel.self) var appModel
+    @Environment(ActiveMachine.self) var activeMachine: ActiveMachine?
     @Bindable var model: SpacesModel
     @Environment(\.scenePhase) var scenePhase
     @State var settingsVisible = false

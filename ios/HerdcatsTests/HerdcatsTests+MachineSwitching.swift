@@ -153,6 +153,50 @@ struct MachineSwitchingTests {
         #expect(active.pending == nil)
     }
 
+    @Test func selectingMachineWithoutCredentialsCancelsPendingSwitch() async throws {
+        try await withConnections { (entries: [RecentConnection]) async throws in
+            let started = ExternallyReleasedWait<Bool>()
+            let resume = ExternallyReleasedWait<Bool>()
+            let old = currentModel()
+            let active = ActiveMachine(model: old, dial: { model, config in
+                started.release(true)
+                _ = try? await resume.wait()
+                self.connected(model, to: config)
+            })
+            let first = Task { await active.switchMachine(to: entries[0]) }
+            _ = try await started.wait()
+            let locked = RecentConnection(host: "locked.example", port: 22, username: "tester",
+                authMode: "password", remember: false)
+            #expect(await active.switchMachine(to: locked) == .needsCredentials)
+            #expect(active.pending == nil)
+            resume.release(true)
+            #expect(await first.value == .superseded)
+            #expect(active.model === old)
+        }
+    }
+
+    @Test func disconnectCancelsPendingSwitch() async throws {
+        try await withConnections { (entries: [RecentConnection]) async throws in
+            let started = ExternallyReleasedWait<Bool>()
+            let resume = ExternallyReleasedWait<Bool>()
+            let old = currentModel()
+            let active = ActiveMachine(model: old, dial: { model, config in
+                started.release(true)
+                _ = try? await resume.wait()
+                self.connected(model, to: config)
+            })
+            let first = Task { await active.switchMachine(to: entries[0]) }
+            _ = try await started.wait()
+            await active.disconnect()
+            #expect(active.pending == nil)
+            #expect(!old.hasActiveSession)
+            resume.release(true)
+            #expect(await first.value == .superseded)
+            #expect(active.model === old)
+            #expect(!active.model.hasActiveSession)
+        }
+    }
+
     @Test func switchWithExplicitConfigSkipsKeychain() async throws {
         try await withConnections { (entries: [RecentConnection]) async throws in
             var entry = entries[0]

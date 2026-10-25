@@ -34,7 +34,11 @@ final class ActiveMachine {
         let identity = ConnectionIdentity(host: entry.host, port: entry.port, username: entry.username)
         if identity == model.connectionIdentity, case .connected = model.phase { return .alreadyActive }
         if let target, identity == ConnectionIdentity(target.config) { return .superseded }
-        guard let config = config ?? RecentConnectionStore.config(for: entry) else { return .needsCredentials }
+        guard let config = config ?? RecentConnectionStore.config(for: entry) else {
+            // The form opened for this machine replaces any earlier selection.
+            await cancelSwitch()
+            return .needsCredentials
+        }
 
         // Invalidate before awaiting teardown so a later selection owns the next dial.
         revision += 1
@@ -62,6 +66,12 @@ final class ActiveMachine {
         let candidate = pending
         clearPending()
         if let candidate { await candidate.disconnect() }
+    }
+
+    /// Explicit user disconnect: a switch still dialing must not bring the session back.
+    func disconnect() async {
+        await cancelSwitch()
+        await model.disconnect()
     }
 
     private func dialAndFinish(
