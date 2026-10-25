@@ -268,9 +268,10 @@ struct ConnectionFieldHeader<Controls: View>: View {
             .padding(.trailing, CGFloat(controlCount * 44 + (controlCount - 1) * 8 + 8))
             .overlay(alignment: .trailing) {
                 HStack(spacing: 8, content: controls)
-                    .font(.system(size: 18, weight: .medium))
+                    .font(.jost(14, weight: .medium))
+                    .imageScale(.medium)
                     .buttonStyle(.plain)
-                    .foregroundStyle(Theme.accent)
+                    .foregroundStyle(.secondary)
             }
     }
 }
