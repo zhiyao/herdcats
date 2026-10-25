@@ -560,7 +560,12 @@ struct HerdrcatBrandMark: View {
         .onAppear { reloadConnections() }
         .onChange(of: appModel.connectionIdentity) { _, _ in reloadConnections() }
         .sheet(item: $selectedConnection, onDismiss: reloadConnections) { connection in
-            ConnectionSettingsView(connection: connection, switcher: active)
+            if connection.host.isEmpty {
+                ConnectionSettingsView(connection: connection, switcher: active)
+            } else {
+                SavedConnectionSignInView(initial: (try? ConnectionSignIn.load(connection)) ?? ConnectionSignIn(entry: connection),
+                    replay: false, switcher: active)
+            }
         }
         .accessibilityElement(children: .contain)
     }

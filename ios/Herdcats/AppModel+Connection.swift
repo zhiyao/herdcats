@@ -65,6 +65,8 @@ extension AppModel {
     func prepareConnectAttempt(
         config: ConnectionConfig
     ) async -> ConnectAttemptState? {
+        lastConnectPassphraseRejected = false
+        lastConnectNeedsSignIn = false
         hostKeyChallenge = nil
         hostKeyVerificationBlocked = false
         #if DEBUG
@@ -133,6 +135,13 @@ extension AppModel {
             }
             if hostKeyVerificationBlocked || error is OpenSSHKeyError { cancelReconnect() }
             let message = HerdrConnection.friendlyMessage(for: error, config: config)
+            if let keyError = error as? OpenSSHKeyError {
+                switch keyError {
+                case .invalidPassphraseOrKey, .passphraseRequired: lastConnectPassphraseRejected = true
+                default: lastConnectPassphraseRejected = false
+                }
+            }
+            lastConnectNeedsSignIn = Self.needsSignIn(after: error)
             lastError = message
             herdrMissingOnLastConnect = (error as? HerdrError) == .herdrNotFound
             herdrSessionUnavailableOnLastConnect = (error as? HerdrError) == .sessionUnavailable
@@ -178,6 +187,13 @@ extension AppModel {
             )
         }
         #endif
+    }
+
+    static func needsSignIn(after error: Error) -> Bool {
+        if error is OpenSSHKeyError { return true }
+        if error is SSHHostKeyError || error is SSHHostKeyStore.StoreError || error is HerdrError { return false }
+        let description = String(describing: error).lowercased()
+        return description.contains("authentication")
     }
 
     static func connectFailureDisposition(

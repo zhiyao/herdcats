@@ -3,6 +3,326 @@ import UIKit
 import XCTest
 
 extension HerdcatsUITests {
+    func testSavedConnectionCardAndGear() {
+        for appearance in ["dark", "light"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-connectionSelectionUITest", "-launchPreference", "connectionSelection",
+                                   "-appearancePreference", appearance, "-lightThemePalette", "moonlit", "-darkThemePalette", "moonlit"]
+            app.launch()
+            defer { app.terminate() }
+            let first = app.buttons["connect-machine-00000000-0000-0000-0000-000000000001"]
+            let second = app.buttons["connect-machine-00000000-0000-0000-0000-000000000002"]
+            XCTAssertTrue(first.waitForExistence(timeout: 8))
+            XCTAssertTrue(second.exists)
+            XCTAssertFalse(app.staticTexts["Saved Connections"].exists)
+            XCTAssertEqual(first.frame.minY, second.frame.minY, accuracy: 2)
+            XCTAssertLessThan(first.frame.maxX, second.frame.minX)
+            attachConnectionScreenshot(app, name: "\(appearance) Moonlit grid")
+            let gear = app.buttons["settings-machine-00000000-0000-0000-0000-000000000001"]
+            XCTAssertGreaterThanOrEqual(gear.frame.height, 44 - 0.01)
+            gear.tap()
+            XCTAssertTrue(app.buttons["Save changes"].waitForExistence(timeout: 5))
+            XCTAssertFalse(app.buttons["Connect"].exists)
+            attachConnectionScreenshot(app, name: "\(appearance) Moonlit settings")
+            app.segmentedControls.buttons["Private Key"].tap()
+            assertConnectionKeyField(in: app)
+            exerciseKeyVisibility(in: app, name: "\(appearance) settings", category: .large)
+            app.buttons["Close"].tap()
+            first.tap()
+            XCTAssertTrue(app.secureTextFields["Password"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.navigationBars["Sign in"].exists)
+            XCTAssertFalse(app.textFields["192.168.1.42"].exists)
+            XCTAssertFalse(app.textFields["whoami"].exists)
+            attachConnectionScreenshot(app, name: "\(appearance) Moonlit password sign in")
+        }
+    }
+
+    func testMissingPrivateKeyUsesImportFirstSignIn() {
+        let cases: [(String, UIContentSizeCategory)] = [
+            ("dark", .large), ("light", .large), ("dark", .accessibilityExtraExtraExtraLarge)
+        ]
+        for (appearance, category) in cases {
+            let app = XCUIApplication()
+            app.launchArguments = ["-connectionSelectionUITest", "-launchPreference", "connectionSelection",
+                                   "-appearancePreference", appearance, "-lightThemePalette", "moonlit", "-darkThemePalette", "moonlit",
+                                   "-UIPreferredContentSizeCategoryName", category.rawValue]
+            app.launch()
+            defer { app.terminate() }
+            let card = app.buttons["connect-machine-00000000-0000-0000-0000-000000000002"]
+            XCTAssertTrue(card.waitForExistence(timeout: 8))
+            for _ in 0..<3 where !card.isHittable { app.swipeUp() }
+            card.tap()
+            assertConnectionKeyField(in: app, category: category)
+            XCTAssertFalse(app.buttons["Paste or edit private key"].exists)
+            exerciseKeyVisibility(in: app, name: "\(appearance) \(category.isAccessibilityCategory ? "large" : "normal") sign in", category: category)
+            let saveCredentials = app.switches["Save credentials on this iPhone"]
+            XCTAssertTrue(saveCredentials.waitForExistence(timeout: 5))
+            for _ in 0..<2 where !saveCredentials.isHittable { app.swipeUp() }
+            XCTAssertTrue(saveCredentials.isHittable)
+        }
+    }
+
+    func testReadySavedCardOwnsHostTrustAndRetriesWithoutSettings() throws {
+        guard let keyPath = fixtureEnvironment("DIRECT_KEY_PATH"),
+              let port = fixtureEnvironment("DIRECT_PORT"),
+              let user = fixtureEnvironment("DIRECT_USER"),
+              let fingerprint = fixtureEnvironment("DIRECT_FINGERPRINT") else {
+            throw XCTSkip("Set HC_DIRECT_* to the disposable localhost SSH fixture")
+        }
+        let key = try String(contentsOfFile: keyPath, encoding: .utf8)
+        let run = UUID().uuidString
+        let app = XCUIApplication()
+        app.launchArguments = ["-connectionReadyUITest", "-launchPreference", "connectionSelection"]
+        app.launchEnvironment = ["HC_CONNECTION_READY_KEY": key, "HC_CONNECTION_READY_PORT": port,
+                                 "HC_CONNECTION_READY_USER": user, "HC_CONNECTION_READY_RUN": run]
+        app.launch()
+        defer {
+            app.terminate()
+            app.launchArguments.append("-connectionFixtureCleanup")
+            app.launch()
+            XCTAssertTrue(app.staticTexts["Connection fixture cleaned up"].waitForExistence(timeout: 8))
+            app.terminate()
+        }
+        let card = app.buttons["connect-machine-" + run]
+        XCTAssertTrue(card.waitForExistence(timeout: 8))
+        card.tap()
+        let trust = app.buttons["Trust and Connect"]
+        XCTAssertTrue(trust.waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts[fingerprint].exists)
+        XCTAssertEqual(app.navigationBars.matching(identifier: "Verify Host Key").count, 1)
+        XCTAssertFalse(app.navigationBars["Sign in"].exists)
+        XCTAssertFalse(app.navigationBars["Connection Settings"].exists)
+        attachConnectionScreenshot(app, name: "Direct card host trust")
+        trust.tap()
+        XCTAssertTrue(app.staticTexts["Herdr was found. Check its session."].waitForExistence(timeout: 20))
+        XCTAssertFalse(app.navigationBars["Connection Settings"].exists)
+        XCTAssertFalse(app.navigationBars["Verify Host Key"].exists)
+        attachConnectionScreenshot(app, name: "Direct trust retry session recovery")
+    }
+
+    func testLargeTypeConnectionActionsStayReachableWithKeyboard() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-connectionSelectionUITest", "-launchPreference", "connectionSelection",
+                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL",
+                               "-appearancePreference", "dark", "-darkThemePalette", "moonlit"]
+        app.launch()
+        defer { app.terminate() }
+        let gear = app.buttons["settings-machine-00000000-0000-0000-0000-000000000001"]
+        XCTAssertTrue(gear.waitForExistence(timeout: 8))
+        for _ in 0..<3 where !gear.isHittable { app.swipeUp() }
+        XCTAssertGreaterThanOrEqual(gear.frame.width, 44 - 0.01)
+        XCTAssertGreaterThanOrEqual(gear.frame.height, 44 - 0.01)
+        let first = app.buttons["connect-machine-00000000-0000-0000-0000-000000000001"]
+        let second = app.buttons["connect-machine-00000000-0000-0000-0000-000000000002"]
+        // The single-column cards are tall at maximum type size. Scroll the
+        // second lazy-grid item into the accessibility tree before comparing.
+        for _ in 0..<3 where !second.exists { app.swipeUp() }
+        XCTAssertTrue(second.exists)
+        XCTAssertEqual(first.frame.minX, second.frame.minX, accuracy: 2)
+        XCTAssertEqual(first.frame.width, second.frame.width, accuracy: 2)
+        XCTAssertGreaterThan(second.frame.minY, first.frame.maxY)
+        XCTAssertGreaterThan(first.frame.width, app.frame.width * 0.8)
+        attachConnectionScreenshot(app, name: "Large type one column saved grid")
+        gear.tap()
+        let user = app.textFields["whoami"]
+        XCTAssertTrue(user.waitForExistence(timeout: 5))
+        user.tap()
+        user.typeText("x")
+        user.tap()
+        assertVisibleKeyboard(in: app)
+        let save = app.buttons["Save changes"]
+        XCTAssertTrue(save.isHittable)
+        XCTAssertLessThanOrEqual(save.frame.maxY, app.keyboards.firstMatch.frame.minY + 1)
+        attachConnectionScreenshot(app, name: "Large type settings keyboard save")
+        // Start sign-in with a fresh input session, independent of settings.
+        app.terminate()
+        app.launch()
+        let card = app.buttons["connect-machine-00000000-0000-0000-0000-000000000001"]
+        XCTAssertTrue(card.waitForExistence(timeout: 8))
+        card.tap()
+        let password = app.secureTextFields["Password"]
+        XCTAssertTrue(password.waitForExistence(timeout: 5))
+        password.tap()
+        password.typeText("fixture password")
+        // Re-focus after typing and wait for an on-screen keyboard, not a stale
+        // accessibility keyboard whose frame sits outside the application.
+        password.tap()
+        assertVisibleKeyboard(in: app)
+        let connect = app.buttons["Connect"]
+        XCTAssertTrue(connect.isEnabled)
+        XCTAssertTrue(connect.isHittable)
+        XCTAssertLessThanOrEqual(connect.frame.maxY, app.keyboards.firstMatch.frame.minY + 1)
+        attachConnectionScreenshot(app, name: "Large type sign in keyboard connect")
+    }
+
+    func testManageMachinesRenameReorderDeleteReloadsGrid() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-connectionSelectionUITest", "-launchPreference", "connectionSelection"]
+        app.launch()
+        defer { app.terminate() }
+        let manage = app.buttons["Manage Machines"]
+        XCTAssertTrue(manage.waitForExistence(timeout: 8))
+        let first = app.buttons["connect-machine-00000000-0000-0000-0000-000000000001"]
+        let second = app.buttons["connect-machine-00000000-0000-0000-0000-000000000002"]
+        let firstRow = app.buttons["manage-machine-00000000-0000-0000-0000-000000000001"]
+        let secondRow = app.buttons["manage-machine-00000000-0000-0000-0000-000000000002"]
+        manage.tap()
+        XCTAssertTrue(app.navigationBars["Manage Machines"].waitForExistence(timeout: 5))
+        let reorder = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reorder")).firstMatch
+        XCTAssertTrue(reorder.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["manage-machines-edit"].exists)
+        attachConnectionScreenshot(app, name: "Manage Machines immediate edit controls")
+
+        renameManagementRow(firstRow, in: app, to: "Discarded name")
+        reorder.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.5,
+            thenDragTo: secondRow.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 1)))
+        deleteManagementRow(named: "Discarded name", in: app)
+        XCTAssertTrue(firstRow.waitForNonExistence(timeout: 5))
+        app.buttons["manage-machines-close"].tap()
+        XCTAssertTrue(first.waitForExistence(timeout: 5))
+        XCTAssertFalse(first.label.contains("Discarded name"))
+        XCTAssertTrue(second.exists)
+        XCTAssertLessThan(first.frame.minX, second.frame.minX)
+        attachConnectionScreenshot(app, name: "Grid after management cancel")
+
+        manage.tap()
+        XCTAssertTrue(firstRow.waitForExistence(timeout: 5))
+        renameManagementRow(firstRow, in: app, to: "Work Mac")
+        reorder.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.5,
+            thenDragTo: secondRow.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 1)))
+        attachConnectionScreenshot(app, name: "Manage Machines draft before save")
+        app.buttons["manage-machines-save"].tap()
+        XCTAssertTrue(first.waitForExistence(timeout: 5))
+        XCTAssertTrue(first.label.contains("Work Mac"))
+        XCTAssertLessThan(second.frame.minX, first.frame.minX)
+        attachConnectionScreenshot(app, name: "Grid after management save")
+
+        manage.tap()
+        XCTAssertTrue(firstRow.waitForExistence(timeout: 5))
+        deleteManagementRow(named: "Work Mac", in: app)
+        XCTAssertTrue(firstRow.waitForNonExistence(timeout: 5))
+        app.buttons["manage-machines-save"].tap()
+        XCTAssertTrue(first.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(second.exists)
+    }
+
+    private func renameManagementRow(_ row: XCUIElement, in app: XCUIApplication, to name: String) {
+        row.tap()
+        let rename = app.navigationBars["Rename Machine"]
+        XCTAssertTrue(rename.waitForExistence(timeout: 5))
+        let field = app.textFields["Name (optional)"]
+        field.tap()
+        field.typeText(name)
+        XCTAssertEqual(field.value as? String, name)
+        app.buttons["Save"].tap()
+        XCTAssertTrue(rename.waitForNonExistence(timeout: 5))
+    }
+
+    private func deleteManagementRow(named name: String, in app: XCUIApplication) {
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "manage-machine-", name)).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        let cell = app.cells.containing(.button, identifier: row.identifier).firstMatch
+        let control = cell.images.matching(identifier: "minus.circle.fill").firstMatch
+        XCTAssertTrue(control.waitForExistence(timeout: 5), app.debugDescription)
+        control.tap()
+        let confirm = app.buttons["Delete"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.tap()
+    }
+
+    private func assertConnectionKeyField(in app: XCUIApplication, category: UIContentSizeCategory = .large) {
+        let body = app.descendants(matching: .any)["connection-private-key-body"].firstMatch
+        XCTAssertTrue(body.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.textViews["Private key"].exists)
+        let importer = app.buttons["Import Private Key"]
+        let eye = app.buttons["Show Private Key"]
+        let title = app.staticTexts["SSH private key"]
+        for _ in 0..<2 where !importer.isHittable { app.swipeUp() }
+        XCTAssertTrue(importer.isHittable)
+        for control in [importer, eye] {
+            XCTAssertGreaterThanOrEqual(control.frame.height, 44 - 0.01)
+            XCTAssertGreaterThanOrEqual(control.frame.width, 44 - 0.01)
+        }
+        XCTAssertEqual(importer.frame.midY, eye.frame.midY, accuracy: 2)
+        XCTAssertEqual(title.frame.midY, eye.frame.midY, accuracy: 2)
+        XCTAssertLessThanOrEqual(importer.frame.maxX, eye.frame.minX)
+        XCTAssertLessThanOrEqual(importer.frame.maxY, body.frame.minY)
+        XCTAssertFalse(app.staticTexts["Import"].exists)
+        XCTAssertEqual(body.frame.height, keyBodyHeight(category: category), accuracy: 2)
+        XCTAssertEqual(eye.value as? String, "Hidden")
+    }
+
+    private func keyBodyHeight(category: UIContentSizeCategory) -> CGFloat {
+        let size = UIFontMetrics(forTextStyle: .footnote).scaledValue(for: 13,
+            compatibleWith: UITraitCollection(preferredContentSizeCategory: category))
+        return ceil(UIFont.monospacedSystemFont(ofSize: size, weight: .regular).lineHeight * 3) + 16
+    }
+
+    private func exerciseKeyVisibility(in app: XCUIApplication, name: String, category: UIContentSizeCategory) {
+        let encrypted = fixtureEnvironment("ENCRYPTED_KEY")
+        let fixture = encrypted ?? "KEY_MASK_FIXTURE_alpha\nKEY_MASK_FIXTURE_beta\nKEY_MASK_FIXTURE_gamma\nKEY_MASK_FIXTURE_delta"
+        let suffix = encrypted == nil ? "_edited" : "\n"
+        app.buttons["Show Private Key"].tap()
+        let editor = app.textViews["Private key"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        XCTAssertEqual(editor.frame.height, keyBodyHeight(category: category), accuracy: 2)
+        editor.tap()
+        editor.typeText(fixture)
+        editor.typeText(suffix)
+        XCTAssertTrue(app.buttons["Hide Private Key"].exists)
+        XCTAssertEqual(editor.value as? String, fixture + suffix)
+        app.buttons["Hide Private Key"].tap()
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 5))
+        XCTAssertFalse(app.debugDescription.contains(encrypted == nil ? "KEY_MASK_FIXTURE" : "b3BlbnNzaC1rZXktdjE"))
+        attachConnectionScreenshot(app, name: "\(name) hidden key field")
+        app.buttons["Show Private Key"].tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        XCTAssertEqual(editor.value as? String, fixture + suffix)
+        attachConnectionScreenshot(app, name: "\(name) revealed key field")
+        app.buttons["Hide Private Key"].tap()
+        if encrypted != nil {
+            let secret = "PASSPHRASE_VISIBILITY_FIXTURE"
+            let secure = app.secureTextFields["Key passphrase"]
+            for _ in 0..<3 where !secure.isHittable { app.swipeUp() }
+            XCTAssertTrue(secure.isHittable)
+            secure.tap()
+            secure.typeText(secret)
+            XCTAssertFalse(app.debugDescription.contains(secret))
+            app.buttons["Show Key Passphrase"].tap()
+            XCTAssertEqual(app.textFields["Key passphrase"].value as? String, secret)
+            // iOS may offer to save this synthetic credential after the secure field resigns.
+            let notNow = app.buttons["Not Now"]
+            if notNow.waitForExistence(timeout: 2) { notNow.tap() }
+            attachConnectionScreenshot(app, name: "\(name) revealed passphrase")
+            let hide = app.buttons["Hide Key Passphrase"]
+            for _ in 0..<3 where !hide.isHittable { app.swipeUp() }
+            XCTAssertTrue(hide.isHittable)
+            hide.tap()
+            XCTAssertTrue(app.textFields["Key passphrase"].waitForNonExistence(timeout: 5))
+            XCTAssertFalse(app.debugDescription.contains(secret))
+            attachConnectionScreenshot(app, name: "\(name) hidden passphrase")
+        }
+    }
+
+    private func assertVisibleKeyboard(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let visible = NSPredicate { _, _ in
+            let keyboard = app.keyboards.firstMatch
+            guard keyboard.exists else { return false }
+            let intersection = keyboard.frame.intersection(app.frame)
+            return !intersection.isNull && intersection.height > 100 && intersection.width > app.frame.width * 0.8
+                && (keyboard.keys["a"].isHittable || keyboard.keys["A"].isHittable)
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: visible, object: nil)], timeout: 5),
+                       .completed, "Keyboard must visibly intersect app bounds", file: file, line: line)
+    }
+
+    private func attachConnectionScreenshot(_ app: XCUIApplication, name: String) {
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     func testMissingQuotaProviderRetryButtonRerunsFetch() {
         let app = XCUIApplication()
         app.launchArguments = ["-quotaRetryUITest"]

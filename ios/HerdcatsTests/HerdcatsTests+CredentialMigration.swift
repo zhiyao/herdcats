@@ -37,6 +37,29 @@ struct CredentialMigrationTests {
         try JSONDecoder().decode(PendingFixture.self, from: #require(defaults.data(forKey: pendingKey)))
     }
 
+    @MainActor @Test func replaySnapshotLeavesPendingMigrationUntouched() throws {
+        try withLegacy { defaults, keychain in
+            keychain.nextAddStatus = errSecInteractionNotAllowed
+            #expect(throws: KeychainStore.StoreError.self) {
+                try RecentConnectionStore.load(defaults: defaults, using: keychain)
+            }
+            let pendingBefore = try #require(defaults.data(forKey: pendingKey))
+            let secretsBefore = keychain.items
+            let addsBefore = keychain.addedAccounts
+            let updatesBefore = keychain.updatedAccounts
+            #expect(RecentConnectionStore.snapshot(defaults: defaults).isEmpty)
+            let entry = RecentConnection(host: "replay.example", port: 22, username: "alice", authMode: "password", remember: false)
+            let form = ConnectionSettingsView(connection: entry, isReplay: true, using: keychain)
+            _ = try form.signIn(defaults: defaults, using: keychain)
+            #expect(defaults.data(forKey: pendingKey) == pendingBefore)
+            #expect(defaults.data(forKey: RecentConnectionStore.storageKey) == nil)
+            #expect(keychain.items == secretsBefore)
+            #expect(keychain.addedAccounts == addsBefore)
+            #expect(keychain.updatedAccounts == updatesBefore)
+            #expect(keychain.deletedAccounts.isEmpty)
+        }
+    }
+
     @Test(arguments: ["password", "privateKey"])
     func verifiesCopyAndProfileBeforeDeletingOnlySelectedLegacyCredential(authMode: String) throws {
         try withLegacy(authMode: authMode) { defaults, keychain in
