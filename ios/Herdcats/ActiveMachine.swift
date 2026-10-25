@@ -8,6 +8,7 @@ final class ActiveMachine {
     private(set) var pending: AppModel?
     private(set) var pendingLabel: String?
     var switchError: String?
+    var pendingHostKeyOwnedByForm = false
 
     enum SwitchOutcome: Equatable {
         case switched, alreadyActive, needsCredentials, failed, superseded
@@ -29,11 +30,11 @@ final class ActiveMachine {
         self.dial = dial
     }
 
-    func switchMachine(to entry: RecentConnection) async -> SwitchOutcome {
+    func switchMachine(to entry: RecentConnection, config: ConnectionConfig? = nil) async -> SwitchOutcome {
         let identity = ConnectionIdentity(host: entry.host, port: entry.port, username: entry.username)
         if identity == model.connectionIdentity, case .connected = model.phase { return .alreadyActive }
         if let target, identity == ConnectionIdentity(target.config) { return .superseded }
-        guard let config = RecentConnectionStore.config(for: entry) else { return .needsCredentials }
+        guard let config = config ?? RecentConnectionStore.config(for: entry) else { return .needsCredentials }
 
         // Invalidate before awaiting teardown so a later selection owns the next dial.
         revision += 1

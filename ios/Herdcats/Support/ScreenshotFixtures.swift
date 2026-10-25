@@ -2,8 +2,32 @@
 import Foundation
 import SwiftUI
 
-/// Read-only fixtures for native screenshots. Never compiled into device builds.
+/// Simulator fixtures for native screenshots and saved-connection UI tests.
 enum ScreenshotFixtures {
+    private struct SavedMachineFixture: Decodable {
+        let id: UUID
+        let host: String
+        let port: Int
+        let username: String
+        let secret: String
+        let authMode: String
+        let name: String
+    }
+
+    static func seedMachinesIfRequested() throws {
+        guard ProcessInfo.processInfo.arguments.contains("-hc.seed-machines"),
+              let json = ProcessInfo.processInfo.environment["HC_SAVED_MACHINES"] else { return }
+        let fixtures = try JSONDecoder().decode([SavedMachineFixture].self, from: Data(json.utf8))
+        var entries: [RecentConnection] = []
+        for fixture in fixtures {
+            let entry = RecentConnection(id: fixture.id, host: fixture.host, port: fixture.port,
+                username: fixture.username, authMode: fixture.authMode, remember: true, name: fixture.name)
+            try KeychainStore.save(fixture.secret, account: entry.secretAccount)
+            entries.append(entry)
+        }
+        UserDefaults.standard.set(try JSONEncoder().encode(entries), forKey: RecentConnectionStore.storageKey)
+    }
+
     static var enabled: Bool { ProcessInfo.processInfo.arguments.contains("-hc.screenshots") }
     static var screen: String {
         let args = ProcessInfo.processInfo.arguments

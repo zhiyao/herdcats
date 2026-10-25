@@ -258,16 +258,16 @@ extension ConnectionSettingsView {
                 Task { await connect() }
             } label: {
                 HStack(spacing: 8) {
-                    if appModel.isConnecting {
+                    if isConnecting {
                         CircularArcSpinner(size: 16)
                     }
-                    Text(appModel.isConnecting ? "Connecting…" : "Connect")
+                    Text(isConnecting ? "Connecting…" : "Connect")
                 }
             }
             .buttonStyle(.herdrPrimary())
-            .disabled(!canConnect || appModel.isConnecting)
+            .disabled(!canConnect || isConnecting)
         }
-        .disabled(appModel.isConnecting)
+        .disabled(isConnecting)
         .padding(18)
         .herdrCard()
     }

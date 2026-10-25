@@ -153,6 +153,25 @@ struct MachineSwitchingTests {
         #expect(active.pending == nil)
     }
 
+    @Test func switchWithExplicitConfigSkipsKeychain() async throws {
+        try await withConnections { (entries: [RecentConnection]) async throws in
+            var entry = entries[0]
+            entry.remember = false
+            try KeychainStore.delete(account: entry.secretAccount)
+            let config = ConnectionConfig(host: entry.host, port: entry.port,
+                username: entry.username, auth: .password("typed-secret"))
+            var received: ConnectionConfig?
+            let old = currentModel()
+            let active = ActiveMachine(model: old, dial: { model, config in
+                received = config
+                self.connected(model, to: config)
+            })
+            #expect(await active.switchMachine(to: entry, config: config) == .switched)
+            #expect(received == config)
+            #expect(!old.hasActiveSession)
+        }
+    }
+
     @Test func hostKeyChallengeKeepsPendingAndCancelRestores() async throws {
         try await withConnections { (entries: [RecentConnection]) async throws in
             let old = currentModel()

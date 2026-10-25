@@ -12,6 +12,13 @@ struct HerdcatsApp: App {
     }
 
     init() {
+#if DEBUG && targetEnvironment(simulator)
+        do {
+            try ScreenshotFixtures.seedMachinesIfRequested()
+        } catch {
+            assertionFailure("Could not seed saved machine fixtures")
+        }
+#endif
         PlainTextInput.install()
         AppTypeface.installUIKitAppearance()
     }

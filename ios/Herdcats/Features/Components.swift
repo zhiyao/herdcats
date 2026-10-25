@@ -338,6 +338,7 @@ struct RepoPill: View {
 
 struct ErrorBanner: View {
     let message: String
+    var dismiss: (() -> Void)? = nil
     var retry: (() -> Void)?
 
     var body: some View {
@@ -354,6 +355,13 @@ struct ErrorBanner: View {
                 Button("Retry", action: retry)
                     .buttonStyle(.herdrSecondary(fullWidth: false))
                     .controlSize(.small)
+            }
+            if let dismiss {
+                Button(action: dismiss) {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss error")
             }
         }
         .padding(12)
@@ -442,20 +450,28 @@ extension View {
 
 extension View {
     /// Presents SSH host key approval or verified replacement; `onApproved` retries the connection.
-    func hostKeyApprovalSheet(onApproved: @escaping @MainActor () async -> Void) -> some View {
-        modifier(HostKeyApprovalModifier(onApproved: onApproved))
+    func hostKeyApprovalSheet(
+        onCancelled: (@MainActor () async -> Void)? = nil,
+        onApproved: @escaping @MainActor () async -> Void
+    ) -> some View {
+        modifier(HostKeyApprovalModifier(onCancelled: onCancelled, onApproved: onApproved))
     }
 }
 
 private struct HostKeyApprovalModifier: ViewModifier {
     @Environment(AppModel.self) private var appModel
+    let onCancelled: (@MainActor () async -> Void)?
     let onApproved: @MainActor () async -> Void
 
     func body(content: Content) -> some View {
         content.sheet(item: Binding(
             get: { appModel.hostKeyChallenge.map(HostKeyApprovalItem.init) },
             set: { if $0 == nil, appModel.hostKeyChallenge != nil { appModel.cancelHostKeyApproval() } }
-        )) { item in
+        ), onDismiss: {
+            if appModel.hostKeyVerificationBlocked {
+                Task { await onCancelled?() }
+            }
+        }) { item in
             HostKeyApprovalView(challenge: item.challenge, onApproved: onApproved)
                 .id(item.id)
         }

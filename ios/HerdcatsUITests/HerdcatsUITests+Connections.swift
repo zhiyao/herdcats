@@ -54,43 +54,126 @@ extension HerdcatsUITests {
         XCTAssertFalse(app.staticTexts["The connection was lost during handshake."].exists)
     }
 
-    func testSavedMachineSwitching() throws {
-        guard let label = fixtureEnvironment("MACHINE_LABEL") else {
-            throw XCTSkip("Set TEST_RUNNER_HC_MACHINE_LABEL to an enabled saved machine")
+    func testSwitchesBetweenSavedSSHConnections() throws {
+        guard let secondHost = fixtureEnvironment("SECOND_HOST"), !secondHost.isEmpty,
+              let secondUser = fixtureEnvironment("SECOND_USER"), !secondUser.isEmpty,
+              let secondPassword = fixtureEnvironment("SECOND_PASSWORD"), !secondPassword.isEmpty else {
+            throw XCTSkip("Set TEST_RUNNER_HC_SECOND_HOST, SECOND_USER, and SECOND_PASSWORD")
         }
-        let app = try launchConnectedApp()
+        let first = try primarySavedMachine()
+        let second = SavedSSHMachine(host: secondHost, port: Int(fixtureEnvironment("SECOND_PORT") ?? "22") ?? 22,
+            username: secondUser, secret: secondPassword, name: "Secondary SSH")
+
+        // Capture the target's workspace labels in an independent session, so
+        // stale data from the first host cannot satisfy the switch assertion.
+        let baseline = try launchSavedMachines([first, second], connectingTo: second)
+        approveMachineHostKeyIfNeeded(baseline)
+        XCTAssertTrue(baseline.buttons["machine-picker"].waitForExistence(timeout: 30))
+        let rows = baseline.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "space-row-"))
+        XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 30), "Second host has no workspace rows")
+        let expectedRows = rows.allElementsBoundByIndex.map(\.label)
+        baseline.terminate()
+
+        let app = try launchSavedMachines([first, second], connectingTo: first)
         defer { app.terminate() }
+        approveMachineHostKeyIfNeeded(app)
         let picker = app.buttons["machine-picker"]
-        guard picker.waitForExistence(timeout: 30) else {
-            XCTFail("The configured SSH fixture did not reach the connected screen")
-            return
-        }
-        let gatewayLabel = String(picker.label.dropFirst("Machine: ".count))
-        picker.tap()
-        let machine = app.buttons[label].firstMatch
-        if !machine.waitForExistence(timeout: 5) {
-            app.buttons["Refresh Machines"].tap()
-            sleep(2)
-            picker.tap()
-        }
-        XCTAssertTrue(machine.waitForExistence(timeout: 15))
-        machine.tap()
-        XCTAssertTrue(waitForMachine(picker, label: label))
-        let card = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "tabs")).firstMatch
-        XCTAssertTrue(card.waitForExistence(timeout: 30), "Saved machine workspaces did not load")
+        XCTAssertTrue(waitForMachine(picker, label: first.name))
         app.tabBars.buttons["Agents"].tap()
-        XCTAssertTrue(picker.waitForExistence(timeout: 5))
-        XCTAssertEqual(picker.label, "Machine: " + label)
         picker.tap()
-        app.buttons[gatewayLabel].firstMatch.tap()
-        XCTAssertTrue(waitForMachine(picker, label: gatewayLabel))
-        XCTAssertTrue(app.tabBars.buttons["Agents"].isSelected, "Switching machines should retain the selected tab")
+        app.buttons[second.name].firstMatch.tap()
+        approveMachineHostKeyIfNeeded(app)
+        XCTAssertTrue(waitForMachine(picker, label: second.name))
+        XCTAssertTrue(app.tabBars.buttons["Agents"].isSelected, "Switching should retain Agents")
+        app.tabBars.buttons["Spaces"].tap()
+        for label in expectedRows {
+            XCTAssertTrue(app.buttons[label].firstMatch.waitForExistence(timeout: 30),
+                          "Second host workspace did not load: \(label)")
+        }
+        app.tabBars.buttons["Agents"].tap()
+        picker.tap()
+        app.buttons[first.name].firstMatch.tap()
+        XCTAssertTrue(waitForMachine(picker, label: first.name))
+        XCTAssertTrue(app.tabBars.buttons["Agents"].isSelected)
+    }
+
+    func testSwitchToUnreachableMachineKeepsCurrent() throws {
+        let first = try primarySavedMachine()
+        let unreachable = SavedSSHMachine(host: "203.0.113.1", port: 22,
+            username: "unreachable", secret: "fixture", name: "Unreachable SSH")
+        let app = try launchSavedMachines([first, unreachable], connectingTo: first)
+        defer { app.terminate() }
+        approveMachineHostKeyIfNeeded(app)
+        let picker = app.buttons["machine-picker"]
+        XCTAssertTrue(waitForMachine(picker, label: first.name))
+        app.tabBars.buttons["Agents"].tap()
+        picker.tap()
+        app.buttons[unreachable.name].firstMatch.tap()
+        let error = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@",
+            "Couldn't reach " + unreachable.name + ":")).firstMatch
+        XCTAssertTrue(error.waitForExistence(timeout: 45))
+        XCTAssertEqual(picker.label, "Machine: " + first.name)
+        XCTAssertTrue(app.tabBars.buttons["Agents"].isSelected)
+        app.buttons["Dismiss error"].tap()
+        XCTAssertTrue(error.waitForNonExistence(timeout: 5))
+    }
+
+    private struct SavedSSHMachine: Encodable {
+        let id = UUID()
+        let host: String
+        let port: Int
+        let username: String
+        let secret: String
+        var authMode = "password"
+        let name: String
+    }
+
+    private func primarySavedMachine() throws -> SavedSSHMachine {
+        guard let username = fixtureEnvironment("USER"), !username.isEmpty else {
+            throw XCTSkip("Set TEST_RUNNER_HC_USER")
+        }
+        let secret: String
+        let authMode: String
+        if let password = fixtureEnvironment("PASSWORD"), !password.isEmpty {
+            secret = password
+            authMode = "password"
+        } else if let path = fixtureEnvironment("KEY_PATH"), FileManager.default.isReadableFile(atPath: path) {
+            secret = try String(contentsOfFile: path, encoding: .utf8)
+            authMode = "privateKey"
+        } else {
+            throw XCTSkip("Set TEST_RUNNER_HC_PASSWORD or TEST_RUNNER_HC_KEY_PATH")
+        }
+        return SavedSSHMachine(host: fixtureEnvironment("HOST") ?? "127.0.0.1",
+            port: Int(fixtureEnvironment("PORT") ?? "22") ?? 22,
+            username: username, secret: secret, authMode: authMode, name: "Primary SSH")
+    }
+
+    private func launchSavedMachines(
+        _ machines: [SavedSSHMachine], connectingTo machine: SavedSSHMachine
+    ) throws -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.seed-machines", "-hc.autoconnect", "1",
+            "-hc.host", machine.host, "-hc.port", String(machine.port), "-hc.user", machine.username,
+            "-hc.tab", "spaces"]
+        if machine.authMode == "privateKey" {
+            app.launchEnvironment["HC_KEY"] = machine.secret
+        } else {
+            app.launchArguments += ["-hc.password", machine.secret]
+        }
+        app.launchEnvironment["HC_SAVED_MACHINES"] = String(decoding: try JSONEncoder().encode(machines), as: UTF8.self)
+        app.launch()
+        return app
+    }
+
+    private func approveMachineHostKeyIfNeeded(_ app: XCUIApplication) {
+        let trust = app.buttons["Trust and Connect"]
+        if trust.waitForExistence(timeout: 5) { trust.tap() }
     }
 
     func waitForMachine(_ picker: XCUIElement, label: String) -> Bool {
         let predicate = NSPredicate(format: "label == %@", "Machine: " + label)
         let expectation = XCTNSPredicateExpectation(predicate: predicate, object: picker)
-        return XCTWaiter.wait(for: [expectation], timeout: 10) == .completed
+        return XCTWaiter.wait(for: [expectation], timeout: 30) == .completed
     }
 
     func testConnectAndShowSpaces() throws {

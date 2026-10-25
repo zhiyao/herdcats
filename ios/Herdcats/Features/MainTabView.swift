@@ -6,17 +6,44 @@ import SwiftUI
 /// Keeps the chosen tab while replacing navigation and data on machine changes.
 struct MainTabView: View {
     @Environment(AppModel.self) private var appModel
+    @Environment(ActiveMachine.self) private var active: ActiveMachine?
     @State private var selectedTab = ConnectedTabsView.MainTab.requestedInitialTab()
 
     var body: some View {
         ConnectedTabsView(selectedTab: $selectedTab)
             .environment(appModel.selectedMachineModel ?? appModel)
-            .id(appModel.isShowingAllMachines ? "all" : appModel.selectedMachineModel?.connectionIdentity?.storageKey ?? "gateway")
+            .id(appModel.connectionIdentity?.storageKey ?? "none")
             // The session view appears while still connecting; rediscover
             // once connected (and after reconnects, which reset machines).
             .task(id: appModel.phase) {
                 guard case .connected = appModel.phase else { return }
                 await appModel.discoverMachines()
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if let label = active?.pendingLabel {
+                    ConnectionStatusBar(banner: .connecting(message: "Connecting to \(label)…"))
+                }
+                if let active, let error = active.switchError {
+                    ErrorBanner(message: error, dismiss: { active.switchError = nil })
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .accessibilityIdentifier("machine-switch-error")
+                }
+            }
+            .background {
+                if let active, !active.pendingHostKeyOwnedByForm, let pending = active.pending {
+                    Color.clear
+                        .frame(width: 0, height: 0)
+                        .hostKeyApprovalSheet(onCancelled: {
+                            guard active.pending === pending else { return }
+                            await active.cancelSwitch()
+                        }, onApproved: {
+                            guard active.pending === pending else { return }
+                            _ = await active.finishPendingSwitch()
+                        })
+                        .environment(pending)
+                        .id(ObjectIdentifier(pending))
+                }
             }
     }
 }
@@ -475,30 +502,49 @@ struct AgentListRow: View {
 
 struct HerdrcatBrandMark: View {
     @Environment(AppModel.self) private var appModel
+    @Environment(ActiveMachine.self) private var active: ActiveMachine?
+    @State private var connections: [RecentConnection] = []
+    @State private var selectedConnection: RecentConnection?
     var showsHost = false
     var title: String? = nil
 
     private var host: String? {
         guard showsHost else { return nil }
         switch appModel.phase {
-        case let .connected(host, _):
-            return appModel.isShowingAllMachines ? "All Machines" : host
-        case let .offline(host, _):
-            return appModel.isShowingAllMachines ? "All Machines" : host
-        default:
-            return nil
+        case let .connected(host, _), let .offline(host, _): return host
+        default: return nil
         }
     }
 
+    private func identity(_ connection: RecentConnection) -> ConnectionIdentity {
+        ConnectionIdentity(host: connection.host, port: connection.port, username: connection.username)
+    }
+
+    private var activeConnection: RecentConnection? {
+        connections.first { identity($0) == appModel.connectionIdentity }
+    }
+
     private var shortHost: String {
-        if appModel.isShowingAllMachines { return "All Machines" }
-        if let machine = appModel.selectedMachine { return machine.label }
+        if let connection = activeConnection,
+           let name = connection.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            return connection.displayName
+        }
         let fullHost = host ?? ""
         // Only abbreviate DNS names; keep numeric and IPv6 addresses intact.
         if fullHost.contains(":") || fullHost.allSatisfy({ $0.isNumber || $0 == "." }) {
             return fullHost
         }
         return String(fullHost.split(separator: ".").first ?? Substring(fullHost))
+    }
+
+    private func isPending(_ connection: RecentConnection) -> Bool {
+        guard let pending = active?.pending else { return false }
+        let pendingIdentity = pending.connectionIdentity ?? pending.activeConfig.map { ConnectionIdentity($0) }
+        return identity(connection) == pendingIdentity
+    }
+
+    private func reloadConnections() {
+        connections = (try? RecentConnectionStore.load()) ?? connections
     }
 
     var body: some View {
@@ -518,35 +564,33 @@ struct HerdrcatBrandMark: View {
             if let host {
                 Menu {
                     Text(host)
-                    Divider()
-                    Button {
-                        appModel.machineCatalog.selectAllMachines()
-                    } label: {
-                        Label("All Machines", systemImage: appModel.machineCatalog.isShowingAllMachines ? "checkmark" : "desktopcomputer")
-                    }
-                    Divider()
-                    Button {
-                        Task { await appModel.machineCatalog.selectMachine(nil) }
-                    } label: {
-                        Label(appModel.machineCatalog.machineDisplayName,
-                              systemImage: !appModel.machineCatalog.isShowingAllMachines && appModel.selectedMachine == nil ? "checkmark" : "desktopcomputer")
-                    }
-                    ForEach(appModel.machineCatalog.machines) { machine in
+                        .onAppear { reloadConnections() }
+                    ForEach(connections) { connection in
                         Button {
-                            Task { await appModel.machineCatalog.selectMachine(machine) }
+                            guard let active else { return }
+                            Task {
+                                if await active.switchMachine(to: connection) == .needsCredentials {
+                                    selectedConnection = connection
+                                }
+                            }
                         } label: {
-                            Label(machine.label + (machine.enabled ? "" : " (disabled)"),
-                                  systemImage: appModel.selectedMachine?.id == machine.id ? "checkmark" : "desktopcomputer")
+                            HStack {
+                                Text(connection.displayName)
+                                if isPending(connection) {
+                                    ProgressView()
+                                    Text("Connecting…")
+                                }
+                                if identity(connection) == appModel.connectionIdentity {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
                         }
-                        .disabled(!machine.enabled)
+                        .accessibilityLabel(connection.displayName + (isPending(connection) ? ", Connecting…" : ""))
                     }
                     Divider()
-                    Button("Refresh Machines", systemImage: "arrow.clockwise") {
-                        Task { await appModel.machineCatalog.discoverMachines() }
-                    }
-                    .disabled(appModel.machineCatalog.isDiscoveringMachines)
-                    if let error = appModel.machineCatalog.machineDiscoveryError {
-                        Text(error)
+                    Button("Add Machine…", systemImage: "plus") {
+                        selectedConnection = RecentConnection(host: "", port: 22, username: "",
+                            authMode: "password", remember: true)
                     }
                 } label: {
                     HStack(spacing: 4) {
@@ -556,9 +600,14 @@ struct HerdrcatBrandMark: View {
                     .font(.jost(.caption2))
                     .foregroundStyle(Color(uiColor: .secondaryLabel))
                 }
-                .accessibilityLabel("Machine: \(host)")
+                .accessibilityLabel("Machine: \(activeConnection?.displayName ?? host)")
                 .accessibilityIdentifier("machine-picker")
             }
+        }
+        .onAppear { reloadConnections() }
+        .onChange(of: appModel.connectionIdentity) { _, _ in reloadConnections() }
+        .sheet(item: $selectedConnection, onDismiss: reloadConnections) { connection in
+            ConnectionSettingsView(connection: connection, switcher: active)
         }
         .accessibilityElement(children: .contain)
     }
