@@ -185,18 +185,19 @@ struct TimelineDiffCode: View {
         default: Theme.textMuted
         }
     }
+    private static let highlightRules: [(NSRegularExpression, UIColor)] = [
+        (try! NSRegularExpression(pattern: #"\b(let|var|const|func|function|return|if|else|for|while|class|struct|enum|import|from|true|false|null|nil|async|await|try|throw|public|private|static)\b"#), .systemPurple),
+        (try! NSRegularExpression(pattern: #"\b[0-9]+(?:\.[0-9]+)?\b"#), .systemOrange),
+        (try! NSRegularExpression(pattern: #""(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'"#), .systemGreen),
+        (try! NSRegularExpression(pattern: #"//.*$"#), .secondaryLabel)
+    ]
+
     private func highlight(_ text: String, omitted: Bool) -> AttributedString {
         let result = NSMutableAttributedString(string: text, attributes: [.foregroundColor: UIColor(omitted ? Theme.textMuted : Theme.text)])
         guard !omitted else { return AttributedString(result) }
-        let rules: [(String, UIColor)] = [
-            (#"\b(let|var|const|func|function|return|if|else|for|while|class|struct|enum|import|from|true|false|null|nil|async|await|try|throw|public|private|static)\b"#, .systemPurple),
-            (#"\b[0-9]+(?:\.[0-9]+)?\b"#, .systemOrange),
-            (#""(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'"#, .systemGreen),
-            (#"//.*$"#, .secondaryLabel)
-        ]
-        for (pattern, color) in rules {
-            guard let expression = try? NSRegularExpression(pattern: pattern) else { continue }
-            for match in expression.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+        let textRange = NSRange(text.startIndex..., in: text)
+        for (expression, color) in Self.highlightRules {
+            for match in expression.matches(in: text, range: textRange) {
                 result.addAttribute(.foregroundColor, value: color, range: match.range)
             }
         }

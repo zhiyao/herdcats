@@ -432,14 +432,24 @@ extension QuotaReport {
         }
     }
 
+    private static let resetDateLock = NSLock()
+    nonisolated(unsafe) private static let fractionalFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    nonisolated(unsafe) private static let plainFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
     private static func parseResetDate(_ raw: String?) -> Date? {
         guard let raw, !raw.isEmpty else { return nil }
-        let withFractional = ISO8601DateFormatter()
-        withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = withFractional.date(from: raw) { return date }
-        let plain = ISO8601DateFormatter()
-        plain.formatOptions = [.withInternetDateTime]
-        return plain.date(from: raw)
+        resetDateLock.lock()
+        defer { resetDateLock.unlock() }
+        if let date = fractionalFormatter.date(from: raw) { return date }
+        return plainFormatter.date(from: raw)
     }
 
     /// Total duration of a quota window so callers can compute the linear burn rate.

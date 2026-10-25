@@ -185,6 +185,7 @@ struct ConnectionGeneration: Hashable, Sendable, Comparable {
         lhs.rawValue < rhs.rawValue
     }
 
+    @discardableResult
     mutating func bump() -> ConnectionGeneration {
         rawValue += 1
         return self

@@ -169,9 +169,7 @@ struct PaneSessionView: View {
     }
 
     private var terminalPalette: TerminalPalette {
-        let dark = true
-        let preferences = AppThemePreferences.shared
-        return TerminalPalette(palette: dark ? preferences.dark : preferences.light, dark: dark)
+        TerminalPalette(palette: AppThemePreferences.shared.dark, dark: true)
     }
 
     func updateSessionParsedOutput() {
@@ -393,7 +391,7 @@ struct PaneSessionView: View {
         return bar
     }
 
-    private var liveInputEnabled: Bool {
+    var liveInputEnabled: Bool {
         liveSession != nil && liveQueueState != .needsResync && !appModel.isOffline
     }
 
@@ -500,6 +498,7 @@ struct PaneSessionView: View {
         .task(id: liveSessionTaskKey) {
             var retryDelay = 2.0
             while !Task.isCancelled && !appModel.isOffline && appModel.isSceneActive {
+                guard !liveInputEnabled else { return }
                 if liveSession == nil || liveQueueState == .needsResync {
                     await resumeLiveInput()
                     retryDelay = liveInputEnabled ? 2 : min(retryDelay * 2, 10)

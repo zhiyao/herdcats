@@ -94,10 +94,15 @@ import Observation
                 before = entries.first?.id
                 hasMore = false
             }
+            var entryIndex: [String: Int] = [:]
+            for (index, entry) in entries.enumerated() {
+                entryIndex[entry.id] = index
+            }
             for row in rows where !evictedIds.contains(row.id) {
-                if let index = entries.firstIndex(where: { $0.id == row.id }) {
+                if let index = entryIndex[row.id] {
                     entries[index] = row
                 } else {
+                    entryIndex[row.id] = entries.count
                     entries.append(row)
                 }
             }

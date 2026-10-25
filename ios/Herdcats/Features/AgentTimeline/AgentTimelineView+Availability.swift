@@ -34,7 +34,6 @@ extension AgentTimelineView {
             let showsInstallOrUpgrade = Self.showsInstallOrUpgrade(code: code, agent: agent, bridgeVersion: bridgeVersion)
             let showsProtocolMismatch = code == "protocol_mismatch" && isSupportedAgent
             let isNoSession = ["session_reference_unavailable", "ambiguous_session", "invalid_session_reference"].contains(code)
-            let isCwdMismatch = code == "session_cwd_mismatch"
             let codexNoSession: CodexNoSessionAction? = isCodex && isNoSession
                 ? Self.codexNoSessionAction(
                     agent: agent,
