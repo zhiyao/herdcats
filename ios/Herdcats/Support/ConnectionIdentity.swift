@@ -8,9 +8,6 @@ struct ConnectionIdentity: Hashable, Sendable, Codable, Equatable {
     var host: String
     var port: Int
     var username: String
-    var machineID: String?
-    var machineTarget: String?
-    var machineSession: String?
 
     init(host: String, port: Int, username: String) {
         self.host = host.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -22,14 +19,6 @@ struct ConnectionIdentity: Hashable, Sendable, Codable, Equatable {
         self.init(host: config.host, port: config.port, username: config.username)
     }
 
-    func scoped(to machine: HerdrMachine) -> Self {
-        var result = self
-        result.machineID = machine.id
-        result.machineTarget = machine.target
-        result.machineSession = machine.session
-        return result
-    }
-
     /// UserDefaults-safe fragment unique for this endpoint.
     ///
     /// Username case is preserved (SSH logins are case-sensitive). Host is
@@ -38,11 +27,7 @@ struct ConnectionIdentity: Hashable, Sendable, Codable, Equatable {
     var storageKey: String {
         let user = Self.encodeComponent(username)
         let host = Self.encodeComponent(self.host.lowercased())
-        let endpoint = "u=\(user)|h=\(host)|p=\(port)"
-        guard let machineID else { return endpoint }
-        return endpoint + "|m=\(Self.encodeComponent(machineID))"
-            + "|t=\(Self.encodeComponent(machineTarget ?? ""))"
-            + "|s=\(Self.encodeComponent(machineSession ?? ""))"
+        return "u=\(user)|h=\(host)|p=\(port)"
     }
 
     private static let allowedComponentCharacters = CharacterSet(

@@ -6,22 +6,6 @@ import SwiftUI
 extension SpacesModel {
     /// Rate-limited unless `force` is set (pull-to-refresh / periodic poll).
     func refreshUsage(_ connection: HerdrConnection, force: Bool = false) async {
-        guard !showsAllMachines else {
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
-                usageCards = []
-                quotaAxiMissing = false
-                usageUnavailableMessage = "Select a specific machine to view its quota."
-            }
-            return
-        }
-        guard connection.supportsHostServices else {
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
-                usageCards = []
-                quotaAxiMissing = false
-                usageUnavailableMessage = "Switch to your primary remote machine to view agent quota."
-            }
-            return
-        }
         guard !isRefreshingUsage else { return }
         if !force, let last = usageLastUpdated, Date().timeIntervalSince(last) < 50 {
             return
@@ -167,7 +151,7 @@ enum WorktreePresentation {
         guard workspace.worktree == nil,
               let entry,
               let sourceWorktree = source.workspace.worktree else {
-            return Space(workspace: workspace, agents: [], machine: source.machine)
+            return Space(workspace: workspace, agents: [])
         }
         let completed = Workspace(
             workspaceId: workspace.workspaceId,
@@ -185,7 +169,7 @@ enum WorktreePresentation {
                 isLinkedWorktree: entry.isLinkedWorktree ?? true
             )
         )
-        return Space(workspace: completed, agents: [], machine: source.machine)
+        return Space(workspace: completed, agents: [])
     }
 }
 

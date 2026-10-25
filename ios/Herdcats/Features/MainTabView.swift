@@ -11,14 +11,8 @@ struct MainTabView: View {
 
     var body: some View {
         ConnectedTabsView(selectedTab: $selectedTab)
-            .environment(appModel.selectedMachineModel ?? appModel)
+            .environment(appModel)
             .id(appModel.connectionIdentity?.storageKey ?? "none")
-            // The session view appears while still connecting; rediscover
-            // once connected (and after reconnects, which reset machines).
-            .task(id: appModel.phase) {
-                guard case .connected = appModel.phase else { return }
-                await appModel.discoverMachines()
-            }
             .safeAreaInset(edge: .top, spacing: 0) {
                 if let label = active?.pendingLabel {
                     ConnectionStatusBar(banner: .connecting(message: "Connecting to \(label)…"))
@@ -105,18 +99,13 @@ struct ConnectedTabsView: View {
                 .tag(MainTab.settings)
         }
         .environment(model)
-        .task(id: appModel.machineCatalog.machines) {
+        .task {
             model.stopAutoRefresh()
-            if appModel.isShowingAllMachines {
-                await model.bindMachines(appModel)
-            } else {
-                model.bindConnectionScope(appModel.connectionIdentity)
-            }
+            model.bindConnectionScope(appModel.connectionIdentity)
             guard !Task.isCancelled else { return }
             let active = scenePhase == .active
             model.isSceneActive = active
             appModel.isSceneActive = active
-            for source in model.machineSources { source.app.isSceneActive = active }
             await model.refresh(appModel.connection)
             guard !Task.isCancelled else { return }
             model.startAutoRefresh(appModel.connection)
@@ -133,7 +122,6 @@ struct ConnectedTabsView: View {
             let active = phase == .active
             model.isSceneActive = active
             appModel.isSceneActive = active
-            for source in model.machineSources { source.app.isSceneActive = active }
             if active {
                 if appModel.isOffline {
                     Task { await appModel.reconnect(automatically: true) }
@@ -144,9 +132,6 @@ struct ConnectedTabsView: View {
                     }
                 }
             }
-        }
-        .onChange(of: model.autoRefreshEnabled) { _, enabled in
-            for source in model.machineSources { source.model.autoRefreshEnabled = enabled }
         }
         .onDisappear {
             model.stopAutoRefresh()
@@ -225,11 +210,7 @@ struct AgentsScreen: View {
                                 }
                             case .spaces:
                                 let currentSections = sections
-                                ForEach(Array(currentSections.enumerated()), id: \.element.space.id) { index, section in
-                                    if model.showsAllMachines,
-                                       index == 0 || currentSections[index - 1].space.machine?.id != section.space.machine?.id {
-                                        MachineSectionHeader(name: section.space.machine?.label ?? "Machine")
-                                    }
+                                ForEach(currentSections, id: \.space.id) { section in
                                     spaceHeader(section.space)
                                     ForEach(section.items) { item in
                                         agentRow(item)
@@ -272,13 +253,9 @@ struct AgentsScreen: View {
             }
             .toolbarBackground(.hidden, for: .navigationBar)
             .navigationDestination(for: AgentListItem.self) { item in
-                if let target = model.app(for: item.space, fallback: appModel) {
-                    WorkspacePaneView(space: item.space, initialPaneID: item.agent.paneId)
-                        .environment(target)
-                        .environment(model.model(for: item.space))
-                } else {
-                    ContentUnavailableView("Machine Unavailable", systemImage: "desktopcomputer.trianglebadge.exclamationmark")
-                }
+                WorkspacePaneView(space: item.space, initialPaneID: item.agent.paneId)
+                    .environment(appModel)
+                    .environment(model)
             }
             .overlay(alignment: .bottom) {
                 if let error = model.agentListError,
@@ -347,8 +324,7 @@ struct AgentsScreen: View {
         NavigationLink(value: item) {
             AgentListRow(
                 item: item,
-                lastUpdated: model.model(for: item.space).lastUpdatedByPaneID[item.agent.paneId],
-                machineLabel: model.showsAllMachines && sort == .priority ? item.space.machine?.label : nil
+                lastUpdated: model.lastUpdatedByPaneID[item.agent.paneId]
             )
         }
         .buttonStyle(.plain)
@@ -394,10 +370,7 @@ struct AgentListItem: Identifiable, Hashable {
     let space: Space
     let agent: AgentEntry
 
-    var id: String {
-        guard let machine = space.machine else { return agent.paneId }
-        return machine.id + "|p=" + ConnectionIdentity.encodeComponent(agent.paneId)
-    }
+    var id: String { agent.paneId }
 
     var status: AgentStatus {
         AgentStatus(rawValue: agent.agentStatus) ?? .unknown
@@ -413,11 +386,6 @@ struct AgentListItem: Identifiable, Hashable {
     static func attentionOrder(_ lhs: Self, _ rhs: Self) -> Bool {
         if lhs.status.attentionPriority != rhs.status.attentionPriority {
             return lhs.status.attentionPriority > rhs.status.attentionPriority
-        }
-        // Sequence numbers belong to one server; never compare them across machines.
-        if lhs.space.machine?.id != rhs.space.machine?.id {
-            return (lhs.space.machine?.order ?? 0, lhs.space.machine?.id ?? "")
-                < (rhs.space.machine?.order ?? 0, rhs.space.machine?.id ?? "")
         }
         // Older servers may omit the sequence; keep those agents after known changes.
         switch (lhs.agent.stateChangeSeq, rhs.agent.stateChangeSeq) {
@@ -448,7 +416,6 @@ struct AgentListItem: Identifiable, Hashable {
 struct AgentListRow: View {
     let item: AgentListItem
     var lastUpdated: Date?
-    var machineLabel: String? = nil
 
     private var agent: AgentEntry { item.agent }
 
@@ -475,12 +442,7 @@ struct AgentListRow: View {
                     AgentKindIcon(kind: agent.agent, size: 13)
                         .accessibilityElement()
                         .accessibilityLabel(AgentKindVisual.displayName(for: agent.agent))
-                    if let machineLabel {
-                        Label(machineLabel, systemImage: "desktopcomputer")
-                            .font(.jost(.caption))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    } else if !agent.shortCwd.isEmpty {
+                    if !agent.shortCwd.isEmpty {
                         Text(agent.shortCwd)
                             .font(.caption.monospaced())
                             .lineLimit(1)

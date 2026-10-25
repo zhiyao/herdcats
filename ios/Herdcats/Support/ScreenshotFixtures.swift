@@ -73,7 +73,6 @@ enum ScreenshotFixtures {
     }
     static func response(_ args: String) throws -> String {
         if args == "--version" { return "herdr 0.8.0" }
-        if args == "machine list --json" { return "[]" }
         if args.hasPrefix("pane read") { return terminal }
         let result: [String: Any]
         if args == "workspace list" { result = ["workspaces": workspaces] }
@@ -149,26 +148,6 @@ struct ScreenshotRootView: View {
         }
         return app
     }()
-    /// A saved machine reached through Herdr on the SSH-connected gateway, for
-    /// the routed-host Timeline screen.
-    @State private var routedModel: AppModel = {
-        let gateway = ConnectionIdentity(host: "studio-mac", port: 22, username: "demo")
-        let machine = HerdrMachine(
-            id: "studio-mini", label: "Studio Mini", target: "studio-mini.local",
-            session: "studio-mini", enabled: true)
-        let routed = HerdrConnection(
-            gateway: HerdrConnection(), machine: machine,
-            generation: ConnectionGeneration(rawValue: 1), identity: gateway)
-        let app = AppModel(connection: routed, autoConnectOnLaunch: false)
-        app.phase = .connected(host: "Studio Mini", username: "demo")
-        app.hasActiveSession = true
-        app.selectedMachine = machine
-        app.connectionIdentity = gateway.scoped(to: machine)
-        if ProcessInfo.processInfo.arguments.contains("-hc.timeline-intro-reset"), let identity = app.connectionIdentity {
-            UserDefaults.standard.removeObject(forKey: TimelineSetupPreference.key(scope: identity))
-        }
-        return app
-    }()
     var body: some View {
         Group {
             if ScreenshotFixtures.screen == "pane" || ScreenshotFixtures.screen == "agent-pane" || ["keys", "compose", "voice", "turn-interrupted", "optional-upgrade-menu"].contains(ScreenshotFixtures.screen) || ScreenshotFixtures.screen.hasPrefix("timeline") {
@@ -186,7 +165,7 @@ struct ScreenshotRootView: View {
                 MainTabView()
             }
         }
-        .environment(ScreenshotFixtures.screen == "timeline-routed-host" ? routedModel : model)
+        .environment(model)
         .preferredColorScheme(ProcessInfo.processInfo.arguments.contains("-hc.light") ? .light : .dark)
         .tint(Theme.accent)
         .foregroundStyle(Theme.text)

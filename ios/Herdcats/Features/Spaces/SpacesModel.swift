@@ -13,107 +13,20 @@ final class SpacesModel {
         }
     }
     private(set) var spaceGroups: [SpaceGroup] = []
-    private(set) var machineSources: [MachineSpacesSource] = []
-    private(set) var showsAllMachines = false
-
-    @MainActor
-    struct MachineSpacesSource: Identifiable {
-        let machine: SpaceMachine
-        let app: AppModel
-        let model: SpacesModel
-        var id: String { machine.id }
-    }
-
-    func bindMachines(_ catalog: AppModel) async {
-        showsAllMachines = true
-        var sources: [MachineSpacesSource] = []
-        var apps = [catalog]
-        for machine in catalog.machines where machine.enabled {
-            if let app = try? await catalog.model(for: machine) { apps.append(app) }
-        }
-        guard !Task.isCancelled else { return }
-        for (order, app) in apps.enumerated() {
-            guard let scope = app.connectionIdentity else { continue }
-            let child = machineSources.first { $0.id == scope.storageKey }?.model ?? SpacesModel()
-            child.bindConnectionScope(scope)
-            child.autoRefreshEnabled = autoRefreshEnabled
-            sources.append(MachineSpacesSource(
-                machine: SpaceMachine(scope: scope, label: app.machineDisplayName, order: order),
-                app: app, model: child
-            ))
-        }
-        machineSources = sources
-        rebuildMachineSpaces()
-    }
-
-    func app(for space: Space, fallback: AppModel) -> AppModel? {
-        guard let machine = space.machine else { return fallback }
-        return machineSources.first { $0.id == machine.id }?.app
-    }
-
-    func model(for space: Space) -> SpacesModel {
-        machineSources.first { $0.id == space.machine?.id }?.model ?? self
-    }
-
     /// Latest pane activity among the space's agents — the list row's timestamp.
     func lastActivity(in space: Space) -> Date? {
-        let dates = model(for: space).lastUpdatedByPaneID
+        let dates = lastUpdatedByPaneID
         return space.agents.compactMap { dates[$0.paneId] }.max()
     }
 
-    func connection(for space: Space?, fallback: HerdrConnection) throws -> HerdrConnection {
-        guard let machine = space?.machine else { return fallback }
-        guard let source = machineSources.first(where: { $0.id == machine.id }) else {
-            throw HerdrError.invalidConfiguration("This machine is no longer available. Refresh the machine list.")
-        }
-        return source.app.connection
-    }
-
-    private func rebuildMachineSpaces() {
-        spaces = machineSources.flatMap { source in
-            source.model.spaces.map { space in
-                var scoped = space
-                scoped.machine = source.machine
-                return scoped
-            }
-        }
-        unconfirmedSpaces = SpacePresentationOverlay.unconfirmed(unconfirmedSpaces, after: spaces)
-        let errors = machineSources.compactMap { source in
-            source.model.errorMessage.map { "\(source.machine.label): \($0)" }
-        }
-        errorMessage = errors.isEmpty ? nil : errors.joined(separator: "\n")
-    }
-
-    private func refreshMachines() async {
-        let generation = refreshGate.begin()
-        isLoading = true
-        defer {
-            if refreshGate.finishIfCurrent(generation) { isLoading = false }
-        }
-        let sources = machineSources
-        await withTaskGroup(of: Void.self) { group in
-            for source in sources {
-                group.addTask { await source.model.refresh(source.app.connection) }
-            }
-            for await _ in group {
-                guard refreshGate.isCurrent(generation), !Task.isCancelled else { continue }
-                rebuildMachineSpaces()
-            }
-        }
-        guard refreshGate.isCurrent(generation), !Task.isCancelled else { return }
-        lastUpdated = Date()
-    }
     private(set) var lastUpdated: Date?
     /// Pane-id → last activity time, shared with pane detail cards.
     private(set) var lastUpdatedByPaneID: [String: Date] = [:]
     // The view can render before its initial refresh task starts.
     private(set) var isLoading = true
 
-    /// An empty aggregate is conclusive only after every machine has loaded.
+    /// A successful refresh confirms the agent list, even when it is empty.
     var hasLoadedAgentList: Bool {
-        if showsAllMachines {
-            return !machineSources.isEmpty && machineSources.allSatisfy { $0.model.hasLoadedAgentList }
-        }
         return lastUpdated != nil
     }
     /// Provider usage cards for the Agents header (from remote `quota-axi`).
@@ -200,10 +113,6 @@ final class SpacesModel {
     }
 
     func refresh(_ connection: HerdrConnection) async {
-        if showsAllMachines {
-            await refreshMachines()
-            return
-        }
         let generation = refreshGate.begin()
         isLoading = true
 
@@ -290,7 +199,7 @@ final class SpacesModel {
             }
         }
         do {
-            let target = try self.connection(for: base, fallback: connection)
+            let target = connection
             let cwd = try await Self.baseWorkingDirectory(for: base, connection: target)
             guard spaceCreationGeneration == generation, !Task.isCancelled else { return }
             let created = (try await target.workspaceCreate(cwd: cwd)).workspace
@@ -319,7 +228,6 @@ final class SpacesModel {
             return space
         }
         return pool.first { candidate in
-            candidate.machine?.id == space.machine?.id &&
             candidate.workspace.worktree?.repoRoot == repoRoot &&
             candidate.workspace.worktree?.isLinkedWorktree == false
         } ?? space
@@ -348,7 +256,7 @@ final class SpacesModel {
         }
         defer { finishWorktreeAction(generation) }
         do {
-            let conn = try self.connection(for: targetSpace, fallback: connection)
+            let conn = connection
             let result: WorktreeOpenResult
             if targetSpace.workspace.worktree?.isLinkedWorktree == false {
                 result = try await conn.worktreeOpen(
@@ -405,7 +313,7 @@ final class SpacesModel {
             let trimmedLabel = label?.trimmingCharacters(in: .whitespacesAndNewlines)
             let branch = trimmedName?.isEmpty == false ? trimmedName : nil
             let labelText = trimmedLabel?.isEmpty == false ? trimmedLabel : nil
-            let conn = try self.connection(for: targetSpace, fallback: connection)
+            let conn = connection
 
             let result: WorktreeCreateResult
             if targetSpace.workspace.worktree?.isLinkedWorktree == false {
@@ -475,7 +383,7 @@ final class SpacesModel {
         isPerformingSpaceAction = true
         defer { isPerformingSpaceAction = false }
         do {
-            try await self.connection(for: space, fallback: connection).workspaceRename(workspaceId: space.workspace.workspaceId, label: trimmed)
+            try await connection.workspaceRename(workspaceId: space.workspace.workspaceId, label: trimmed)
             await refresh(connection)
         } catch {
             reportError(error)
@@ -488,7 +396,7 @@ final class SpacesModel {
         isPerformingSpaceAction = true
         defer { isPerformingSpaceAction = false }
         do {
-            try await self.connection(for: space, fallback: connection).workspaceClose(workspaceId: space.workspace.workspaceId)
+            try await connection.workspaceClose(workspaceId: space.workspace.workspaceId)
             await refresh(connection)
         } catch {
             reportError(error)

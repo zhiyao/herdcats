@@ -82,13 +82,13 @@ struct AgentTimelineView: View {
     var waitingTaskKey: WaitingTaskKey {
         WaitingTaskKey(hooks: hooksKey, owner: activeOwner, identity: timeline.identity, generation: timeline.generation,
             eligible: PhoneAnswersPresentation.eligible(approvals: bridgeCapabilities?.approvals,
-                ready: timeline.phase == .ready && connectionState.isReady && appModel.supportsHostServices,
+                ready: timeline.phase == .ready && connectionState.isReady,
                 blocked: timeline.agentStatus == "blocked", pending: timeline.pendingApproval != nil || showsQuestion,
                 active: scenePhase == .active && appModel.isSceneActive))
     }
     private var showsWaitingRow: Bool { waitingTaskKey.eligible && waitingKey == waitingTaskKey }
     func hooksContextIsCurrent(_ key: PhoneAnswersStore.Key) -> Bool {
-        scenePhase == .active && appModel.isSceneActive && connectionState.isReady && appModel.supportsHostServices
+        scenePhase == .active && appModel.isSceneActive && connectionState.isReady
             && setupTarget == key.target && connectionState.generation == key.generation
             && bridgeCapabilities?.approvals == true
     }
@@ -454,7 +454,7 @@ struct AgentTimelineView: View {
                 reason: setupReason, agent: agent, installedVersion: bridgeVersion,
                 isChecking: isCheckingSetup, feedback: setupFeedback,
                 stage: helperStage, target: setupTarget,
-                canInstall: connectionState.isReady && appModel.supportsHostServices && appModel.connectionIdentity == setupTarget && canPinnedInstallerSupportAgent,
+                canInstall: connectionState.isReady && appModel.connectionIdentity == setupTarget && canPinnedInstallerSupportAgent,
                 onInstall: startHelperInstallation,
                 onCheckAgain: { setupFeedback = nil; isCheckingSetup = true; retry += 1 },
                 onUseTerminal: { cancelHelperInstallation(); showsSetup = false }

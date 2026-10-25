@@ -66,7 +66,6 @@ extension AppModel {
         #if DEBUG
         print("[HC] connect start \(config.host):\(config.port)")
         #endif
-        resetMachines()
         activeConfig = config
         let wasOffline = isOffline
         phase = .connecting

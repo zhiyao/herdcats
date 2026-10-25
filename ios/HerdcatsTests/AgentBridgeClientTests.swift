@@ -128,17 +128,6 @@ struct AgentBridgeClientTests {
         }
         #expect(await wire.closes == 1)
     }
-    @Test func routedHostIsRejectedBeforeOpeningAnyHelper() async {
-        let gateway = HerdrConnection()
-        let machine = HerdrMachine(
-            id: "child", label: "Child", target: "u@child", session: "default", enabled: true)
-        let route = HerdrConnection(
-            gateway: gateway, machine: machine, generation: ConnectionGeneration(rawValue: 1), identity: nil)
-        do {
-            _ = try await route.openAgentTimeline(paneId: "p", onEvent: { _ in })
-            Issue.record("routed stream accepted")
-        } catch { #expect(error as? AgentBridgeError == .routedHostUnsupported) }
-    }
     @Test func handshakeOptsIntoApprovalsAndQuestions() async throws {
         let wire = BridgeTestWire()
         let client = AgentBridgeClient(write: { await wire.write($0) }, close: { await wire.close() }, onEvent: { _ in })
@@ -570,17 +559,6 @@ struct HostHelperCommandTests {
 
 @Suite("Helper setup host and completion guards")
 struct HostHelperSetupGuardTests {
-    @Test func routedHostCannotStartInstaller() async {
-        let gateway = HerdrConnection()
-        let machine = HerdrMachine(id: "child", label: "Child", target: "u@child", session: "default", enabled: true)
-        let route = HerdrConnection(gateway: gateway, machine: machine, generation: ConnectionGeneration(rawValue: 1), identity: nil)
-        do {
-            _ = try await route.setUpHostHelper(replace: true, checkOnly: false,
-                target: ConnectionIdentity(host: "child", port: 22, username: "u"), owned: ConnectionGeneration(rawValue: 1),
-                onStage: { _ in Issue.record("routed install started") })
-            Issue.record("routed installer accepted")
-        } catch { #expect(error as? AgentBridgeError == .routedHostUnsupported) }
-    }
     @Test func invalidCompletionAndReportedFailureNeverBecomeSuccess() throws {
         #expect(throws: HostHelperSetupError.failed("checksum_mismatch")) {
             try HostHelperSetupPlan.verifyInstallation("HC_HELPER_ERROR:checksum_mismatch\n")

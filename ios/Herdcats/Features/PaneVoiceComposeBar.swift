@@ -157,7 +157,6 @@ struct PaneVoiceComposeBar: View {
     @Binding var isPhotoPickerPresented: Bool
     var attachment: PaneAttachmentInfo?
     var onRemoveAttachment: (() -> Void)?
-    var supportsHostServices: Bool
 
     // Compose actions (visibility = hasDraftText || isSending; disabled = !canSend || isSending)
     var placeholder: String
@@ -188,7 +187,6 @@ struct PaneVoiceComposeBar: View {
         isPhotoPickerPresented: Binding<Bool>,
         attachment: PaneAttachmentInfo? = nil,
         onRemoveAttachment: (() -> Void)? = nil,
-        supportsHostServices: Bool = true,
         placeholder: String = "Message the agent…",
         canSend: Bool = true,
         isSending: Bool = false,
@@ -219,7 +217,6 @@ struct PaneVoiceComposeBar: View {
         self._isPhotoPickerPresented = isPhotoPickerPresented
         self.attachment = attachment
         self.onRemoveAttachment = onRemoveAttachment
-        self.supportsHostServices = supportsHostServices
         self.placeholder = placeholder
         self.canSend = canSend
         self.isSending = isSending
@@ -671,7 +668,7 @@ struct PaneVoiceComposeBar: View {
             } label: {
                 Image(systemName: "photo")
                     .font(.jost(20))
-                    .foregroundStyle(supportsHostServices ? Theme.accent : Color.secondary)
+                    .foregroundStyle(Theme.accent)
                     .frame(width: 38, height: 38)
                     .contentShape(Rectangle())
             }
@@ -682,7 +679,7 @@ struct PaneVoiceComposeBar: View {
                 matching: .images,
                 photoLibrary: .shared()
             )
-            .disabled(!supportsHostServices || isSending)
+            .disabled(isSending)
             .accessibilityLabel("Attach Image")
             .accessibilityIdentifier("pane-compose-attach-button")
         }

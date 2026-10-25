@@ -437,11 +437,10 @@ extension View {
         modifier(ConnectionStatusBannerModifier(banner: banner, retryAction: retryAction))
     }
 
-    /// Convenience overload resolving the active gateway session from the given `AppModel`.
+    /// Convenience overload resolving the current session from the given `AppModel`.
     func connectionStatusBanner(appModel: AppModel) -> some View {
-        let sessionModel = appModel.machineCatalog
-        return connectionStatusBanner(banner: sessionModel.connectionBanner) {
-            Task { await sessionModel.reconnect() }
+        connectionStatusBanner(banner: appModel.connectionBanner) {
+            Task { await appModel.reconnect() }
         }
     }
 }

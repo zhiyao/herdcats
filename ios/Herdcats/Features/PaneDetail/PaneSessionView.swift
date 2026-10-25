@@ -382,7 +382,6 @@ struct PaneSessionView: View {
             isPhotoPickerPresented: $isPhotoPickerPresented,
             attachment: attachment.map(PaneAttachmentInfo.init),
             onRemoveAttachment: { clearAttachment() },
-            supportsHostServices: appModel.supportsHostServices,
             placeholder: composerPlaceholder,
             canSend: canSend,
             isSending: isSending,

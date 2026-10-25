@@ -86,16 +86,10 @@ struct SpacesScreen: View {
                                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
                             }
                             let groups = displayedGroups
-                            ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
-                                if model.showsAllMachines, sort == .workspaceOrder,
-                                   index == 0 || groups[index - 1].root.machine?.id != group.root.machine?.id {
-                                    MachineSectionHeader(name: group.root.machine?.label ?? "Machine")
-                                        .quietListRow()
-                                }
+                            ForEach(groups) { group in
                                 spaceLink(group.root) {
                                     SpaceRow(
                                         group: group,
-                                        machineLabel: model.showsAllMachines && sort == .priority ? group.root.machine?.label : nil,
                                         isHighlighted: model.highlightedWorktreeID == group.root.id,
                                         lastUpdated: model.lastActivity(in: group.root)
                                     )
@@ -166,12 +160,9 @@ struct SpacesScreen: View {
                         } label: {
                             Label("New Space", systemImage: "plus")
                         }
-                        .disabled(model.isCreatingSpace || model.showsAllMachines)
+                        .disabled(model.isCreatingSpace)
                         .accessibilityIdentifier("space-create-button")
 
-                        if model.showsAllMachines {
-                            Text("Select a machine to create a space")
-                        }
                         Divider()
 
                         Picker("Sort", selection: sortSelection) {
@@ -191,13 +182,9 @@ struct SpacesScreen: View {
             }
             .toolbarBackground(.hidden, for: .navigationBar)
             .navigationDestination(for: Space.self) { space in
-                if let target = model.app(for: space, fallback: appModel) {
-                    WorkspacePaneView(space: space)
-                        .environment(target)
-                        .environment(model.model(for: space))
-                } else {
-                    ContentUnavailableView("Machine Unavailable", systemImage: "desktopcomputer.trianglebadge.exclamationmark")
-                }
+                WorkspacePaneView(space: space)
+                    .environment(appModel)
+                    .environment(model)
             }
             .sheet(item: $actionsTarget, onDismiss: {
                 guard let pending = pendingSpaceAction else { return }
@@ -252,23 +239,21 @@ struct SpacesScreen: View {
                     )
                 }
             }) { space in
-                if let target = model.app(for: space, fallback: appModel) {
-                    OpenWorktreeDrawer(
-                        space: space,
-                        connection: target.connection,
-                        onOpen: { path, branch in
-                            pendingOpenWorktree = OpenWorktreeRequest(space: space, path: path, branch: branch)
-                            openWorktreeTarget = nil
-                        },
-                        onCancel: {
-                            pendingOpenWorktree = nil
-                            openWorktreeTarget = nil
-                        }
-                    )
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
-                    .presentationCornerRadius(20)
-                }
+                OpenWorktreeDrawer(
+                    space: space,
+                    connection: appModel.connection,
+                    onOpen: { path, branch in
+                        pendingOpenWorktree = OpenWorktreeRequest(space: space, path: path, branch: branch)
+                        openWorktreeTarget = nil
+                    },
+                    onCancel: {
+                        pendingOpenWorktree = nil
+                        openWorktreeTarget = nil
+                    }
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(20)
             }
             .sheet(item: $createWorktreeTarget, onDismiss: {
                 guard let request = pendingCreateWorktree else { return }

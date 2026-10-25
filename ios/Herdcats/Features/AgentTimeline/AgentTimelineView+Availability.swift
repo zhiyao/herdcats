@@ -39,7 +39,6 @@ extension AgentTimelineView {
                 ? Self.codexNoSessionAction(
                     agent: agent,
                     code: code,
-                    route: connection.route,
                     capabilities: bridgeCapabilities,
                     codexDaemon: timeline.codexDaemon)
                 : nil
@@ -115,9 +114,7 @@ extension AgentTimelineView {
             agent: agent,
             installedVersion: bridgeVersion,
             pinnedVersion: HostHelperSetupPlan.version,
-            supportedAgents: Set(HostHelperSetupPlan.agents),
-            gatewayHost: setupTarget.host,
-            machineLabel: connection.route?.machine.label
+            supportedAgents: Set(HostHelperSetupPlan.agents)
         )
     }
 
@@ -187,9 +184,6 @@ extension AgentTimelineView {
         bridgeVersion: String? = nil,
         supportedAgents: Set<String> = Set(HostHelperSetupPlan.agents)
     ) -> Bool {
-        // Retrying can never help a routed host: the pane is reached through
-        // Herdr on the SSH-connected gateway, not a computer Herdcats dialed.
-        guard code != "routed_host_unsupported" else { return false }
         return !showsInstallOrUpgrade(code: code, agent: agent, bridgeVersion: bridgeVersion, supportedAgents: supportedAgents)
     }
 
@@ -205,20 +199,18 @@ extension AgentTimelineView {
         /// The bridge (0.2.0/0.2.1) can only change the config; upgrading adds
         /// the in-app stop.
         case upgradeBridge
-        /// Older bridge, routed host, or nothing to do: keep the manual fallback.
+        /// Older bridge or nothing to do: keep the manual fallback.
         case manualFallback
     }
 
     static func codexNoSessionAction(
         agent: String?,
         code: String,
-        route: HerdrMachineRoute?,
         capabilities: AgentBridgeCapabilities?,
         codexDaemon: String?
     ) -> CodexNoSessionAction {
         guard agent == "codex",
-            ["session_reference_unavailable", "ambiguous_session", "invalid_session_reference"].contains(code),
-            route == nil
+            ["session_reference_unavailable", "ambiguous_session", "invalid_session_reference"].contains(code)
         else { return .manualFallback }
         if capabilities?.codexDaemonStop == true {
             if codexDaemon == "running" || codexDaemon == "unknown" { return .turnOffServer }
@@ -290,17 +282,16 @@ extension AgentTimelineView {
     /// asks for it: a no-session Codex pane whose bridge can stop the server
     /// and currently reports it as running or unverifiable. Anything else —
     /// the session was identified, the pane reconnected, the server is
-    /// already off, or an older bridge/routed host — must not stop anything.
+    /// already off, or an older bridge — must not stop anything.
     static func canRunCodexDaemonStop(
         phase: AgentTimelineState.Phase,
         agent: String?,
-        route: HerdrMachineRoute?,
         capabilities: AgentBridgeCapabilities?,
         codexDaemon: String?
     ) -> Bool {
         guard case .unavailable(let code) = phase else { return false }
         return codexNoSessionAction(
-            agent: agent, code: code, route: route, capabilities: capabilities, codexDaemon: codexDaemon
+            agent: agent, code: code, capabilities: capabilities, codexDaemon: codexDaemon
         ) == .turnOffServer
     }
 
@@ -419,24 +410,7 @@ extension AgentTimelineView {
         if isCodex && isNoSession { return "Waiting for Codex session" }
         if isCodex && isCwdMismatch { return "This pane’s Codex session could not be confirmed" }
         if isMissing { return "Set up Timeline" }
-        if code == "routed_host_unsupported" { return routedHostUnavailableTitle }
         return "Timeline unavailable"
-    }
-
-    /// A saved machine is reached through the Herdr running on the SSH-connected
-    /// gateway computer; the user is connected, so the copy never says otherwise.
-    static let routedHostUnavailableTitle = "Timeline isn't available here yet"
-
-    /// `gatewayHost` is the host Herdcats itself is SSH'd into (the gateway the
-    /// routed machine is reached through); `machineLabel` is the routed
-    /// HerdrMachine's label. Missing values fall back to wording that never
-    /// invents a name.
-    static func routedHostExplanation(gatewayHost: String?, machineLabel: String?) -> String {
-        let host = gatewayHost?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let gatewayName = !host.isEmpty && host != "unknown" ? host : "your SSH computer"
-        let label = machineLabel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let machineName = !label.isEmpty ? label : "this machine"
-        return "This machine is reached through Herdr on \(gatewayName). Timeline can read sessions only on a computer Herdcats connects to with SSH. To use Timeline here, add \(machineName) as its own connection. You can still send messages below."
     }
 
     static func explanation(
@@ -444,9 +418,7 @@ extension AgentTimelineView {
         agent: String?,
         installedVersion: String? = nil,
         pinnedVersion: String = HostHelperSetupPlan.version,
-        supportedAgents: Set<String> = Set(HostHelperSetupPlan.agents),
-        gatewayHost: String? = nil,
-        machineLabel: String? = nil
+        supportedAgents: Set<String> = Set(HostHelperSetupPlan.agents)
     ) -> String {
         let isCodex = agent == "codex"
         let canSupportCodex = supportedAgents.contains("codex")
@@ -479,8 +451,6 @@ extension AgentTimelineView {
                 }
             }
             return "Timeline isn't available for this agent yet."
-        case "routed_host_unsupported":
-            return routedHostExplanation(gatewayHost: gatewayHost, machineLabel: machineLabel)
         case "session_reference_unavailable", "ambiguous_session", "invalid_session_reference":
             if isCodex {
                 return "If this stays after Codex replies, restart Codex with `codex --no-daemon`."
@@ -562,7 +532,6 @@ extension AgentTimelineView {
         if !Self.canRunCodexDaemonStop(
             phase: timeline.phase,
             agent: agent,
-            route: connection.route,
             capabilities: bridgeCapabilities,
             codexDaemon: timeline.codexDaemon
         ) {
@@ -578,7 +547,6 @@ extension AgentTimelineView {
         guard Self.canRunCodexDaemonStop(
             phase: timeline.phase,
             agent: agent,
-            route: connection.route,
             capabilities: bridgeCapabilities,
             codexDaemon: timeline.codexDaemon
         ) else { return }
