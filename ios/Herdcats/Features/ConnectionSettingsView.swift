@@ -6,25 +6,21 @@ struct ConnectionSettingsView: View {
     @Environment(AppModel.self) var appModel
     @Environment(\.dismiss) var dismiss
     let isReplay: Bool
+    let original: RecentConnection
+    let editing: Bool
     let switcher: ActiveMachine?
-    @State var switchConnectionError: String?
-    @State var isSwitching = false
-    @State private var pendingSubmission: Submission?
-
-    private struct Submission {
-        let entry: RecentConnection
-        let config: ConnectionConfig
-        let rememberPassphrase: Bool
-    }
-
-    var isConnecting: Bool { switcher == nil ? appModel.isConnecting : isSwitching }
     @State var name = ""
+    @State var isSwitching = false
+    @State var switchConnectionError: String?
+    @State private var pendingSignIn: ConnectionSignIn?
+    var isConnecting: Bool { switcher == nil ? appModel.isConnecting : isSwitching }
     @State var host = ""
     @State var port = "22"
     @State var username = ""
     @State var authModeRaw = AuthMode.password.rawValue
     @State var remember = true
 
+    @State var credentialLoadError: String?
     @State var password = ""
     @State var keyPEM = ""
     @State var keyPassphrase = ""
@@ -80,8 +76,10 @@ struct ConnectionSettingsView: View {
 
     static let documentationURL = URL(string: "https://herdcats.dev/support/#connect")!
 
-    init(connection: RecentConnection, isReplay: Bool = false, switcher: ActiveMachine? = nil) {
+    init(connection: RecentConnection, isReplay: Bool = false, editing: Bool = false, switcher: ActiveMachine? = nil, using keychain: KeychainOperations = KeychainStore.operations) {
         self.isReplay = isReplay
+        self.original = connection
+        self.editing = editing
         self.switcher = switcher
         _name = State(initialValue: connection.name ?? "")
         _host = State(initialValue: connection.host)
@@ -89,13 +87,15 @@ struct ConnectionSettingsView: View {
         _username = State(initialValue: connection.username)
         _authModeRaw = State(initialValue: connection.authMode)
         _remember = State(initialValue: connection.remember)
-        let secret = connection.remember
-            ? (try? KeychainStore.load(account: connection.secretAccount)) ?? "" : ""
-        _password = State(initialValue: connection.authMode == "password" ? secret : "")
-        _keyPEM = State(initialValue: connection.authMode == "privateKey" ? secret : "")
-        let phrase = connection.remember ? (try? KeychainStore.load(account: connection.secretAccount + ".passphrase")) ?? "" : ""
-        _keyPassphrase = State(initialValue: phrase)
-        _rememberPassphrase = State(initialValue: !phrase.isEmpty)
+        do {
+            let loaded = try ConnectionSignIn.load(connection, using: keychain, readOnly: isReplay)
+            _password = State(initialValue: connection.authMode == "password" ? loaded.secret : "")
+            _keyPEM = State(initialValue: connection.authMode == "privateKey" ? loaded.secret : "")
+            _keyPassphrase = State(initialValue: loaded.passphrase)
+            _rememberPassphrase = State(initialValue: loaded.savePassphrase)
+        } catch {
+            _credentialLoadError = State(initialValue: error.localizedDescription)
+        }
     }
 
     enum AuthMode: String, CaseIterable, Identifiable {
@@ -137,9 +137,8 @@ struct ConnectionSettingsView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
-                    if let error = switchConnectionError {
-                        ErrorBanner(message: error)
-                    } else if switcher == nil, let error = appModel.lastError {
+                    if let switchConnectionError { ErrorBanner(message: switchConnectionError) }
+                    if switcher == nil, let error = appModel.lastError {
                         if appModel.herdrMissingOnLastConnect {
                             MissingHerdrRecoveryCard(inForm: true) { showingSetupGuide = true }
                         } else if appModel.herdrSessionUnavailableOnLastConnect {
@@ -148,6 +147,9 @@ struct ConnectionSettingsView: View {
                             ErrorBanner(message: error)
                         }
                     }
+                    if let credentialLoadError {
+                        ErrorBanner(message: credentialLoadError + " Close and reopen settings to retry loading sign-in before saving changes.")
+                    }
                     connectionCard
                     footer
                 }
@@ -155,6 +157,15 @@ struct ConnectionSettingsView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .background(Theme.backgroundGradient)
+            .safeAreaInset(edge: .bottom) {
+                Button(editing ? "Save changes" : "Connect") {
+                    Task { if editing { saveChanges() } else { await connect() } }
+                }
+                .buttonStyle(.herdrPrimary())
+                .disabled((editing ? !canSaveChanges : !canConnect || credentialLoadError != nil) || isConnecting)
+                .padding(16)
+                .background(Theme.backgroundGradient)
+            }
             .navigationTitle("Connection Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -179,32 +190,42 @@ struct ConnectionSettingsView: View {
                     .background(Theme.backgroundGradient.ignoresSafeArea())
             }
         }
-        .hostKeyApprovalSheet {
-            await connect()
-        }
         .background {
-            if let switcher, let pending = switcher.pending {
-                Color.clear
-                    .frame(width: 0, height: 0)
-                    .hostKeyApprovalSheet(onCancelled: {
-                        guard switcher.pending === pending else { return }
-                        await switcher.cancelSwitch()
-                        pendingSubmission = nil
-                    }, onApproved: {
-                        guard switcher.pending === pending, let submission = pendingSubmission else { return }
-                        isSwitching = true
-                        defer { isSwitching = false }
-                        let outcome = await switcher.finishPendingSwitch()
-                        handleSwitchOutcome(outcome, submission: submission)
-                    })
-                    .environment(pending)
-                    .id(ObjectIdentifier(pending))
+            if switcher == nil {
+                Color.clear.hostKeyApprovalSheet { await connect() }
+            } else if let switcher, let pending = switcher.pending {
+                Color.clear.hostKeyApprovalSheet(onCancelled: {
+                    guard switcher.pending === pending else { return }
+                    await switcher.cancelSwitch()
+                    pendingSignIn = nil
+                }, onApproved: {
+                    guard switcher.pending === pending, let value = pendingSignIn else { return }
+                    isSwitching = true
+                    defer { isSwitching = false }
+                    do { handleSwitchOutcome(try await switcher.finishSignIn(using: value, replay: isReplay)) }
+                    catch { switchConnectionError = error.localizedDescription }
+                })
+                .environment(pending)
+                .id(ObjectIdentifier(pending))
             }
         }
         .onAppear { switcher?.pendingHostKeyOwnedByForm = true }
-        .onDisappear { switcher?.pendingHostKeyOwnedByForm = false }
+        .onDisappear {
+            switcher?.pendingHostKeyOwnedByForm = false
+            if let switcher, let pending = switcher.pending {
+                Task { if switcher.pending === pending { await switcher.cancelSwitch() } }
+            }
+        }
         .sheet(isPresented: $showingSetupGuide) {
             HerdrSetupGuideView()
+        }
+        .onChange(of: destination) { old, new in
+            guard !ConnectionSignIn.sameDestination(old, new) else { return }
+            // Destination changes require fresh, intentional credential entry.
+            password = ""
+            keyPEM = ""
+            keyPassphrase = ""
+            rememberPassphrase = false
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
@@ -213,10 +234,12 @@ struct ConnectionSettingsView: View {
 
     var footer: some View {
         VStack(spacing: 8) {
-            Text("Use a host address your iPhone can reach. 127.0.0.1 means the iPhone itself.")
+            if ["127.0.0.1", "localhost", "::1"].contains(host.lowercased()) {
+                Text("Use a host address your iPhone can reach. This address means the iPhone itself.")
                 .font(.jost(.footnote))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+            }
             Button("Connection Setup Help") { showingSetupGuide = true }
                 .font(.jost(.footnote))
         }
@@ -232,10 +255,9 @@ struct ConnectionSettingsView: View {
     func fieldLabel(_ text: String, hidden: Bool = false) -> some View {
         Group {
             if !hidden {
-                Text(text.uppercased())
-                    .font(.jost(10, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                    .tracking(0.8)
+                Text(text)
+                    .font(.jost(.subheadline, weight: .medium))
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -250,128 +272,83 @@ struct ConnectionSettingsView: View {
             importErrorMessage = "File selection failed: \(error.localizedDescription)"
         case let .success(urls):
             guard let url = urls.first else { return }
-            let accessed = url.startAccessingSecurityScopedResource()
-            defer {
-                if accessed {
-                    url.stopAccessingSecurityScopedResource()
-                }
-            }
             do {
-                let data = try Data(contentsOf: url)
-                guard let content = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .ascii) else {
-                    importErrorMessage = "Unable to read key: file is not UTF-8 or ASCII text."
-                    return
-                }
-                keyPEM = content.trimmingCharacters(in: .whitespacesAndNewlines)
+                keyPEM = try ConnectionSignIn.importPrivateKey(from: url)
                 showKey = false
             } catch {
-                importErrorMessage = "Could not read file: \(error.localizedDescription)"
+                importErrorMessage = error.localizedDescription
             }
         }
     }
 
-    private func showConnectionError(_ message: String) {
-        if switcher != nil {
-            switchConnectionError = message
-        } else {
-            appModel.lastError = message
+    var destination: RecentConnection {
+        RecentConnection(id: original.id, host: host.trimmingCharacters(in: .whitespacesAndNewlines),
+            port: portNumber ?? 0, username: username.trimmingCharacters(in: .whitespacesAndNewlines),
+            authMode: authModeRaw, remember: remember, name: name, lastConnectedAt: original.lastConnectedAt)
+    }
+
+    var validDestination: Bool {
+        !destination.host.isEmpty && !destination.username.isEmpty && portNumber != nil
+    }
+
+    var canSaveChanges: Bool {
+        validDestination && credentialLoadError == nil
+            && (authMode != .privateKey || keyPEM.isEmpty || keyValidationError == nil)
+    }
+
+    func signIn(defaults: UserDefaults = .standard, using keychain: KeychainOperations = KeychainStore.operations) throws -> ConnectionSignIn {
+        var entry = destination
+        if !editing {
+            entry = RecentConnectionStore.entry(host: entry.host, port: entry.port, username: entry.username,
+                authMode: entry.authMode, remember: entry.remember, name: name, in: isReplay ? RecentConnectionStore.snapshot(defaults: defaults) : try RecentConnectionStore.load(defaults: defaults, using: keychain))
         }
+        return ConnectionSignIn(entry: entry, secret: authMode == .password ? password : keyPEM,
+            passphrase: keyPassphrase, savePassphrase: rememberPassphrase)
+    }
+
+    var nameWasEdited: Bool { name != (original.name ?? "") }
+
+    func saveChanges() {
+        guard canSaveChanges else { return }
+        do {
+            if !isReplay { try signIn().persist(connected: false, updateName: nameWasEdited) }
+            dismiss()
+        } catch { appModel.lastError = error.localizedDescription }
     }
 
     func connect() async {
-        guard !isConnecting else { return }
-        switchConnectionError = nil
+        guard !isConnecting, credentialLoadError == nil else { return }
         isSwitching = switcher != nil
         defer { isSwitching = false }
-        let config = ConnectionConfig(
-            host: host.trimmingCharacters(in: .whitespaces),
-            port: portNumber ?? 22,
-            username: username.trimmingCharacters(in: .whitespaces),
-            auth: {
-                switch authMode {
-                case .password: .password(password)
-                case .privateKey: .privateKey(keyPEM, passphrase: keyIsEncrypted ? keyPassphrase : nil)
-                }
-            }()
-        )
-
-        let loaded = (try? RecentConnectionStore.load()) ?? []
-        let entry = RecentConnectionStore.entry(
-            host: config.host, port: config.port, username: config.username,
-            authMode: authModeRaw, remember: remember, name: name, in: loaded
-        )
-        if !isReplay {
-            do {
-                if !remember {
-                    try KeychainStore.delete(account: entry.secretAccount)
-                    try KeychainStore.delete(account: entry.secretAccount + ".passphrase")
-                    // Keep saved metadata in sync even if the connection attempt fails.
-                    try RecentConnectionStore.disableRemembering(entry)
-                }
-                // When remember stays on but the passphrase is no longer wanted, its
-                // deletion is deferred to after a successful connection: deleting here
-                // would strand a still-saved encrypted-key profile without the passphrase
-                // it needs if the connection attempt fails.
-            } catch {
-                showConnectionError(error.localizedDescription)
-                return
+        do {
+            let value = try signIn()
+            if let switcher {
+                pendingSignIn = value
+                switchConnectionError = nil
+                handleSwitchOutcome(try await switcher.signIn(using: value, replay: isReplay))
+            } else {
+                if !isReplay { try value.prepareAttempt() }
+                await appModel.connect(config: value.config)
+                guard case .connected = appModel.phase else { return }
+                if !isReplay { try value.persist(updateName: true) }
+                dismiss()
             }
-        }
-        let submission = Submission(entry: entry, config: config, rememberPassphrase: rememberPassphrase)
-        if let switcher {
-            pendingSubmission = submission
-            let outcome = await switcher.switchMachine(to: entry, config: config)
-            handleSwitchOutcome(outcome, submission: submission)
-        } else {
-            await appModel.connect(config: config)
-            guard case .connected = appModel.phase else { return }
-            persistAndDismiss(submission)
+        } catch {
+            if switcher != nil { switchConnectionError = error.localizedDescription }
+            else { appModel.lastError = error.localizedDescription }
         }
     }
 
-    private func handleSwitchOutcome(_ outcome: ActiveMachine.SwitchOutcome, submission: Submission) {
-        guard let switcher else { return }
+    private func handleSwitchOutcome(_ outcome: ActiveMachine.SwitchOutcome) {
         switch outcome {
-        case .switched:
-            persistAndDismiss(submission)
+        case .switched, .alreadyActive: dismiss()
         case .failed:
-            if switcher.pending?.hostKeyChallenge == nil {
-                switchConnectionError = switcher.switchError ?? "Connection failed"
-                switcher.switchError = nil
-                pendingSubmission = nil
+            if switcher?.pending?.hostKeyChallenge == nil {
+                switchConnectionError = switcher?.switchError ?? "Connection failed"
+                switcher?.switchError = nil
+                pendingSignIn = nil
             }
-        case .alreadyActive:
-            dismiss()
-        case .needsCredentials, .superseded:
-            pendingSubmission = nil
+        case .needsCredentials, .superseded: pendingSignIn = nil
         }
     }
-
-    private func persistAndDismiss(_ submission: Submission) {
-        let entry = submission.entry
-        if !isReplay {
-            do {
-                if entry.remember {
-                    switch submission.config.auth {
-                    case let .password(secret):
-                        try KeychainStore.save(secret, account: entry.secretAccount)
-                        try KeychainStore.delete(account: entry.secretAccount + ".passphrase")
-                    case let .privateKey(secret, passphrase):
-                        try KeychainStore.save(secret, account: entry.secretAccount)
-                        if submission.rememberPassphrase, let passphrase {
-                            try KeychainStore.save(passphrase, account: entry.secretAccount + ".passphrase")
-                        } else {
-                            try KeychainStore.delete(account: entry.secretAccount + ".passphrase")
-                        }
-                    }
-                }
-                _ = try RecentConnectionStore.record(entry, in: RecentConnectionStore.load())
-            } catch {
-                showConnectionError(error.localizedDescription)
-                return
-            }
-        }
-        dismiss()
-    }
-
 }

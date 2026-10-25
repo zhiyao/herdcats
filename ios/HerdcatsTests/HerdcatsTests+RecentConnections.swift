@@ -434,3 +434,246 @@ final class MigrationTestDefaults: UserDefaults, @unchecked Sendable {
         if !rejectedKeys.contains(defaultName) { super.set(value, forKey: defaultName) }
     }
 }
+
+@Suite("Saved connection workflow")
+struct SavedConnectionWorkflowTests {
+    let entry = RecentConnection(host: "mac.local", port: 22, username: "alice", authMode: "password", remember: true)
+
+    @Test func resolvesSavedPasswordAndPromptsOnlyWhenMissing() throws {
+        let keychain = FakeKeychainOperations()
+        #expect(try ConnectionSignIn.load(entry, using: keychain).needsSecret)
+        try KeychainStore.save("password", account: entry.secretAccount, using: keychain)
+        let signIn = try ConnectionSignIn.load(entry, using: keychain)
+        #expect(signIn.isReady)
+        guard case let .password(value) = signIn.config.auth else { Issue.record("Expected password"); return }
+        #expect(value == "password")
+    }
+
+    @Test func rememberOffDoesNotReadOldSecret() throws {
+        let keychain = FakeKeychainOperations()
+        try KeychainStore.save("old", account: entry.secretAccount, using: keychain)
+        var profile = entry
+        profile.remember = false
+        #expect(try ConnectionSignIn.load(profile, using: keychain).needsSecret)
+    }
+
+    @Test(arguments: ["host", "port", "username", "auth"])
+    func editKeepsIdentityButDoesNotReuseDestinationSecrets(field: String) throws {
+        let keychain = FakeKeychainOperations()
+        let defaults = try #require(UserDefaults(suiteName: "ConnectionEdit.\(UUID())"))
+        defer { defaults.removeObject(forKey: RecentConnectionStore.storageKey) }
+        try KeychainStore.save("old", account: entry.secretAccount, using: keychain)
+        try RecentConnectionStore.record(entry, in: [], defaults: defaults, stampConnected: false)
+        try KeychainStore.save("old phrase", account: entry.secretAccount + ".passphrase", using: keychain)
+        var updated = entry
+        switch field {
+        case "port": updated.port = 2222
+        case "username": updated.username = "bob"
+        case "auth": updated.authMode = "privateKey"
+        default: updated.host = "other.local"
+        }
+        #expect(!ConnectionSignIn.sameDestination(entry, updated))
+        try ConnectionSignIn(entry: updated).persist(defaults: defaults, using: keychain, connected: false)
+        #expect(try RecentConnectionStore.load(defaults: defaults, using: keychain) == [updated])
+        #expect(updated.id == entry.id)
+        #expect(try KeychainStore.load(account: entry.secretAccount + ".passphrase", using: keychain) == nil)
+        #expect(try KeychainStore.load(account: entry.secretAccount, using: keychain) == nil)
+    }
+}
+
+extension SavedConnectionWorkflowTests {
+    @MainActor @Test func classifiesSignInFailuresWithoutHijackingHostTrustOrReadiness() {
+        struct AuthenticationFailure: Error {}
+        #expect(AppModel.needsSignIn(after: AuthenticationFailure()))
+        #expect(AppModel.needsSignIn(after: OpenSSHKeyError.invalidPassphraseOrKey))
+        #expect(!AppModel.needsSignIn(after: HerdrError.herdrNotFound))
+        #expect(!AppModel.needsSignIn(after: SSHHostKeyStore.StoreError(status: errSecAuthFailed)))
+        #expect(!AppModel.needsSignIn(after: CancellationError()))
+    }
+
+    @Test func failedAttemptPreservesSavedSecretAndDoesNotRecordReplacement() throws {
+        let keychain = FakeKeychainOperations()
+        let defaults = try #require(UserDefaults(suiteName: "ConnectionFailure.\(UUID())"))
+        defer { defaults.removeObject(forKey: RecentConnectionStore.storageKey) }
+        try KeychainStore.save("old", account: entry.secretAccount, using: keychain)
+        let pending = ConnectionSignIn(entry: entry, secret: "replacement")
+        try pending.prepareAttempt(defaults: defaults, using: keychain)
+        #expect(try KeychainStore.load(account: entry.secretAccount, using: keychain) == "old")
+        #expect(RecentConnectionStore.snapshot(defaults: defaults).isEmpty)
+    }
+
+    @Test func failedPersistenceLeavesProfileVisibleAndRetryable() throws {
+        let keychain = FakeKeychainOperations()
+        let defaults = try #require(UserDefaults(suiteName: "ConnectionWriteFailure.\(UUID())"))
+        defer { defaults.removeObject(forKey: RecentConnectionStore.storageKey) }
+        try RecentConnectionStore.record(entry, in: [], defaults: defaults, stampConnected: false)
+        keychain.nextAddStatus = errSecInteractionNotAllowed
+        #expect(throws: KeychainStore.StoreError.self) {
+            try ConnectionSignIn(entry: entry, secret: "replacement").persist(defaults: defaults, using: keychain)
+        }
+        #expect(RecentConnectionStore.snapshot(defaults: defaults) == [entry])
+    }
+
+    @Test func savingPassphraseRequiresSeparateExplicitPreference() throws {
+        let keychain = FakeKeychainOperations()
+        let defaults = try #require(UserDefaults(suiteName: "ConnectionPassphrase.\(UUID())"))
+        defer { defaults.removeObject(forKey: RecentConnectionStore.storageKey) }
+        try KeychainStore.save("old phrase", account: entry.secretAccount + ".passphrase", using: keychain)
+        try ConnectionSignIn(entry: entry, secret: "password", passphrase: "phrase").persist(defaults: defaults, using: keychain)
+        #expect(try KeychainStore.load(account: entry.secretAccount + ".passphrase", using: keychain) == nil)
+    }
+}
+
+
+extension SavedConnectionWorkflowTests {
+    @Test func replayCredentialReadsDoNotWriteKeychain() throws {
+        let keychain = FakeKeychainOperations()
+        try KeychainStore.save("password", account: entry.secretAccount, using: keychain)
+        let adds = keychain.addedAccounts
+        #expect(try ConnectionSignIn.load(entry, using: keychain, readOnly: true).isReady)
+        #expect(keychain.updatedAccounts.isEmpty)
+        #expect(keychain.deletedAccounts.isEmpty)
+        #expect(keychain.addedAccounts == adds)
+    }
+}
+
+
+extension SavedConnectionWorkflowTests {
+    @MainActor @Test func failedCredentialReadPreventsDestructiveSettingsSave() throws {
+        let keychain = FakeKeychainOperations()
+        try KeychainStore.save("saved", account: entry.secretAccount, using: keychain)
+        keychain.failingReadAccount = entry.secretAccount
+        let form = ConnectionSettingsView(connection: entry, editing: true, using: keychain)
+        #expect(form.credentialLoadError != nil)
+        #expect(!form.canSaveChanges)
+        #expect(keychain.items[entry.secretAccount] == Data("saved".utf8))
+        #expect(keychain.deletedAccounts.isEmpty)
+    }
+}
+
+
+extension SavedConnectionWorkflowTests {
+    @Test func gearSaveDoesNotStampLastConnected() throws {
+        let suite = "GearSave.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        var first = entry
+        first.name = "Office"
+        let other = RecentConnection(host: "other.local", port: 22, username: "bob", authMode: "password", remember: false)
+        let time = Date(timeIntervalSince1970: 12345)
+        let seeded = try RecentConnectionStore.record(first, in: [other], defaults: defaults, now: time)
+        var edit = seeded[1]
+        edit.name = "Work Mac"
+        try ConnectionSignIn(entry: edit, secret: "password").persist(defaults: defaults, using: keychain,
+            connected: false, updateName: true)
+        let saved = try RecentConnectionStore.load(defaults: defaults, using: keychain)
+        #expect(saved.map(\.id) == seeded.map(\.id))
+        #expect(saved[1].lastConnectedAt == time)
+        #expect(saved[1].name == "Work Mac")
+    }
+
+    @Test func persistKeepsNameAndPosition() throws {
+        let suite = "PersistPosition.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        var saved = entry
+        saved.name = "Renamed after opening sign-in"
+        let other = RecentConnection(host: "other.local", port: 22, username: "bob", authMode: "password", remember: false)
+        let time = Date(timeIntervalSince1970: 100)
+        try RecentConnectionStore.record(saved, in: [other], defaults: defaults, now: time)
+        try ConnectionSignIn(entry: entry, secret: "password").persist(defaults: defaults, using: keychain, connected: false)
+        let result = try RecentConnectionStore.load(defaults: defaults, using: keychain)
+        #expect(result.map(\.id) == [other.id, entry.id])
+        #expect(result[1].name == saved.name)
+        #expect(result[1].lastConnectedAt == time)
+    }
+
+    @Test func manageSheetMoveReordersGrid() throws {
+        let suite = "ManageMove.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        var first = entry
+        first.name = "Work Mac"
+        let second = RecentConnection(host: "other.local", port: 22, username: "bob", authMode: "password", remember: false)
+        let seeded = try RecentConnectionStore.record(first, in: [second], defaults: defaults)
+        let moved = try RecentConnectionStore.move(fromOffsets: IndexSet(integer: 1), toOffset: 0, defaults: defaults, using: keychain)
+        #expect(moved == [seeded[1], seeded[0]])
+        #expect(RecentConnectionStore.snapshot(defaults: defaults) == moved)
+    }
+}
+
+
+extension SavedConnectionWorkflowTests {
+    @MainActor @Test func newSetupNameSubmissionUpdatesExistingDestination() throws {
+        let suite = "SetupName.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        var previous = entry
+        previous.name = "Old name"
+        let seeded = try RecentConnectionStore.record(previous, in: [], defaults: defaults)
+        var submitted = entry
+        submitted.name = "New name"
+        submitted.remember = false
+        let form = ConnectionSettingsView(connection: submitted, using: keychain)
+        let value = try form.signIn(defaults: defaults, using: keychain)
+        try value.persist(defaults: defaults, using: keychain, updateName: true)
+        let saved = try RecentConnectionStore.load(defaults: defaults, using: keychain)
+        #expect(saved.count == 1)
+        #expect(saved[0].id == seeded[0].id)
+        #expect(saved[0].name == "New name")
+    }
+}
+
+
+extension SavedConnectionWorkflowTests {
+    @Test func menuCredentialDecisionPromptsForDamagedPrivateKey() throws {
+        let keychain = FakeKeychainOperations()
+        var saved = entry
+        saved.authMode = "privateKey"
+        try KeychainStore.save("damaged key", account: saved.secretAccount, using: keychain)
+        #expect(RecentConnectionStore.config(for: saved, using: keychain) == nil)
+    }
+}
+
+
+extension SavedConnectionWorkflowTests {
+    @MainActor @Test func gearSaveWithoutRenameKeepsLatestStoredName() throws {
+        let suite = "GearConcurrentName.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        var original = entry
+        original.remember = false
+        original.name = "Original"
+        let form = ConnectionSettingsView(connection: original, editing: true, using: keychain)
+        var renamed = original
+        renamed.name = "Latest saved name"
+        try RecentConnectionStore.record(renamed, in: [], defaults: defaults)
+        #expect(!form.nameWasEdited)
+        try form.signIn(defaults: defaults, using: keychain).persist(defaults: defaults, using: keychain,
+            connected: false, updateName: form.nameWasEdited)
+        #expect(RecentConnectionStore.snapshot(defaults: defaults).first?.name == renamed.name)
+    }
+
+    @Test func disablingRememberingKeepsLatestNameAndConnectionTimestamp() throws {
+        let suite = "RememberMetadata.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        var latest = entry
+        latest.name = "Latest"
+        let time = Date(timeIntervalSince1970: 54321)
+        try RecentConnectionStore.record(latest, in: [], defaults: defaults, now: time)
+        var stale = entry
+        stale.remember = false
+        try ConnectionSignIn(entry: stale).prepareAttempt(defaults: defaults, using: keychain)
+        let saved = try #require(RecentConnectionStore.snapshot(defaults: defaults).first)
+        #expect(!saved.remember)
+        #expect(saved.name == latest.name)
+        #expect(saved.lastConnectedAt == time)
+    }
+}

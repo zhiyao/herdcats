@@ -15,6 +15,8 @@ final class AppModel {
     var hasActiveSession: Bool
     var activeConfig: ConnectionConfig?
     var connectionBanner: ConnectionBanner?
+    var lastConnectPassphraseRejected = false
+    var lastConnectNeedsSignIn = false
     var lastError: String?
     var connectionProgressMessage = "Connecting…"
     var herdrMissingOnLastConnect = false

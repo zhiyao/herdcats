@@ -7,33 +7,29 @@ extension ConnectionSettingsView {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 8) {
                 fieldLabel("Name (optional)")
-                TextField("e.g. Studio", text: $name)
+                TextField("Name (optional)", text: $name)
                     .textFieldStyle(.plain)
-                    .foregroundStyle(.primary)
-                    .autocorrectionDisabled()
-                    .accessibilityLabel("Name")
             }
             .padding(12)
             .background(fieldShape.fill(Theme.fieldBackground))
 
-            // Host + port
-            VStack(alignment: .leading, spacing: 8) {
-                fieldLabel("Host")
-                HStack(spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 8) {
+                    fieldLabel("Host")
                     TextField("192.168.1.42", text: $host)
-                        .textFieldStyle(.plain)
-                        .foregroundStyle(.primary)
                         .keyboardType(.URL)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
-                    fieldLabel("Port", hidden: true)
-                    TextField("22", text: $port)
-                        .textFieldStyle(.plain)
-                        .foregroundStyle(.primary)
-                        .keyboardType(.numberPad)
-                        .frame(width: 64)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 8) {
+                    fieldLabel("Port")
+                    TextField("22", text: $port).keyboardType(.numberPad)
+                        .accessibilityLabel("Port")
+                }
+                .frame(width: 76)
             }
+            .textFieldStyle(.plain)
             .padding(12)
             .background(fieldShape.fill(Theme.fieldBackground))
 
@@ -88,84 +84,25 @@ extension ConnectionSettingsView {
 
             case .privateKey:
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        fieldLabel("OpenSSH Private Key (ed25519)")
-                        Spacer()
-                        if !keyPEM.isEmpty {
-                            Button {
-                                showKey.toggle()
-                            } label: {
-                                Image(systemName: showKey ? "eye.slash" : "eye")
-                                    .font(.jost(14, weight: .medium))
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(showKey ? "Hide Private Key" : "Show Private Key")
-                        }
+                    Button {
+                        keyImporterPresented = true
+                    } label: {
+                        Label("Import Private Key…", systemImage: "square.and.arrow.down")
                     }
-
-                    Group {
-                        if showKey {
-                            TextEditor(text: $keyPEM)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(.primary)
-                                .frame(minHeight: 92)
-                                .scrollContentBackground(.hidden)
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
-                        } else if keyPEM.isEmpty {
-                            TextEditor(text: $keyPEM)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(.primary)
-                                .frame(minHeight: 92)
-                                .scrollContentBackground(.hidden)
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
-                                .overlay(alignment: .topLeading) {
-                                    Text("Paste OpenSSH private key or tap Import…")
-                                        .font(.system(size: 11, design: .monospaced))
-                                        .foregroundStyle(.tertiary)
-                                        .padding(.horizontal, 4)
-                                        .padding(.vertical, 8)
-                                        .allowsHitTesting(false)
-                                }
-                        } else {
-                            Text(maskedPrivateKey)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(.primary)
-                                .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 8)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    showKey = true
-                                }
-                        }
+                    .buttonStyle(.herdrSecondary(fullWidth: false))
+                    if !keyPEM.isEmpty {
+                        Label(keyValidationError == nil
+                              ? (keyIsEncrypted ? "Encrypted ed25519 key loaded" : "ed25519 key loaded")
+                              : "Check private key", systemImage: "key")
+                            .font(.jost(.subheadline))
                     }
-                    .padding(8)
-                    .herdrField()
-                    .overlay(fieldShape.stroke(Theme.hairline, lineWidth: 1))
-                    HStack {
-                        Button {
-                            keyImporterPresented = true
-                        } label: {
-                            Label("Import…", systemImage: "square.and.arrow.down")
-                        }
-                        .buttonStyle(.herdrSecondary(fullWidth: false))
-                        .controlSize(.small)
-
-                        Spacer()
-
-                        Link(destination: Self.documentationURL) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "questionmark.circle")
-                                Text("SSH Setup Guide")
-                                Image(systemName: "arrow.up.right")
-                                    .font(.jost(8, weight: .semibold))
-                            }
-                            .font(.jost(.caption))
-                            .foregroundStyle(Theme.accent)
-                        }
+                    DisclosureGroup("Paste or edit private key") {
+                        TextEditor(text: $keyPEM)
+                            .font(.system(.footnote, design: .monospaced))
+                            .frame(minHeight: 110)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .accessibilityLabel("Private key")
                     }
                     if keyIsEncrypted {
                         VStack(alignment: .leading, spacing: 8) {
@@ -181,7 +118,7 @@ extension ConnectionSettingsView {
                                 .overlay(fieldShape.stroke(Theme.hairline, lineWidth: 1))
                         }
                         if remember {
-                            Toggle("Remember Passphrase", isOn: $rememberPassphrase)
+                            Toggle("Save passphrase on this iPhone", isOn: $rememberPassphrase)
                                 .font(.jost(.footnote))
                                 .tint(Theme.accent)
                         }
@@ -195,7 +132,7 @@ extension ConnectionSettingsView {
                             .foregroundStyle(Theme.destructive)
                     }
                     if let pubKey = derivedPublicKey {
-                        VStack(alignment: .leading, spacing: 6) {
+                        DisclosureGroup("Public key setup") {
                             Text("Matching public key (required in ~/.ssh/authorized_keys):")
                                 .font(.jost(11, weight: .medium))
                                 .foregroundStyle(.secondary)
@@ -249,26 +186,12 @@ extension ConnectionSettingsView {
                 }
             }
 
-            Toggle("Remember on This Device", isOn: $remember)
+            Toggle("Save credentials on this iPhone", isOn: $remember)
                 .font(.jost(.footnote))
                 .tint(Theme.accent)
 
-            // Connect button
-            Button {
-                Task { await connect() }
-            } label: {
-                HStack(spacing: 8) {
-                    if isConnecting {
-                        CircularArcSpinner(size: 16)
-                    }
-                    Text(isConnecting ? "Connecting…" : "Connect")
-                }
-            }
-            .buttonStyle(.herdrPrimary())
-            .disabled(!canConnect || isConnecting)
         }
         .disabled(isConnecting)
-        .padding(18)
-        .herdrCard()
+
     }
 }

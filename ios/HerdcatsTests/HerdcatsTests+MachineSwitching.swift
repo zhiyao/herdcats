@@ -341,3 +341,116 @@ struct MachineSwitchingTests {
         }
     }
 }
+
+
+extension MachineSwitchingTests {
+    @Test func menuSignInSwitchKeepsCurrentUntilConnected() async throws {
+        try await withConnections { (entries: [RecentConnection]) async throws in
+            let old = currentModel()
+            let started = ExternallyReleasedWait<Bool>()
+            let resume = ExternallyReleasedWait<Bool>()
+            let active = ActiveMachine(model: old, dial: { model, config in
+                started.release(true)
+                _ = try? await resume.wait()
+                self.connected(model, to: config)
+            })
+            try KeychainStore.delete(account: entries[0].secretAccount)
+            #expect(await active.switchMachine(to: entries[0]) == .needsCredentials)
+            let signIn = ConnectionSignIn(entry: entries[0], secret: "typed-password")
+            let switching = Task { try await active.signIn(using: signIn) }
+            _ = try await started.wait()
+            #expect(active.model === old)
+            #expect(old.hasActiveSession)
+            #expect(try KeychainStore.load(account: entries[0].secretAccount) == nil)
+            resume.release(true)
+            #expect(try await switching.value == .switched)
+            #expect(active.model !== old)
+            #expect(!old.hasActiveSession)
+            #expect(try KeychainStore.load(account: entries[0].secretAccount) == "typed-password")
+            #expect(try RecentConnectionStore.load().first?.lastConnectedAt != nil)
+        }
+    }
+
+    @Test func switchThenPersistKeepsFreshTimestamp() async throws {
+        try await withConnections { (entries: [RecentConnection]) async throws in
+            let active = ActiveMachine(model: currentModel(), dial: { model, config in self.connected(model, to: config) })
+            #expect(await active.switchMachine(to: entries[1]) == .switched)
+            let switched = try RecentConnectionStore.load()
+            let stamp = try #require(switched[1].lastConnectedAt)
+            try ConnectionSignIn(entry: entries[1], secret: "replacement").persist(connected: false)
+            let saved = try RecentConnectionStore.load()
+            #expect(saved.map(\.id) == entries.map(\.id))
+            #expect(saved[1].lastConnectedAt == stamp)
+            #expect(saved[1].name == entries[1].name)
+        }
+    }
+
+    @Test func menuSignInHostTrustPersistsOnlyAfterApprovedSwitch() async throws {
+        try await withConnections { (entries: [RecentConnection]) async throws in
+            let old = currentModel()
+            var calls = 0
+            let active = ActiveMachine(model: old, dial: { model, config in
+                calls += 1
+                if calls == 1 {
+                    model.hostKeyChallenge = SSHHostKeyChallenge(host: config.host, port: config.port, publicKey: "fixture")
+                } else { self.connected(model, to: config) }
+            })
+            let signIn = ConnectionSignIn(entry: entries[0], secret: "replacement")
+            #expect(try await active.signIn(using: signIn) == .failed)
+            #expect(active.model === old)
+            #expect(try KeychainStore.load(account: entries[0].secretAccount) == "fixture")
+            let pending = try #require(active.pending)
+            pending.hostKeyChallenge = nil
+            #expect(try await active.finishSignIn(using: signIn) == .switched)
+            #expect(try KeychainStore.load(account: entries[0].secretAccount) == "replacement")
+            #expect(try RecentConnectionStore.load().first?.lastConnectedAt != nil)
+        }
+    }
+
+    @Test func menuSignInCancelKeepsCurrentAndSavedCredentials() async throws {
+        try await withConnections { (entries: [RecentConnection]) async throws in
+            let old = currentModel()
+            let active = ActiveMachine(model: old, dial: { model, config in
+                model.hostKeyChallenge = SSHHostKeyChallenge(host: config.host, port: config.port, publicKey: "fixture")
+            })
+            let signIn = ConnectionSignIn(entry: entries[0], secret: "replacement")
+            #expect(try await active.signIn(using: signIn) == .failed)
+            await active.cancelSwitch()
+            #expect(active.model === old)
+            #expect(old.hasActiveSession)
+            #expect(try await active.finishSignIn(using: signIn) == .superseded)
+            #expect(try KeychainStore.load(account: entries[0].secretAccount) == "fixture")
+        }
+    }
+}
+
+
+extension MachineSwitchingTests {
+    @Test func replayMenuSignInDoesNotStampOrSaveCredentials() async throws {
+        try await withConnections { (entries: [RecentConnection]) async throws in
+            struct PendingFixture: Encodable {
+                let sourceAccount: String
+                let entry: RecentConnection
+            }
+            let key = "hc.pendingCredentialMigration"
+            let previousPending = UserDefaults.standard.data(forKey: key)
+            let source = "test.replay-migration.\(UUID())"
+            defer {
+                if let previousPending { UserDefaults.standard.set(previousPending, forKey: key) }
+                else { UserDefaults.standard.removeObject(forKey: key) }
+                try? KeychainStore.delete(account: source)
+            }
+            let active = ActiveMachine(model: currentModel(), dial: { model, config in self.connected(model, to: config) })
+            try KeychainStore.save("fixture", account: source)
+            let marker = try JSONEncoder().encode(PendingFixture(sourceAccount: source, entry: entries[0]))
+            UserDefaults.standard.set(marker, forKey: key)
+            let before = UserDefaults.standard.data(forKey: RecentConnectionStore.storageKey)
+            let signIn = ConnectionSignIn(entry: entries[0], secret: "replay secret")
+            #expect(try await active.signIn(using: signIn, replay: true) == .switched)
+            #expect(UserDefaults.standard.data(forKey: RecentConnectionStore.storageKey) == before)
+            #expect(UserDefaults.standard.data(forKey: key) == marker)
+            #expect(try KeychainStore.load(account: source, readOnly: true) == "fixture")
+            #expect(try KeychainStore.load(account: entries[0].secretAccount, readOnly: true) == "fixture")
+        }
+    }
+}

@@ -16,7 +16,7 @@ final class ActiveMachine {
 
     private let makeModel: @MainActor () -> AppModel
     private let dial: @MainActor (AppModel, ConnectionConfig) async -> Void
-    private var target: (entry: RecentConnection, config: ConnectionConfig)?
+    private var target: (entry: RecentConnection, config: ConnectionConfig, recordConnection: Bool)?
     private var revision: UInt64 = 0
     private var dialingRevision: UInt64?
 
@@ -30,7 +30,7 @@ final class ActiveMachine {
         self.dial = dial
     }
 
-    func switchMachine(to entry: RecentConnection, config: ConnectionConfig? = nil) async -> SwitchOutcome {
+    func switchMachine(to entry: RecentConnection, config: ConnectionConfig? = nil, recordConnection: Bool = true) async -> SwitchOutcome {
         let identity = ConnectionIdentity(host: entry.host, port: entry.port, username: entry.username)
         if identity == model.connectionIdentity, case .connected = model.phase {
             // Re-selecting the current machine is the latest choice; drop any switch in flight.
@@ -54,15 +54,16 @@ final class ActiveMachine {
 
         let candidate = makeModel()
         pending = candidate
-        pendingLabel = entry.shortDisplayName(among: (try? RecentConnectionStore.load()) ?? [])
-        target = (entry, config)
+        pendingLabel = entry.shortDisplayName(among: recordConnection
+            ? (try? RecentConnectionStore.load()) ?? [] : RecentConnectionStore.snapshot())
+        target = (entry, config, recordConnection)
         switchError = nil
-        return await dialAndFinish(candidate, entry: entry, config: config, revision: currentRevision)
+        return await dialAndFinish(candidate, entry: entry, config: config, revision: currentRevision, recordConnection: recordConnection)
     }
 
     func finishPendingSwitch() async -> SwitchOutcome {
         guard let candidate = pending, let target, dialingRevision != revision else { return .superseded }
-        return await dialAndFinish(candidate, entry: target.entry, config: target.config, revision: revision)
+        return await dialAndFinish(candidate, entry: target.entry, config: target.config, revision: revision, recordConnection: target.recordConnection)
     }
 
     func cancelSwitch() async {
@@ -79,7 +80,7 @@ final class ActiveMachine {
     }
 
     private func dialAndFinish(
-        _ candidate: AppModel, entry: RecentConnection, config: ConnectionConfig, revision currentRevision: UInt64
+        _ candidate: AppModel, entry: RecentConnection, config: ConnectionConfig, revision currentRevision: UInt64, recordConnection: Bool
     ) async -> SwitchOutcome {
         dialingRevision = currentRevision
         defer { if dialingRevision == currentRevision { dialingRevision = nil } }
@@ -95,7 +96,7 @@ final class ActiveMachine {
             model = candidate
             clearPending()
             do {
-                try RecentConnectionStore.record(entry, in: RecentConnectionStore.load())
+                if recordConnection { try RecentConnectionStore.record(entry, in: RecentConnectionStore.load()) }
             } catch {
                 switchError = "Could not save \(entry.displayName): \(error.localizedDescription)"
             }
@@ -114,4 +115,30 @@ final class ActiveMachine {
         pendingLabel = nil
         target = nil
     }
+}
+
+// Compact sign-in and setup both use the make-before-break switch lifecycle.
+extension ActiveMachine {
+    func signIn(using value: ConnectionSignIn, replay: Bool = false) async throws -> SwitchOutcome {
+        guard value.isReady else { return .needsCredentials }
+        if !replay { try value.prepareAttempt() }
+        let outcome = await switchMachine(to: value.entry, config: value.config, recordConnection: !replay)
+        if outcome == .switched && !replay { try persistSignIn(value) }
+        return outcome
+    }
+
+    func finishSignIn(using value: ConnectionSignIn, replay: Bool = false) async throws -> SwitchOutcome {
+        let outcome = await finishPendingSwitch()
+        if outcome == .switched && !replay { try persistSignIn(value) }
+        return outcome
+    }
+
+    private func persistSignIn(_ value: ConnectionSignIn) throws {
+        do { try value.persist(connected: false) }
+        catch {
+            switchError = "Connected, but could not save sign-in: \(error.localizedDescription)"
+            throw error
+        }
+    }
+
 }
