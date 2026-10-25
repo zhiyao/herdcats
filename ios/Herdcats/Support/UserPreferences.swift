@@ -100,24 +100,8 @@ enum LaunchPreference: String, CaseIterable, Identifiable {
         guard LaunchPreference(rawValue: raw) == .autoConnect else { return nil }
 
         let entries = (try? RecentConnectionStore.load(defaults: defaults, using: keychain)) ?? []
-        guard let entry = entries.first(where: \.remember),
-              let secret = try? KeychainStore.load(account: entry.secretAccount, using: keychain),
-              !secret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return nil
-        }
-
-        let passphrase = try? KeychainStore.load(account: entry.secretAccount + ".passphrase", using: keychain)
-        if entry.authMode == "privateKey", (try? OpenSSHEd25519.isEncrypted(pem: secret)) == true,
-           passphrase == nil || passphrase?.isEmpty == true { return nil }
-        let auth: ConnectionConfig.AuthMethod = entry.authMode == "privateKey"
-            ? .privateKey(secret, passphrase: passphrase)
-            : .password(secret)
-        return ConnectionConfig(
-            host: entry.host,
-            port: entry.port,
-            username: entry.username,
-            auth: auth
-        )
+        guard let entry = entries.first(where: \.remember) else { return nil }
+        return RecentConnectionStore.config(for: entry, using: keychain)
     }
 }
 

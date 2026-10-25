@@ -103,6 +103,57 @@ struct AllMachinesTests {
     }
 }
 
+@Suite("Saved connection configuration")
+struct SavedConnectionConfigTests {
+    @Test func savedConnectionConfigUsesRememberedPassword() throws {
+        let entry = RecentConnection(host: "saved.example", port: 2222, username: "tester",
+            authMode: "password", remember: true)
+        let keychain = FakeKeychainOperations()
+        keychain.items[entry.secretAccount] = Data("pw".utf8)
+        let config = try #require(RecentConnectionStore.config(for: entry, using: keychain))
+        #expect(config.host == entry.host)
+        #expect(config.port == entry.port)
+        #expect(config.username == entry.username)
+        guard case let .password(password) = config.auth else {
+            Issue.record("Expected password authentication")
+            return
+        }
+        #expect(password == "pw")
+    }
+
+    @Test func savedConnectionConfigIsNilWithoutRememberedSecret() {
+        var entry = RecentConnection(host: "saved.example", port: 22, username: "tester",
+            authMode: "password", remember: false)
+        let keychain = FakeKeychainOperations()
+        keychain.items[entry.secretAccount] = Data("pw".utf8)
+        #expect(RecentConnectionStore.config(for: entry, using: keychain) == nil)
+        entry.remember = true
+        keychain.items.removeValue(forKey: entry.secretAccount)
+        #expect(RecentConnectionStore.config(for: entry, using: keychain) == nil)
+        keychain.items[entry.secretAccount] = Data(" \n\t".utf8)
+        #expect(RecentConnectionStore.config(for: entry, using: keychain) == nil)
+    }
+
+    @Test func savedConnectionConfigIsNilForEncryptedKeyWithoutPassphrase() throws {
+        let pem = """
+        -----BEGIN OPENSSH PRIVATE KEY-----
+        b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABBQsNNQDE
+        3OeNlbiirYuF51AAAAQAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIEHiHx4Brcpqh9OW
+        lY7YKkM3HN1yOFbJNYbUClrT7q+MAAAAoPXvIQDoTJK/XrKBIF2kuCD9KIPYTstdeLIEcI
+        heoaAWhTJoeN0uixLdLK2E0qnaOA4teelJmrqntGC3kaWAOknVv7UPGceybXd82nYykl/s
+        xiPxdhHmIcm/mO6Bw1Cve9cJZF6k2sd0EBzfwnaFImLcSF3oL/T6Cf/JS6vTFOWHjh+anc
+        1Jzhj402WYisxnyveuTPZGidiF24UyVUEMyEs=
+        -----END OPENSSH PRIVATE KEY-----
+        """
+        #expect(try OpenSSHEd25519.isEncrypted(pem: pem))
+        let entry = RecentConnection(host: "saved.example", port: 22, username: "tester",
+            authMode: "privateKey", remember: true)
+        let keychain = FakeKeychainOperations()
+        keychain.items[entry.secretAccount] = Data(pem.utf8)
+        #expect(RecentConnectionStore.config(for: entry, using: keychain) == nil)
+    }
+}
+
 @Suite("Onboarding entry")
 struct OnboardingEntryTests {
     @Test func firstUseAndReturnRoutes() {

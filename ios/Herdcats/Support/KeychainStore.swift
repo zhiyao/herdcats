@@ -135,6 +135,30 @@ enum RecentConnectionStore {
         var destinationAccount: String { entry.secretAccount }
     }
 
+    static func config(
+        for entry: RecentConnection,
+        using keychain: KeychainOperations = KeychainStore.operations
+    ) -> ConnectionConfig? {
+        guard entry.remember,
+              let secret = try? KeychainStore.load(account: entry.secretAccount, using: keychain),
+              !secret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+
+        let passphrase = try? KeychainStore.load(account: entry.secretAccount + ".passphrase", using: keychain)
+        if entry.authMode == "privateKey", (try? OpenSSHEd25519.isEncrypted(pem: secret)) == true,
+           passphrase == nil || passphrase?.isEmpty == true { return nil }
+        let auth: ConnectionConfig.AuthMethod = entry.authMode == "privateKey"
+            ? .privateKey(secret, passphrase: passphrase)
+            : .password(secret)
+        return ConnectionConfig(
+            host: entry.host,
+            port: entry.port,
+            username: entry.username,
+            auth: auth
+        )
+    }
+
     static func load(defaults: UserDefaults = .standard, using keychain: KeychainOperations = KeychainStore.operations) throws -> [RecentConnection] {
         try finishPendingMigration(defaults: defaults, using: keychain)
         if let data = defaults.data(forKey: storageKey) {
