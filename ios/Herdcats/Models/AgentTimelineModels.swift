@@ -269,21 +269,41 @@ struct AgentBridgeFramer {
     init(limit: Int = 1024 * 1024) { self.limit = limit }
     mutating func append(_ chunk: Data) throws -> [AgentBridgeFrame] {
         var frames: [AgentBridgeFrame] = []
-        // Bound the partial line even when an SSH chunk contains many frames.
-        for byte in chunk {
-            if byte == 10 {
-                do { frames.append(try AgentBridgeFrame.decode(bytes)) } catch {
+        var cursor = chunk.startIndex
+
+        while cursor < chunk.endIndex {
+            if let newlineIndex = chunk[cursor...].firstIndex(of: 0x0A) {
+                let segment = chunk[cursor..<newlineIndex]
+                cursor = chunk.index(after: newlineIndex)
+
+                if bytes.count + segment.count > limit {
+                    throw AgentBridgeError.frameTooLarge
+                }
+
+                bytes.append(segment)
+                do {
+                    frames.append(try AgentBridgeFrame.decode(bytes))
+                } catch {
+                    bytes.removeAll(keepingCapacity: true)
                     throw AgentBridgeError.invalidFrame
                 }
                 bytes.removeAll(keepingCapacity: true)
             } else {
-                guard bytes.count < limit else { throw AgentBridgeError.frameTooLarge }
-                bytes.append(byte)
+                let segment = chunk[cursor...]
+                cursor = chunk.endIndex
+
+                if bytes.count + segment.count > limit {
+                    throw AgentBridgeError.frameTooLarge
+                }
+
+                bytes.append(segment)
             }
         }
         return frames
     }
-    func finish() throws { if !bytes.isEmpty { throw AgentBridgeError.incompleteFrame } }
+    func finish() throws {
+        if !bytes.isEmpty { throw AgentBridgeError.incompleteFrame }
+    }
 }
 
 /// Readiness plus transport identity; "connecting" must not share the stream

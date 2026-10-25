@@ -33,6 +33,7 @@ extension HerdrConnection {
     /// probed explicitly), merges stderr for error reporting, and always exits
     /// zero so that transport-level failures can be told apart from herdr
     /// errors via in-band markers.
+    @discardableResult
     func runHerdr(
         _ args: String, timeout: TimeInterval = 20, allowEmptyOutput: Bool = false,
         timeoutPolicy: HerdrCommandTimeoutPolicy = .teardownAndNotify
@@ -82,13 +83,16 @@ extension HerdrConnection {
         let client = try slot.ownedClient(owned)
         let command = Self.remoteCommand(args)
         let diagnosticLabel = Self.herdrDiagnosticLabel
+        #if DEBUG
         print("[HC] exec: \(diagnosticLabel)")
+        #endif
         let buffer = try await withTimeout(
             seconds: timeout,
             label: diagnosticLabel,
             onTimeout: { [weak self] in
+                guard let self else { return }
                 await timeoutPolicy.apply { notifyDisconnect in
-                    await self?.timeoutTeardown(expected: owned, notifyDisconnect: notifyDisconnect)
+                    await self.timeoutTeardown(expected: owned, notifyDisconnect: notifyDisconnect)
                 }
             },
             operation: { try await client.executeCommand(command, maxResponseSize: 8 * 1024 * 1024) }

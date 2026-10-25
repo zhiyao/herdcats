@@ -29,10 +29,14 @@ extension AppModel {
             state.watchdog.cancel()
             isCheckingHerdr = true
             connectionProgressMessage = "Checking Herdr…"
+            #if DEBUG
             print("[HC] ssh connected, checking herdr…")
+            #endif
 
             let version = try await connection.serverVersion(timeoutPolicy: .teardownSilently)
+            #if DEBUG
             print("[HC] herdr version: \(version)")
+            #endif
             if ownership.isCurrent(state.attempt) {
                 connectionProgressMessage = "Checking default session…"
             }

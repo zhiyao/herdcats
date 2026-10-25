@@ -4,6 +4,10 @@ import ImageIO
 import UniformTypeIdentifiers
 import QuickLook
 
+@MainActor final class TimelineEntryFrameStore {
+    var frames: [String: CGRect] = [:]
+}
+
 /// Native session content; the owning pane supplies its composition dock.
 struct AgentTimelineView: View {
     let paneId: String
@@ -48,7 +52,7 @@ struct AgentTimelineView: View {
     @State var pageError: String?
     @State var following = true
     @State var atBottom = true
-    @State var entryFrames: [String: CGRect] = [:]
+    @State var entryFrames = TimelineEntryFrameStore()
     @State var viewportHeight: CGFloat = 0
     @State var historyScrollAnchor: TimelineHistoryScrollAnchor?
     @State var bridgeCapabilities: AgentBridgeCapabilities?
@@ -232,7 +236,7 @@ struct AgentTimelineView: View {
                         proxy.scrollTo("timeline-bottom", anchor: .bottom)
                     }
                 }
-                .onPreferenceChange(TimelineEntryFramesPreferenceKey.self) { entryFrames = $0 }
+                .onPreferenceChange(TimelineEntryFramesPreferenceKey.self) { entryFrames.frames = $0 }
                 .onChange(of: historyScrollAnchor) { _, anchor in
                     guard let anchor else { return }
                     following = false
@@ -257,7 +261,7 @@ struct AgentTimelineView: View {
                         }
                         .onEnded { value in
                             guard abs(value.translation.height) > abs(value.translation.width) else { return }
-                            let firstFrame = conversationItems.first.flatMap { entryFrames[$0.id] }
+                            let firstFrame = conversationItems.first.flatMap { entryFrames.frames[$0.id] }
                             let atHistoryTop = conversationItems.isEmpty || (firstFrame.map { $0.minY >= topOverlayInset - 8 } ?? false)
                             let loadHistory = atHistoryTop && value.translation.height > 60
                             if loadHistory && timeline.hasMore {
@@ -407,7 +411,7 @@ struct AgentTimelineView: View {
         }
         .onChange(of: contentScope) { _, _ in
             historyLoader.cancel()
-            entryFrames = [:]
+            entryFrames.frames = [:]
             historyScrollAnchor = nil
             contentFiles.reset()
         }

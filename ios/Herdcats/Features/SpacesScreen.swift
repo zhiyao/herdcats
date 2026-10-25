@@ -363,8 +363,10 @@ struct SpacesScreen: View {
             }
             .animation(.easeInOut(duration: 0.25), value: model.errorMessage == nil)
             .refreshable {
-                async let spaces: Void = model.refresh(appModel.connection)
-                async let usage: Void = model.refreshUsage(appModel.connection, force: true)
+                let currentModel = model
+                let connection = appModel.connection
+                async let spaces: Void = currentModel.refresh(connection)
+                async let usage: Void = currentModel.refreshUsage(connection, force: true)
                 _ = await (spaces, usage)
             }
             .connectionStatusBanner(appModel: appModel)

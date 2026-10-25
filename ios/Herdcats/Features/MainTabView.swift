@@ -176,23 +176,23 @@ struct AgentsScreen: View {
     }
 
     var body: some View {
+        let currentItems = items
         NavigationStack {
             Group {
-                if appModel.isOffline && items.isEmpty {
+                if appModel.isOffline && currentItems.isEmpty {
                     OfflineHerdView()
-                } else if items.isEmpty && model.showsAgentLoading {
+                } else if currentItems.isEmpty && model.showsAgentLoading {
                     loadingSkeleton
-                } else if items.isEmpty && !model.hasLoadedAgentList && model.agentListError != nil {
+                } else if currentItems.isEmpty && !model.hasLoadedAgentList && model.agentListError != nil {
                     ContentUnavailableView("Unable to Load Agents", systemImage: "exclamationmark.triangle",
                                            description: Text("Retry to load agents from your machines."))
-                } else if items.isEmpty {
+                } else if currentItems.isEmpty {
                     emptyState
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 0) {
                             switch sort {
                             case .priority:
-                                let currentItems = items
                                 ForEach(currentItems) { item in
                                     agentRow(item)
                                 }

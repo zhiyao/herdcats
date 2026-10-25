@@ -16,12 +16,11 @@ final class SpacesModel {
     private(set) var machineSources: [MachineSpacesSource] = []
     private(set) var showsAllMachines = false
 
-    @MainActor
     struct MachineSpacesSource: Identifiable {
         let machine: SpaceMachine
         let app: AppModel
         let model: SpacesModel
-        var id: String { machine.id }
+        nonisolated var id: String { machine.id }
     }
 
     func bindMachines(_ catalog: AppModel) async {

@@ -318,7 +318,7 @@ extension AgentTimelineView {
         _ page: AgentBridgePayload, owner: UUID, generation: UInt64
     ) throws {
         // Capture at response time so scrolling while a page is in flight is respected.
-        let visible = entryFrames
+        let visible = entryFrames.frames
             .filter { $0.value.maxY > topOverlayInset && $0.value.minY < viewportHeight - bottomOverlayInset - approvalInset }
             .min { $0.value.minY < $1.value.minY }
         try timeline.mergeHistory(page, owner: owner, generation: generation)

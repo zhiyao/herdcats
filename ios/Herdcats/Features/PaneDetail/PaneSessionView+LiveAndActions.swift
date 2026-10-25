@@ -6,6 +6,18 @@ import UIKit
 
 // MARK: - Pane session live input, input bar, data, and attachment handling
 
+struct LiveSessionTaskKey: Equatable {
+    let paneId: String
+    let isOffline: Bool
+    let isSceneActive: Bool
+    let liveInputEnabled: Bool
+}
+
+struct LiveRefreshTaskKey: Equatable {
+    let isActive: Bool
+    let lastAck: TimeInterval?
+}
+
 extension PaneSessionView {
     // MARK: Live input
 
@@ -28,16 +40,22 @@ extension PaneSessionView {
     /// Restarted per pane (and on reconnect), acquiring a session token
     /// after a successful pane read. The Voice/Compose detour keeps the
     /// session warm — it is the same pane and SSH generation.
-    var liveSessionTaskKey: String {
-        guard !appModel.isOffline, appModel.isSceneActive else { return "off" }
-        return "live-session:\(pane.paneId)"
+    var liveSessionTaskKey: LiveSessionTaskKey {
+        LiveSessionTaskKey(
+            paneId: pane.paneId,
+            isOffline: appModel.isOffline,
+            isSceneActive: appModel.isSceneActive,
+            liveInputEnabled: liveInputEnabled
+        )
     }
 
     /// Restarted when the scene is foregrounded; cancelled in the
     /// background so rapid reads never run there.
-    var liveRefreshTaskKey: String {
-        guard appModel.isSceneActive else { return "off" }
-        return "live-refresh:\(pane.paneId)"
+    var liveRefreshTaskKey: LiveRefreshTaskKey {
+        LiveRefreshTaskKey(
+            isActive: appModel.isSceneActive,
+            lastAck: lastLiveAckAt
+        )
     }
 
     /// Acquires a fresh Live session token and installs it only after a
@@ -232,6 +250,10 @@ extension PaneSessionView {
     /// stops; the five-second lifecycle-aware poll remains the fallback.
     func runLiveForegroundRefresh() async {
         while !Task.isCancelled {
+            guard let ackAt = lastLiveAckAt,
+                  ProcessInfo.processInfo.systemUptime - ackAt <= PaneLiveRefreshPolicy.activityWindow else {
+                return
+            }
             do {
                 try await Task.sleep(for: .seconds(PaneLiveRefreshPolicy.tickInterval))
             } catch { return }
@@ -406,13 +428,15 @@ extension PaneSessionView {
         photoItem = nil
         defer { isLoadingPhoto = false }
         do {
-            guard let data = try await item.loadTransferable(type: Data.self),
-                  let image = UIImage(data: data) else {
+            guard let rawData = try await item.loadTransferable(type: Data.self) else {
                 sessionError = "Could not load that image."
                 return
             }
-            let usePNG = item.supportedContentTypes.contains { $0.identifier == "public.png" }
-            guard let encoded = PaneImageEncoder.encode(image, prefersPNG: usePNG) else {
+            let prefersPNG = item.supportedContentTypes.contains { $0.identifier == "public.png" }
+            guard let encoded = await Task.detached(priority: .userInitiated, operation: { () -> PaneImageEncoder.EncodedImage? in
+                guard let image = UIImage(data: rawData) else { return nil }
+                return PaneImageEncoder.encode(image, prefersPNG: prefersPNG)
+            }).value else {
                 sessionError = "Could not encode that image."
                 return
             }
