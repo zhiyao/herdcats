@@ -44,7 +44,7 @@ protocol PaneLiveInputSending: Sendable {
 @Observable
 final class PaneLiveInputQueue {
     /// Maximum queued sends (coalesced batches), not individual keystrokes.
-    static let maxPendingEvents = 32
+    nonisolated static let maxPendingEvents = 32
 
     private(set) var state: PaneLiveInputQueueState = .ready
     /// Number of queued sends (coalesced batches), excluding the in-flight one.

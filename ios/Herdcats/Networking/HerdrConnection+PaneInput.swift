@@ -186,7 +186,9 @@ extension HerdrConnection {
         try await prepareAttachmentDirectory(directory, owned: owned)
         try requireGeneration(owned)
 
+        #if DEBUG
         print("[HC] sftp upload \(data.count) bytes → \(remotePath)")
+        #endif
         try await withTimeout(
             seconds: 60,
             label: "upload attachment",

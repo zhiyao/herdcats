@@ -288,10 +288,19 @@ struct PaneOutputScrollView: View, Equatable {
 /// A single, read-only native text surface provides draggable selection handles
 /// across lines without introducing a second scrolling region or a keyboard.
 struct SelectablePaneOutput: UIViewRepresentable {
+    final class Coordinator {
+        var lastText: AttributedString?
+        var lastFont: UIFont?
+    }
+
     let text: AttributedString
     let pointSize: CGFloat
     let selectionActive: Bool
     var onSelectionFocusChange: (Bool, CGFloat) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
 
     func makeUIView(context: Context) -> PaneOutputTextView {
         let view: PaneOutputTextView
@@ -320,13 +329,18 @@ struct SelectablePaneOutput: UIViewRepresentable {
 
     func updateUIView(_ view: PaneOutputTextView, context: Context) {
         view.onSelectionFocusChange = onSelectionFocusChange
+        let font = UIFont.monospacedSystemFont(ofSize: pointSize, weight: .regular)
+        guard context.coordinator.lastText != text || context.coordinator.lastFont != font else { return }
         // Keep the selected snapshot stable until the reader leaves selection.
         guard !selectionActive || view.selectedRange.length == 0 else { return }
+        context.coordinator.lastText = text
+        context.coordinator.lastFont = font
+        let boldFont = UIFont.monospacedSystemFont(ofSize: pointSize, weight: .bold)
         let rendered = NSMutableAttributedString(string: "")
         for run in text.runs {
             let bold = run.inlinePresentationIntent?.contains(.stronglyEmphasized) == true
             var attributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.monospacedSystemFont(ofSize: pointSize, weight: bold ? .bold : .regular),
+                .font: bold ? boldFont : font,
                 .foregroundColor: UIColor(run.foregroundColor ?? Theme.text)
             ]
             if let background = run.backgroundColor {
@@ -348,7 +362,7 @@ struct SelectablePaneOutput: UIViewRepresentable {
         }
     }
 
-    static func dismantleUIView(_ uiView: PaneOutputTextView, coordinator: ()) {
+    static func dismantleUIView(_ uiView: PaneOutputTextView, coordinator: Coordinator) {
         uiView.onSelectionFocusChange = nil
         uiView.stopObservingSelection()
     }
