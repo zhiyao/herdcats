@@ -132,6 +132,26 @@ struct RecentConnection: Codable, Identifiable, Equatable {
         return "\(username)@\(host)" + (port == 22 ? "" : ":\(port)")
     }
 
+    /// Compact label for tight spaces like the machine menu: the name, else the
+    /// first DNS label of the host. Falls back to the full host when another
+    /// saved connection would abbreviate to the same label.
+    func shortDisplayName(among connections: [RecentConnection]) -> String {
+        if let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            return name
+        }
+        let short = Self.abbreviatedHost(host)
+        let collides = connections.contains {
+            $0.id != id && $0.username == username && $0.port == port && Self.abbreviatedHost($0.host) == short
+        }
+        return "\(username)@\(collides ? host : short)" + (port == 22 ? "" : ":\(port)")
+    }
+
+    /// Only abbreviate DNS names; keep numeric and IPv6 addresses intact.
+    static func abbreviatedHost(_ host: String) -> String {
+        if host.contains(":") || host.allSatisfy({ $0.isNumber || $0 == "." }) { return host }
+        return String(host.split(separator: ".").first ?? Substring(host))
+    }
+
     var secretAccount: String { "connection.\(id.uuidString).secret" }
 }
 

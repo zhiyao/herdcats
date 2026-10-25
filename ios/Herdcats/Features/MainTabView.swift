@@ -495,12 +495,7 @@ struct HerdrcatBrandMark: View {
            let name = connection.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
             return connection.displayName
         }
-        let fullHost = host ?? ""
-        // Only abbreviate DNS names; keep numeric and IPv6 addresses intact.
-        if fullHost.contains(":") || fullHost.allSatisfy({ $0.isNumber || $0 == "." }) {
-            return fullHost
-        }
-        return String(fullHost.split(separator: ".").first ?? Substring(fullHost))
+        return RecentConnection.abbreviatedHost(host ?? "")
     }
 
     private func isPending(_ connection: RecentConnection) -> Bool {
@@ -529,9 +524,9 @@ struct HerdrcatBrandMark: View {
             }
             if let host {
                 Menu {
-                    Text(host)
-                        .onAppear { reloadConnections() }
+                    // The checkmark marks the current machine, so no host header.
                     ForEach(connections) { connection in
+                        let label = connection.shortDisplayName(among: connections)
                         Button {
                             guard let active else { return }
                             Task {
@@ -541,7 +536,7 @@ struct HerdrcatBrandMark: View {
                             }
                         } label: {
                             HStack {
-                                Text(connection.displayName)
+                                Text(label)
                                 if isPending(connection) {
                                     ProgressView()
                                     Text("Connecting…")
@@ -551,8 +546,9 @@ struct HerdrcatBrandMark: View {
                                 }
                             }
                         }
-                        .accessibilityLabel(connection.displayName + (isPending(connection) ? ", Connecting…" : ""))
+                        .accessibilityLabel(label + (isPending(connection) ? ", Connecting…" : ""))
                     }
+                    .onAppear { reloadConnections() }
                     Divider()
                     Button("Add Machine…", systemImage: "plus") {
                         Task {

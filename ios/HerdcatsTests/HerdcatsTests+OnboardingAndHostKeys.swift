@@ -100,6 +100,27 @@ struct SavedMachineOrderTests {
         #expect(entry.displayName == "Studio")
     }
 
+    @Test func shortDisplayNameAbbreviatesDNSHostsOnly() {
+        var entry = machine("kennybots-mac-mini.tail5b5906.ts.net")
+        #expect(entry.shortDisplayName(among: [entry]) == "u@kennybots-mac-mini")
+        entry.port = 2222
+        #expect(entry.shortDisplayName(among: [entry]) == "u@kennybots-mac-mini:2222")
+        #expect(machine("149.248.202.63").shortDisplayName(among: []) == "u@149.248.202.63")
+        #expect(machine("fe80::1").shortDisplayName(among: []) == "u@fe80::1")
+        entry.name = "Mini"
+        #expect(entry.shortDisplayName(among: [entry]) == "Mini")
+    }
+
+    @Test func shortDisplayNameKeepsFullHostWhenAbbreviationsCollide() {
+        let tailnet = machine("mini.tail5b5906.ts.net")
+        let local = machine("mini.local")
+        let other = machine("studio.local")
+        let all = [tailnet, local, other]
+        #expect(tailnet.shortDisplayName(among: all) == "u@mini.tail5b5906.ts.net")
+        #expect(local.shortDisplayName(among: all) == "u@mini.local")
+        #expect(other.shortDisplayName(among: all) == "u@studio")
+    }
+
     @Test func entryPreservesOrUpdatesName() {
         var saved = machine("h")
         saved.name = "Studio"
