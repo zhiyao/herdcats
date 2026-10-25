@@ -133,17 +133,28 @@ struct RecentConnection: Codable, Identifiable, Equatable {
     }
 
     /// Compact label for tight spaces like the machine menu: the name, else the
-    /// first DNS label of the host. Falls back to the full host when another
-    /// saved connection would abbreviate to the same label.
+    /// shortest unambiguous host label. Adds the username only when another
+    /// saved login shares the host, and the full host only when abbreviations
+    /// collide.
     func shortDisplayName(among connections: [RecentConnection]) -> String {
-        if let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
-            return name
+        if let name = trimmedName { return name }
+        let others = connections.filter { $0.id != id && $0.trimmedName == nil }
+        for level in 0..<3 where !others.contains(where: { $0.hostLabel(level: level) == hostLabel(level: level) }) {
+            return hostLabel(level: level)
         }
-        let short = Self.abbreviatedHost(host)
-        let collides = connections.contains {
-            $0.id != id && $0.username == username && $0.port == port && Self.abbreviatedHost($0.host) == short
-        }
-        return "\(username)@\(collides ? host : short)" + (port == 22 ? "" : ":\(port)")
+        return hostLabel(level: 3)
+    }
+
+    private var trimmedName: String? {
+        guard let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return nil }
+        return name
+    }
+
+    /// 0: short host · 1: user@short host · 2: full host · 3: user@full host.
+    private func hostLabel(level: Int) -> String {
+        let shownHost = level < 2 ? Self.abbreviatedHost(host) : host
+        let user = level.isMultiple(of: 2) ? "" : "\(username)@"
+        return user + shownHost + (port == 22 ? "" : ":\(port)")
     }
 
     /// Only abbreviate DNS names; keep numeric and IPv6 addresses intact.

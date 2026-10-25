@@ -102,13 +102,23 @@ struct SavedMachineOrderTests {
 
     @Test func shortDisplayNameAbbreviatesDNSHostsOnly() {
         var entry = machine("kennybots-mac-mini.tail5b5906.ts.net")
-        #expect(entry.shortDisplayName(among: [entry]) == "u@kennybots-mac-mini")
+        #expect(entry.shortDisplayName(among: [entry]) == "kennybots-mac-mini")
         entry.port = 2222
-        #expect(entry.shortDisplayName(among: [entry]) == "u@kennybots-mac-mini:2222")
-        #expect(machine("149.248.202.63").shortDisplayName(among: []) == "u@149.248.202.63")
-        #expect(machine("fe80::1").shortDisplayName(among: []) == "u@fe80::1")
+        #expect(entry.shortDisplayName(among: [entry]) == "kennybots-mac-mini:2222")
+        #expect(machine("149.248.202.63").shortDisplayName(among: []) == "149.248.202.63")
+        #expect(machine("fe80::1").shortDisplayName(among: []) == "fe80::1")
         entry.name = "Mini"
         #expect(entry.shortDisplayName(among: [entry]) == "Mini")
+    }
+
+    @Test func shortDisplayNameAddsUserWhenSameHostHasTwoLogins() {
+        let kenny = machine("studio.local")
+        var admin = machine("studio.local")
+        admin.username = "admin"
+        let all = [kenny, admin, machine("mini.local")]
+        #expect(kenny.shortDisplayName(among: all) == "u@studio")
+        #expect(admin.shortDisplayName(among: all) == "admin@studio")
+        #expect(all[2].shortDisplayName(among: all) == "mini")
     }
 
     @Test func shortDisplayNameKeepsFullHostWhenAbbreviationsCollide() {
@@ -116,9 +126,9 @@ struct SavedMachineOrderTests {
         let local = machine("mini.local")
         let other = machine("studio.local")
         let all = [tailnet, local, other]
-        #expect(tailnet.shortDisplayName(among: all) == "u@mini.tail5b5906.ts.net")
-        #expect(local.shortDisplayName(among: all) == "u@mini.local")
-        #expect(other.shortDisplayName(among: all) == "u@studio")
+        #expect(tailnet.shortDisplayName(among: all) == "mini.tail5b5906.ts.net")
+        #expect(local.shortDisplayName(among: all) == "mini.local")
+        #expect(other.shortDisplayName(among: all) == "studio")
     }
 
     @Test func entryPreservesOrUpdatesName() {

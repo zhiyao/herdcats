@@ -481,11 +481,8 @@ struct HerdrcatBrandMark: View {
     }
 
     private var shortHost: String {
-        if let connection = activeConnection,
-           let name = connection.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
-            return connection.displayName
-        }
-        return RecentConnection.abbreviatedHost(host ?? "")
+        // Same label as the checked menu row.
+        activeConnection?.shortDisplayName(among: connections) ?? RecentConnection.abbreviatedHost(host ?? "")
     }
 
     private func isPending(_ connection: RecentConnection) -> Bool {
