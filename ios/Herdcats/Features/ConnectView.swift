@@ -150,8 +150,7 @@ struct ConnectView: View {
             ConnectionSettingsView(connection: connection, isReplay: replay, editing: !connection.host.isEmpty)
         }
         .sheet(isPresented: $showingManagement, onDismiss: {
-            recentConnections = managementDefaults.map { RecentConnectionStore.snapshot(defaults: $0) }
-                ?? (try? RecentConnectionStore.load()) ?? recentConnections
+            recentConnections = RecentConnectionStore.snapshot(defaults: managementDefaults ?? .standard)
         }) {
             ManageMachinesView(connections: recentConnections, defaults: managementDefaults ?? .standard)
         }
@@ -243,15 +242,12 @@ struct ConnectView: View {
 
     private var recentConnectionsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if !recentConnections.isEmpty {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("Saved Connections")
-                        .font(.jost(.title2, weight: .bold))
+            if !recentConnections.isEmpty && !replay {
+                HStack {
                     Spacer()
-                    if !replay {
-                        Button("Edit") { showingManagement = true }
-                            .accessibilityLabel("Manage Machines")
-                    }
+                    Button("Edit") { showingManagement = true }
+                        .frame(minHeight: 44)
+                        .accessibilityLabel("Manage Machines")
                 }
             }
 
@@ -702,20 +698,20 @@ struct SavedConnectionSignInView: View {
 struct ManageMachinesView: View {
     @Environment(\.dismiss) private var dismiss
     let defaults: UserDefaults
-    @State private var connections: [RecentConnection]
+    @State private var draft: RecentConnectionStore.ManagementDraft
     @State private var renaming: RecentConnection?
     @State private var error: String?
 
     init(connections: [RecentConnection], defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        _connections = State(initialValue: connections)
+        _draft = State(initialValue: RecentConnectionStore.ManagementDraft(connections: connections))
     }
 
     var body: some View {
         NavigationStack {
             List {
                 if let error { ErrorBanner(message: error) }
-                ForEach(connections) { connection in
+                ForEach(draft.connections) { connection in
                     Button {
                         renaming = connection
                     } label: {
@@ -730,33 +726,37 @@ struct ManageMachinesView: View {
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("manage-machine-\(connection.id.uuidString)")
                 }
-                .onMove { offsets, destination in
-                    do { connections = try RecentConnectionStore.move(fromOffsets: offsets, toOffset: destination, defaults: defaults) }
-                    catch { self.error = error.localizedDescription }
-                }
-                .onDelete { offsets in
-                    let removed = offsets.map { connections[$0] }
-                    do {
-                        for connection in removed { connections = try RecentConnectionStore.remove(connection, defaults: defaults) }
-                    } catch { self.error = error.localizedDescription }
-                }
+                .onMove { draft.move(fromOffsets: $0, toOffset: $1) }
+                .onDelete { draft.delete(at: $0) }
             }
+            .environment(\.editMode, .constant(.active))
             .scrollContentBackground(.hidden)
             .background(Theme.backgroundGradient)
             .navigationTitle("Manage Machines")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }.accessibilityIdentifier("manage-machines-close")
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark").frame(width: 48, height: 48)
+                    }
+                    .accessibilityLabel("Close")
+                    .accessibilityHint("Discard management changes")
+                    .accessibilityIdentifier("manage-machines-close")
                 }
-                ToolbarItem(placement: .primaryAction) { EditButton().accessibilityIdentifier("manage-machines-edit") }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        do { try draft.save(defaults: defaults); dismiss() }
+                        catch { self.error = error.localizedDescription }
+                    } label: {
+                        Image(systemName: "checkmark").frame(width: 48, height: 48)
+                    }
+                    .accessibilityLabel("Save Changes")
+                    .accessibilityIdentifier("manage-machines-save")
+                }
             }
             .sheet(item: $renaming) { connection in
                 RenameMachineView(connection: connection) { name in
-                    var updated = connection
-                    updated.name = name
-                    connections = try RecentConnectionStore.record(updated,
-                        in: RecentConnectionStore.load(defaults: defaults), defaults: defaults, stampConnected: false)
+                    draft.rename(id: connection.id, to: name)
                 }
             }
         }

@@ -276,6 +276,56 @@ enum RecentConnectionStore {
         return entries
     }
 
+    /// Pure editing state. Only Save reaches storage or Keychain; discarding this
+    /// value (including swipe dismissal) has no side effects.
+    struct ManagementDraft {
+        private(set) var connections: [RecentConnection]
+        private let originalIDs: Set<UUID>
+        private var renamedIDs: Set<UUID> = []
+
+        init(connections: [RecentConnection]) {
+            self.connections = connections
+            originalIDs = Set(connections.map(\.id))
+        }
+
+        mutating func rename(id: UUID, to name: String) {
+            guard let index = connections.firstIndex(where: { $0.id == id }) else { return }
+            connections[index].name = name
+            renamedIDs.insert(id)
+        }
+
+        mutating func move(fromOffsets: IndexSet, toOffset: Int) {
+            connections.move(fromOffsets: fromOffsets, toOffset: toOffset)
+        }
+
+        mutating func delete(at offsets: IndexSet) {
+            connections.remove(atOffsets: offsets)
+        }
+
+        @discardableResult
+        func save(defaults: UserDefaults = .standard,
+                  using keychain: KeychainOperations = KeychainStore.operations) throws -> [RecentConnection] {
+            let current = try RecentConnectionStore.load(defaults: defaults, using: keychain)
+            let deletedIDs = originalIDs.subtracting(connections.map(\.id))
+            // Merge only explicit name changes and order into fresh records. Never
+            // restore a removed profile or overwrite newer destination/auth/recency.
+            var updated = connections.compactMap { draft -> RecentConnection? in
+                guard var latest = current.first(where: { $0.id == draft.id }) else { return nil }
+                if renamedIDs.contains(draft.id) { latest.name = draft.name }
+                return latest
+            }
+            updated += current.filter { !originalIDs.contains($0.id) }
+            // Match Forget's fail-closed deletion order: a failure keeps metadata
+            // visible and the draft open for retry. Surviving secrets are untouched.
+            for entry in current where deletedIDs.contains(entry.id) {
+                try KeychainStore.delete(account: entry.secretAccount, using: keychain)
+                try KeychainStore.delete(account: entry.secretAccount + ".passphrase", using: keychain)
+            }
+            try RecentConnectionStore.persist(updated, defaults: defaults)
+            return updated
+        }
+    }
+
     /// Records that a saved connection must no longer remember credentials, in place.
     /// Never inserts an unsaved connection and never reorders the list.
     @discardableResult

@@ -677,3 +677,81 @@ extension SavedConnectionWorkflowTests {
         #expect(saved.lastConnectedAt == time)
     }
 }
+
+extension SavedConnectionWorkflowTests {
+    @Test func canceledManagementDraftDoesNotWriteOrDeleteCredentials() throws {
+        let suite = "ManagementCancel.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        let other = RecentConnection(host: "other.local", port: 22, username: "bob", authMode: "password", remember: true)
+        let saved = try RecentConnectionStore.record(entry, in: [other], defaults: defaults)
+        try KeychainStore.save("secret", account: entry.secretAccount, using: keychain)
+        let before = defaults.data(forKey: RecentConnectionStore.storageKey)
+        let secrets = keychain.items
+        var draft = RecentConnectionStore.ManagementDraft(connections: saved)
+        draft.rename(id: entry.id, to: "Unsaved name")
+        draft.move(fromOffsets: IndexSet(integer: 1), toOffset: 0)
+        draft.delete(at: IndexSet(integer: 0))
+        #expect(defaults.data(forKey: RecentConnectionStore.storageKey) == before)
+        #expect(keychain.items == secrets)
+        #expect(keychain.deletedAccounts.isEmpty)
+    }
+
+    @Test func managementSaveMergesDraftNamesAndOrderIntoCurrentMetadata() throws {
+        let suite = "ManagementMerge.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        let second = RecentConnection(host: "second.local", port: 22, username: "bob", authMode: "password", remember: true)
+        let deleted = RecentConnection(host: "deleted.local", port: 22, username: "cat", authMode: "password", remember: true)
+        let saved = try RecentConnectionStore.record(deleted, in: [entry, second], defaults: defaults)
+        for item in saved { try KeychainStore.save("secret", account: item.secretAccount, using: keychain) }
+        var draft = RecentConnectionStore.ManagementDraft(connections: saved)
+        draft.rename(id: entry.id, to: "Draft name")
+        draft.move(fromOffsets: IndexSet(integer: 1), toOffset: 0)
+        draft.delete(at: IndexSet(integer: 2))
+        var fresh = entry
+        fresh.host = "edited.local"
+        fresh.port = 2222
+        fresh.username = "new-user"
+        fresh.authMode = "privateKey"
+        fresh.remember = false
+        let stamp = Date(timeIntervalSince1970: 54321)
+        var current = try RecentConnectionStore.record(fresh, in: saved, defaults: defaults, now: stamp)
+        var renamedSecond = second
+        renamedSecond.name = "External rename"
+        current = try RecentConnectionStore.record(renamedSecond, in: current, defaults: defaults, stampConnected: false)
+        let added = RecentConnection(host: "new.local", port: 22, username: "new", authMode: "password", remember: false)
+        _ = try RecentConnectionStore.record(added, in: current, defaults: defaults, stampConnected: false)
+        let survivorSecret = keychain.items[entry.secretAccount]
+        keychain.addedAccounts = []
+        let result = try draft.save(defaults: defaults, using: keychain)
+        #expect(result.map(\.id) == [second.id, entry.id, added.id])
+        fresh.name = "Draft name"
+        fresh.lastConnectedAt = stamp
+        #expect(result[1] == fresh)
+        #expect(result[0].name == "External rename")
+        #expect(keychain.items[entry.secretAccount] == survivorSecret)
+        #expect(keychain.items[deleted.secretAccount] == nil)
+        #expect(keychain.addedAccounts.isEmpty)
+        #expect(Set(keychain.deletedAccounts) == [deleted.secretAccount, deleted.secretAccount + ".passphrase"])
+    }
+
+    @Test func managementSaveFailureLeavesMetadataForRetry() throws {
+        let suite = "ManagementFailure.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        let saved = try RecentConnectionStore.record(entry, in: [], defaults: defaults)
+        try KeychainStore.save("secret", account: entry.secretAccount, using: keychain)
+        let before = defaults.data(forKey: RecentConnectionStore.storageKey)
+        var draft = RecentConnectionStore.ManagementDraft(connections: saved)
+        draft.delete(at: IndexSet(integer: 0))
+        keychain.nextDeleteStatus = errSecInteractionNotAllowed
+        #expect(throws: KeychainStore.StoreError.self) { try draft.save(defaults: defaults, using: keychain) }
+        #expect(defaults.data(forKey: RecentConnectionStore.storageKey) == before)
+        #expect(keychain.items[entry.secretAccount] != nil)
+        #expect(try draft.save(defaults: defaults, using: keychain).isEmpty)
+    }
+}

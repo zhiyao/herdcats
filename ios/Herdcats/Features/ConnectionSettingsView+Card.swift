@@ -192,36 +192,81 @@ struct ConnectionInputSurface: ViewModifier {
     }
 }
 
-/// Keep the editable key visible; Import belongs to its header, outside the editor.
+/// Keep the field visible without placing hidden key material in the view tree.
 struct ConnectionPrivateKeyField: View {
     @Binding var key: String
     let onImport: () -> Void
+    @State private var revealed = false
+    @FocusState private var editing: Bool
+    @ScaledMetric(relativeTo: .footnote) private var fontSize: CGFloat = 13
+
+    // TextEditor uses an eight-point text-container inset above and below its lines.
+    private var bodyHeight: CGFloat {
+        ceil(UIFont.monospacedSystemFont(ofSize: fontSize, weight: .regular).lineHeight * 3) + 16
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top) {
+            HStack(alignment: .center, spacing: 8) {
                 Text("SSH private key")
                     .font(.jost(.subheadline, weight: .medium))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
-                Button(action: onImport) {
-                    Label("Import", systemImage: "square.and.arrow.down")
-                        .font(.jost(.subheadline))
-                        .frame(minWidth: 48, minHeight: 48)
+                Spacer(minLength: 0)
+                Button {
+                    editing = false
+                    revealed.toggle()
+                } label: {
+                    Image(systemName: revealed ? "eye.slash" : "eye")
+                        .font(.system(size: 18, weight: .medium))
+                        .frame(width: 48, height: 48)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.accent)
+                .accessibilityLabel(revealed ? "Hide Private Key" : "Show Private Key")
+                .accessibilityValue(revealed ? "Visible" : "Hidden")
+                Button {
+                    editing = false
+                    revealed = false
+                    onImport()
+                } label: {
+                    Image(systemName: "square.and.arrow.down")
+                        .font(.system(size: 18, weight: .medium))
+                        .frame(width: 48, height: 48)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Theme.accent)
                 .accessibilityLabel("Import Private Key")
             }
-            TextEditor(text: $key)
-                .font(.system(.footnote, design: .monospaced))
-                .frame(minHeight: 130)
-                .scrollContentBackground(.hidden)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .accessibilityLabel("Private key")
+            Group {
+                if revealed {
+                    TextEditor(text: $key)
+                        .font(.system(size: fontSize, design: .monospaced))
+                        .scrollContentBackground(.hidden)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .focused($editing)
+                        .accessibilityLabel("Private key")
+                } else {
+                    ZStack(alignment: .topLeading) {
+                        Color.clear
+                        Text(key.isEmpty ? "Reveal to paste or edit, or import a private key." : "••••••••\n••••••••\n••••••••")
+                            .font(.system(size: fontSize, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 8)
+                    }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(key.isEmpty ? "Private key input" : "Private key hidden")
+                        .accessibilityValue(key.isEmpty ? "Empty" : "Hidden")
+                        .accessibilityHint("Use Show Private Key to edit.")
+                }
+            }
+            .frame(height: bodyHeight)
+            .accessibilityIdentifier("connection-private-key-body")
         }
         .padding(12)
         .modifier(ConnectionInputSurface())
