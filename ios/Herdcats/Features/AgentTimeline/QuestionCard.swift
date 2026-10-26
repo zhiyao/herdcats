@@ -1,11 +1,27 @@
 import SwiftUI
 
+struct QuestionFieldTarget: Hashable {
+    let scope: String
+    let requestId: String
+    let questionIndex: Int
+}
+
+struct QuestionFieldFramesPreferenceKey: PreferenceKey {
+    static var defaultValue: [QuestionFieldTarget: CGRect] { [:] }
+    static func reduce(value: inout [QuestionFieldTarget: CGRect], nextValue: () -> [QuestionFieldTarget: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, next in next })
+    }
+}
+
 struct QuestionCard: View {
     let pending: AgentPendingQuestion
     let response: QuestionAnswerState
     let onSubmit: () -> Void
     let onSkip: () -> Void
+    var scope: String = ""
+    var onFieldFocus: (QuestionFieldTarget?) -> Void = { _ in }
     @State private var editingOther: Set<Int> = []
+    @State private var focusOnInsertion: Int?
     @FocusState private var focusedQuestion: Int?
 
     var body: some View {
@@ -44,6 +60,13 @@ struct QuestionCard: View {
         .foregroundStyle(Theme.text)
         .herdrCard()
         .accessibilityIdentifier("timeline-question-card")
+        .onChange(of: focusedQuestion) { _, index in
+            onFieldFocus(index.map { fieldTarget($0) })
+        }
+        .onChange(of: response.isDisabled) { _, disabled in
+            if disabled { focusOnInsertion = nil; focusedQuestion = nil }
+        }
+        .onDisappear { onFieldFocus(nil) }
     }
 
     private func questionControls(_ question: AgentQuestion) -> some View {
@@ -61,6 +84,7 @@ struct QuestionCard: View {
                     response.select(question: question.index, option: option.number)
                     if !question.multiSelect && pending.questionKind != .codexPlan {
                         editingOther.remove(question.index)
+                        focusOnInsertion = nil
                         focusedQuestion = nil
                     }
                 } label: {
@@ -86,9 +110,9 @@ struct QuestionCard: View {
                     answerField(question, label: "Type something…")
                 } else {
                     Button {
+                        focusOnInsertion = question.index
                         editingOther.insert(question.index)
                         response.setText("", question: question.index)
-                        focusedQuestion = question.index
                     } label: {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
                             selectionIcon(selected: false, multi: question.multiSelect)
@@ -106,6 +130,9 @@ struct QuestionCard: View {
             .foregroundStyle(selected ? Theme.accentFill : Theme.textMuted)
             .accessibilityHidden(true)
     }
+    private func fieldTarget(_ index: Int) -> QuestionFieldTarget {
+        QuestionFieldTarget(scope: scope, requestId: pending.requestId, questionIndex: index)
+    }
     private func answerField(_ question: AgentQuestion, label: String) -> some View {
         TextField(label, text: Binding(
             get: { response.texts[question.index, default: ""] },
@@ -114,7 +141,22 @@ struct QuestionCard: View {
             .padding(12)
             .frame(minHeight: 44)
             .background(Theme.fieldBackground, in: RoundedRectangle.continuous(DesignSystem.CornerRadius.button))
+            .id(fieldTarget(question.index))
+            .background {
+                GeometryReader { geometry in
+                    Color.clear.preference(key: QuestionFieldFramesPreferenceKey.self,
+                        value: [fieldTarget(question.index): geometry.frame(in: .named("timeline-viewport"))])
+                }
+            }
             .focused($focusedQuestion, equals: question.index)
+            .onAppear {
+                // The field now exists; setting focus in the insertion button
+                // runs before SwiftUI has installed its focus binding.
+                if focusOnInsertion == question.index {
+                    focusOnInsertion = nil
+                    focusedQuestion = question.index
+                }
+            }
             .submitLabel(.done)
             .onSubmit { focusedQuestion = nil }
             .accessibilityLabel("\(question.header ?? question.text): \(label)")

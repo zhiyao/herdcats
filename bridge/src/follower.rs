@@ -59,6 +59,7 @@ pub enum AgentType {
     #[default]
     Claude,
     Codex,
+    Agy,
 }
 
 #[derive(Default)]
@@ -123,6 +124,19 @@ impl Follower {
         let next = offset.saturating_add(64 * 1024).min(source.len());
         Ok((source[offset..next].to_vec(), source.len()))
     }
+    /// Action guard: accepts an append, but rejects rotation or any modification
+    /// to the complete prefix that authorized the displayed request/generation.
+    pub fn verify_source(&self, mut file: fs::File) -> Result<()> {
+        let before=Stamp::of(&file.metadata().map_err(|_|"stale")?);
+        let cached=self.stamp.as_ref().ok_or("stale")?;
+        if before.dev!=cached.dev || before.ino!=cached.ino || before.len>MAX_SOURCE || before.len<self.bytes.len() as u64 {return Err("stale");}
+        file.seek(SeekFrom::Start(0)).map_err(|_|"stale")?;
+        let mut bytes=Vec::with_capacity(self.bytes.len());
+        (&mut file).take(self.bytes.len() as u64).read_to_end(&mut bytes).map_err(|_|"stale")?;
+        let after=Stamp::of(&file.metadata().map_err(|_|"stale")?);
+        if before!=after || bytes!=self.bytes {return Err("stale");}
+        Ok(())
+    }
     pub fn refresh(&mut self, path: &Path, session: &str) -> Result<bool> {
         self.refresh_file(crate::resolver::open_absolute(path, false)?, session)
     }
@@ -181,6 +195,11 @@ impl Follower {
             }
             if part != b"\n" {
                 let result = match self.agent_type {
+                    AgentType::Agy => {
+                        if part.len() > MAX_RECORD { return Err("record_too_large"); }
+                        let row = serde_json::from_slice(part).map_err(|_| "invalid_transcript")?;
+                        transcript.apply_agy(&row, offset, part.len(), self.preserve_content)
+                    },
                     AgentType::Claude => {
                         if part.len() > MAX_RECORD {
                             transcript.apply_oversized(part, session)
@@ -209,6 +228,7 @@ impl Follower {
                 }
                 if self.preserve_content {
                     match self.agent_type {
+                        AgentType::Agy => {},
                         AgentType::Claude => transcript.preserve_record(part, session, offset)?,
                         AgentType::Codex => {
                             transcript.preserve_codex_record(part, session, offset)?

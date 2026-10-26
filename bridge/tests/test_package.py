@@ -75,6 +75,9 @@ class PackageTests(unittest.TestCase):
             result = subprocess.run([sys.executable, str(ROOT / 'scripts/package.py'),
                 '--binary', str(binary), '--platform', 'darwin-arm64', '--version', version, '--out', str(out)], capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
+            report = json.loads(subprocess.check_output([str(binary), '--version-json']))
+            agents = json.dumps(report['agents'], separators=(',', ':'))
+            self.assertIn('"agents":' + agents, (out / 'install.sh').read_text())
             asset = out / 'herdcats-bridge-darwin-arm64'
             self.assertEqual(asset.read_bytes(), binary.read_bytes())
             self.assertEqual((out / 'SHA256SUMS-darwin-arm64').read_text(), hashlib.sha256(binary.read_bytes()).hexdigest() + '  herdcats-bridge-darwin-arm64\n')

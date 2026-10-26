@@ -143,13 +143,6 @@ enum HerdrCommandTimeoutPolicy: Equatable, Sendable {
     }
 }
 
-/// An SSH session to a machine running herdr, exposed as typed herdr queries.
-struct HerdrMachineRoute {
-    let gateway: HerdrConnection
-    let machine: HerdrMachine
-    let generation: ConnectionGeneration
-}
-
 struct AgyLoginSession {
     let id: UUID
     let generation: ConnectionGeneration
@@ -157,41 +150,6 @@ struct AgyLoginSession {
 }
 
 actor HerdrConnection {
-    /// A routed connection never owns or closes the gateway transport. Its target
-    /// and gateway generation remain fixed for its entire lifetime.
-    let route: HerdrMachineRoute?
-
-    init() { route = nil }
-
-    init(
-        gateway: HerdrConnection,
-        machine: HerdrMachine,
-        generation: ConnectionGeneration,
-        identity: ConnectionIdentity?
-    ) {
-        route = HerdrMachineRoute(gateway: gateway, machine: machine, generation: generation)
-        self.identity = identity?.scoped(to: machine)
-    }
-
-    func connection(for machine: HerdrMachine) throws -> HerdrConnection {
-        guard machine.enabled else {
-            throw HerdrError.invalidConfiguration("This machine is disabled in Herdr.")
-        }
-        guard client != nil, route == nil else { throw HerdrError.notConnected }
-        return HerdrConnection(gateway: self, machine: machine, generation: generation, identity: identity)
-    }
-
-    nonisolated var supportsHostServices: Bool { route == nil }
-
-    func requireHostServices() throws {
-        guard route == nil else {
-            throw HerdrError.invalidConfiguration(
-                "This feature is not yet available through a saved Herdr machine. "
-                    + "Switch to the connected Mac to use it."
-            )
-        }
-    }
-
     var slot = ConnectionClientSlot<SSHClient>()
     var disconnectHandler: (@Sendable () -> Void)?
     /// Exclusive remote composer mutations (send, escape).
@@ -423,7 +381,7 @@ actor HerdrConnection {
     }
 
     func requireGeneration(_ owned: ConnectionGeneration) throws {
-        guard slot.matches(owned), slot.current != nil || route != nil else {
+        guard slot.matches(owned), slot.current != nil else {
             throw HerdrError.notConnected
         }
     }

@@ -8,6 +8,11 @@ import Testing
 @MainActor
 @Suite("Pane content privacy")
 struct PaneContentPrivacyTests {
+    @Test func paneStorageKeyIsPlainEndpoint() {
+        #expect(ConnectionIdentity(host: "Mac.local", port: 22, username: "Zed").storageKey
+            == "u=Zed|h=mac.local|p=22")
+    }
+
     func withStore(_ body: (UserDefaults, PaneContentPersistence) -> Void) {
         let suite = "PaneContentPrivacyTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

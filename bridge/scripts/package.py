@@ -30,6 +30,17 @@ def main():
     installer, count = re.subn(r'^HB_VERSION=.*$', 'HB_VERSION=' + args.version, installer, flags=re.M)
     if count != 1:
         raise SystemExit('Missing installer version default')
+    # Preserve the published installer template byte-for-byte for the app's
+    # existing checksum. New packages carry the verified binary's agent contract.
+    if tuple(map(int, args.version.split('.'))) >= (0, 4, 0):
+        agents = info.get('agents')
+        if not isinstance(agents, list) or not agents or any(
+            not isinstance(agent, str) or not re.fullmatch(r'[a-z_]+', agent)
+            for agent in agents
+        ):
+            raise SystemExit('Invalid package agent contract')
+        contract_agents = json.dumps(agents, separators=(',', ':'))
+        installer = installer.replace('"agents":["claude","codex"]', '"agents":' + contract_agents)
     (args.out / 'install.sh').write_text(installer)
     (args.out / ('SHA256SUMS-' + args.platform)).write_text(digest + '  ' + asset.name + '\n')
 

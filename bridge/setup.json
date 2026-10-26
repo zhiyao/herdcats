@@ -82,5 +82,15 @@
     "app_installer_integrity": "App pins bridge 0.3.0 and install.sh SHA256 before execution; minimum compatible bridge version is 0.2.0 (hosts with 0.2.0 remain compatible without blocking panes or auto drawers; optional upgrade offered in timeline menu). Installer checks native binary checksum.",
     "agent_support": "UI uses agent-neutral language and detects the current pane agent; Timeline is offered for implemented adapters (currently Claude and Codex). Other agents retain Terminal and Compose.",
     "record_content": "App requires negotiated record_content support; older helpers reopen setup and require explicit replacement. Images and unfamiliar records expose complete source bytes."
+  },
+  "source_support": {
+    "version": "0.4.0 source (unpublished)",
+    "agents": [
+      "claude",
+      "codex",
+      "antigravity_cli"
+    ],
+    "agy": "Build this checkout and explicitly install the local binary. Published 0.3.0 installer and its checksum remain unchanged; they do not support Agy. After a real Agy-enabled artifact is published and verified, update the iOS version/checksum/supported-agent pin together.",
+    "docs": "ios/docs/agy-conversations.md"
   }
 }

@@ -5,26 +5,33 @@ import UniformTypeIdentifiers
 extension ConnectionSettingsView {
     var connectionCard: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // Host + port
             VStack(alignment: .leading, spacing: 8) {
-                fieldLabel("Host")
-                HStack(spacing: 10) {
+                fieldLabel("Name (optional)")
+                TextField("Name (optional)", text: $name)
+                    .textFieldStyle(.plain)
+            }
+            .padding(12)
+            .modifier(ConnectionInputSurface())
+
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 8) {
+                    fieldLabel("Host")
                     TextField("192.168.1.42", text: $host)
-                        .textFieldStyle(.plain)
-                        .foregroundStyle(.primary)
                         .keyboardType(.URL)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
-                    fieldLabel("Port", hidden: true)
-                    TextField("22", text: $port)
-                        .textFieldStyle(.plain)
-                        .foregroundStyle(.primary)
-                        .keyboardType(.numberPad)
-                        .frame(width: 64)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 8) {
+                    fieldLabel("Port")
+                    TextField("22", text: $port).keyboardType(.numberPad)
+                        .accessibilityLabel("Port")
+                }
+                .frame(width: 76)
             }
+            .textFieldStyle(.plain)
             .padding(12)
-            .background(fieldShape.fill(Theme.fieldBackground))
+            .modifier(ConnectionInputSurface())
 
             // Username
             VStack(alignment: .leading, spacing: 8) {
@@ -36,7 +43,7 @@ extension ConnectionSettingsView {
                     .textInputAutocapitalization(.never)
             }
             .padding(12)
-            .background(fieldShape.fill(Theme.fieldBackground))
+            .modifier(ConnectionInputSurface())
 
             // Auth mode
             Picker("Authentication", selection: $authModeRaw) {
@@ -73,104 +80,21 @@ extension ConnectionSettingsView {
                     }
                 }
                 .padding(12)
-                .background(fieldShape.fill(Theme.fieldBackground))
+                .modifier(ConnectionInputSurface())
 
             case .privateKey:
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        fieldLabel("OpenSSH Private Key (ed25519)")
-                        Spacer()
-                        if !keyPEM.isEmpty {
-                            Button {
-                                showKey.toggle()
-                            } label: {
-                                Image(systemName: showKey ? "eye.slash" : "eye")
-                                    .font(.jost(14, weight: .medium))
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(showKey ? "Hide Private Key" : "Show Private Key")
-                        }
-                    }
-
-                    Group {
-                        if showKey {
-                            TextEditor(text: $keyPEM)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(.primary)
-                                .frame(minHeight: 92)
-                                .scrollContentBackground(.hidden)
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
-                        } else if keyPEM.isEmpty {
-                            TextEditor(text: $keyPEM)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(.primary)
-                                .frame(minHeight: 92)
-                                .scrollContentBackground(.hidden)
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
-                                .overlay(alignment: .topLeading) {
-                                    Text("Paste OpenSSH private key or tap Import…")
-                                        .font(.system(size: 11, design: .monospaced))
-                                        .foregroundStyle(.tertiary)
-                                        .padding(.horizontal, 4)
-                                        .padding(.vertical, 8)
-                                        .allowsHitTesting(false)
-                                }
-                        } else {
-                            Text(maskedPrivateKey)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(.primary)
-                                .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 8)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    showKey = true
-                                }
-                        }
-                    }
-                    .padding(8)
-                    .herdrField()
-                    .overlay(fieldShape.stroke(Theme.hairline, lineWidth: 1))
-                    HStack {
-                        Button {
-                            keyImporterPresented = true
-                        } label: {
-                            Label("Import…", systemImage: "square.and.arrow.down")
-                        }
-                        .buttonStyle(.herdrSecondary(fullWidth: false))
-                        .controlSize(.small)
-
-                        Spacer()
-
-                        Link(destination: Self.documentationURL) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "questionmark.circle")
-                                Text("SSH Setup Guide")
-                                Image(systemName: "arrow.up.right")
-                                    .font(.jost(8, weight: .semibold))
-                            }
-                            .font(.jost(.caption))
-                            .foregroundStyle(Theme.accent)
-                        }
+                    ConnectionPrivateKeyField(key: $keyPEM) { keyImporterPresented = true }
+                    if !keyPEM.isEmpty {
+                        Label(keyValidationError == nil
+                              ? (keyIsEncrypted ? "Encrypted ed25519 key loaded" : "ed25519 key loaded")
+                              : "Check private key", systemImage: "key")
+                            .font(.jost(.subheadline))
                     }
                     if keyIsEncrypted {
-                        VStack(alignment: .leading, spacing: 8) {
-                            fieldLabel("Key Passphrase")
-                            SecureField("Enter key passphrase", text: $keyPassphrase)
-                                .textFieldStyle(.plain)
-                                .foregroundStyle(.primary)
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
-                                .accessibilityLabel("Key passphrase")
-                                .padding(12)
-                                .herdrField()
-                                .overlay(fieldShape.stroke(Theme.hairline, lineWidth: 1))
-                        }
+                        ConnectionPassphraseField(passphrase: $keyPassphrase)
                         if remember {
-                            Toggle("Remember Passphrase", isOn: $rememberPassphrase)
+                            Toggle("Save passphrase on this iPhone", isOn: $rememberPassphrase)
                                 .font(.jost(.footnote))
                                 .tint(Theme.accent)
                         }
@@ -184,7 +108,7 @@ extension ConnectionSettingsView {
                             .foregroundStyle(Theme.destructive)
                     }
                     if let pubKey = derivedPublicKey {
-                        VStack(alignment: .leading, spacing: 6) {
+                        DisclosureGroup("Public key setup") {
                             Text("Matching public key (required in ~/.ssh/authorized_keys):")
                                 .font(.jost(11, weight: .medium))
                                 .foregroundStyle(.secondary)
@@ -238,26 +162,166 @@ extension ConnectionSettingsView {
                 }
             }
 
-            Toggle("Remember on This Device", isOn: $remember)
+            Toggle("Save credentials on this iPhone", isOn: $remember)
                 .font(.jost(.footnote))
                 .tint(Theme.accent)
 
-            // Connect button
-            Button {
-                Task { await connect() }
-            } label: {
-                HStack(spacing: 8) {
-                    if appModel.isConnecting {
-                        CircularArcSpinner(size: 16)
+        }
+        .disabled(isConnecting)
+
+    }
+}
+
+/// Connection-only field surface: lifted from the sheet canvas in every palette.
+struct ConnectionInputSurface: ViewModifier {
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle.continuous(DesignSystem.CornerRadius.md)
+        content
+            .background(shape.fill(Theme.cardBackground))
+            .overlay(shape.strokeBorder(Theme.hairline, lineWidth: 1).allowsHitTesting(false))
+    }
+}
+
+/// Keep the field visible without placing hidden key material in the view tree.
+struct ConnectionPrivateKeyField: View {
+    @Binding var key: String
+    let onImport: () -> Void
+    @State private var revealed = false
+    @FocusState private var editing: Bool
+    @ScaledMetric(relativeTo: .footnote) private var fontSize: CGFloat = 13
+
+    // TextEditor uses an eight-point text-container inset above and below its lines.
+    private var bodyHeight: CGFloat {
+        ceil(UIFont.monospacedSystemFont(ofSize: fontSize, weight: .regular).lineHeight * 3) + 16
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ConnectionFieldHeader(title: "SSH private key", controlCount: 2) {
+                Button {
+                    editing = false
+                    revealed = false
+                    onImport()
+                } label: {
+                    Image(systemName: "square.and.arrow.down")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 18, height: 18)
+                        .offset(y: -2.0 / 3.0) // Align the SF symbol's optical center with the eye.
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Import Private Key")
+                Button {
+                    editing = false
+                    revealed.toggle()
+                } label: {
+                    Image(systemName: revealed ? "eye.slash" : "eye")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 18, height: 18)
+                        .offset(y: 1)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel(revealed ? "Hide Private Key" : "Show Private Key")
+                .accessibilityValue(revealed ? "Visible" : "Hidden")
+            }
+            Group {
+                if revealed {
+                    TextEditor(text: $key)
+                        .font(.system(size: fontSize, design: .monospaced))
+                        .scrollContentBackground(.hidden)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .focused($editing)
+                        .accessibilityLabel("Private key")
+                } else {
+                    ZStack(alignment: .topLeading) {
+                        Color.clear
+                        Text(key.isEmpty ? "Reveal to paste or edit, or import a private key." : "••••••••\n••••••••\n••••••••")
+                            .font(.system(size: fontSize, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 8)
                     }
-                    Text(appModel.isConnecting ? "Connecting…" : "Connect")
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(key.isEmpty ? "Private key input" : "Private key hidden")
+                        .accessibilityValue(key.isEmpty ? "Empty" : "Hidden")
+                        .accessibilityHint("Use Show Private Key to edit.")
                 }
             }
-            .buttonStyle(.herdrPrimary())
-            .disabled(!canConnect || appModel.isConnecting)
+            .frame(height: bodyHeight)
+            .accessibilityIdentifier("connection-private-key-body")
         }
-        .disabled(appModel.isConnecting)
-        .padding(18)
-        .herdrCard()
+        .padding(12)
+        .modifier(ConnectionInputSurface())
+    }
+}
+
+/// Controls borrow space from the field padding, not the header's intrinsic row.
+/// 28 + the 8pt content gap leaves a full 44pt target clear of the editor.
+struct ConnectionFieldHeader<Controls: View>: View {
+    let title: String
+    var controlCount = 1
+    @ViewBuilder let controls: () -> Controls
+
+    var body: some View {
+        Text(title)
+            .font(.jost(.subheadline, weight: .medium))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
+            .padding(.trailing, controlsWidth)
+            .overlay(alignment: .trailing) { headerControls }
+    }
+
+    private var controlsWidth: CGFloat { CGFloat(controlCount) * 52 }
+
+    private var headerControls: some View {
+        HStack(spacing: 8) { controls() }
+            .font(Font.jost(14, weight: .medium))
+            .imageScale(.medium)
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+    }
+}
+
+struct ConnectionPassphraseField: View {
+    @Binding var passphrase: String
+    @State private var revealed = false
+    @FocusState private var editing: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ConnectionFieldHeader(title: "Key passphrase") {
+                Button {
+                    editing = false
+                    revealed.toggle()
+                } label: {
+                    Image(systemName: revealed ? "eye.slash" : "eye")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 18, height: 18)
+                        .offset(y: 1)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel(revealed ? "Hide Key Passphrase" : "Show Key Passphrase")
+                .accessibilityValue(revealed ? "Visible" : "Hidden")
+            }
+            Group {
+                if revealed { TextField("Key passphrase", text: $passphrase) }
+                else { SecureField("Key passphrase", text: $passphrase) }
+            }
+            .textFieldStyle(.plain)
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(.never)
+            .focused($editing)
+            .accessibilityLabel("Key passphrase")
+        }
+        .padding(12)
+        .modifier(ConnectionInputSurface())
     }
 }

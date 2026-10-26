@@ -171,7 +171,6 @@ extension HerdrConnection {
         data: Data,
         fileExtension: String
     ) async throws -> String {
-        try requireHostServices()
         guard let client else { throw HerdrError.notConnected }
         guard !data.isEmpty else {
             throw HerdrError.invalidConfiguration("Image data is empty.")
@@ -186,7 +185,9 @@ extension HerdrConnection {
         try await prepareAttachmentDirectory(directory, owned: owned)
         try requireGeneration(owned)
 
+        #if DEBUG
         print("[HC] sftp upload \(data.count) bytes → \(remotePath)")
+        #endif
         try await withTimeout(
             seconds: 60,
             label: "upload attachment",
@@ -236,16 +237,15 @@ extension HerdrConnection {
     /// Native composition uses the existing prompt API, with a fresh occupant
     /// check. It never falls back to shell input or answers a blocked request.
     func submitTimelinePrompt(text: String, identity: AgentTimelineIdentity, owned: ConnectionGeneration) async throws {
-        guard route == nil else {throw AgentBridgeError.routedHostUnsupported}
         try await paneInput.run(paneId: identity.paneId) {
             try await self.requireGeneration(owned)
             let live = try await self.fetch(TimelinePromptAgentResult.self,args:"agent get \(Self.shellSafeArgument(identity.paneId))").agent
             let reference = live.agentSession
             let sessionId = reference?.kind == "path" ? URL(fileURLWithPath:reference?.value ?? "").deletingPathExtension().lastPathComponent : reference?.value
             guard live.paneId == identity.paneId, live.terminalId == identity.terminalId,
-                  live.agent == identity.agent, reference?.agent == identity.agent,
+                  TimelineAgentAvailability.matchesSession(agent: live.agent, referenceAgent: reference?.agent, source: reference?.source, identityAgent: identity.agent, referenceKind: reference?.kind ?? ""),
                   TimelineAgentAvailability.supports(agent: identity.agent),
-                  reference?.source == "herdr:\(identity.agent)", sessionId == identity.nativeSessionId,
+                  sessionId == identity.nativeSessionId,
                   TimelineComposePolicy.canSend(identity:identity,paneId:live.paneId,status:live.agentStatus,connected:true)
             else {throw AgentBridgeError.identityMismatch}
             try await self.requireGeneration(owned)

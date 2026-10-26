@@ -1,0 +1,280 @@
+import Foundation
+import ImageIO
+import QuickLook
+import SwiftUI
+import UIKit
+import UniformTypeIdentifiers
+
+// MARK: - Timeline markdown
+
+/// Parses agent-authored inline markdown and drops any link that could be used
+/// to launch other apps (`shortcuts://`, `tel:`, `sms:`, custom deep links) or to
+/// disguise its destination behind a URL-looking label.
+enum TimelineMarkdown {
+    static func sanitized(_ text: String) -> AttributedString {
+        var attributed = (try? AttributedString(
+            markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(text)
+        // Bidi controls in unlinked text can reorder a neighboring link too.
+        // Remove them across the rendered string; preserve ordinary whitespace
+        // and joiners outside links. Capture ranges before replacing in reverse.
+        let runs = attributed.runs.map {
+            (range: $0.range, attributes: $0.attributes, linked: $0.link != nil)
+        }
+        for run in runs.reversed() {
+            let original = String(attributed[run.range].characters)
+            let cleaned = run.linked ? droppingInvisibleCharacters(original)
+                : String(original.unicodeScalars.filter { !$0.properties.isBidiControl })
+            guard cleaned != original else { continue }
+            attributed.replaceSubrange(
+                run.range, with: AttributedString(cleaned, attributes: run.attributes))
+        }
+        // Inline styling (`**bold**`, `_em_`, `code`) splits one link into several runs
+        // that share the same URL. Coalesce adjacent runs so the complete visible label
+        // is validated, not each styled fragment on its own.
+        var unsafeRanges: [Range<AttributedString.Index>] = []
+        var group: (url: URL, range: Range<AttributedString.Index>)?
+        func flush() {
+            guard let current = group else { return }
+            let label = String(attributed[current.range].characters)
+            if !isSafe(current.url, label: label) { unsafeRanges.append(current.range) }
+            group = nil
+        }
+        for run in attributed.runs {
+            guard let url = run.link else { flush(); continue }
+            if let current = group, current.url == url {
+                group = (url, current.range.lowerBound..<run.range.upperBound)
+            } else {
+                flush()
+                group = (url, run.range)
+            }
+        }
+        flush()
+        for range in unsafeRanges { attributed[range].link = nil }
+        return attributed
+    }
+
+    private static func isSafe(_ url: URL, label: String) -> Bool {
+        guard let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http",
+              let host = url.host?.lowercased(), !host.isEmpty else { return false }
+        let visible = visibleText(of: label)
+        let lowered = visible.lowercased()
+        guard lowered.hasPrefix("http://") || lowered.hasPrefix("https://") || hasSchemeAndHost(visible) else {
+            return true
+        }
+        // The label presents itself as a URL: it must point at the same host.
+        guard let labelHost = URL(string: visible)?.host?.lowercased(), !labelHost.isEmpty else { return false }
+        return labelHost == host
+    }
+
+    /// The label as a reader perceives it: invisible Unicode format characters
+    /// (zero-width joiners/non-joiners, bidi marks, BOM, ...), other default-
+    /// ignorable scalars (variation selectors, combining grapheme joiner, ...),
+    /// and control characters are dropped so they cannot hide a URL-looking
+    /// label from the check.
+    private static func visibleText(of label: String) -> String {
+        droppingInvisibleCharacters(label).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Drops every scalar that never renders visibly: format and control
+    /// characters, bidi overrides/isolates, and other default-ignorable code
+    /// points (variation selectors, combining grapheme joiner, ...).
+    private static func droppingInvisibleCharacters(_ text: String) -> String {
+        var scalars = String.UnicodeScalarView()
+        for scalar in text.unicodeScalars {
+            // Braille blank renders as empty space but is neither whitespace
+            // nor default-ignorable, and can conceal a URL prefix.
+            if scalar.value == 0x2800 || scalar.properties.isDefaultIgnorableCodePoint { continue }
+            switch scalar.properties.generalCategory {
+            case .format, .control: continue
+            default: scalars.append(scalar)
+            }
+        }
+        return String(scalars)
+    }
+
+    private static func hasSchemeAndHost(_ text: String) -> Bool {
+        guard let url = URL(string: text), let scheme = url.scheme, !scheme.isEmpty,
+              let host = url.host, !host.isEmpty else { return false }
+        return true
+    }
+}
+
+// MARK: - Agent timeline entry view
+
+struct AgentTimelineEntryView: View {
+    let entry: AgentTimelineEntry
+    let files: TimelineContentFiles
+    let scope: String
+    let loadContent: @MainActor (String) async throws -> Data
+    @State private var thumbnail: UIImage?
+    @State private var originalURL: URL?
+    @State private var previewURL: URL?
+    @State private var imageLink: URL?
+    @State private var imageError: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if entry.kind == "image" {
+                imageContent
+            } else if entry.kind == "record" {
+                Label("Unsupported content: \(entry.text)", systemImage: "questionmark.square.dashed")
+                    .font(.jost(.caption)).foregroundStyle(Theme.textMuted)
+                if let details = entry.details {
+                    Text(details).font(.jost(.caption)).foregroundStyle(Theme.textMuted)
+                        .textSelection(.enabled).lineLimit(8)
+                        .accessibilityIdentifier("timeline-record-\(entry.id)")
+                }
+            } else if entry.isTurnInterrupted {
+                Label(entry.text, systemImage: "stop.circle")
+                    .font(.jost(.caption)).foregroundStyle(Theme.textMuted)
+                    .accessibilityIdentifier("timeline-interrupted-\(entry.id)")
+            } else {
+                Text(markdown).font(.jost(.body)).textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if entry.truncated {
+                Text("Preview shortened.")
+                    .font(.jost(.caption)).foregroundStyle(Theme.textMuted)
+            }
+        }
+        .foregroundStyle(Theme.text).frame(maxWidth: .infinity, alignment: .leading)
+        .padding(entry.role == "user" ? 16 : 0)
+        .padding(.vertical, entry.role == "user" ? 0 : (entry.isTurnInterrupted ? 4 : 8))
+        .background {
+            if entry.role == "user" {
+                RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.lg)
+                    .fill(Theme.subtleFill)
+            }
+        }
+        .padding(.leading, entry.role == "user" ? 32 : 0)
+        .task(id: entry.contentRef) { if entry.kind == "image" { await loadImage() } }
+        .onDisappear { thumbnail = nil }
+        .quickLookPreview($previewURL)
+    }
+    @ViewBuilder private var imageContent: some View {
+        if let thumbnail {
+            Button { previewURL = originalURL } label: {
+                Image(uiImage: thumbnail).resizable().scaledToFit().frame(maxHeight: 320)
+                    .accessibilityLabel("Session image")
+                    .accessibilityIdentifier("timeline-image-\(entry.id)")
+            }.buttonStyle(.plain)
+            Text("Tap to open original").font(.jost(.caption)).foregroundStyle(Theme.textMuted)
+        } else if let imageLink {
+            Label("Image link", systemImage: "photo")
+            Text(imageLink.absoluteString).font(.jost(.caption)).textSelection(.enabled)
+            Link("Open image", destination: imageLink)
+        } else if let imageError {
+            Label("Image", systemImage: "photo")
+            Text(imageError).font(.jost(.caption)).foregroundStyle(Theme.textMuted)
+            Button("Retry") { Task { await loadImage() } }
+        } else {
+            ProgressView("Loading image…")
+        }
+    }
+    @MainActor private func loadImage() async {
+        guard let reference = entry.contentRef else { imageError = "Image reference is unavailable."; return }
+        imageError = nil
+        do {
+            let data = try await loadContent(reference)
+            let decoded = try await Task.detached(priority: .userInitiated) { try TimelineImagePayload.decode(data) }.value
+            try Task.checkCancellation()
+            switch decoded {
+            case .image(let preview, let original, let suffix):
+                originalURL = try files.file(data: original, key: "\(scope):\(reference):image", name: "Session image.\(suffix)")
+                thumbnail = UIImage(data: preview)
+                if thumbnail == nil { throw AgentBridgeError.invalidFrame }
+            case .link(let url): imageLink = url
+            }
+        } catch {
+            if !Task.isCancelled { imageError = "This image could not be displayed. Try loading it again." }
+        }
+    }
+    private var markdown: AttributedString { Self.sanitizedMarkdown(entry.text) }
+    static func sanitizedMarkdown(_ text: String) -> AttributedString { TimelineMarkdown.sanitized(text) }
+}
+
+// MARK: - Timeline history scroll anchor & preference keys
+
+struct TimelineHistoryScrollAnchor: Equatable {
+    let token = UUID()
+    let id: String
+    let top: CGFloat
+    let height: CGFloat
+    let viewportHeight: CGFloat
+    var unitY: CGFloat {
+        let available = viewportHeight - height
+        return abs(available) > 1 ? top / available : 0
+    }
+}
+
+struct TimelineEntryFramesPreferenceKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, next in next })
+    }
+}
+
+struct TimelineAtBottomPreferenceKey: PreferenceKey {
+    static var defaultValue: Bool { true }
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value && nextValue() }
+}
+
+// MARK: - Timeline content files cache
+
+@MainActor final class TimelineContentFiles {
+    private let cache = NSCache<NSString, NSData>()
+    private let directory = FileManager.default.temporaryDirectory.appendingPathComponent("timeline-" + UUID().uuidString)
+    private var files: [String: URL] = [:]
+    init() { cache.totalCostLimit = 32 * 1024 * 1024 }
+    func data(key: String, load: @MainActor () async throws -> Data) async throws -> Data {
+        if let bytes = cache.object(forKey: key as NSString) { return bytes as Data }
+        let bytes = try await load()
+        try Task.checkCancellation()
+        cache.setObject(bytes as NSData, forKey: key as NSString, cost: bytes.count)
+        return bytes
+    }
+    func file(data: Data, key: String, name: String) throws -> URL {
+        if let file = files[key], FileManager.default.fileExists(atPath: file.path) { return file }
+        let folder = directory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let url = folder.appendingPathComponent(name)
+        try data.write(to: url, options: [.atomic, .completeFileProtection])
+        files[key] = url
+        return url
+    }
+    func reset() { cache.removeAllObjects(); files.removeAll(); try? FileManager.default.removeItem(at: directory) }
+    deinit { try? FileManager.default.removeItem(at: directory) }
+}
+
+// MARK: - Timeline image payload
+
+enum TimelineImagePayload: Sendable {
+    case image(preview: Data, original: Data, suffix: String)
+    case link(URL)
+    nonisolated static func decode(_ data: Data) throws -> Self {
+        guard let block = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let source = block["source"] as? [String: Any] else { throw AgentBridgeError.invalidFrame }
+        if let raw = source["url"] as? String, let url = URL(string: raw),
+           ["https", "http"].contains(url.scheme?.lowercased() ?? ""), url.host != nil { return .link(url) }
+        guard let encoded = source["data"] as? String, let original = Data(base64Encoded: encoded),
+              let image = CGImageSourceCreateWithData(original as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+              let properties = CGImageSourceCopyPropertiesAtIndex(image, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? NSNumber,
+              let height = properties[kCGImagePropertyPixelHeight] as? NSNumber,
+              width.doubleValue > 0, height.doubleValue > 0,
+              width.doubleValue * height.doubleValue <= 200_000_000,
+              let thumbnail = CGImageSourceCreateThumbnailAtIndex(image, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: 1024,
+                kCGImageSourceShouldCacheImmediately: true] as CFDictionary) else { throw AgentBridgeError.invalidFrame }
+        let preview = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(preview, UTType.png.identifier as CFString, 1, nil) else { throw AgentBridgeError.invalidFrame }
+        CGImageDestinationAddImage(destination, thumbnail, nil)
+        guard CGImageDestinationFinalize(destination) else { throw AgentBridgeError.invalidFrame }
+        let identifier = CGImageSourceGetType(image).map { $0 as String } ?? UTType.data.identifier
+        let suffix = UTType(identifier)?.preferredFilenameExtension ?? "image"
+        return .image(preview: preview as Data, original: original, suffix: suffix)
+    }
+}

@@ -81,7 +81,12 @@ actor AgentBridgeClient {
             guard handshake.capabilities?.codexTimeline == true else {
                 throw AgentBridgeError.unavailable(Self.unavailableCodeForCodex(handshake: handshake))
             }
+        } else if TimelineAgentAvailability.canonical(agent) == "antigravity_cli" {
+            guard handshake.capabilities?.agy == true else {
+                throw AgentBridgeError.unavailable("agy_bridge_required")
+            }
         } else {
+            guard agent == nil || agent == "claude" else { throw AgentBridgeError.unavailable("unsupported_agent") }
             guard handshake.capabilities?.claudeTimeline == true else {
                 throw AgentBridgeError.unavailable("transcript_root_unavailable")
             }
@@ -95,7 +100,9 @@ actor AgentBridgeClient {
 
     func modelStatus() async throws -> AgentBridgePayload {
         guard capabilities?.modelControl == true else { throw AgentBridgeError.unavailable("unsupported_capability") }
-        return try await request(.modelStatus, params: AgentBridgeParams())
+        // Agy discovery shares a six-second version/catalog budget, plus
+        // bounded Herdr pane checks and any initial watch poll already queued.
+        return try await request(.modelStatus, params: AgentBridgeParams(), timeout: 20)
     }
     func setModel(model: String?, effort: String?, expect: AgentModelExpectation) async throws -> AgentBridgePayload {
         guard capabilities?.modelControl == true else { throw AgentBridgeError.unavailable("unsupported_capability") }
@@ -105,7 +112,7 @@ actor AgentBridgeClient {
 
     func respond(requestId: String, option: UInt32, labelLines: [String]) async throws -> AgentApprovalResponse {
         let reply = try await request(.respond, params: AgentBridgeParams(requestId: requestId, option: option, labelLines: labelLines))
-        guard reply.requestId == requestId, let sent = reply.sent, AgentApprovalOption.validKey(sent),
+        guard reply.requestId == requestId, let sent = reply.sent, (AgentApprovalOption.validKey(sent) || (sent == "navigate" && capabilities?.agy == true)),
             let confirmed = reply.confirmed else { throw AgentBridgeError.invalidFrame }
         return AgentApprovalResponse(requestId: requestId, sent: sent, confirmed: confirmed)
     }
@@ -333,12 +340,10 @@ actor AgentBridgeClient {
 }
 
 extension HerdrConnection {
-    /// Default direct-host session only. Routed machines are rejected before
-    /// dialing; an optional helper failure never closes the shared SSH client.
+    /// Opens a helper session; an optional helper failure never closes the shared SSH client.
     func openAgentTimeline(
         paneId: String, agent: String? = nil, onEvent: @escaping @Sendable (AgentBridgeFrame) async throws -> Void
     ) async throws -> AgentBridgeClient {
-        guard route == nil else { throw AgentBridgeError.routedHostUnsupported }
         guard let client else { throw AgentBridgeError.closed }
         let owned = generation
         let bridgeId = UUID()
@@ -510,6 +515,7 @@ extension HostHelperSetupPlan {
         reason: HostHelperSetupReason = .missing
     ) -> HostHelperSetupDecision {
         if let agent, !agents.contains(agent) {
+            if case .present(_, _, true) = probe { return .ready }
             return .unsupportedByPinnedInstaller(agent)
         }
         switch probe {
@@ -692,7 +698,6 @@ extension HerdrConnection {
         reason: HostHelperSetupReason = .missing,
         onStage: @escaping @Sendable (HostHelperSetupStage) async -> Void
     ) async throws -> HostHelperSetupDecision {
-        guard route == nil else { throw AgentBridgeError.routedHostUnsupported }
         try requireGeneration(owned)
         guard identity == target else { throw HerdrError.notConnected }
         let client = try slot.ownedClient(owned)
@@ -726,7 +731,6 @@ extension HerdrConnection {
     func disableCodexDaemon(
         target: ConnectionIdentity, owned: ConnectionGeneration, stopRunning: Bool = false
     ) async throws -> CodexDaemonConfigResult {
-        guard route == nil else { throw AgentBridgeError.routedHostUnsupported }
         try requireGeneration(owned)
         guard identity == target else { throw HerdrError.notConnected }
         let client = try slot.ownedClient(owned)
@@ -792,7 +796,6 @@ extension HerdrConnection {
         try await runHooks(agent: agent, operation: .uninstall, target: target, owned: owned)
     }
     private func runHooks(agent: ApprovalAgent, operation: AgentHooksOperation, target: ConnectionIdentity, owned: ConnectionGeneration) async throws -> AgentHooksResult {
-        guard route == nil else { throw AgentBridgeError.routedHostUnsupported }
         try requireGeneration(owned)
         guard identity == target else { throw HerdrError.notConnected }
         let client = try slot.ownedClient(owned)

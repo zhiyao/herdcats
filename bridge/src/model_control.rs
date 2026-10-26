@@ -65,6 +65,179 @@ pub const CLAUDE_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 /// CLI enum but are not offered by the picker.
 pub const CODEX_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max", "ultra"];
 
+/// Validated direct effort values for Agy 1.4.7.
+pub const AGY_EFFORTS: &[&str] = &["low", "medium", "high"];
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AgyModel {
+    pub id: String,
+    pub label: String,
+}
+
+/// Only this installed version has verified live slash-command semantics.
+pub fn agy_supported_version(version: &str) -> bool {
+    version.trim() == "1.4.7"
+}
+
+/// The supported catalog comes from `agy models`, never a static model table.
+/// Ambiguous or malformed catalog rows fail closed.
+pub fn parse_agy_models(text: &str) -> Vec<AgyModel> {
+    let mut models: Vec<AgyModel> = Vec::new();
+    for line in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        if line == "Fetching available models..." {
+            continue;
+        }
+        let Some((id, label)) = line.split_once('\t') else { return Vec::new() };
+        if valid_set_target("agy", Some(id), None).is_err()
+            || label.is_empty()
+            || label.chars().any(char::is_control)
+            || models.iter().any(|model| model.id == id || model.label == label)
+        {
+            return Vec::new();
+        }
+        models.push(AgyModel { id: id.into(), label: label.into() });
+    }
+    models
+}
+
+/// A recognized terminal suffix must agree in both native ID and display label.
+fn agy_variant(model: &AgyModel) -> Option<(&str, &str, &str)> {
+    AGY_EFFORTS.iter().find_map(|effort| {
+        let id = model.id.strip_suffix(&format!("-{effort}"))?;
+        let label = model.label.strip_suffix(&format!(" ({})", effort_label(effort)))?;
+        (!id.is_empty() && !label.is_empty()).then_some((id, label, *effort))
+    })
+}
+
+/// Refuse ambiguous public IDs: literal native rows and disagreeing family labels
+/// stay lossless instead of becoming aliases for another selectable model.
+fn agy_family<'a>(model: &'a AgyModel, catalog: &[AgyModel]) -> Option<(&'a str, &'a str)> {
+    let (id, label, _) = agy_variant(model)?;
+    if catalog.iter().any(|m| m.id == id || agy_variant(m).is_some_and(|(other, name, _)| other == id && name != label)) {
+        return None;
+    }
+    Some((id, label))
+}
+
+pub fn agy_model_value(id: &str, catalog: &[AgyModel]) -> Value {
+    let Some(model) = catalog.iter().find(|m| m.id == id) else {
+        return serde_json::json!({"id":id,"label":id,"efforts":[]});
+    };
+    let Some((family, label)) = agy_family(model, catalog) else {
+        return serde_json::json!({"id":model.id,"label":model.label,"efforts":[]});
+    };
+    let efforts: Vec<_> = AGY_EFFORTS.iter().filter(|effort| catalog.iter().any(|m|
+        agy_variant(m).is_some_and(|(id, name, e)| id == family && name == label && e == **effort)))
+        .map(|effort| serde_json::json!({"id":effort,"label":effort_label(effort)})).collect();
+    serde_json::json!({"id":family,"label":label,"efforts":efforts})
+}
+
+pub fn agy_model_values(catalog: &[AgyModel], current: Option<&str>) -> Vec<Value> {
+    let current = current.map(|id| agy_model_value(id, catalog)["id"].clone());
+    let mut models: Vec<Value> = Vec::new();
+    for native in catalog {
+        let mut model = agy_model_value(&native.id, catalog);
+        if models.iter().any(|m| m["id"] == model["id"]) { continue; }
+        model["current"] = Value::Bool(current.as_ref() == Some(&model["id"]));
+        models.push(model);
+    }
+    models
+}
+
+/// Both normalized and legacy native expectations are accepted, but only for
+/// the exact authoritative native pair and a separately verified session scope.
+pub fn agy_expect_matches(current: Option<&str>, expected: Option<&str>, catalog: &[AgyModel]) -> bool {
+    current == expected || current.is_some_and(|id| agy_model_value(id, catalog)["id"].as_str() == expected)
+}
+
+/// Resolve only catalog entries. Explicit legacy native IDs retain their meaning;
+/// family switches preserve effort, then prefer medium, low, high when unavailable.
+pub fn agy_target<'a>(catalog: &'a [AgyModel], current: &str, current_effort: Option<&str>, model: Option<&str>, effort: Option<&str>) -> Result<&'a AgyModel> {
+    let selected = model.unwrap_or(current);
+    let native = catalog.iter().find(|m| m.id == selected);
+    if effort.is_none() && model.is_some() && let Some(native) = native { return Ok(native); }
+    let family = native.and_then(|m| agy_family(m, catalog)).or_else(|| catalog.iter()
+        .filter_map(|m| agy_family(m, catalog)).find(|(id, _)| *id == selected)).ok_or("invalid_request")?;
+    let find = |level: &str| catalog.iter().find(|m| agy_variant(m).is_some_and(|(id, label, e)| (id, label) == family && e == level));
+    if let Some(effort) = effort { return find(effort).ok_or("invalid_effort"); }
+    current_effort.and_then(find).or_else(|| ["medium", "low", "high"].into_iter().find_map(find)).ok_or("invalid_request")
+}
+
+pub fn agy_native_effort(model: &AgyModel) -> Option<&str> { agy_variant(model).map(|(_, _, effort)| effort) }
+
+/// The footer, rather than persisted settings, identifies this live pane's model.
+pub fn agy_idle_footer(screen: &str, catalog: &[AgyModel]) -> Option<(String, Option<String>)> {
+    let footer = screen.lines().last()?.trim().strip_prefix("? for shortcuts")?.trim();
+    let (label, effort) = if let Some((base, effort)) = footer.rsplit_once(" · ") {
+        if !known_effort("agy", effort) { return None; }
+        (format!("{base} ({})", effort_label(effort)), effort.to_owned())
+    } else {
+        // GPT-OSS 120B renders its complete native catalog label, without a
+        // separate effort token. Infer effort only from that exact native row.
+        let mut matching = catalog.iter().filter(|model| model.label == footer);
+        let model = matching.next()?;
+        if matching.next().is_some() { return None; }
+        (model.label.clone(), agy_native_effort(model)?.to_owned())
+    };
+    let mut matching = catalog.iter().filter(|model| model.label == label);
+    let model = matching.next()?;
+    if matching.next().is_some() { return None; }
+    Some((model.id.clone(), Some(effort)))
+}
+
+/// Agy composer checks require the same exact catalog-matched footer as model
+/// observation. The generic composer reader cannot prove an Agy footer alone.
+pub fn agy_composer_state(screen: &str, catalog: &[AgyModel]) -> Composer {
+    if agy_idle_footer(screen, catalog).is_none() { return Composer::Unknown; }
+    let lines: Vec<_> = screen.lines().map(str::trim).collect();
+    let border = |line: &&str| line.chars().count() >= 12 && line.chars().all(|c| c == '─');
+    let Some(bottom) = lines[..lines.len() - 1].iter().rposition(border) else { return Composer::Unknown };
+    if bottom + 2 != lines.len() { return Composer::Unknown; }
+    let Some(top) = lines[..bottom].iter().rposition(border) else { return Composer::Unknown };
+    if lines[top] != lines[bottom] || top + 1 == bottom { return Composer::Unknown; }
+    let input = &lines[top + 1..bottom];
+    if input.iter().enumerate().all(|(index, line)| line.is_empty() || (index == 0 && *line == ">")) {
+        Composer::Empty
+    } else {
+        Composer::Draft
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AgyConfirmation {
+    Model(String),
+    Effort(String),
+}
+
+pub fn agy_confirmation(screen: &str) -> Option<AgyConfirmation> {
+    screen.lines().rev().find_map(|line| {
+        let line = line.trim().strip_prefix("⎿").map(str::trim_start).unwrap_or(line.trim());
+        if let Some(label) = line.strip_prefix("Model set to ").filter(|s| !s.is_empty()) {
+            return Some(AgyConfirmation::Model(label.into()));
+        }
+        let effort = line.strip_prefix("Effort set to ")?;
+        known_effort("agy", effort).then(|| AgyConfirmation::Effort(effort.into()))
+    })
+}
+
+/// A remaining old acknowledgement is not proof that a command succeeded.
+/// Model acknowledgements match the full catalog label, including effort.
+pub fn agy_fresh_confirmation(
+    screen: &str,
+    before: &str,
+    model_label: Option<&str>,
+    effort: Option<&str>,
+) -> bool {
+    let Some(confirmation) = agy_confirmation(screen) else { return false };
+    if agy_confirmation(before).as_ref() == Some(&confirmation) {
+        return false;
+    }
+    match confirmation {
+        AgyConfirmation::Model(label) => model_label == Some(label.as_str()) && effort.is_none(),
+        AgyConfirmation::Effort(level) => model_label.is_none() && effort == Some(level.as_str()),
+    }
+}
+
 /// Label shown for an effort id in both agents' lists.
 pub fn effort_label(effort: &str) -> &str {
     match effort {
@@ -85,6 +258,7 @@ pub fn known_effort(agent: &str, effort: &str) -> bool {
         "claude" => effort == "auto" || CLAUDE_EFFORTS.contains(&effort),
         // `minimal` has no picker row, so it is neither listed nor sendable.
         "codex" => CODEX_EFFORTS.contains(&effort),
+        "agy" => AGY_EFFORTS.contains(&effort),
         _ => false,
     }
 }
@@ -968,6 +1142,116 @@ pub fn valid_set_target(agent: &str, model: Option<&str>, effort: Option<&str>) 
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn family_catalog() -> Vec<AgyModel> {
+        parse_agy_models("flash-low\tFlash (Low)\nflash-medium\tFlash (Medium)\nflash-high\tFlash (High)\nargon-low\tArgon (Low)\nargon-high\tArgon (High)\nsolo-medium\tSolo (Medium)")
+    }
+    #[test]
+    fn agy_families_are_public_but_catalog_and_target_ids_stay_native() {
+        let catalog = family_catalog();
+        let models = agy_model_values(&catalog, Some("flash-high"));
+        assert_eq!(models.len(), 3);
+        assert_eq!(models[0]["id"], "flash");
+        assert_eq!(models[0]["label"], "Flash");
+        assert_eq!(models[0]["current"], true);
+        assert_eq!(models[0]["efforts"], json!([{"id":"low","label":"Low"},{"id":"medium","label":"Medium"},{"id":"high","label":"High"}]));
+        assert_eq!(models[2]["efforts"], json!([{"id":"medium","label":"Medium"}]));
+        for (model, effort, expected) in [
+            (Some("argon"), None, "argon-high"),
+            (Some("solo"), None, "solo-medium"),
+            (Some("flash"), None, "flash-high"),
+            (Some("flash-low"), None, "flash-low"), // legacy concrete selection
+            (Some("flash-low"), Some("medium"), "flash-medium"),
+            (None, Some("low"), "flash-low"),
+        ] {
+            assert_eq!(agy_target(&catalog, "flash-high", Some("high"), model, effort).unwrap().id, expected);
+        }
+        assert_eq!(agy_target(&catalog, "solo-medium", Some("medium"), Some("argon"), None).unwrap().id, "argon-low");
+        assert_eq!(agy_target(&catalog, "flash-high", Some("high"), Some("solo"), Some("high")).unwrap_err(), "invalid_effort");
+        assert!(agy_target(&catalog, "flash-high", Some("high"), Some("invented"), None).is_err());
+        assert_eq!(catalog[2].id, "flash-high");
+        assert!(agy_expect_matches(Some("flash-high"), Some("flash"), &catalog));
+        assert!(agy_expect_matches(Some("flash-high"), Some("flash-high"), &catalog));
+        assert!(!agy_expect_matches(Some("flash-high"), Some("flash-low"), &catalog));
+    }
+    #[test]
+    fn agy_unknown_or_ambiguous_variants_are_lossless() {
+        let catalog = parse_agy_models("odd-high\tOdd (Preview)\nodd-low\tOdd (High)\nfuture-ultra\tFuture (Ultra)\nliteral-high\tLiteral (Beta) (High)\ncollision\tLiteral native\ncollision-high\tCollision (High)\nconflict-low\tFirst (Low)\nconflict-high\tSecond (High)");
+        let models = agy_model_values(&catalog, Some("odd-low"));
+        assert_eq!(models.len(), catalog.len());
+        for (index, native) in catalog.iter().enumerate() {
+            if native.id == "literal-high" {
+                assert_eq!(models[index]["id"], "literal");
+                assert_eq!(models[index]["label"], "Literal (Beta)");
+            } else {
+                assert_eq!(models[index]["id"], native.id);
+                assert_eq!(models[index]["label"], native.label);
+                assert_eq!(models[index]["efforts"], json!([]));
+            }
+        }
+        assert!(!agy_expect_matches(Some("collision-high"), Some("collision"), &catalog));
+        assert!(!agy_expect_matches(Some("conflict-high"), Some("conflict"), &catalog));
+    }
+
+    #[test]
+    fn agy_idle_screen_uses_bordered_composer_and_catalog_footer() {
+        let catalog = parse_agy_models("gemini-3.8-flash-low\tGemini 3.8 Flash (Low)");
+        let screen = "────────────────────\n>\n────────────────────\n? for shortcuts       Gemini 3.8 Flash · low";
+        assert_eq!(agy_composer_state(screen, &catalog), Composer::Empty);
+        assert_eq!(agy_idle_footer(screen, &catalog), Some(("gemini-3.8-flash-low".into(), Some("low".into()))));
+        assert_eq!(agy_composer_state(&screen.replace("\n>\n", "\n> draft\n"), &catalog), Composer::Draft);
+        assert_eq!(agy_composer_state(&screen.replace("? for shortcuts", "esc to cancel"), &catalog), Composer::Unknown);
+        assert_eq!(agy_composer_state("Switch Model\n> Gemini\nKeyboard: ↑/↓", &catalog), Composer::Unknown);
+        assert!(agy_fresh_confirmation("  ⎿  Effort set to medium", "", None, Some("medium")));
+    }
+
+    #[test]
+    fn agy_gpt_oss_full_label_footer_and_composer() {
+        let catalog = parse_agy_models("gpt-oss-120b-medium\tGPT-OSS 120B (Medium)\nflash-high\tFlash (High)");
+        let screen = "Model set to GPT-OSS 120B (Medium)\n────────────────────\n>\n────────────────────\n? for shortcuts       GPT-OSS 120B (Medium)";
+        assert_eq!(agy_idle_footer(screen, &catalog), Some(("gpt-oss-120b-medium".into(), Some("medium".into()))));
+        assert_eq!(agy_composer_state(screen, &catalog), Composer::Empty);
+        assert_eq!(agy_model_value("gpt-oss-120b-medium", &catalog)["efforts"], json!([{"id":"medium","label":"Medium"}]));
+        assert_eq!(agy_target(&catalog, "flash-high", Some("high"), Some("gpt-oss-120b"), None).unwrap().id, "gpt-oss-120b-medium");
+        assert_eq!(agy_composer_state(&screen.replace("\n>\n", "\n> my draft\n"), &catalog), Composer::Draft);
+        assert!(agy_idle_footer(&screen.replace("(Medium)", "(High)"), &catalog).is_none());
+        for changed in [screen.replace("? for shortcuts", "esc to cancel"), screen.replace("? for shortcuts", "> ? for shortcuts"),
+            format!("```\n{screen}\n```"), format!("{screen}\nSwitch Model\n> GPT-OSS 120B (Medium)"),
+            screen.replace("GPT-OSS 120B (Medium)", "GPT-OSS 120B (Medium) extra")] {
+            assert!(agy_idle_footer(&changed, &catalog).is_none());
+            assert_eq!(agy_composer_state(&changed, &catalog), Composer::Unknown);
+        }
+        assert_eq!(agy_composer_state(&screen.replace("────────────────────", "────────"), &catalog), Composer::Unknown);
+        let mut ambiguous = catalog.clone();
+        ambiguous.push(AgyModel { id: "other-medium".into(), label: "GPT-OSS 120B (Medium)".into() });
+        assert!(agy_idle_footer(screen, &ambiguous).is_none());
+    }
+
+    #[test]
+    fn agy_catalog_uses_dynamic_tab_separated_ids_and_rejects_duplicates() {
+        let models = parse_agy_models("Fetching available models...\ngemini-3.8-flash-low\tGemini 3.8 Flash (Low)\nfuture-model-high\tFuture Model (High)\n");
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[1].id, "future-model-high");
+        assert_eq!(models[0].label, "Gemini 3.8 Flash (Low)");
+        assert!(parse_agy_models("bad id\tBad\n").is_empty());
+        assert!(parse_agy_models("a\tA\na\tOther\n").is_empty());
+        assert!(agy_supported_version("1.4.7\n"));
+        assert!(!agy_supported_version("1.4.8"));
+        assert!(known_effort("agy", "medium"));
+        assert!(!known_effort("agy", "max"));
+    }
+
+    #[test]
+    fn agy_confirmations_require_fresh_exact_acknowledgments() {
+        let old = "Model set to Claude Opus 5.5 (Medium)";
+        let new = "Model set to Gemini 3.8 Flash (Low)";
+        assert!(agy_fresh_confirmation(new, old, Some("Gemini 3.8 Flash (Low)"), None));
+        assert!(!agy_fresh_confirmation(new, new, Some("Gemini 3.8 Flash (Low)"), None));
+        assert!(!agy_fresh_confirmation(new, old, Some("Gemini 3.8 Flash"), None));
+        assert!(agy_fresh_confirmation("Effort set to medium", "", None, Some("medium")));
+        assert!(!agy_fresh_confirmation("Effort set to high", "", None, Some("medium")));
+        assert!(!agy_fresh_confirmation("Error: Effort set to medium", "", None, Some("medium")));
+    }
 
     #[test]
     fn claude_labels_come_from_the_static_table_or_id_shape() {

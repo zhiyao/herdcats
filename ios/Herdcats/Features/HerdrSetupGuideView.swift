@@ -46,6 +46,13 @@ struct HerdrSetupGuideView: View {
                         .font(.jost(.footnote))
                         .foregroundStyle(.secondary)
 
+                    Text(
+                        "Add each machine as its own connection, then switch from the menu under the Herdcats logo. "
+                        + "Drag to reorder on the connection list."
+                    )
+                        .font(.jost(.subheadline))
+                        .foregroundStyle(.secondary)
+
                     Button(onContinue == nil ? "Back to Connection" : "Enter SSH Details") {
                         onContinue?()
                         dismiss()

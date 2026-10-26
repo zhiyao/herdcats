@@ -442,6 +442,9 @@ pub fn plan(
         return Err("mismatch");
     }
     let compatible = match (kind, &screen.step) {
+        (QuestionKind::AgyAsk, QuestionStep::AgyQuestion { total, .. }) => {
+            *total == pending.questions.len()
+        }
         (QuestionKind::ClaudeAsk, QuestionStep::ClaudeQuestion(_) | QuestionStep::ClaudeReview) => {
             true
         }
@@ -461,6 +464,7 @@ pub fn plan(
         return Err("in_progress");
     }
     match kind {
+        QuestionKind::AgyAsk => agy(pending, screen, answers.as_deref().ok_or("invalid")?),
         QuestionKind::ClaudeAsk => claude(pending, screen, answers.as_deref().ok_or("invalid")?),
         QuestionKind::CodexPlan => codex(pending, screen, answers.as_deref().ok_or("invalid")?),
         QuestionKind::CodexAsync => asynchronous(pending, screen, answers.as_deref()),
@@ -468,3 +472,71 @@ pub fn plan(
 }
 #[cfg(test)]
 mod tests;
+
+fn agy(
+    pending: &PendingQuestion,
+    screen: &QuestionScreen,
+    answers: &[Answer],
+) -> Result<Vec<Step>> {
+    let mut steps = Vec::new();
+    for (index, (question, answer)) in pending.questions.iter().zip(answers).enumerate() {
+        let mut state = dialog(
+            QuestionStep::AgyQuestion {
+                index,
+                total: pending.questions.len(),
+            },
+            QuestionCursor::Option(1),
+        );
+        if index == 0 {
+            state.cursor = screen.cursor.clone();
+        }
+        let mut cursor = match state.cursor {
+            Some(QuestionCursor::Option(n)) => n,
+            _ => return Err("mismatch"),
+        };
+        let mut navigate = |target: u32, state: &mut ExpectedDialog, steps: &mut Vec<Step>| {
+            while cursor != target {
+                let input = if cursor < target {
+                    cursor += 1;
+                    "down"
+                } else {
+                    cursor -= 1;
+                    "up"
+                };
+                state.cursor = Some(QuestionCursor::Option(cursor));
+                key(steps, input, ExpectedScreen::Dialog(state.clone()));
+            }
+        };
+        for &target in &answer.options {
+            navigate(target, &mut state, &mut steps);
+            if question.multi_select {
+                state.checked.push(target);
+                key(&mut steps, "space", ExpectedScreen::Dialog(state.clone()));
+            }
+        }
+        if let Some(text) = &answer.text {
+            navigate(question.options.len() as u32 + 1, &mut state, &mut steps);
+            state.text_active = true;
+            key(&mut steps, "enter", ExpectedScreen::Dialog(state.clone()));
+            state.text = text.clone();
+            push(
+                &mut steps,
+                Input::Text(text.clone()),
+                ExpectedScreen::Dialog(state.clone()),
+            );
+        }
+        let next = if index + 1 < pending.questions.len() {
+            ExpectedScreen::Dialog(dialog(
+                QuestionStep::AgyQuestion {
+                    index: index + 1,
+                    total: pending.questions.len(),
+                },
+                QuestionCursor::Option(1),
+            ))
+        } else {
+            ExpectedScreen::Gone
+        };
+        key(&mut steps, "enter", next);
+    }
+    Ok(steps)
+}

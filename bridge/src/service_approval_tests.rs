@@ -90,7 +90,7 @@ fn approval_pending_payload_is_exact_and_unchanged_poll_is_silent() {
             hook["payload"]["tool_input"]["command"].as_str().unwrap(),
         )
         .unwrap();
-        let options: Vec<_> = dialog.options.iter().map(|o| json!({"number":o.number,"label_lines":o.label_lines,"key":match o.key { crate::approval_screen::OptionKey::Digit(n) => n.to_string(), crate::approval_screen::OptionKey::Letter(c) => c.to_string(), crate::approval_screen::OptionKey::Escape => "esc".into() }})).collect();
+        let options: Vec<_> = dialog.options.iter().map(|o| json!({"number":o.number,"label_lines":o.label_lines,"key":match o.key { crate::approval_screen::OptionKey::Digit(n) => n.to_string(), crate::approval_screen::OptionKey::Letter(c) => c.to_string(), crate::approval_screen::OptionKey::Escape => "esc".into(), crate::approval_screen::OptionKey::Navigate(_) => "navigate".into() }})).collect();
         let request_id = if agent == "claude" {
             "7ea4f26e-9291-5569-be48-6e0571d23ef8"
         } else {
