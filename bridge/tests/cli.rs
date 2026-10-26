@@ -20,7 +20,7 @@ fn version_probe_needs_no_socket_or_home() {
     assert_eq!(value["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(value["protocol"], 1);
     assert_eq!(value["herdr_protocol"], 22);
-    assert_eq!(value["agents"], serde_json::json!(["claude", "codex"]));
+    assert_eq!(value["agents"], serde_json::json!(["claude", "codex", "antigravity_cli"]));
 
     let output_v = Command::new(env!("CARGO_BIN_EXE_herdcats-bridge"))
         .arg("--version")
@@ -30,7 +30,7 @@ fn version_probe_needs_no_socket_or_home() {
         .unwrap();
     assert!(output_v.status.success());
     let value_v: Value = serde_json::from_slice(&output_v.stdout).unwrap();
-    assert_eq!(value_v["agents"], serde_json::json!(["claude", "codex"]));
+    assert_eq!(value_v["agents"], serde_json::json!(["claude", "codex", "antigravity_cli"]));
 }
 
 #[test]
@@ -46,7 +46,7 @@ fn version_flag_rejects_extra_arguments() {
 #[test]
 fn version_json_bytes_match_released_installer_contract() {
     let expected = format!(
-        "{{\"agents\":[\"claude\",\"codex\"],\"herdr_protocol\":22,\"name\":\"herdcats-bridge\",\"protocol\":1,\"version\":\"{}\"}}\n",
+        "{{\"agents\":[\"claude\",\"codex\",\"antigravity_cli\"],\"herdr_protocol\":22,\"name\":\"herdcats-bridge\",\"protocol\":1,\"version\":\"{}\"}}\n",
         env!("CARGO_PKG_VERSION")
     );
     for flag in ["--version-json", "--version"] {

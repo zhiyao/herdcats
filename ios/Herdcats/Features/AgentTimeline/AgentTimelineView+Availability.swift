@@ -419,6 +419,10 @@ extension AgentTimelineView {
         pinnedVersion: String = HostHelperSetupPlan.version,
         supportedAgents: Set<String> = Set(HostHelperSetupPlan.agents)
     ) -> String {
+        if TimelineAgentAvailability.canonical(agent) == "antigravity_cli",
+           ["helper_missing", "helper_update_required", "unsupported_agent", "agy_bridge_required"].contains(code) {
+            return "Agy conversations require a source build of Herdcats Bridge with Agy support. The published \(pinnedVersion) installer supports Claude and Codex. Install the source bridge manually on this SSH computer, then check again. You can continue in Terminal."
+        }
         let isCodex = agent == "codex"
         let canSupportCodex = supportedAgents.contains("codex")
         switch code {

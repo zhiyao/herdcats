@@ -1,6 +1,14 @@
 //! Fail-closed parsers for live approval dialogs. No hook data supplies labels.
 use crate::hooks::Agent;
 
+/// Agy wire bounds mirrored by iOS AgentPendingApproval.decode. The label cap
+/// is per UTF-8 line, not the joined scope label; wrapped scopes stay lossless.
+pub mod client_limits {
+    pub const COMMAND_BYTES: usize = 65_536;
+    pub const OPTION_LINES: usize = 8;
+    pub const OPTION_LINE_BYTES: usize = 1024;
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ApprovalDialog {
     pub agent: Agent,
@@ -22,6 +30,8 @@ pub enum OptionKey {
     Digit(u32),
     Letter(char),
     Escape,
+    /// Zero-based option reached by individually guarded arrow keys, then Enter.
+    Navigate(usize),
 }
 impl ApprovalDialog {
     /// Lossless length-delimited encoding of dialog content and selection keys.
@@ -60,6 +70,10 @@ impl ApprovalDialog {
                     field(&c.to_string());
                 }
                 OptionKey::Escape => field("escape"),
+                OptionKey::Navigate(index) => {
+                    field("navigate");
+                    field(&index.to_string());
+                }
             }
             field(&option.label_lines.len().to_string());
             for row in &option.label_lines {
@@ -78,6 +92,7 @@ pub fn parse(agent: Agent, screen: &str, command: &str) -> Option<ApprovalDialog
     match agent {
         Agent::Claude => parse_claude(screen, command),
         Agent::Codex => parse_codex(screen, command),
+        Agent::Agy => parse_agy(screen, command),
     }
 }
 
@@ -168,12 +183,16 @@ pub fn parse_claude(screen: &str, command: &str) -> Option<ApprovalDialog> {
         let Some(r2) = (0..q).rev().find(|&i| rule(lines[i])) else {
             continue;
         };
-        let reason_lines: Vec<_> = lines[r2 + 1..q].iter()
+        let reason_lines: Vec<_> = lines[r2 + 1..q]
+            .iter()
             .map(|line| line.trim())
             .filter(|line| !line.is_empty())
             .map(str::to_owned)
             .collect();
-        if reason_lines.iter().any(|line| !KNOWN_CLAUDE_NOTICES.contains(&line.as_str())) {
+        if reason_lines
+            .iter()
+            .any(|line| !KNOWN_CLAUDE_NOTICES.contains(&line.as_str()))
+        {
             continue;
         }
         for r1 in 0..r2 {
@@ -334,7 +353,11 @@ fn option_line(line: &str, marker: char) -> Option<(u32, &str, bool, usize)> {
 }
 
 fn options(lines: &[&str], agent: Agent) -> Option<(Vec<ApprovalOption>, Option<usize>)> {
-    let marker = if agent == Agent::Claude { '❯' } else { '›' };
+    let marker = match agent {
+        Agent::Claude => '❯',
+        Agent::Codex => '›',
+        Agent::Agy => '>',
+    };
     let mut options: Vec<ApprovalOption> = Vec::new();
     let mut selected = None;
     let mut indent = 0;
@@ -399,4 +422,151 @@ fn options(lines: &[&str], agent: Agent) -> Option<(Vec<ApprovalOption>, Option<
         }
     }
     Some((options, selected))
+}
+
+/// Only the observed command permission card is supported. File, URL and MCP
+/// cards must remain available through the terminal until their semantics are verified.
+pub fn parse_agy(screen: &str, command: &str) -> Option<ApprovalDialog> {
+    if command.len() > client_limits::COMMAND_BYTES { return None; }
+    let rows = screen_rows(screen);
+    // Conversation history can contain literal example dialogs in fenced code.
+    // Such rows are content, never an active permission card.
+    let mut fence = None;
+    let quoted: Vec<_> = rows
+        .iter()
+        .map(|row| {
+            let row = row.trim();
+            if let Some(marker) = fence {
+                if row
+                    .strip_prefix(marker)
+                    .is_some_and(|rest| rest.trim().is_empty())
+                {
+                    fence = None;
+                }
+                true
+            } else if row.starts_with("```") || row.starts_with("~~~") {
+                fence = Some(if row.starts_with("```") { "```" } else { "~~~" });
+                true
+            } else {
+                false
+            }
+        })
+        .collect();
+    let mut chosen = None;
+    for start in 0..rows.len() {
+        if quoted[start] || rows[start].trim() != "Command" {
+            continue;
+        }
+        let mut request = start + 1;
+        if rows
+            .get(request)
+            .is_some_and(|row| !row.trim().is_empty() && row.trim().chars().all(|c| c == '─'))
+        {
+            request += 1;
+            while rows.get(request).is_some_and(|row| row.trim().is_empty()) {
+                request += 1;
+            }
+        }
+        if rows
+            .get(request)
+            .is_none_or(|row| row.trim() != "Requesting permission for:")
+        {
+            continue;
+        }
+        let Some(question) =
+            (request + 1..rows.len()).find(|&i| rows[i].trim() == "Run this command?")
+        else {
+            continue;
+        };
+        let mut body = &rows[request + 1..question];
+        while body.last().is_some_and(|r| r.trim().is_empty()) {
+            body = &body[..body.len() - 1];
+        }
+        let Some(detail) = detail_rows(body, "   ") else {
+            continue;
+        };
+        if !rows_match_command(&detail, command) {
+            continue;
+        }
+        let Some(end) = (question + 1..rows.len()).find(|&i| {
+            matches!(
+                rows[i].trim(),
+                "↑/↓ Navigate · tab Amend · ctrl+g edit/expand command"
+                    | "↑/↓ Navigate · tab Amend · ctrl+g edit/expand command · ctrl+r Review"
+            )
+        }) else {
+            continue;
+        };
+        if quoted[start..=end].iter().any(|quoted| *quoted) {
+            continue;
+        }
+        let Some((mut opts, selected)) = options(&rows[question + 1..end], Agent::Agy) else {
+            continue;
+        };
+        if opts.len() != 4 || selected.is_none()
+            || opts.iter().any(|option| option.label_lines.len() > client_limits::OPTION_LINES
+                || option.label_lines.iter().any(|line| line.len() > client_limits::OPTION_LINE_BYTES)) {
+            continue;
+        }
+        let labels: Vec<_> = opts.iter().map(|o| o.label_lines.join(" ")).collect();
+        let Some(scope) = labels[1]
+            .strip_prefix(
+                "Yes, and always allow in this conversation for commands that start with '",
+            )
+            .and_then(|s| s.strip_suffix("'"))
+        else {
+            continue;
+        };
+        if scope.is_empty()
+            || scope.contains(['\n', '\r', '\''])
+            || !command.starts_with(scope)
+            || labels[0] != "Yes, run command"
+            || labels[3] != "No, cancel"
+            || labels[2]
+                != format!(
+                    "Yes, and always allow for commands that start with '{scope}' (Persist to settings.json)"
+                )
+        {
+            continue;
+        }
+        for (index, option) in opts.iter_mut().enumerate() {
+            option.key = OptionKey::Navigate(index);
+        }
+        let dialog = ApprovalDialog {
+            agent: Agent::Agy,
+            title: "Command".into(),
+            environment: None,
+            detail,
+            reason_lines: vec![],
+            options: opts,
+            selected,
+        };
+        if chosen.replace(dialog).is_some() {
+            return None;
+        }
+    }
+    chosen
+}
+
+/// Each tuple is one key and the expected selected index afterwards. None is
+/// reserved for Enter, whose acceptance must be confirmed by the executor.
+pub fn agy_plan(dialog: &ApprovalDialog, target: usize) -> Option<Vec<(String, Option<usize>)>> {
+    if dialog.agent != Agent::Agy || dialog.options.get(target)?.key != OptionKey::Navigate(target)
+    {
+        return None;
+    }
+    let mut cursor = dialog.selected?;
+    let mut steps = Vec::new();
+    while cursor != target {
+        let key = if cursor < target {
+            cursor += 1;
+            "down"
+        } else {
+            cursor -= 1;
+            "up"
+        };
+        steps.push((key.into(), Some(cursor)));
+    }
+    steps.push(("enter".into(), None));
+    Some(steps)
 }

@@ -59,6 +59,7 @@ struct AgentTimelineIdentity: Codable, Equatable, Sendable {
 }
 struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
     let claudeTimeline: Bool
+    var agy: Bool = false
     var codexTimeline: Bool? = false
     var codexDaemonConfig: Bool? = false
     var codexDaemonStop: Bool? = false
@@ -69,6 +70,7 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
 
     init(
         claudeTimeline: Bool,
+        agy: Bool = false,
         codexTimeline: Bool? = false,
         codexDaemonConfig: Bool? = false,
         codexDaemonStop: Bool? = false,
@@ -77,6 +79,7 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
         questions: Bool? = nil,
         modelControl: Bool = false
     ) {
+        self.agy = agy
         self.claudeTimeline = claudeTimeline
         self.modelControl = modelControl
         self.codexTimeline = codexTimeline
@@ -89,6 +92,7 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.agy = try container.decodeIfPresent(Bool.self, forKey: .agy) ?? false
         self.modelControl = try container.decodeIfPresent(Bool.self, forKey: .modelControl) ?? false
         self.claudeTimeline = try container.decode(Bool.self, forKey: .claudeTimeline)
         self.codexTimeline = try container.decodeIfPresent(Bool.self, forKey: .codexTimeline) ?? false
@@ -363,7 +367,7 @@ enum HostHelperProbe: Equatable, Sendable {
         let targetAgent = agent ?? "claude"
         let compatible = report.map {
             $0.name == "herdcats-bridge" && $0.protocol == 1 && $0.herdrProtocol == 22
-                && $0.agents.contains(targetAgent) && Self.isAtLeastMinimum($0.version)
+                && $0.agents.contains(where: { TimelineAgentAvailability.canonical($0) == TimelineAgentAvailability.canonical(targetAgent) && TimelineAgentAvailability.canonical(targetAgent) != nil }) && Self.isAtLeastMinimum($0.version)
         } ?? false
         self = .present(version: version, managed: marker == "HC_HELPER_MANAGED", compatible: compatible)
     }
@@ -448,7 +452,24 @@ enum HostHelperSetupError: Error, LocalizedError, Equatable {
 /// Mirrors adapters implemented by the current bridge; agent detection alone
 /// does not imply that native session history is available.
 enum TimelineAgentAvailability {
-    static func supports(agent: String?) -> Bool { agent == "claude" || agent == "codex" }
+    static func displayName(for agent: String) -> String {
+        if let approvalAgent = ApprovalAgent(rawValue: agent) { return approvalAgent.displayName }
+        return canonical(agent) == "antigravity_cli" ? "Agy" : agent
+    }
+    static func canonical(_ agent: String?) -> String? {
+        switch agent {
+        case "agy", "antigravity_cli": return "antigravity_cli"
+        case "claude", "codex": return agent
+        default: return nil
+        }
+    }
+    static func supports(agent: String?) -> Bool { canonical(agent) != nil }
+    static func matchesSession(agent: String, referenceAgent: String?, source: String?, identityAgent: String, referenceKind: String = "id") -> Bool {
+        guard let canonical = canonical(identityAgent), Self.canonical(agent) == canonical,
+              Self.canonical(referenceAgent) == canonical else { return false }
+        guard canonical != "antigravity_cli" || referenceKind == "id" else { return false }
+        return source == "herdr:\(canonical)"
+    }
 }
 
 /// Only references into the bridge's bounded, verified source snapshot.
@@ -499,7 +520,7 @@ struct TimelineConversationItem: Identifiable {
 
 enum TimelineActivitySummary {
     static func isCommand(_ entry: AgentTimelineEntry) -> Bool {
-        entry.toolName?.lowercased() == "bash"
+        ["bash", "run_command", "exec_command", "shell_command"].contains(entry.toolName?.lowercased() ?? "")
     }
     static func isRunning(_ entry: AgentTimelineEntry) -> Bool {
         entry.status != "completed" && entry.status != "failed"
@@ -530,6 +551,16 @@ enum TimelineActivitySummary {
            !firstLine.trimmingCharacters(in: .whitespaces).isEmpty {
             return String(firstLine.prefix(180))
         }
+        // Agy 1.4.7 encodes toolSummary as a JSON string inside args.
+        // Decode only this verified field; leave the original details untouched.
+        if entry.toolName?.lowercased() == "run_command",
+           let encoded = input["toolSummary"] as? String,
+           let data = encoded.data(using: .utf8),
+           let summary = try? JSONDecoder().decode(String.self, from: data),
+           let line = summary.split(whereSeparator: \.isNewline).first,
+           !line.trimmingCharacters(in: .whitespaces).isEmpty {
+            return String(line.prefix(180))
+        }
         let path = (input["file_path"] ?? input["path"] ?? input["notebook_path"]) as? String
         let file = path.map { URL(fileURLWithPath: $0).lastPathComponent }
         switch entry.toolName?.lowercased() {
@@ -539,7 +570,8 @@ enum TimelineActivitySummary {
         case "grep", "glob": return "Search project files"
         case "websearch": return "Search the web"
         case "webfetch": return "Read a web page"
-        case "bash": return "Run a shell command"
+        case "bash", "run_command", "exec_command", "shell_command": return "Run a shell command"
+        case "ask_question": return "Ask a question"
         default: return entry.toolName.map { "Use \($0)" } ?? "Use a tool"
         }
     }
@@ -631,10 +663,14 @@ struct AgentModelPair: Codable, Equatable, Sendable {
 struct AgentModelExpectation: Encodable, Sendable {
     let model: String?
     let effort: String?
-    enum CodingKeys: String, CodingKey { case model, effort }
+    var identity: AgentTimelineIdentity? = nil
+    var generation: UInt64? = nil
+    enum CodingKeys: String, CodingKey { case model, effort, identity, generation }
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(model, forKey: .model)
         try c.encode(effort, forKey: .effort)
+        try c.encodeIfPresent(identity, forKey: .identity)
+        try c.encodeIfPresent(generation, forKey: .generation)
     }
 }

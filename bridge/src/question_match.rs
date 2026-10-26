@@ -8,6 +8,7 @@ pub enum QuestionKind {
     ClaudeAsk,
     CodexPlan,
     CodexAsync,
+    AgyAsk,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -33,6 +34,27 @@ pub struct PendingQuestion {
     pub kind: QuestionKind,
     pub turn_id: Option<String>,
     pub questions: Vec<Question>,
+}
+
+/// Wire limits mirrored by AgentPendingQuestion.decode in iOS. Count UTF-8
+/// bytes, not characters. Unsupported Agy cards retain history/Terminal access.
+pub mod client_limits {
+    pub const QUESTIONS: usize = 8;
+    pub const OPTIONS: usize = 32;
+    pub const TEXT: usize = 4096;
+    pub const HEADER: usize = 1024;
+    pub const LABEL: usize = 1024;
+    pub const DESCRIPTION: usize = 4096;
+}
+impl PendingQuestion {
+    pub fn client_compatible(&self) -> bool {
+        !self.questions.is_empty() && self.questions.len() <= client_limits::QUESTIONS
+            && self.questions.iter().all(|q| !q.text.is_empty() && q.text.len() <= client_limits::TEXT
+                && q.header.as_ref().is_none_or(|h| h.len() <= client_limits::HEADER)
+                && !q.options.is_empty() && q.options.len() <= client_limits::OPTIONS
+                && q.options.iter().all(|o| !o.label.is_empty() && o.label.len() <= client_limits::LABEL
+                    && o.description.as_ref().is_none_or(|d| d.len() <= client_limits::DESCRIPTION)))
+    }
 }
 
 fn text(value: &Value) -> Option<&str> {
@@ -370,3 +392,66 @@ pub fn pending_codex_questions(rollout: &[Value]) -> Vec<PendingQuestion> {
 
 #[cfg(test)]
 mod tests;
+
+/// Decode the observed JSON-string-valued questions argument. Planner DONE is
+/// deliberately ignored: Agy writes it before displaying the question picker.
+pub fn pending_agy_questions(history: &[Value]) -> Vec<PendingQuestion> {
+    crate::approval_match::agy_pending_calls(history)
+        .into_iter()
+        .filter_map(|(id, call, _)| {
+            if call["name"] != "ask_question" {
+                return None;
+            }
+            let encoded = call["args"]["questions"].as_str()?;
+            if encoded.len() > 262_144 {
+                return None;
+            }
+            let values: Vec<Value> = serde_json::from_str(encoded).ok()?;
+            if values.is_empty() || values.len() > client_limits::QUESTIONS {
+                return None;
+            }
+            let questions = values
+                .iter()
+                .map(|value| {
+                    let question = text(&value["question"])?;
+                    if question.len() > client_limits::TEXT {
+                        return None;
+                    }
+                    let opts = value["options"].as_array()?;
+                    if opts.is_empty() || opts.len() > client_limits::OPTIONS {
+                        return None;
+                    }
+                    let options = opts
+                        .iter()
+                        .map(|v| {
+                            let label = text(v)?;
+                            if label.len() > client_limits::LABEL {
+                                return None;
+                            }
+                            Some(QuestionOption {
+                                label: label.into(),
+                                description: None,
+                            })
+                        })
+                        .collect::<Option<Vec<_>>>()?;
+                    Some(Question {
+                        id: None,
+                        header: None,
+                        text: question.into(),
+                        options,
+                        multi_select: value["is_multi_select"].as_bool()?,
+                        allows_other: true,
+                        secret: false,
+                    })
+                })
+                .collect::<Option<Vec<_>>>()?;
+            let pending = PendingQuestion {
+                request_id: id,
+                kind: QuestionKind::AgyAsk,
+                turn_id: None,
+                questions,
+            };
+            pending.client_compatible().then_some(pending)
+        })
+        .collect()
+}

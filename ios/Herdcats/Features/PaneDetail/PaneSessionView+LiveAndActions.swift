@@ -325,7 +325,7 @@ extension PaneSessionView {
     }
 
     var composerPlaceholder: String {
-        if let agent = pane.agent { return "Message \(agent)…" }
+        if let agent = pane.agent { return "Message \(TimelineAgentAvailability.displayName(for: agent))…" }
         return "Type to send to this pane…"
     }
 

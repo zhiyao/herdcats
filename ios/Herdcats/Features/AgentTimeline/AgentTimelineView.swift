@@ -54,6 +54,9 @@ struct AgentTimelineView: View {
     @State var atBottom = true
     @State var entryFrames = TimelineEntryFrameStore()
     @State var viewportHeight: CGFloat = 0
+    @State private var focusedQuestionField: QuestionFieldTarget?
+    @State private var questionFieldFrames: [QuestionFieldTarget: CGRect] = [:]
+    @State private var questionKeyboardFrame: CGRect = .null
     @State var historyScrollAnchor: TimelineHistoryScrollAnchor?
     @State var bridgeCapabilities: AgentBridgeCapabilities?
     @State var bridgeVersion: String?
@@ -138,6 +141,27 @@ struct AgentTimelineView: View {
     static func replacementFeedback(probe: HostHelperProbe) -> String? {
         HostHelperSetupPlan.replacementFeedback(probe: probe)
     }
+    private func revealQuestionField(using proxy: ScrollViewProxy, viewport: GeometryProxy) {
+        guard let target = focusedQuestionField, showsQuestion,
+              target.scope == contentScope,
+              target.requestId == timeline.pendingQuestion?.requestId else { return }
+        let height = viewport.size.height
+        let viewportFrame = viewport.frame(in: .global)
+        var visibleBottom = height - viewport.safeAreaInsets.bottom
+        if questionKeyboardFrame.intersects(viewportFrame) {
+            visibleBottom = min(visibleBottom, questionKeyboardFrame.minY - viewportFrame.minY)
+        }
+        let top = topOverlayInset + 8
+        let bottom = visibleBottom - bottomOverlayInset - approvalInset - 8
+        if let frame = questionFieldFrames[target], frame.minY >= top, frame.maxY <= bottom { return }
+        // Center the selected field in the usable area, not the card's bottom:
+        // a later question can be much taller than the keyboard viewport.
+        let anchorY = height > 0 ? max(0, min(1, (top + max(top, bottom)) / (2 * height))) : 0.5
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.2)) {
+            proxy.scrollTo(target, anchor: UnitPoint(x: 0.5, y: anchorY))
+        }
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             GeometryReader { viewport in
@@ -189,9 +213,21 @@ struct AgentTimelineView: View {
                                 .disabled(approvalResponse.isDisabled)
                             }
                             if showsQuestion, let pending = timeline.pendingQuestion {
+                                let questionScope = contentScope
                                 QuestionCard(pending: pending, response: questionResponse,
                                     onSubmit: { respondToQuestion(pending) },
-                                    onSkip: { respondToQuestion(pending, skip: true) })
+                                    onSkip: { respondToQuestion(pending, skip: true) },
+                                    scope: questionScope,
+                                    onFieldFocus: { target in
+                                        if let target {
+                                            guard target.scope == contentScope,
+                                                  target.requestId == timeline.pendingQuestion?.requestId else { return }
+                                            focusedQuestionField = target
+                                        } else if focusedQuestionField?.scope == questionScope,
+                                                  focusedQuestionField?.requestId == pending.requestId {
+                                            focusedQuestionField = nil
+                                        }
+                                    })
                                     .id("\(contentScope):question:\(pending.requestId)")
                             }
                         } else {
@@ -218,7 +254,20 @@ struct AgentTimelineView: View {
                 .coordinateSpace(name: "timeline-viewport")
                 .onChange(of: viewport.size.height, initial: true) { _, height in
                     viewportHeight = height
-                    if following && showsApproval { proxy.scrollTo("timeline-bottom", anchor: .bottom) }
+                    if focusedQuestionField != nil {
+                        revealQuestionField(using: proxy, viewport: viewport)
+                    } else if following && showsApproval { proxy.scrollTo("timeline-bottom", anchor: .bottom) }
+                }
+                .onChange(of: viewport.safeAreaInsets.bottom) { _, _ in
+                    revealQuestionField(using: proxy, viewport: viewport)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { notification in
+                    guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+                    questionKeyboardFrame = frame
+                    revealQuestionField(using: proxy, viewport: viewport)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                    questionKeyboardFrame = .null
                 }
                 .onChange(of: timeline.pendingApproval?.requestId, initial: true) { _, requestId in
                     guard requestId != nil, showsApproval else { return }
@@ -229,12 +278,26 @@ struct AgentTimelineView: View {
                     }
                 }
                 .onChange(of: showsQuestion ? timeline.pendingQuestion?.requestId : nil, initial: true) { _, requestId in
+                    focusedQuestionField = nil
                     guard requestId != nil, showsQuestion else { return }
                     following = true
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                     withAnimation(reduceMotion ? nil : .smooth(duration: 0.4)) {
                         proxy.scrollTo("timeline-bottom", anchor: .bottom)
                     }
+                }
+                .onChange(of: focusedQuestionField) { _, target in
+                    guard target != nil else { return }
+                    following = false
+                    revealQuestionField(using: proxy, viewport: viewport)
+                }
+                .onChange(of: contentScope) { _, _ in
+                    focusedQuestionField = nil
+                    questionFieldFrames = [:]
+                }
+                .onPreferenceChange(QuestionFieldFramesPreferenceKey.self) { frames in
+                    questionFieldFrames = frames
+                    revealQuestionField(using: proxy, viewport: viewport)
                 }
                 .onPreferenceChange(TimelineEntryFramesPreferenceKey.self) { entryFrames.frames = $0 }
                 .onChange(of: historyScrollAnchor) { _, anchor in
@@ -282,12 +345,16 @@ struct AgentTimelineView: View {
                     #endif
                 }
                 .onChange(of: bottomOverlayInset) { _, _ in
-                    if following && (!conversationItems.isEmpty || showsApproval) {
+                    if focusedQuestionField != nil {
+                        revealQuestionField(using: proxy, viewport: viewport)
+                    } else if following && (!conversationItems.isEmpty || showsApproval) {
                         proxy.scrollTo("timeline-bottom", anchor: .bottom)
                     }
                 }
                 .onChange(of: approvalInset) { _, _ in
-                    if following && (!conversationItems.isEmpty || showsApproval) {
+                    if focusedQuestionField != nil {
+                        revealQuestionField(using: proxy, viewport: viewport)
+                    } else if following && (!conversationItems.isEmpty || showsApproval) {
                         proxy.scrollTo("timeline-bottom", anchor: .bottom)
                     }
                 }

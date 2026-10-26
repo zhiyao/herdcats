@@ -523,6 +523,180 @@ final class AgentTimelineUITests: XCTestCase {
         app.terminate()
     }
 
+    func testAgyOtherFocusRevealsFieldAboveKeyboardInTallQuestionCard() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-question-agy-focus",
+            "-hc.agent", "antigravity_cli", "-hc.light", "-paneShowComposeByDefault", "YES"]
+        launch(app)
+        defer { app.terminate() }
+        let scroll = app.scrollViews["agent-timeline-scroll"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: 5))
+        // The outer accessibility container overrides the inner bubble ID
+        // on this OS; its top edge is the same floating dock occlusion.
+        let compose = app.descendants(matching: .any)["pane-compose-bar"].firstMatch
+        XCTAssertTrue(compose.waitForExistence(timeout: 3), "Reproduce the user's floating Compose overlay")
+        for (index, header) in ["Task", "Validation"].enumerated() {
+            let other = app.buttons.matching(identifier: "Type something…").element(boundBy: 0)
+            for _ in 0..<15 {
+                let bottom = min(scroll.frame.maxY, compose.frame.minY) - 4
+                if other.exists && other.isHittable && other.frame.minY >= scroll.frame.minY && other.frame.maxY < bottom { break }
+                if index == 0 { scroll.swipeDown() } else { scroll.swipeUp() }
+            }
+            XCTAssertTrue(other.isHittable, "Other must be accessible before inserting a text field")
+            other.tap()
+            let field = app.textFields["\(header): Type something…"]
+            XCTAssertTrue(field.waitForExistence(timeout: 3))
+            let keyboard = app.keyboards.firstMatch
+            XCTAssertTrue(keyboard.waitForExistence(timeout: 3), "Other must focus the inserted field without a second tap")
+            let keyboardVisible = NSPredicate { _, _ in
+                keyboard.exists && keyboard.frame.height > 150
+                    && keyboard.frame.intersection(app.frame).height > 150
+                    && keyboard.frame.maxY <= app.frame.maxY + 1
+            }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: keyboardVisible, object: nil)], timeout: 5), .completed,
+                "Require an onscreen software keyboard, not a hidden accessibility keyboard")
+            print("Agy \(header) before typing: field=\(field.frame), keyboard=\(keyboard.frame), viewport=\(scroll.frame), compose=\(compose.frame)")
+            let beforeTyping = XCTAttachment(screenshot: app.screenshot())
+            beforeTyping.name = "Agy \(header) keyboard geometry before typing"
+            beforeTyping.lifetime = .keepAlways
+            add(beforeTyping)
+            let visible = NSPredicate { _, _ in
+                guard field.exists, keyboard.exists, compose.exists else { return false }
+                let frame = field.frame
+                let bottom = min(scroll.frame.maxY, keyboard.frame.minY, compose.frame.minY) - 4
+                return frame.height > 0 && frame.minY >= scroll.frame.minY && frame.maxY <= bottom
+                    && frame.minX >= scroll.frame.minX && frame.maxX <= scroll.frame.maxX
+            }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: visible, object: nil)], timeout: 5), .completed,
+                "\(header) field must be fully inside the visible scroll viewport above BOTH the keyboard and floating Compose bubble")
+            let text = "Agy \(header) write-in stays visible"
+            field.typeText(text)
+            XCTAssertEqual(field.value as? String, text)
+            let capture = XCTAttachment(screenshot: app.screenshot())
+            capture.name = "Agy \(header) write-in and Compose overlay"
+            capture.lifetime = .keepAlways
+            add(capture)
+            field.typeText("\n")
+            // An existing field (also the shared Notes path) must reveal on
+            // direct focus again without losing the answer.
+            field.tap()
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: keyboardVisible, object: nil)], timeout: 5), .completed)
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: visible, object: nil)], timeout: 5), .completed)
+            XCTAssertEqual(field.value as? String, text)
+            field.typeText("\n")
+        }
+    }
+
+    func testApprovalPresentationOmitsAgentToolHeaderAcrossAgentsAndStates() {
+        continueAfterFailure = false
+        for (agent, screen, title, command, explanation, first, last) in [
+            ("antigravity_cli", "timeline-approval-agy", "Command", "printf SAFE", "Print a harmless marker.", "Yes, run command", "No, cancel"),
+            ("claude", "timeline-approval-claude", "Do you want to proceed?", "touch herdcats-live-4.txt", "Create herdcats-live-4.txt in the workspace.", "Yes", "No"),
+            ("codex", "timeline-approval-codex", "Would you like to run the following command?", "touch herdcats-live-4.txt", "Allow creating herdcats-live-4.txt in this read-only workspace?", "Yes, proceed", "No, and tell Codex what to do differently")
+        ] {
+            for phase in ["error", "sending"] {
+                let app = XCUIApplication()
+                app.launchArguments = ["-hc.screenshots", "-hc.screen", screen, "-hc.agent", agent,
+                    "-hc.light", "-hc.approval-state", phase, "-hc.approval-explanation-fallback"]
+                defer { app.terminate() }
+                launch(app)
+                XCTAssertTrue(app.staticTexts[command].waitForExistence(timeout: 5))
+                XCTAssertTrue(app.staticTexts[title].exists)
+                XCTAssertTrue(app.staticTexts[explanation].exists)
+                if agent == "antigravity_cli" {
+                    XCTAssertEqual(app.textFields["timeline-compose-field"].placeholderValue, "Message Agy…")
+                }
+                XCTAssertFalse(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", " · Run command")).firstMatch.exists)
+                XCTAssertFalse(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Use run_command")).firstMatch.exists)
+                XCTAssertTrue(app.buttons[first].exists)
+                XCTAssertTrue(app.buttons[last].exists)
+                if agent == "antigravity_cli" {
+                    XCTAssertTrue(app.buttons["Yes, and always allow in this conversation for commands that start with 'printf'"].exists)
+                    XCTAssertTrue(app.buttons["Yes, and always allow for commands that start with 'printf' (Persist to settings.json)"].exists)
+                }
+                if agent == "claude" {
+                    XCTAssertTrue(app.buttons["Yes, and don't ask again for\nthis command in this project"].exists)
+                } else if agent == "codex" {
+                    XCTAssertTrue(app.buttons["Yes, and don't ask again for commands that start with\n`touch herdcats-live-4.txt`"].exists)
+                }
+                if phase == "sending" {
+                    print("SENDING AX TREE: \(app.debugDescription)")
+                    XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Sending answer")).firstMatch.exists)
+                    XCTAssertFalse(app.buttons[first].isEnabled)
+                    XCTAssertFalse(app.buttons[last].isEnabled)
+                } else {
+                    XCTAssertTrue(app.staticTexts["Couldn't send your answer. Answer in Terminal, or try again."].exists)
+                    XCTAssertTrue(app.buttons[first].isEnabled)
+                    XCTAssertTrue(app.buttons[last].isEnabled)
+                }
+                app.terminate()
+            }
+        }
+    }
+
+    func testNativeCommandActivitySummariesKeepUnknownToolsLiteral() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-native-commands", "-hc.agent", "antigravity_cli", "-hc.light"]
+        launch(app)
+        defer { app.terminate() }
+        XCTAssertTrue(app.staticTexts["Running 4 commands · Using a tool"].waitForExistence(timeout: 5))
+        app.buttons["timeline-tool-native-command-0"].tap()
+        XCTAssertTrue(app.staticTexts["Print a harmless marker"].waitForExistence(timeout: 3))
+        XCTAssertEqual(app.staticTexts.matching(identifier: "Run a shell command").count, 3)
+        XCTAssertTrue(app.staticTexts["Use future_tool"].exists)
+        XCTAssertFalse(app.staticTexts["Use run_command"].exists)
+        XCTAssertFalse(app.staticTexts["Use exec_command"].exists)
+        XCTAssertFalse(app.staticTexts["Use shell_command"].exists)
+    }
+
+    func testAgyModelChoicesShowDiscoveryFailureAndRetryLoadsCatalog() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-model-agy-retry", "-hc.agent", "antigravity_cli", "-hc.light", "-paneShowComposeByDefault", "YES"]
+        launch(app)
+        defer { app.terminate() }
+        let control = app.buttons["timeline-model-control"]
+        XCTAssertTrue(control.waitForExistence(timeout: 5))
+        XCTAssertEqual(control.label, "Model Gemini 3.8 Flash, effort high")
+        control.tap()
+        app.buttons["model-configuration-model"].tap()
+        XCTAssertTrue(app.navigationBars["Model"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["model-choices-error"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Agy wasn't found on this computer. Update Herdcats Bridge or check the Agy installation, then retry."].exists)
+        let retry = app.buttons["model-choices-retry"]
+        XCTAssertTrue(retry.exists)
+        retry.tap()
+        XCTAssertTrue(app.buttons["Gemini 4 Argon"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Gemini 3.8 Flash"].exists)
+        XCTAssertFalse(app.staticTexts["model-choices-error"].exists)
+        XCTAssertFalse(app.buttons["Fable 5.1"].exists)
+        XCTAssertFalse(app.buttons["Haiku 5.5"].exists)
+        // Opening and retrying discovery never selects or changes a model.
+    }
+
+    func testAgyModelFamiliesAndSeparateEffortChoices() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-model-agy", "-hc.agent", "agy", "-paneShowComposeByDefault", "YES"]
+        launch(app)
+        defer { app.terminate() }
+        let control = app.buttons["timeline-model-control"]
+        XCTAssertTrue(control.waitForExistence(timeout: 5))
+        XCTAssertEqual(control.label, "Model Gemini 3.8 Flash, effort high")
+        control.tap()
+        XCTAssertTrue(app.buttons["model-configuration-model"].label.contains("Gemini 3.8 Flash"))
+        XCTAssertFalse(app.buttons["model-configuration-model"].label.contains("(High)"))
+        XCTAssertTrue(app.buttons["model-configuration-effort"].label.contains("High"))
+        app.buttons["model-configuration-model"].tap()
+        for name in ["Gemini 3.8 Flash", "Gemini 4 Argon", "Claude Opus 5.5", "Claude Sonnet 5.5", "GPT-OSS 120B"] {
+            XCTAssertEqual(app.buttons.matching(identifier: name).count, 1)
+        }
+        XCTAssertFalse(app.buttons["Gemini 3.8 Flash (High)"].exists)
+        XCTAssertFalse(app.buttons["Gemini 3.8 Flash (Low)"].exists)
+        app.navigationBars["Model"].buttons.element(boundBy: 0).tap()
+        app.buttons["model-configuration-effort"].tap()
+        for name in ["Low", "Medium", "High"] { XCTAssertTrue(app.buttons[name].waitForExistence(timeout: 3)) }
+        // Read-only fixture: no choice is selected.
+    }
+
     private func launch(_ app: XCUIApplication) {
         app.launchArguments += ["-hc.timeline-intro-reset"]
         app.launch()
