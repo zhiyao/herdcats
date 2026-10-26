@@ -244,8 +244,28 @@ struct AgentBridgePayload: Codable, Sendable {
     var effort: String?
     var models: [AgentModelOption]?
     var efforts: [AgentEffortOption]?
+    var catalog: AgentModelCatalogInfo?
     var applied: AgentModelPair?
     var error: String?
+}
+/// Where a model list came from. Only a fresh, complete list is verified
+/// availability; cached or fallback lists are labelled as such.
+struct AgentModelCatalogInfo: Codable, Equatable, Sendable {
+    var source: String?
+    var fresh: Bool?
+    var complete: Bool?
+    var error: String?
+
+    /// A short note for lists that aren't freshly verified; nil when verified.
+    var note: String? {
+        if complete == true, fresh == true { return nil }
+        switch source {
+        case "cache": return "Showing saved model choices. They may be out of date."
+        case "fallback": return "Showing common model names. Your account may offer different choices."
+        case "unavailable": return "Available models couldn't be checked. Only the current model is shown."
+        default: return "These model choices couldn't be verified."
+        }
+    }
 }
 struct AgentBridgeRemoteError: Codable, Sendable {
     let code: String

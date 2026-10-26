@@ -557,19 +557,104 @@ pub fn parse_codex_config(text: &str) -> (Option<String>, Option<String>) {
 }
 
 /// One Codex catalog entry; only `visibility == "list"` rows are offered.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CodexCatalogModel {
     pub slug: String,
     pub label: String,
     pub efforts: Vec<String>,
+    /// Reasoning levels the catalog reports that this bridge cannot drive
+    /// through the picker. They are reported, never silently dropped, and
+    /// never offered as selectable (no unverified terminal input).
+    pub unsupported_efforts: Vec<String>,
+}
+
+/// Why a Codex catalog document was unusable.
+#[derive(Debug, PartialEq, Eq)]
+pub enum CodexCatalogError {
+    /// Not JSON, e.g. truncated by a partial write.
+    Malformed,
+    /// JSON without a `models` array.
+    MissingModels,
+    /// A `models` array with no user-visible entry.
+    Empty,
+}
+
+impl CodexCatalogError {
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Malformed | Self::MissingModels => "codex_catalog_invalid",
+            Self::Empty => "codex_catalog_empty",
+        }
+    }
+}
+
+/// Freshness metadata Codex stores beside the model list.
+#[derive(Debug, Default, PartialEq, Eq, Clone)]
+pub struct CodexCatalogMeta {
+    pub fetched_at: Option<String>,
+    pub client_version: Option<String>,
+}
+
+/// Reads `fetched_at` and `client_version` from a catalog document.
+pub fn parse_codex_catalog_meta(text: &str) -> CodexCatalogMeta {
+    let value: Value = serde_json::from_str(text).unwrap_or(Value::Null);
+    let field = |key: &str| value[key].as_str().filter(|s| !s.is_empty()).map(str::to_owned);
+    CodexCatalogMeta { fetched_at: field("fetched_at"), client_version: field("client_version") }
+}
+
+/// Seconds since the Unix epoch for an RFC 3339 UTC-ish timestamp
+/// ("2026-10-26T04:00:00.123Z" or with a numeric offset); `None` if unreadable.
+pub fn parse_rfc3339_epoch(text: &str) -> Option<i64> {
+    let (date, rest) = text.split_once(['T', 't', ' '])?;
+    let mut d = date.split('-');
+    let (y, m, day): (i64, i64, i64) = (d.next()?.parse().ok()?, d.next()?.parse().ok()?, d.next()?.parse().ok()?);
+    if !(1..=12).contains(&m) || !(1..=31).contains(&day) { return None; }
+    let split = rest.find(['Z', 'z', '+', '-']).unwrap_or(rest.len());
+    let (clock, zone) = rest.split_at(split);
+    let mut c = clock.split(':');
+    let (h, mi): (i64, i64) = (c.next()?.parse().ok()?, c.next()?.parse().ok()?);
+    let sec: i64 = c.next().map(|s| s.split('.').next().unwrap_or("0").parse().ok()).unwrap_or(Some(0))?;
+    if h > 23 || mi > 59 || sec > 60 { return None; }
+    let offset = match zone.chars().next() {
+        None | Some('Z' | 'z') => 0,
+        Some(sign) => {
+            let (oh, om) = zone[1..].split_once(':')?;
+            let total = oh.parse::<i64>().ok()? * 3600 + om.parse::<i64>().ok()? * 60;
+            if sign == '-' { -total } else { total }
+        }
+    };
+    // Days from civil (Howard Hinnant).
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146097 + doe - 719468;
+    Some(days * 86400 + h * 3600 + mi * 60 + sec - offset)
+}
+
+/// A cache is fresh only for the installed CLI version and within `max_age`.
+/// Missing or unreadable metadata is never treated as fresh.
+pub fn codex_cache_fresh(meta: &CodexCatalogMeta, installed_version: Option<&str>, now_epoch: i64, max_age_secs: i64) -> bool {
+    let (Some(fetched), Some(cached), Some(installed)) = (meta.fetched_at.as_deref().and_then(parse_rfc3339_epoch), meta.client_version.as_deref(), installed_version) else { return false };
+    cached == installed && fetched <= now_epoch + 300 && now_epoch - fetched <= max_age_secs
+}
+
+/// Extracts the semantic version from `codex --version` ("codex-cli 0.164.0").
+pub fn parse_codex_version(text: &str) -> Option<String> {
+    text.split_whitespace().find(|t| t.chars().next().is_some_and(|c| c.is_ascii_digit()) && t.contains('.')).map(str::to_owned)
 }
 
 /// Parses `~/.codex/models_cache.json`, filtered and ordered like the CLI's
 /// picker: `visibility == "list"`, ascending `priority` (stable on ties).
 pub fn parse_codex_catalog(text: &str) -> Vec<CodexCatalogModel> {
-    let value: Value = match serde_json::from_str(text) {
-        Ok(value) => value,
-        Err(_) => return Vec::new(),
-    };
+    parse_codex_catalog_checked(text).unwrap_or_default()
+}
+
+/// Like `parse_codex_catalog`, but says why a document was unusable.
+pub fn parse_codex_catalog_checked(text: &str) -> std::result::Result<Vec<CodexCatalogModel>, CodexCatalogError> {
+    let value: Value = serde_json::from_str(text).map_err(|_| CodexCatalogError::Malformed)?;
+    if !value["models"].is_array() { return Err(CodexCatalogError::MissingModels); }
     let mut models: Vec<(i64, usize, CodexCatalogModel)> = value["models"]
         .as_array()
         .map(|rows| {
@@ -588,20 +673,16 @@ pub fn parse_codex_catalog(text: &str) -> Vec<CodexCatalogModel> {
                         .filter(|s| !s.is_empty())
                         .map(str::to_owned)
                         .unwrap_or_else(|| slug.clone());
-                    let efforts = row["supported_reasoning_levels"]
+                    let levels: Vec<&str> = row["supported_reasoning_levels"]
                         .as_array()
-                        .map(|levels| {
-                            levels
-                                .iter()
-                                .filter_map(|level| {
-                                    level["effort"]
-                                        .as_str()
-                                        .filter(|s| !s.is_empty() && known_effort("codex", s))
-                                        .map(str::to_owned)
-                                })
-                                .collect()
-                        })
+                        .map(|levels| levels.iter().filter_map(|level| level["effort"].as_str()).filter(|s| !s.is_empty()).collect())
                         .unwrap_or_default();
+                    let efforts = levels.iter().filter(|s| known_effort("codex", s)).map(|s| (*s).to_owned()).collect();
+                    // Report only plain tokens so a catalog can't smuggle text
+                    // into the UI or terminal paths.
+                    let unsupported_efforts = levels.iter()
+                        .filter(|s| !known_effort("codex", s) && s.len() <= 24 && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-'))
+                        .map(|s| (*s).to_owned()).collect();
                     let priority = row["priority"].as_i64().unwrap_or(i64::MAX);
                     Some((
                         priority,
@@ -610,6 +691,7 @@ pub fn parse_codex_catalog(text: &str) -> Vec<CodexCatalogModel> {
                             slug,
                             label,
                             efforts,
+                            unsupported_efforts,
                         },
                     ))
                 })
@@ -617,7 +699,8 @@ pub fn parse_codex_catalog(text: &str) -> Vec<CodexCatalogModel> {
         })
         .unwrap_or_default();
     models.sort_by_key(|(priority, index, _)| (*priority, *index));
-    models.into_iter().map(|(_, _, model)| model).collect()
+    if models.is_empty() { return Err(CodexCatalogError::Empty); }
+    Ok(models.into_iter().map(|(_, _, model)| model).collect())
 }
 
 /// The live idle footer is authoritative for session-only changes after reconnect.
@@ -1373,6 +1456,7 @@ mod tests {
             slug: "gpt-6-sol".into(),
             label: "GPT-6-Sol".into(),
             efforts: vec![],
+            unsupported_efforts: vec![],
         }];
         let footer = include_str!("fixtures/codex-idle-footer.txt");
         assert_eq!(
@@ -1400,6 +1484,7 @@ mod tests {
             slug: "ambiguous-slug".into(),
             label: "GPT-6-Sol".into(),
             efforts: vec![],
+            unsupported_efforts: vec![],
         });
         assert_eq!(codex_idle_footer(footer, &catalog), None);
     }
@@ -1909,4 +1994,37 @@ mod tests {
         assert_eq!(configured.effort_for("opus"), Some("high"));
     }
 
+}
+
+#[cfg(test)]
+mod discovery_tests {
+    use super::*;
+
+    #[test]
+    fn rfc3339_parses_utc_and_offsets() {
+        assert_eq!(parse_rfc3339_epoch("1970-01-02T00:00:00Z"), Some(86400));
+        assert_eq!(parse_rfc3339_epoch("2026-10-26T12:00:00.5+08:00"), parse_rfc3339_epoch("2026-10-26T04:00:00Z"));
+        assert_eq!(parse_rfc3339_epoch("garbage"), None);
+        assert_eq!(parse_rfc3339_epoch("2026-13-01T00:00:00Z"), None);
+    }
+
+    #[test]
+    fn freshness_requires_matching_version_and_recent_valid_timestamp() {
+        let now = parse_rfc3339_epoch("2026-10-26T12:00:00Z").unwrap();
+        let meta = |t: &str, v: &str| CodexCatalogMeta { fetched_at: Some(t.into()), client_version: Some(v.into()) };
+        assert!(codex_cache_fresh(&meta("2026-10-26T11:00:00Z", "1.0.0"), Some("1.0.0"), now, 3600 * 6));
+        assert!(!codex_cache_fresh(&meta("2026-10-26T11:00:00Z", "1.0.0"), Some("1.0.1"), now, 3600 * 6));
+        assert!(!codex_cache_fresh(&meta("2026-10-25T00:00:00Z", "1.0.0"), Some("1.0.0"), now, 3600 * 6));
+        assert!(!codex_cache_fresh(&meta("2027-01-01T00:00:00Z", "1.0.0"), Some("1.0.0"), now, 3600 * 6));
+        assert!(!codex_cache_fresh(&CodexCatalogMeta::default(), Some("1.0.0"), now, 3600 * 6));
+        assert!(!codex_cache_fresh(&meta("2026-10-26T11:00:00Z", "1.0.0"), None, now, 3600 * 6));
+    }
+
+    #[test]
+    fn checked_parse_distinguishes_failure_kinds() {
+        assert_eq!(parse_codex_catalog_checked("{\"models\":[{\"slug\":"), Err(CodexCatalogError::Malformed));
+        assert_eq!(parse_codex_catalog_checked("{}"), Err(CodexCatalogError::MissingModels));
+        assert_eq!(parse_codex_catalog_checked("{\"models\":[{\"slug\":\"x\",\"visibility\":\"hide\"}]}"), Err(CodexCatalogError::Empty));
+        assert_eq!(parse_codex_version("codex-cli 0.164.0"), Some("0.164.0".into()));
+    }
 }

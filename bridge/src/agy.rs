@@ -328,6 +328,15 @@ pub fn resolve_executable(
     path: Option<&std::ffi::OsStr>,
     home: Option<&std::path::Path>,
 ) -> Result<PathBuf> {
+    resolve_named_executable("agy", path, home)
+}
+
+/// `resolve_executable` for another CLI name (e.g. `codex`), same rules.
+pub fn resolve_named_executable(
+    name: &str,
+    path: Option<&std::ffi::OsStr>,
+    home: Option<&std::path::Path>,
+) -> Result<PathBuf> {
     use std::os::unix::fs::PermissionsExt;
     let executable = |path: &std::path::Path| {
         path.is_absolute()
@@ -337,19 +346,19 @@ pub fn resolve_executable(
     };
     if let Some(path) = path {
         for dir in std::env::split_paths(path).filter(|dir| dir.is_absolute()) {
-            let candidate = dir.join("agy");
+            let candidate = dir.join(name);
             if executable(&candidate) {
                 return Ok(candidate);
             }
         }
     }
     if let Some(home) = home {
-        let candidate = home.join(".local/bin/agy");
+        let candidate = home.join(".local/bin").join(name);
         if executable(&candidate) {
             return Ok(candidate);
         }
     }
-    Err("agy_unavailable")
+    Err(if name == "agy" { "agy_unavailable" } else { "codex_unavailable" })
 }
 
 pub fn installed_executable() -> Result<PathBuf> {
@@ -398,6 +407,22 @@ pub fn query_executable(
     args: &[&str],
     deadline: std::time::Instant,
 ) -> Result<String> {
+    if !matches!(args, ["--version"] | ["models"]) {
+        return Err("invalid_request");
+    }
+    run_bounded(executable, args, None, deadline, 65536)
+}
+
+/// Bounded, stdin-less, process-group-killed child run shared by read-only
+/// catalog discovery. `codex_home` pins `CODEX_HOME` to the session's own
+/// configuration; `max_bytes` caps captured stdout. Callers allowlist `args`.
+pub fn run_bounded(
+    executable: &std::path::Path,
+    args: &[&str],
+    codex_home: Option<&std::path::Path>,
+    deadline: std::time::Instant,
+    max_bytes: usize,
+) -> Result<String> {
     use std::{
         io::Read,
         os::{fd::AsRawFd, unix::process::CommandExt},
@@ -405,13 +430,14 @@ pub fn query_executable(
         thread,
         time::{Duration, Instant},
     };
-    if !matches!(args, ["--version"] | ["models"]) {
-        return Err("invalid_request");
-    }
     if Instant::now() >= deadline {
         return Err("agy_timeout");
     }
-    let mut child = Command::new(executable)
+    let mut command = Command::new(executable);
+    if let Some(home) = codex_home {
+        command.env("CODEX_HOME", home);
+    }
+    let mut child = command
         .args(args)
         .process_group(0)
         .stdin(Stdio::null())
@@ -452,7 +478,7 @@ pub fn query_executable(
                 return Err("agy_unavailable");
             }
         }
-        if bytes.len() > 65536 {
+        if bytes.len() > max_bytes {
             terminate(&mut child);
             return Err("agy_catalog_invalid");
         }

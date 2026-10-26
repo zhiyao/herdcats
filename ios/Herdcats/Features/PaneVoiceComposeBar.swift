@@ -931,6 +931,13 @@ private struct AgentModelConfigurationSheet: View {
                 .foregroundStyle(Theme.textMuted)
                 .listRowBackground(Theme.cardBackground)
             retryCatalog
+        } else if let note = state.catalogInfo?.note {
+            Text(note)
+                .foregroundStyle(Theme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                .listRowBackground(Theme.cardBackground)
+                .accessibilityIdentifier("model-choices-catalog-note")
+            retryCatalog
         }
     }
     private var retryCatalog: some View {

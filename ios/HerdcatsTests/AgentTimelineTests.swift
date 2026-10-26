@@ -826,3 +826,20 @@ private actor ModelCatalogTestWire {
         #expect(timeline.modelControl.effortLabel == "High")
     }
 }
+
+@Suite("Model catalog provenance")
+struct ModelCatalogProvenanceTests {
+    @Test func onlyFreshCompleteCatalogsAreUnannotated() throws {
+        let verified = try JSONDecoder().decode(AgentModelCatalogInfo.self, from: Data(#"{"source":"refreshed","fresh":true,"complete":true}"#.utf8))
+        #expect(verified.note == nil)
+        for source in ["cache", "fallback", "unavailable", "other"] {
+            let info = AgentModelCatalogInfo(source: source, fresh: false, complete: false, error: "timeout")
+            #expect(info.note != nil)
+        }
+    }
+
+    @Test func payloadWithoutCatalogStillDecodes() throws {
+        let payload = try JSONDecoder().decode(AgentBridgePayload.self, from: Data(#"{"models":[]}"#.utf8))
+        #expect(payload.catalog == nil)
+    }
+}

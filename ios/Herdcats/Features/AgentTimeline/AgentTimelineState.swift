@@ -253,6 +253,8 @@ import Observation
     private var statusEfforts: [AgentEffortOption] = []
     private(set) var isChanging = false
     private(set) var isLoadingModels = false
+    /// Provenance of `models`, from the same reply and scope as the list.
+    private(set) var catalogInfo: AgentModelCatalogInfo?
     var errorMessage: String?
     private var client: AgentBridgeClient?
     private var identity: AgentTimelineIdentity?
@@ -303,6 +305,7 @@ import Observation
         pair = AgentModelPair()
         models = []
         statusEfforts = []
+        catalogInfo = nil
         errorMessage = nil
         isChanging = false
         isLoadingModels = false
@@ -317,6 +320,7 @@ import Observation
             guard let models = payload.models else { throw AgentBridgeError.invalidFrame }
             self.models = models
             statusEfforts = payload.efforts ?? []
+            catalogInfo = payload.catalog
         }
         let model = payload.model.map { incoming in
             if options { return incoming }
@@ -356,6 +360,7 @@ import Observation
                     let models = payload.models else { throw AgentBridgeError.identityMismatch }
                 self.models = models
                 statusEfforts = payload.efforts ?? []
+                catalogInfo = payload.catalog
                 errorMessage = nil
                 return
             }
@@ -410,6 +415,9 @@ import Observation
         case "agy_timeout", "timeout": return "Loading model choices timed out. Retry or use Terminal."
         case "agy_unsupported_version": return "This Agy version hasn't been verified for model controls. Use Terminal."
         case "agy_catalog_invalid": return "Agy returned model choices Herdcats couldn't read. Retry or use Terminal."
+        case "codex_unavailable": return "Codex wasn't found on this computer. Check the Codex installation, then retry."
+        case "codex_catalog_invalid": return "Codex returned model choices Herdcats couldn't read. Retry or use Terminal."
+        case "codex_catalog_missing", "codex_catalog_empty": return "Codex has no model choices yet. Retry or use Terminal."
         case "agy_catalog_empty": return "No model choices were returned. Retry or use Terminal."
         case "agent_busy": return "The agent is busy. Retry when it's idle."
         case "unsupported_capability": return "This bridge doesn't support model choices. Update Herdcats Bridge, then retry."
