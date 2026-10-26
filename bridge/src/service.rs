@@ -249,12 +249,9 @@ struct Watch {
     last_model: Option<(String, Option<String>)>,
     model_override: Option<ModelOverride>,
 }
-/// Last supported-CLI Codex discovery attempt, kept in memory only so repeated
-/// background status reads never respawn the CLI. Explicit Retry clears it.
-struct CodexDiscovery {
-    at: Instant,
-    outcome: std::result::Result<Vec<model_control::CodexCatalogModel>, &'static str>,
-}
+/// Last supported-CLI Codex discovery attempt and failure backoff, kept in
+/// memory so repeated background status reads never respawn the CLI. Explicit
+/// Retry clears error backoff while preserving the last successful catalog.
 
 /// Codex catalog plus where it came from, for honest UI labelling.
 struct CodexCatalogView {
@@ -280,7 +277,8 @@ pub struct Service {
     agy_catalog_error: std::cell::RefCell<Option<(Instant, &'static str)>>,
     agy_executable: std::cell::RefCell<Option<PathBuf>>,
     codex_executable: std::cell::RefCell<Option<PathBuf>>,
-    codex_discovery: std::cell::RefCell<Option<CodexDiscovery>>,
+    codex_catalog_cache: std::cell::RefCell<Option<(Instant, Vec<model_control::CodexCatalogModel>)>>,
+    codex_catalog_error: std::cell::RefCell<Option<(Instant, &'static str)>>,
     epoch: String,
     sequence: u64,
     generation: u64,
@@ -366,7 +364,8 @@ impl Service {
             agy_catalog_error: std::cell::RefCell::new(None),
             agy_executable: std::cell::RefCell::new(None),
             codex_executable: std::cell::RefCell::new(None),
-            codex_discovery: std::cell::RefCell::new(None),
+            codex_catalog_cache: std::cell::RefCell::new(None),
+            codex_catalog_error: std::cell::RefCell::new(None),
             epoch,
             sequence: 0,
             generation: 0,
@@ -1218,8 +1217,11 @@ impl Service {
             thread::sleep(Duration::from_millis(100));
         }
     }
-    /// Catalog for guards and label lookups: never spawns the CLI.
+    /// Catalog for guards, footer matching, and label lookups: never spawns the CLI.
     fn codex_catalog(&self) -> Vec<model_control::CodexCatalogModel> {
+        if let Some((_, models)) = self.codex_catalog_cache.borrow().as_ref() {
+            return models.clone();
+        }
         self.codex_catalog_view(false).models
     }
     fn codex_home_dir(&self) -> Option<PathBuf> {
@@ -1262,22 +1264,33 @@ impl Service {
             Some(text) => model_control::parse_codex_catalog_checked(text).map_err(|e| e.code()),
             None => Err("codex_catalog_missing"),
         };
-        let from_cache = |fresh: bool, error: Option<&'static str>| match &parsed {
-            Ok(models) => CodexCatalogView { models: models.clone(), source: "cache", fresh, fetched_at: meta.fetched_at.clone(), cli_version: meta.client_version.clone(), error },
-            Err(code) => CodexCatalogView { models: Vec::new(), source: "unavailable", fresh: false, fetched_at: None, cli_version: None, error: Some(error.unwrap_or(code)) },
+        let from_cache = |fresh: bool, error: Option<&'static str>| {
+            if let Some((_, models)) = self.codex_catalog_cache.borrow().as_ref() {
+                return CodexCatalogView {
+                    models: models.clone(),
+                    source: "cache",
+                    fresh,
+                    fetched_at: None,
+                    cli_version: None,
+                    error,
+                };
+            }
+            match &parsed {
+                Ok(models) => CodexCatalogView { models: models.clone(), source: "cache", fresh, fetched_at: meta.fetched_at.clone(), cli_version: meta.client_version.clone(), error },
+                Err(code) => CodexCatalogView { models: Vec::new(), source: "unavailable", fresh: false, fetched_at: None, cli_version: None, error: Some(error.unwrap_or(code)) },
+            }
         };
-        let remembered = self.codex_discovery.borrow().as_ref().map(|d| (d.at.elapsed(), d.outcome.clone()));
         // Expiry only permits a refresh; lookups that don't discover keep the
         // last successful catalog so labels and efforts of rows already shown
-        // stay available to `set_codex_model`.
-        if let Some((age, Ok(models))) = &remembered
-            && (!discover || *age < CODEX_REFRESH_OK_TTL)
+        // stay available to `set_codex_model` and footer scans.
+        if let Some((at, models)) = self.codex_catalog_cache.borrow().as_ref()
+            && (!discover || at.elapsed() < CODEX_REFRESH_OK_TTL)
         {
             return CodexCatalogView { models: models.clone(), source: "refreshed", fresh: true, fetched_at: None, cli_version: None, error: None };
         }
         if !discover { return from_cache(false, None); }
-        if let Some((age, Err(code))) = &remembered
-            && *age < CODEX_REFRESH_FAIL_TTL
+        if let Some((at, code)) = *self.codex_catalog_error.borrow()
+            && at.elapsed() < CODEX_REFRESH_FAIL_TTL
         {
             return from_cache(false, Some(code));
         }
@@ -1286,11 +1299,12 @@ impl Service {
                 // The live result is authoritative and is exactly what stays
                 // remembered, so later label/effort lookups match what iOS was
                 // shown. A disk cache is only a fallback when discovery fails.
-                *self.codex_discovery.borrow_mut() = Some(CodexDiscovery { at: Instant::now(), outcome: Ok(models.clone()) });
+                *self.codex_catalog_cache.borrow_mut() = Some((Instant::now(), models.clone()));
+                *self.codex_catalog_error.borrow_mut() = None;
                 CodexCatalogView { models, source: "refreshed", fresh: true, fetched_at: None, cli_version: Some(version), error: None }
             }
             Err(code) => {
-                *self.codex_discovery.borrow_mut() = Some(CodexDiscovery { at: Instant::now(), outcome: Err(code) });
+                *self.codex_catalog_error.borrow_mut() = Some((Instant::now(), code));
                 from_cache(false, Some(code))
             }
         }
@@ -1332,6 +1346,7 @@ impl Service {
         let (pane, file) = self.model_pane_file(&identity)?;
         self.agy_require_no_pending(&identity, file.try_clone().map_err(|_|"stale")?)?;
         let agent = identity.agent.as_str();
+        let codex_view = (agent == "codex").then(|| self.codex_catalog_view(true));
         let current = self.model_scan_current(agent, &pane, file);
         let current_id = current.as_ref().map(|(id, _)| id.as_str());
         let catalog_info;
@@ -1379,7 +1394,7 @@ impl Service {
                 (models, efforts)
             }
             "codex" => {
-                let view = self.codex_catalog_view(true);
+                let view = codex_view.expect("codex view computed");
                 let catalog = view.models.clone();
                 catalog_info = json!({
                     "source":view.source, "fresh":view.fresh,
@@ -2343,7 +2358,7 @@ impl Service {
                 // refresh. Its result is reused below, so slow failures cannot
                 // consume two discovery budgets in one RPC.
                 *self.agy_catalog_error.borrow_mut() = None;
-                *self.codex_discovery.borrow_mut() = None;
+                *self.codex_catalog_error.borrow_mut() = None;
                 self.poll_with_refresh(out, refresh)?;
                 match self.model_status() {
                     Ok(result) => Self::write(out, &json!({"id":id,"result":result})),

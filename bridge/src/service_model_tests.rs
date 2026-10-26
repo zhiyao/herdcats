@@ -1911,14 +1911,14 @@ fn codex_expired_discovery_still_serves_non_refreshing_lookups() {
     let reply = model_request(&mut service, "model.status", json!({}));
     assert_eq!(result_frame(&reply)["result"]["catalog"]["source"], "refreshed");
     // Age the remembered discovery past its TTL.
-    service.codex_discovery.borrow_mut().as_mut().unwrap().at = Instant::now()
+    service.codex_catalog_cache.borrow_mut().as_mut().unwrap().0 = Instant::now()
         .checked_sub(Duration::from_secs(3600))
         .unwrap();
     let catalog = service.codex_catalog();
     assert!(catalog.iter().any(|m| m.slug == "gpt-7-new" && m.label == "GPT-7-New"));
     // A discovering read treats it as expired and refreshes again.
     assert_eq!(service.codex_catalog_view(true).source, "refreshed");
-    assert!(service.codex_discovery.borrow().as_ref().unwrap().at.elapsed() < Duration::from_secs(60));
+    assert!(service.codex_catalog_cache.borrow().as_ref().unwrap().0.elapsed() < Duration::from_secs(60));
     cleanup(&service, root);
 }
 
@@ -1933,5 +1933,34 @@ fn codex_remembers_exactly_the_live_catalog_it_returned() {
     assert_eq!(shown, vec![json!("gpt-7-new")]);
     let used: Vec<_> = service.codex_catalog().into_iter().map(|m| m.slug).collect();
     assert_eq!(used, vec!["gpt-7-new".to_string()]);
+    cleanup(&service, root);
+}
+
+#[test]
+fn codex_status_scans_idle_footer_with_newly_discovered_models() {
+    let (mut service, root, herdr, _) = model_fixture_codex();
+    // Screen shows an idle footer for GPT-7-New, which is NOT in disk models_cache.json.
+    herdr.lock().unwrap().screen = "› Ask Codex to do anything\n  GPT-7-New low · Context 96% left\n".into();
+    service = service.with_codex_executable(fake_codex(&root, &catalog_script(REFRESHED_CATALOG)));
+
+    // model.status refreshes catalog BEFORE scanning current model,
+    // so it successfully recognizes gpt-7-new in the footer.
+    let reply = model_request(&mut service, "model.status", json!({}));
+    let result = &result_frame(&reply)["result"];
+    assert_eq!(result["model"]["id"], "gpt-7-new");
+    assert_eq!(result["model"]["label"], "GPT-7-New");
+    assert_eq!(result["effort"], "low");
+    let models = result["models"].as_array().unwrap();
+    let current = models.iter().find(|m| m["id"] == "gpt-7-new").unwrap();
+    assert_eq!(current["current"], true);
+    // Discovered model is part of the catalog, not observedOnly.
+    assert_eq!(current["observedOnly"], Value::Null);
+
+    // Subsequent model.status preserves the catalog in memory so polling and
+    // rescanning keep recognizing the footer.
+    let reply2 = model_request(&mut service, "model.status", json!({}));
+    let result2 = &result_frame(&reply2)["result"];
+    assert_eq!(result2["model"]["id"], "gpt-7-new");
+
     cleanup(&service, root);
 }
