@@ -1,5 +1,7 @@
 # Unreleased
 
+- Switch between saved SSH connections instead of Herdr saved machines. Set
+  optional names and a fixed order; auto-connect uses the last-used machine.
 - Support passphrase-protected OpenSSH ed25519 keys using AES-128-CTR or
   AES-256-CTR with bcrypt at 1–256 rounds. Optional device-only passphrase
   storage enables reconnects after relaunch.

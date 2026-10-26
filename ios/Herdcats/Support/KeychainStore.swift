@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import SwiftUI
 
 /// Minimal Keychain wrapper for remembering connection secrets.
 protocol KeychainOperations {
@@ -64,7 +65,7 @@ enum KeychainStore {
         }
     }
 
-    static func load(account: String, using operations: KeychainOperations = KeychainStore.operations) throws -> String? {
+    static func load(account: String, using operations: KeychainOperations = KeychainStore.operations, readOnly: Bool = false) throws -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -79,6 +80,7 @@ enum KeychainStore {
         guard let data = result as? Data, let secret = String(data: data, encoding: .utf8) else {
             throw StoreError(status: errSecDecode)
         }
+        if readOnly { return secret }
         // Upgrade older saved credentials before exposing their value. The query
         // is scoped to this service and account, so unrelated Keychain items are
         // never touched. If the item disappeared or the policy change fails,
@@ -121,6 +123,46 @@ struct RecentConnection: Codable, Identifiable, Equatable {
     var username: String
     var authMode: String
     var remember: Bool
+    var name: String?
+    var lastConnectedAt: Date?
+
+    var displayName: String {
+        if let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            return name
+        }
+        return "\(username)@\(host)" + (port == 22 ? "" : ":\(port)")
+    }
+
+    /// Compact label for tight spaces like the machine menu: the name, else the
+    /// shortest unambiguous host label. Adds the username only when another
+    /// saved login shares the host, and the full host only when abbreviations
+    /// collide.
+    func shortDisplayName(among connections: [RecentConnection]) -> String {
+        if let name = trimmedName { return name }
+        let others = connections.filter { $0.id != id && $0.trimmedName == nil }
+        for level in 0..<3 where !others.contains(where: { $0.hostLabel(level: level) == hostLabel(level: level) }) {
+            return hostLabel(level: level)
+        }
+        return hostLabel(level: 3)
+    }
+
+    private var trimmedName: String? {
+        guard let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return nil }
+        return name
+    }
+
+    /// 0: short host · 1: user@short host · 2: full host · 3: user@full host.
+    private func hostLabel(level: Int) -> String {
+        let shownHost = level < 2 ? Self.abbreviatedHost(host) : host
+        let user = level.isMultiple(of: 2) ? "" : "\(username)@"
+        return user + shownHost + (port == 22 ? "" : ":\(port)")
+    }
+
+    /// Only abbreviate DNS names; keep numeric and IPv6 addresses intact.
+    static func abbreviatedHost(_ host: String) -> String {
+        if host.contains(":") || host.allSatisfy({ $0.isNumber || $0 == "." }) { return host }
+        return String(host.split(separator: ".").first ?? Substring(host))
+    }
 
     var secretAccount: String { "connection.\(id.uuidString).secret" }
 }
@@ -133,6 +175,20 @@ enum RecentConnectionStore {
         let sourceAccount: String
         let entry: RecentConnection
         var destinationAccount: String { entry.secretAccount }
+    }
+
+    static func config(
+        for entry: RecentConnection,
+        using keychain: KeychainOperations = KeychainStore.operations
+    ) -> ConnectionConfig? {
+        guard let value = try? ConnectionSignIn.load(entry, using: keychain), value.isReady,
+              !value.secret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return value.config
+    }
+
+    static func snapshot(defaults: UserDefaults = .standard) -> [RecentConnection] {
+        guard let data = defaults.data(forKey: storageKey) else { return [] }
+        return (try? JSONDecoder().decode([RecentConnection].self, from: data)) ?? []
     }
 
     static func load(defaults: UserDefaults = .standard, using keychain: KeychainOperations = KeychainStore.operations) throws -> [RecentConnection] {
@@ -166,17 +222,19 @@ enum RecentConnectionStore {
                 guard try KeychainStore.load(account: entry.secretAccount, using: keychain) == secret else {
                     throw KeychainStore.StoreError(status: errSecDecode)
                 }
-                _ = try record(entry, in: [], defaults: defaults)
+                // Migration preserves the pending profile exactly; it is not a new connection.
+                try persist([entry], defaults: defaults)
                 try finishPendingMigration(defaults: defaults, using: keychain)
                 return [entry]
             }
         }
-        return try record(entry, in: [], defaults: defaults)
+        try persist([entry], defaults: defaults)
+        return [entry]
     }
 
     static func entry(
         host: String, port: Int, username: String, authMode: String,
-        remember: Bool, in entries: [RecentConnection]
+        remember: Bool, name: String? = nil, in entries: [RecentConnection]
     ) -> RecentConnection {
         let host = host.trimmingCharacters(in: .whitespaces)
         let username = username.trimmingCharacters(in: .whitespaces)
@@ -185,16 +243,87 @@ enum RecentConnectionStore {
         } ?? RecentConnection(host: host, port: port, username: username, authMode: authMode, remember: remember)
         entry.authMode = authMode
         entry.remember = remember
+        if let name { entry.name = name }
         return entry
     }
 
     @discardableResult
     static func record(
-        _ entry: RecentConnection, in entries: [RecentConnection], defaults: UserDefaults = .standard
+        _ entry: RecentConnection, in entries: [RecentConnection], defaults: UserDefaults = .standard,
+        now: Date = .now, stampConnected: Bool = true, updateName: Bool = true
     ) throws -> [RecentConnection] {
-        let updated = [entry] + entries.filter { $0.id != entry.id }
+        var entry = entry
+        var updated = entries
+        if let index = updated.firstIndex(where: { $0.id == entry.id }) {
+            entry.lastConnectedAt = stampConnected ? now : updated[index].lastConnectedAt
+            if !updateName { entry.name = updated[index].name }
+            updated[index] = entry
+        } else {
+            entry.lastConnectedAt = stampConnected ? now : nil
+            updated.append(entry)
+        }
         try persist(updated, defaults: defaults)
         return updated
+    }
+
+    static func move(
+        fromOffsets: IndexSet, toOffset: Int, defaults: UserDefaults = .standard,
+        using keychain: KeychainOperations = KeychainStore.operations
+    ) throws -> [RecentConnection] {
+        var entries = try load(defaults: defaults, using: keychain)
+        entries.move(fromOffsets: fromOffsets, toOffset: toOffset)
+        try persist(entries, defaults: defaults)
+        return entries
+    }
+
+    /// Pure editing state. Only Save reaches storage or Keychain; discarding this
+    /// value (including swipe dismissal) has no side effects.
+    struct ManagementDraft {
+        private(set) var connections: [RecentConnection]
+        private let originalIDs: Set<UUID>
+        private var renamedIDs: Set<UUID> = []
+
+        init(connections: [RecentConnection]) {
+            self.connections = connections
+            originalIDs = Set(connections.map(\.id))
+        }
+
+        mutating func rename(id: UUID, to name: String) {
+            guard let index = connections.firstIndex(where: { $0.id == id }) else { return }
+            connections[index].name = name
+            renamedIDs.insert(id)
+        }
+
+        mutating func move(fromOffsets: IndexSet, toOffset: Int) {
+            connections.move(fromOffsets: fromOffsets, toOffset: toOffset)
+        }
+
+        mutating func delete(at offsets: IndexSet) {
+            connections.remove(atOffsets: offsets)
+        }
+
+        @discardableResult
+        func save(defaults: UserDefaults = .standard,
+                  using keychain: KeychainOperations = KeychainStore.operations) throws -> [RecentConnection] {
+            let current = try RecentConnectionStore.load(defaults: defaults, using: keychain)
+            let deletedIDs = originalIDs.subtracting(connections.map(\.id))
+            // Merge only explicit name changes and order into fresh records. Never
+            // restore a removed profile or overwrite newer destination/auth/recency.
+            var updated = connections.compactMap { draft -> RecentConnection? in
+                guard var latest = current.first(where: { $0.id == draft.id }) else { return nil }
+                if renamedIDs.contains(draft.id) { latest.name = draft.name }
+                return latest
+            }
+            updated += current.filter { !originalIDs.contains($0.id) }
+            // Match Forget's fail-closed deletion order: a failure keeps metadata
+            // visible and the draft open for retry. Surviving secrets are untouched.
+            for entry in current where deletedIDs.contains(entry.id) {
+                try KeychainStore.delete(account: entry.secretAccount, using: keychain)
+                try KeychainStore.delete(account: entry.secretAccount + ".passphrase", using: keychain)
+            }
+            try RecentConnectionStore.persist(updated, defaults: defaults)
+            return updated
+        }
     }
 
     /// Records that a saved connection must no longer remember credentials, in place.
@@ -206,7 +335,7 @@ enum RecentConnectionStore {
     ) throws -> [RecentConnection] {
         var entries = try load(defaults: defaults, using: keychain)
         guard let index = entries.firstIndex(where: { $0.id == entry.id }) else { return entries }
-        var updated = entry
+        var updated = entries[index]
         updated.remember = false
         guard entries[index] != updated else { return entries }
         entries[index] = updated
@@ -290,7 +419,7 @@ enum RecentConnectionStore {
         }
         if !hasCommittedProfile {
             let entries = try defaults.data(forKey: storageKey).map { try JSONDecoder().decode([RecentConnection].self, from: $0) } ?? []
-            _ = try record(pending.entry, in: entries, defaults: defaults)
+            try persist(entries + [pending.entry], defaults: defaults)
         }
         try KeychainStore.delete(account: pending.sourceAccount, using: keychain)
         defaults.removeObject(forKey: pendingMigrationKey)
@@ -305,12 +434,28 @@ enum RecentConnectionStore {
 /// Host public keys are trust anchors, kept separately from login credentials.
 /// A failed Keychain read must never turn a known host into a first-use prompt.
 actor SSHHostKeyStore {
-    static let shared = SSHHostKeyStore()
+    static let shared: SSHHostKeyStore = {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-connectionReadyUITest"),
+           let run = ProcessInfo.processInfo.environment["HC_CONNECTION_READY_RUN"], UUID(uuidString: run) != nil {
+            return SSHHostKeyStore(service: "com.enchantinglabs.herdrcat.ui-test-host-keys.\(run)")
+        }
+        #endif
+        return SSHHostKeyStore()
+    }()
     private let service: String
 
     init(service: String = "com.enchantinglabs.herdrcat.ssh-host-keys") {
         self.service = service
     }
+
+    #if DEBUG
+    func removeUITestPin(host: String, port: Int) throws {
+        guard service.hasPrefix("com.enchantinglabs.herdrcat.ui-test-host-keys.") else { return }
+        let status = SecItemDelete(query(host: host, port: port) as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else { throw StoreError(status: status) }
+    }
+    #endif
 
     static func account(host: String, port: Int) -> String {
         let host = host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -375,6 +520,92 @@ actor SSHHostKeyStore {
         let status: OSStatus
         var errorDescription: String? {
             "Could not access saved SSH host keys (Keychain error \(status)). Connection stopped."
+        }
+    }
+}
+
+/// Credential decisions shared by saved-card sign-in and connection setup.
+struct ConnectionSignIn: Identifiable {
+    var entry: RecentConnection
+    var secret = ""
+    var passphrase = ""
+    var savePassphrase = false
+    var id: UUID { entry.id }
+    var isKey: Bool { entry.authMode == "privateKey" }
+    var encrypted: Bool { isKey && (try? OpenSSHEd25519.isEncrypted(pem: secret)) == true }
+    var needsSecret: Bool {
+        if !isKey { return secret.isEmpty }
+        guard !secret.isEmpty else { return true }
+        do {
+            if try !OpenSSHEd25519.isEncrypted(pem: secret) {
+                _ = try OpenSSHEd25519.parseRawPrivateKey(pem: secret)
+            }
+            _ = try OpenSSHEd25519.parsePublicKey(pem: secret)
+            return false
+        } catch { return true }
+    }
+    var needsPassphrase: Bool { encrypted && passphrase.isEmpty }
+    var isReady: Bool { !needsSecret && !needsPassphrase }
+    var config: ConnectionConfig {
+        ConnectionConfig(host: entry.host, port: entry.port, username: entry.username,
+            auth: isKey ? .privateKey(secret, passphrase: encrypted ? passphrase : nil) : .password(secret))
+    }
+
+    static func importPrivateKey(from url: URL) throws -> String {
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+        let data = try Data(contentsOf: url)
+        guard let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .ascii) else {
+            throw OpenSSHKeyError.invalidFormat("The private key file must contain UTF-8 or ASCII text.")
+        }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static func sameDestination(_ lhs: RecentConnection, _ rhs: RecentConnection) -> Bool {
+        lhs.host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            == rhs.host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            && lhs.port == rhs.port && lhs.username == rhs.username && lhs.authMode == rhs.authMode
+    }
+
+    static func load(_ entry: RecentConnection, using keychain: KeychainOperations = KeychainStore.operations, readOnly: Bool = false) throws -> Self {
+        guard entry.remember else { return Self(entry: entry) }
+        let secret = try KeychainStore.load(account: entry.secretAccount, using: keychain, readOnly: readOnly) ?? ""
+        let phrase = try KeychainStore.load(account: entry.secretAccount + ".passphrase", using: keychain, readOnly: readOnly) ?? ""
+        return Self(entry: entry, secret: secret, passphrase: phrase, savePassphrase: !phrase.isEmpty)
+    }
+
+    /// Explicit saves may clear credentials; failed connection attempts never save replacements.
+    func persist(defaults: UserDefaults = .standard, using keychain: KeychainOperations = KeychainStore.operations,
+                 connected: Bool = true, updateName: Bool = false) throws {
+        let entries = try RecentConnectionStore.load(defaults: defaults, using: keychain)
+        if let previous = entries.first(where: { $0.id == entry.id }),
+           !Self.sameDestination(previous, entry) {
+            // Remove the old destination's credentials before changing its metadata.
+            // If any write fails, no old credential can be used at the new destination.
+            try KeychainStore.delete(account: entry.secretAccount, using: keychain)
+            try KeychainStore.delete(account: entry.secretAccount + ".passphrase", using: keychain)
+            _ = try RecentConnectionStore.record(entry, in: entries, defaults: defaults, stampConnected: false, updateName: updateName)
+        }
+        if entry.remember && !secret.isEmpty {
+            try KeychainStore.save(secret, account: entry.secretAccount, using: keychain)
+        } else {
+            try KeychainStore.delete(account: entry.secretAccount, using: keychain)
+        }
+        if entry.remember && encrypted && savePassphrase && !passphrase.isEmpty {
+            try KeychainStore.save(passphrase, account: entry.secretAccount + ".passphrase", using: keychain)
+        } else {
+            try KeychainStore.delete(account: entry.secretAccount + ".passphrase", using: keychain)
+        }
+        _ = try RecentConnectionStore.record(entry,
+            in: RecentConnectionStore.load(defaults: defaults, using: keychain), defaults: defaults,
+            stampConnected: connected, updateName: updateName)
+    }
+
+    func prepareAttempt(defaults: UserDefaults = .standard, using keychain: KeychainOperations = KeychainStore.operations) throws {
+        if !entry.remember {
+            try KeychainStore.delete(account: entry.secretAccount, using: keychain)
+            try KeychainStore.delete(account: entry.secretAccount + ".passphrase", using: keychain)
+            try RecentConnectionStore.disableRemembering(entry, defaults: defaults, using: keychain)
         }
     }
 }

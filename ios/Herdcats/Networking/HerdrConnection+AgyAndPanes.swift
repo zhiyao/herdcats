@@ -16,7 +16,6 @@ extension HerdrConnection {
 #if DEBUG && targetEnvironment(simulator)
         if ScreenshotFixtures.enabled { return ScreenshotFixtures.quota }
 #endif
-        try requireHostServices()
         let output = try await runQuotaAxi(timeout: timeout, provider: provider)
         var report = try QuotaReport.decode(output.json)
         report.cliVersion = output.version
@@ -28,7 +27,6 @@ extension HerdrConnection {
         id: UUID,
         onOutput: @escaping @Sendable (String) async -> Void
     ) async throws {
-        try requireHostServices()
         guard let client else { throw HerdrError.notConnected }
         guard agyLogin == nil else {
             throw HerdrError.invalidConfiguration("An Agy sign-in is already open. Close it and try again.")
@@ -141,8 +139,7 @@ extension HerdrConnection {
     }
 
     /// Builds `tab list` arguments. Workspace IDs come from remote JSON and
-    /// must be shell-escaped before interpolation (including when routed via
-    /// `--machine` to a gateway).
+    /// must be shell-escaped before interpolation.
     static func tabListArguments(workspaceId: String) -> String {
         "tab list --workspace \(shellSafeArgument(workspaceId))"
     }
@@ -152,8 +149,7 @@ extension HerdrConnection {
     }
 
     /// Builds `pane list` arguments. Workspace IDs come from remote JSON and
-    /// must be shell-escaped before interpolation (including when routed via
-    /// `--machine` to a gateway).
+    /// must be shell-escaped before interpolation.
     static func paneListArguments(workspaceId: String) -> String {
         "pane list --workspace \(shellSafeArgument(workspaceId))"
     }
