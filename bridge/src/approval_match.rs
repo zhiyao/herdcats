@@ -402,7 +402,7 @@ pub fn pending_agy_commands(session_id: &str, history: &[Value]) -> Vec<PendingR
                 return None;
             }
             let command: String = serde_json::from_str(encoded).ok()?;
-            if command.is_empty() {
+            if command.is_empty() || command.len() > crate::approval_screen::client_limits::COMMAND_BYTES {
                 return None;
             }
             Some(PendingRequest {

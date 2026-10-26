@@ -1,6 +1,14 @@
 //! Fail-closed parsers for live approval dialogs. No hook data supplies labels.
 use crate::hooks::Agent;
 
+/// Agy wire bounds mirrored by iOS AgentPendingApproval.decode. The label cap
+/// is per UTF-8 line, not the joined scope label; wrapped scopes stay lossless.
+pub mod client_limits {
+    pub const COMMAND_BYTES: usize = 65_536;
+    pub const OPTION_LINES: usize = 8;
+    pub const OPTION_LINE_BYTES: usize = 1024;
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ApprovalDialog {
     pub agent: Agent,
@@ -419,6 +427,7 @@ fn options(lines: &[&str], agent: Agent) -> Option<(Vec<ApprovalOption>, Option<
 /// Only the observed command permission card is supported. File, URL and MCP
 /// cards must remain available through the terminal until their semantics are verified.
 pub fn parse_agy(screen: &str, command: &str) -> Option<ApprovalDialog> {
+    if command.len() > client_limits::COMMAND_BYTES { return None; }
     let rows = screen_rows(screen);
     // Conversation history can contain literal example dialogs in fenced code.
     // Such rows are content, never an active permission card.
@@ -494,7 +503,9 @@ pub fn parse_agy(screen: &str, command: &str) -> Option<ApprovalDialog> {
         let Some((mut opts, selected)) = options(&rows[question + 1..end], Agent::Agy) else {
             continue;
         };
-        if opts.len() != 4 || selected.is_none() {
+        if opts.len() != 4 || selected.is_none()
+            || opts.iter().any(|option| option.label_lines.len() > client_limits::OPTION_LINES
+                || option.label_lines.iter().any(|line| line.len() > client_limits::OPTION_LINE_BYTES)) {
             continue;
         }
         let labels: Vec<_> = opts.iter().map(|o| o.label_lines.join(" ")).collect();

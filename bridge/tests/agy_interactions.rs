@@ -306,3 +306,43 @@ fn agy_client_wire_limits_include_optional_header_and_description_bytes() {
     pending.questions[0].options[0].description.as_mut().unwrap().push('a');
     assert!(!pending.client_compatible());
 }
+
+fn scoped_agy_approval(words: &[String], review: bool) -> (String, String) {
+    let scope = format!("printf {} z", words.join(" "));
+    let command = format!("{scope} SAFE");
+    let continuation = words.iter().map(|word|format!("     {word}\n")).collect::<String>();
+    let footer = if review {"↑/↓ Navigate · tab Amend · ctrl+g edit/expand command · ctrl+r Review"} else {"↑/↓ Navigate · tab Amend · ctrl+g edit/expand command"};
+    let screen = format!("Command\nRequesting permission for:\n   {command}\n\nRun this command?\n> 1. Yes, run command\n  2. Yes, and always allow in this conversation for commands that start with 'printf\n{continuation}     z'\n  3. Yes, and always allow for commands that start with 'printf\n{continuation}     z' (Persist to settings.json)\n  4. No, cancel\n\n{footer}");
+    (command, screen)
+}
+#[test]
+fn agy_approval_limits_each_utf8_line_not_the_joined_scope_label() {
+    for review in [false, true] {
+        let (command, screen) = scoped_agy_approval(&["é".repeat(512)], review);
+        let parsed = approval_screen::parse(Agent::Agy, &screen, &command).unwrap();
+        assert_eq!(parsed.options[1].label_lines[1].len(), 1024);
+        assert!(parsed.options[1].label_lines.join(" ").len() > 1024);
+        assert_eq!(parsed.options.len(), 4);
+        let (command, screen) = scoped_agy_approval(&[format!("{}a", "é".repeat(512))], review);
+        assert!(approval_screen::parse(Agent::Agy, &screen, &command).is_none());
+    }
+}
+#[test]
+fn agy_approval_wrapped_option_accepts_eight_lines_but_not_nine() {
+    for review in [false, true] {
+        for (words, accepted) in [(6, true), (7, false)] {
+            let (command, screen) = scoped_agy_approval(&vec!["word".into(); words], review);
+            let dialog = approval_screen::parse(Agent::Agy, &screen, &command);
+            assert_eq!(dialog.is_some(), accepted);
+            if let Some(dialog) = dialog { assert_eq!(dialog.options[1].label_lines.len(), 8); }
+        }
+    }
+}
+#[test]
+fn agy_pending_command_matches_client_utf8_byte_bound() {
+    for (command, accepted) in [("é".repeat(32768), true), (format!("{}a", "é".repeat(32768)), false)] {
+        let history = vec![json!({"type":"PLANNER_RESPONSE","step_index":1,"status":"DONE","created_at":"2026-10-25T08:39:44Z",
+            "tool_calls":[{"name":"run_command","args":{"CommandLine":serde_json::to_string(&command).unwrap()}}]})];
+        assert_eq!(!herdcats_bridge::approval_match::pending_agy_commands("synthetic", &history).is_empty(), accepted);
+    }
+}

@@ -762,3 +762,50 @@ fn agy_oversized_question_cards_retain_history_and_block_inputs_without_pending(
         cleanup(&service, root);
     }
 }
+
+#[test]
+fn agy_approval_payload_bounds_preserve_supported_cards_and_terminal_fallback() {
+    // (wrapped scope words, optional full command, accepted). The valid UTF-8
+    // case has a joined label >1024 bytes; only each displayed line is capped.
+    for (words, command_override, accepted) in [
+        (vec!["é".repeat(512)], None, true),
+        (vec![format!("{}a", "é".repeat(512))], None, false),
+        (vec!["word".into(); 6], None, true),
+        (vec!["word".into(); 7], None, false),
+        (vec!["word".into()], Some(format!("printf word z {}a", "é".repeat(32761))), false),
+    ] {
+        let (mut service, root, herdr, path) = agy_idle_question_fixture("idle");
+        let scope = format!("printf {} z", words.join(" "));
+        let command = command_override.unwrap_or_else(||format!("{scope} SAFE"));
+        let continuation = words.iter().map(|word|format!("     {word}\n")).collect::<String>();
+        let screen = format!("Command\nRequesting permission for:\n   {command}\n\nRun this command?\n> 1. Yes, run command\n  2. Yes, and always allow in this conversation for commands that start with 'printf\n{continuation}     z'\n  3. Yes, and always allow for commands that start with 'printf\n{continuation}     z' (Persist to settings.json)\n  4. No, cancel\n\n↑/↓ Navigate · tab Amend · ctrl+g edit/expand command · ctrl+r Review");
+        let rows = [json!({"step_index":0,"type":"USER_INPUT","source":"USER_EXPLICIT","status":"DONE","content":"Synthetic approval bounds probe"}),
+            json!({"step_index":1,"type":"PLANNER_RESPONSE","source":"MODEL","status":"DONE","created_at":"2026-10-25T08:39:44Z",
+                "tool_calls":[{"name":"run_command","args":{"CommandLine":serde_json::to_string(&command).unwrap()}}]})];
+        fs::write(&path, rows.iter().map(|row|format!("{row}\n")).collect::<String>()).unwrap();
+        herdr.lock().unwrap().screen = screen;
+        service.include_model_control = true;
+        let mut out = Vec::new(); service.poll(&mut out).unwrap();
+        let emitted = frames(out);
+        let pending = emitted.iter().find(|f|f["event"] == "interaction.pending");
+        assert_eq!(pending.is_some(), accepted);
+        let watch = service.watch.as_ref().unwrap();
+        assert!(watch.unavailable.is_none());
+        assert!(watch.previous.iter().any(|entry|entry.id == "agy:1:tool:0"));
+        if let Some(pending) = pending {
+            assert_eq!(pending["data"]["kind"], "approval");
+            assert_eq!(pending["data"]["options"].as_array().unwrap().len(), 4);
+            assert_eq!(watch.status, "blocked");
+        } else {
+            assert!(watch.pending.is_none());
+            assert_eq!(watch.status, "unknown");
+            assert!(service.respond_interaction(&json!({"request_id":"agy:1:tool:0","option":1,"label_lines":["Yes, run command"]})).is_err());
+        }
+        let identity = watch.identity.clone().unwrap();
+        assert_eq!(service.composer_clear(&identity, "agy").unwrap_err(), "agent_busy");
+        assert_eq!(service.model_status().unwrap_err(), "agent_busy");
+        assert_eq!(service.model_set(&json!({"effort":"low","expect":{"identity":identity,"generation":service.generation}})).unwrap_err(), "agent_busy");
+        assert!(herdr.lock().unwrap().inputs.is_empty());
+        cleanup(&service, root);
+    }
+}

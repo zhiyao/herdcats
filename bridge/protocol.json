@@ -350,6 +350,14 @@
         "option_label_utf8_bytes": 1024,
         "option_description_utf8_bytes": 4096,
         "agy_behavior": "Enforced before advertising a pending card. Oversized or unsupported native requests remain in history with Terminal fallback; unresolved native calls still block composition and model changes. Fenced terminal-history examples never authorize a question response or count as a second live picker."
+      },
+      "approval_client_limits": {
+        "request_id_utf8_bytes": 264,
+        "command_utf8_bytes": 65536,
+        "options": 16,
+        "label_lines_per_option": 8,
+        "label_line_utf8_bytes": 1024,
+        "agy_behavior": "Agy has exactly four sequential choices with navigate keys and a verified selected index. Bounds are enforced before advertising. The 1024-byte bound applies to each displayed label line, not the joined scope label. Unsupported cards retain history/Terminal fallback, and unresolved native calls continue to block compose/model controls."
       }
     },
     "interaction.resolved": {
