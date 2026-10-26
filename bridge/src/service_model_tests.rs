@@ -1886,3 +1886,21 @@ fn claude_status_marks_catalog_as_maintained_fallback() {
     assert_eq!(catalog["fresh"], false);
     cleanup(&service, root);
 }
+
+#[test]
+fn codex_expired_discovery_still_serves_non_refreshing_lookups() {
+    let (mut service, root, _, _) = model_fixture_codex();
+    service = service.with_codex_executable(fake_codex(&root, &catalog_script(REFRESHED_CATALOG)));
+    let reply = model_request(&mut service, "model.status", json!({}));
+    assert_eq!(result_frame(&reply)["result"]["catalog"]["source"], "refreshed");
+    // Age the remembered discovery past its TTL.
+    service.codex_discovery.borrow_mut().as_mut().unwrap().at = Instant::now()
+        .checked_sub(Duration::from_secs(3600))
+        .unwrap();
+    let catalog = service.codex_catalog();
+    assert!(catalog.iter().any(|m| m.slug == "gpt-7-new" && m.label == "GPT-7-New"));
+    // A discovering read treats it as expired and refreshes again.
+    assert_eq!(service.codex_catalog_view(true).source, "refreshed");
+    assert!(service.codex_discovery.borrow().as_ref().unwrap().at.elapsed() < Duration::from_secs(60));
+    cleanup(&service, root);
+}

@@ -1269,8 +1269,11 @@ impl Service {
             Err(code) => CodexCatalogView { models: Vec::new(), source: "unavailable", fresh: false, fetched_at: None, cli_version: None, error: Some(error.unwrap_or(code)) },
         };
         let remembered = self.codex_discovery.borrow().as_ref().map(|d| (d.at.elapsed(), d.outcome.clone()));
+        // Expiry only permits a refresh; lookups that don't discover keep the
+        // last successful catalog so labels and efforts of rows already shown
+        // stay available to `set_codex_model`.
         if let Some((age, Ok(models))) = &remembered
-            && *age < CODEX_REFRESH_OK_TTL
+            && (!discover || *age < CODEX_REFRESH_OK_TTL)
         {
             return CodexCatalogView { models: models.clone(), source: "refreshed", fresh: true, fetched_at: None, cli_version: None, error: None };
         }
