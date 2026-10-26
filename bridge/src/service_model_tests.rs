@@ -1363,18 +1363,35 @@ fn model_set_codex_reselecting_the_current_effort_sends_nothing() {
 }
 
 #[test]
-fn model_set_claude_treats_the_active_alias_as_unchanged() {
-    // The session runs claude-opus-5-5; the checked "opus" row plus a new
-    // effort sends only /effort, never /model.
+fn model_set_claude_effort_only_sends_no_model_command() {
     let (mut service, root, herdr, _) = model_fixture_claude();
     script_model(&herdr, vec![claude_effort_screen()]);
     let reply = model_request(
         &mut service,
         "model.set",
-        json!({"model":"opus","effort":"high","expect":expect_pair("claude-opus-5-5", Some("medium"))}),
+        json!({"effort":"high","expect":expect_pair("claude-opus-5-5", Some("medium"))}),
     );
     assert_eq!(result_frame(&reply)["result"]["confirmed"], true, "{reply:?}");
     assert_eq!(herdr.lock().unwrap().inputs, vec![prompt_input("/effort high")]);
+    cleanup(&service, root);
+}
+
+#[test]
+fn model_set_claude_alias_is_sent_even_when_session_runs_a_concrete_id() {
+    // `opus` may resolve to a newer model than the running claude-opus-5-5,
+    // so selecting the alias must send /model rather than report a no-op.
+    let (mut service, root, herdr, _) = model_fixture_claude();
+    let screen = claude_model_screen("/model opus").replace("Sonnet 5.5", "Opus 5.6");
+    script_model(&herdr, vec![screen]);
+    let reply = model_request(
+        &mut service,
+        "model.set",
+        json!({"model":"opus","expect":expect_pair("claude-opus-5-5", Some("medium"))}),
+    );
+    let result = result_frame(&reply)["result"].clone();
+    assert_eq!(result["confirmed"], true, "{reply:?}");
+    assert_eq!(result["applied"]["model"]["id"], "opus");
+    assert_eq!(herdr.lock().unwrap().inputs, vec![prompt_input("/model opus")]);
     cleanup(&service, root);
 }
 

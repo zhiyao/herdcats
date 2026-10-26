@@ -1689,14 +1689,10 @@ impl Service {
         let mut applied_effort = current.as_ref().and_then(|(_, effort)| effort.clone());
         let mut error: Option<&str> = None;
         if let Some(target) = target_model
-            // A checked alias row (`opus`) is unchanged when the session runs the
-            // id it resolves to (`claude-opus-5-5`); sending /model would only
-            // rewrite the user's saved default.
-            .filter(|target| {
-                !current.as_ref().is_some_and(|(id, _)| {
-                    id == target || model_control::claude_alias_id(target).as_deref() == Some(id)
-                })
-            })
+            // Only the exact observed id is unchanged. An alias (`opus`) may
+            // now resolve to a newer model than the one running, so it is
+            // sent; no maintained alias-version table decides otherwise.
+            .filter(|target| !current.as_ref().is_some_and(|(id, _)| id == target))
         {
             let command = format!("/model {target}");
             self.composer_clear(identity, "claude")?;
