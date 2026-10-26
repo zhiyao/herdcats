@@ -267,8 +267,6 @@ struct CodexCatalogView {
     error: Option<&'static str>,
 }
 
-/// Cache older than this is refreshed through the CLI before being trusted.
-const CODEX_CACHE_MAX_AGE_SECS: i64 = 6 * 3600;
 const CODEX_REFRESH_OK_TTL: Duration = Duration::from_secs(300);
 const CODEX_REFRESH_FAIL_TTL: Duration = Duration::from_secs(60);
 const CODEX_CATALOG_MAX_BYTES: usize = 1 << 20;
@@ -1283,14 +1281,12 @@ impl Service {
         {
             return from_cache(false, Some(code));
         }
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
         match self.codex_discover() {
             Ok((version, models)) => {
-                // A cache from the same CLI version and recent enough is the
-                // CLI's own data; otherwise the live result is authoritative.
+                // The live result is authoritative and is exactly what stays
+                // remembered, so later label/effort lookups match what iOS was
+                // shown. A disk cache is only a fallback when discovery fails.
                 *self.codex_discovery.borrow_mut() = Some(CodexDiscovery { at: Instant::now(), outcome: Ok(models.clone()) });
-                let fresh_cache = parsed.is_ok() && model_control::codex_cache_fresh(&meta, Some(&version), now, CODEX_CACHE_MAX_AGE_SECS);
-                if fresh_cache { return from_cache(true, None); }
                 CodexCatalogView { models, source: "refreshed", fresh: true, fetched_at: None, cli_version: Some(version), error: None }
             }
             Err(code) => {

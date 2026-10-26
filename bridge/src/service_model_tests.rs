@@ -1904,3 +1904,17 @@ fn codex_expired_discovery_still_serves_non_refreshing_lookups() {
     assert!(service.codex_discovery.borrow().as_ref().unwrap().at.elapsed() < Duration::from_secs(60));
     cleanup(&service, root);
 }
+
+#[test]
+fn codex_remembers_exactly_the_live_catalog_it_returned() {
+    let (mut service, root, _, _) = model_fixture_codex();
+    // The disk cache differs from the live result.
+    service = service.with_codex_executable(fake_codex(&root, &catalog_script(REFRESHED_CATALOG)));
+    let reply = model_request(&mut service, "model.status", json!({}));
+    let shown: Vec<_> = result_frame(&reply)["result"]["models"].as_array().unwrap()
+        .iter().filter(|m| m["observedOnly"].is_null()).map(|m| m["id"].clone()).collect();
+    assert_eq!(shown, vec![json!("gpt-7-new")]);
+    let used: Vec<_> = service.codex_catalog().into_iter().map(|m| m.slug).collect();
+    assert_eq!(used, vec!["gpt-7-new".to_string()]);
+    cleanup(&service, root);
+}
