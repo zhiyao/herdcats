@@ -177,7 +177,7 @@ fn pi_legacy_applied_reply_must_match_the_requested_effort() {
 }
 
 fn pi_model_reply_fixture(confirmed: bool, mismatched_effort: bool) {
-    let root = PathBuf::from("/private/tmp").join(format!("pi-model-{}-{confirmed}-{mismatched_effort}", std::process::id()));
+    let root = PathBuf::from("/tmp").join(format!("pi-model-{}-{confirmed}-{mismatched_effort}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     fs::create_dir_all(root.join("sessions/project")).unwrap();
     fs::create_dir_all(root.join("herdcats")).unwrap();
@@ -262,7 +262,7 @@ fn pi_model_reply_fixture(confirmed: bool, mismatched_effort: bool) {
 
 #[test]
 fn pi_consecutive_effort_changes_publish_updates_without_reloading_watch() {
-    let root = PathBuf::from("/private/tmp").join(format!("pi-repeat-{}", std::process::id()));
+    let root = PathBuf::from("/tmp").join(format!("pi-repeat-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     fs::create_dir_all(root.join("sessions/project")).unwrap();
     fs::create_dir_all(root.join("herdcats")).unwrap();
