@@ -3,7 +3,7 @@ import SwiftUI
 
 @main
 struct HerdcatsApp: App {
-    @State private var appModel = AppModel()
+    @State private var active = ActiveMachine()
     @AppStorage(AppearancePreference.storageKey)
     private var appearanceRaw = AppearancePreference.default.rawValue
 
@@ -12,6 +12,13 @@ struct HerdcatsApp: App {
     }
 
     init() {
+#if DEBUG && targetEnvironment(simulator)
+        do {
+            try ScreenshotFixtures.seedMachinesIfRequested()
+        } catch {
+            assertionFailure("Could not seed saved machine fixtures")
+        }
+#endif
         PlainTextInput.install()
         AppTypeface.installUIKitAppearance()
     }
@@ -47,7 +54,8 @@ struct HerdcatsApp: App {
                 QuotaRetryUITestView()
             } else {
                 AppRootView()
-                    .environment(appModel)
+                    .environment(active.model)
+                    .environment(active)
                     .preferredColorScheme(appearance.colorScheme)
                     .tint(Theme.accent)
                     .foregroundStyle(Theme.text)
@@ -55,7 +63,8 @@ struct HerdcatsApp: App {
             }
 #else
             AppRootView()
-                .environment(appModel)
+                .environment(active.model)
+                .environment(active)
                 .preferredColorScheme(appearance.colorScheme)
                 .tint(Theme.accent)
                 .foregroundStyle(Theme.text)
@@ -147,7 +156,8 @@ private struct QuotaRetryUITestView: View {
 // MARK: - Root
 
 struct AppRootView: View {
-    @Environment(AppModel.self) private var appModel
+    @Environment(ActiveMachine.self) private var active
+    private var appModel: AppModel { active.model }
     @State private var hasHandedOff = false
 
     private var showsLaunchCat: Bool {

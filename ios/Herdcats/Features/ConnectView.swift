@@ -18,13 +18,19 @@ enum OnboardingRoute: Equatable {
 
 struct ConnectView: View {
     let replay: Bool
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(AppModel.self) private var appModel
     @AppStorage(OnboardingRoute.introSeenKey) private var hasSeenIntro = false
     @State private var recentConnections: [RecentConnection] = []
     @State private var selectedConnection: RecentConnection?
+    @State private var signIn: ConnectionSignIn?
+    @State private var attemptedSignIn: ConnectionSignIn?
+    @State private var attempting = false
     @State private var showingSetupGuide = false
     @State private var openFormAfterSetup = false
     @State private var route: OnboardingRoute?
+    @State private var showingManagement = false
+    @State private var managementDefaults: UserDefaults?
 
     init(replay: Bool = false) {
         self.replay = replay
@@ -49,11 +55,20 @@ struct ConnectView: View {
                     introScreen
                 case .connectionSelection:
                     header
-                    recentConnectionsSection
-                    Button(recentConnections.isEmpty ? "Connection Setup Help" : "Set Up Another Remote Machine") {
-                        showingSetupGuide = true
+                    if appModel.lastConnectNeedsSignIn, let attemptedSignIn {
+                        Button("Update sign-in") {
+                            var updated = attemptedSignIn
+                            if !appModel.lastConnectPassphraseRejected { updated.secret = "" }
+                            updated.passphrase = ""
+                            signIn = updated
+                        }
+                        .buttonStyle(.herdrSecondary())
                     }
-                    .font(.jost(.subheadline))
+                    recentConnectionsSection
+                    if recentConnections.isEmpty {
+                        Button("Connection Setup Help") { showingSetupGuide = true }
+                            .font(.jost(.subheadline))
+                    }
                 }
             }
             .padding(.horizontal, 22)
@@ -77,7 +92,27 @@ struct ConnectView: View {
             }
         }
         .onAppear {
-            recentConnections = (try? RecentConnectionStore.load()) ?? []
+            recentConnections = replay ? RecentConnectionStore.snapshot() : (try? RecentConnectionStore.load()) ?? []
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-connectionSelectionUITest") {
+                recentConnections = [
+                    RecentConnection(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!, host: "studio-mac.local", port: 22, username: "alex", authMode: "password", remember: false),
+                    RecentConnection(id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!, host: "build-server.local", port: 2222, username: "builder", authMode: "privateKey", remember: false)
+                ]
+                let defaults = UserDefaults(suiteName: "hc.connectionSelectionUITest")!
+                defaults.removePersistentDomain(forName: "hc.connectionSelectionUITest")
+                defaults.set(try? JSONEncoder().encode(recentConnections), forKey: RecentConnectionStore.storageKey)
+                managementDefaults = defaults
+                route = .connectionSelection
+            }
+            if let fixture = ConnectionUITestFixture.current, !fixture.cleanup {
+                do {
+                    try fixture.prepare()
+                    recentConnections = [fixture.entry]
+                    route = .connectionSelection
+                } catch { appModel.lastError = error.localizedDescription }
+            }
+            #endif
             if route == nil {
                 route = OnboardingRoute.initial(
                     hasSeenIntro: hasSeenIntro,
@@ -89,14 +124,46 @@ struct ConnectView: View {
                 }
             }
         }
+        .task {
+            #if DEBUG
+            if let fixture = ConnectionUITestFixture.current, fixture.cleanup {
+                do {
+                    try RecentConnectionStore.remove(fixture.entry)
+                    try await SSHHostKeyStore.shared.removeUITestPin(host: fixture.entry.host, port: fixture.entry.port)
+                    appModel.lastError = "Connection fixture cleaned up"
+                } catch { appModel.lastError = error.localizedDescription }
+            }
+            #endif
+        }
         .overlay {
             if appModel.isConnecting && selectedConnection == nil {
                 LazyCatLoadingView(message: appModel.connectionProgressMessage)
                     .background(Theme.backgroundGradient.ignoresSafeArea())
             }
         }
-        .sheet(item: $selectedConnection) { connection in
-            ConnectionSettingsView(connection: connection, isReplay: replay)
+        .sheet(item: $selectedConnection, onDismiss: {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-connectionSelectionUITest") { return }
+            #endif
+            if !replay { recentConnections = (try? RecentConnectionStore.load()) ?? recentConnections }
+        }) { connection in
+            ConnectionSettingsView(connection: connection, isReplay: replay, editing: !connection.host.isEmpty)
+        }
+        .sheet(isPresented: $showingManagement, onDismiss: {
+            recentConnections = RecentConnectionStore.snapshot(defaults: managementDefaults ?? .standard)
+        }) {
+            ManageMachinesView(connections: recentConnections, defaults: managementDefaults ?? .standard)
+        }
+        .sheet(item: $signIn) { value in
+            SavedConnectionSignInView(initial: value, replay: replay)
+        }
+        .background {
+            // Only the foreground presentation owns a host-key challenge.
+            if signIn == nil && selectedConnection == nil {
+                Color.clear.hostKeyApprovalSheet {
+                    if let attemptedSignIn { await dial(attemptedSignIn) }
+                }
+            }
         }
         .sheet(isPresented: $showingSetupGuide, onDismiss: {
             if openFormAfterSetup {
@@ -163,40 +230,77 @@ struct ConnectView: View {
         .padding(.top, 14)
     }
 
+    private func forget(_ connection: RecentConnection) {
+        guard !replay else { return }
+        do {
+            recentConnections = try RecentConnectionStore.remove(connection)
+        } catch {
+            appModel.lastError = error.localizedDescription
+            recentConnections = (try? RecentConnectionStore.load()) ?? recentConnections
+        }
+    }
+
     private var recentConnectionsSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            if !recentConnections.isEmpty {
-                Text("Recent Connections")
-                    .font(.jost(.title2, weight: .bold))
+        VStack(alignment: .leading, spacing: 14) {
+            if !recentConnections.isEmpty && !replay {
+                HStack {
+                    Spacer()
+                    Button("Edit") { showingManagement = true }
+                        .frame(minHeight: 44)
+                        .accessibilityLabel("Manage Machines")
+                }
             }
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14, alignment: .top), count: dynamicTypeSize.isAccessibilitySize ? 1 : 2), spacing: 14) {
                 ForEach(recentConnections) { connection in
-                    Button {
-                        selectedConnection = connection
-                    } label: {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Image(systemName: "server.rack")
-                                .font(.jost(.title2))
-                                .foregroundStyle(Theme.accent)
-                            Text(connection.host)
-                                .font(.jost(.headline))
-                                .lineLimit(2)
-                                .truncationMode(.middle)
-                            Text(connection.username)
-                                .font(.jost(.subheadline))
-                                .lineLimit(1)
-                            Text("Port \(connection.port)")
-                                .font(.jost(.caption))
-                                .foregroundStyle(.secondary)
+                    ZStack(alignment: .topTrailing) {
+                        Button {
+                            Task { await connectSaved(connection) }
+                        } label: {
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack(alignment: .top) {
+                                    Text(connection.shortDisplayName(among: recentConnections))
+                                        .font(.jost(.headline))
+                                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .truncationMode(.middle)
+                                    Spacer(minLength: 44)
+                                }
+                                Image(systemName: "server.rack")
+                                    .font(.jost(.title2))
+                                    .foregroundStyle(Theme.accent)
+                                Text("\(connection.username)@\(connection.host)")
+                                    .font(.jost(.subheadline))
+                                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .truncationMode(.middle)
+                                Text("Port \(String(connection.port))").font(.jost(.caption)).foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 126, alignment: .leading)
+                            .padding(16)
+                            .herdrCard()
                         }
-                        .frame(maxWidth: .infinity, minHeight: 126, alignment: .leading)
-                        .padding(16)
-                        .herdrCard()
+                        .buttonStyle(.herdrCard)
+                        .accessibilityIdentifier("connect-machine-\(connection.id.uuidString)")
+                        .accessibilityLabel("\(connection.shortDisplayName(among: recentConnections)), \(connection.username) at \(connection.host), port \(String(connection.port))")
+                        .accessibilityHint("Connects to this machine")
+                        .contextMenu {
+                            if !replay {
+                                Button("Forget Connection", systemImage: "trash", role: .destructive) { forget(connection) }
+                            }
+                        }
+                        Button { selectedConnection = connection } label: {
+                            Image(systemName: "gearshape")
+                                .font(.system(size: 20, weight: .medium))
+                                .offset(y: 6)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(4)
+                        .accessibilityLabel("Settings for \(connection.host)")
+                        .accessibilityIdentifier("settings-machine-\(connection.id.uuidString)")
                     }
-                    .buttonStyle(.herdrCard)
-                    .accessibilityLabel("\(connection.username) at \(connection.host), port \(connection.port)")
-                    .accessibilityHint("Opens connection settings")
                 }
             }
 
@@ -207,10 +311,48 @@ struct ConnectView: View {
                     recentConnections.isEmpty ? "Connect to a Remote Machine" : "New Connection",
                     systemImage: "plus"
                 )
+                .font(.jost(.headline))
+                .foregroundStyle(Theme.accent)
+                .frame(maxWidth: .infinity, minHeight: 60)
+                .padding(.horizontal, 16)
+                .background(RoundedRectangle.continuous(DesignSystem.CornerRadius.xl).fill(Theme.cardBackground))
+                .overlay {
+                    RoundedRectangle.continuous(DesignSystem.CornerRadius.xl)
+                        .strokeBorder(Theme.accent.opacity(0.65),
+                            style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [0.1, 7]))
+                        .allowsHitTesting(false)
+                }
             }
-            .buttonStyle(.herdrPrimary())
+            .buttonStyle(.herdrCard)
         }
-        .disabled(appModel.isConnecting)
+        .disabled(appModel.isConnecting || attempting)
+    }
+
+    private func connectSaved(_ connection: RecentConnection) async {
+        guard !attempting, !appModel.isConnecting else { return }
+        do {
+            if attemptedSignIn?.entry.id != connection.id {
+                appModel.lastError = nil
+                appModel.lastConnectNeedsSignIn = false
+                appModel.herdrMissingOnLastConnect = false
+                appModel.herdrSessionUnavailableOnLastConnect = false
+            }
+            let value = try ConnectionSignIn.load(connection, readOnly: replay)
+            attemptedSignIn = value
+            if value.isReady { await dial(value) } else { signIn = value }
+        } catch { appModel.lastError = error.localizedDescription }
+    }
+
+    private func dial(_ value: ConnectionSignIn) async {
+        guard !attempting, !appModel.isConnecting else { return }
+        attempting = true
+        defer { attempting = false }
+        attemptedSignIn = value
+        do {
+            if !replay { try value.prepareAttempt() }
+            await appModel.connect(config: value.config)
+            if case .connected = appModel.phase, !replay { try value.persist() }
+        } catch { appModel.lastError = error.localizedDescription }
     }
 
 }
@@ -229,7 +371,7 @@ struct MissingHerdrRecoveryCard: View {
                 "Install Herdr on the remote machine. "
                 + (inForm
                     ? "Your connection details stay in this form. Then tap Connect again."
-                    : "Open a connection form, enter your SSH details, then tap Connect.")
+                    : "Then tap your machine to connect again.")
             )
                 .font(.jost(.subheadline))
                 .foregroundStyle(.secondary)
@@ -254,7 +396,7 @@ struct SessionRecoveryCard: View {
                 + "to the default session. "
                 + (inForm
                     ? "Then tap Connect again here."
-                    : "Open a connection form, enter your SSH details, then tap Connect.")
+                    : "Then tap your machine to connect again.")
             )
                 .font(.jost(.subheadline))
                 .foregroundStyle(.secondary)
@@ -384,3 +526,318 @@ private struct WordFlowLayout: Layout {
         }
     }
 }
+
+struct SavedConnectionSignInView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(AppModel.self) private var appModel
+    @Environment(\.dismiss) private var dismiss
+    let replay: Bool
+    let requestsSecret: Bool
+    let switcher: ActiveMachine?
+    @State private var switchError: String?
+    @State private var value: ConnectionSignIn
+    @State private var attempting = false
+    @State private var editingRejectedSecret = false
+    @State private var keyImporterPresented = false
+    @State private var importError: String?
+    private var showsKeyEditor: Bool { value.isKey && (requestsSecret || editingRejectedSecret) }
+    private var needsSignIn: Bool {
+        switcher.map { $0.signInFailure?.needsSignIn ?? false } ?? appModel.lastConnectNeedsSignIn
+    }
+    private var passphraseRejected: Bool {
+        switcher.map { $0.signInFailure?.passphraseRejected ?? false } ?? appModel.lastConnectPassphraseRejected
+    }
+
+    init(initial: ConnectionSignIn, replay: Bool, switcher: ActiveMachine? = nil) {
+        self.replay = replay
+        self.switcher = switcher
+        requestsSecret = initial.needsSecret
+        _value = State(initialValue: initial)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("\(value.entry.username) at \(value.entry.host):\(String(value.entry.port))")
+                        .font(.jost(.headline))
+                        .textSelection(.enabled)
+                    if let error = switchError ?? (switcher == nil ? appModel.lastError : switcher?.pending?.lastError) {
+                        ErrorBanner(message: error)
+                    }
+                    if appModel.herdrMissingOnLastConnect {
+                        Text("Install Herdr on this machine, then try Connect again.")
+                        Link("Herdr Quick Start", destination: URL(string: "https://herdr.dev/docs/quick-start/")!)
+                    } else if appModel.herdrSessionUnavailableOnLastConnect {
+                        SessionRecoveryCard(inForm: true)
+                    }
+                    if requestsSecret || editingRejectedSecret {
+                        if value.isKey {
+                            ConnectionPrivateKeyField(key: $value.secret) { keyImporterPresented = true }
+                            if !value.secret.isEmpty && !value.needsSecret {
+                                Label(value.encrypted ? "Encrypted ed25519 key loaded" : "ed25519 key loaded", systemImage: "key")
+                                    .font(.jost(.subheadline))
+                            }
+                            if let importError { Text(importError).foregroundStyle(Theme.destructive) }
+                            if !value.secret.isEmpty && value.needsSecret {
+                                Text("Enter a valid OpenSSH ed25519 private key.").foregroundStyle(Theme.warning)
+                            }
+                        } else {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Password").font(.jost(.subheadline, weight: .medium)).foregroundStyle(.secondary)
+                                SecureField("Password", text: $value.secret).textContentType(.password)
+                            }
+                            .padding(12)
+                            .modifier(ConnectionInputSurface())
+                        }
+                    }
+                    if value.encrypted {
+                        ConnectionPassphraseField(passphrase: $value.passphrase)
+                        if value.entry.remember {
+                            Toggle("Save passphrase on this iPhone", isOn: $value.savePassphrase)
+                        }
+                    }
+                    Toggle("Save credentials on this iPhone", isOn: $value.entry.remember)
+                    if needsSignIn {
+                        Button("Update sign-in") {
+                            editingRejectedSecret = !passphraseRejected
+                            if editingRejectedSecret { value.secret = "" }
+                            value.passphrase = ""
+                        }
+                    }
+                }
+                .padding(20)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .background(Theme.backgroundGradient)
+            .navigationTitle("Sign in")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") {
+                        Task {
+                            await switcher?.cancelSwitch()
+                            dismiss()
+                        }
+                    }.disabled(attempting)
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                Button("Connect") { Task { await connect() } }
+                    .buttonStyle(.herdrPrimary())
+                    .disabled(!value.isReady || attempting)
+                    .padding(16)
+                    .background(Theme.backgroundGradient)
+            }
+        }
+        .overlay {
+            if attempting {
+                LazyCatLoadingView(message: switcher?.pending?.connectionProgressMessage ?? appModel.connectionProgressMessage)
+                    .background(Theme.backgroundGradient.ignoresSafeArea())
+            }
+        }
+        .fileImporter(isPresented: $keyImporterPresented, allowedContentTypes: [.item, .data, .plainText]) { result in
+            do {
+                value.secret = try ConnectionSignIn.importPrivateKey(from: result.get())
+                importError = nil
+            } catch {
+                if (error as? CocoaError)?.code != .userCancelled { importError = error.localizedDescription }
+            }
+        }
+        .onChange(of: value.secret) { _, _ in
+            value.passphrase = ""
+            value.savePassphrase = false
+        }
+        .background {
+            if switcher == nil {
+                Color.clear.hostKeyApprovalSheet { await connect() }
+            } else if let switcher, let pending = switcher.pending {
+                Color.clear.hostKeyApprovalSheet(onCancelled: {
+                    guard switcher.pending === pending else { return }
+                    await switcher.cancelSwitch()
+                }, onApproved: {
+                    guard switcher.pending === pending else { return }
+                    attempting = true
+                    defer { attempting = false }
+                    do { handleSwitchOutcome(try await switcher.finishSignIn(using: value, replay: replay)) }
+                    catch { switchError = error.localizedDescription }
+                })
+                .environment(pending)
+                .id(ObjectIdentifier(pending))
+            }
+        }
+        .onAppear { switcher?.pendingHostKeyOwnedByForm = true }
+        .onDisappear {
+            switcher?.pendingHostKeyOwnedByForm = false
+            if let switcher, let pending = switcher.pending {
+                Task { if switcher.pending === pending { await switcher.cancelSwitch() } }
+            }
+        }
+        .presentationDetents(dynamicTypeSize.isAccessibilitySize || showsKeyEditor ? [.large] : [.medium, .large])
+        .presentationDragIndicator(.visible)
+        .interactiveDismissDisabled(attempting)
+    }
+
+    private func connect() async {
+        guard !attempting, !appModel.isConnecting else { return }
+        attempting = true
+        defer { attempting = false }
+        do {
+            if let switcher {
+                switchError = nil
+                handleSwitchOutcome(try await switcher.signIn(using: value, replay: replay))
+            } else {
+                if !replay { try value.prepareAttempt() }
+                await appModel.connect(config: value.config)
+                guard case .connected = appModel.phase else { return }
+                if !replay { try value.persist() }
+                dismiss()
+            }
+        } catch {
+            if switcher != nil { switchError = error.localizedDescription }
+            else { appModel.lastError = error.localizedDescription }
+        }
+    }
+
+    private func handleSwitchOutcome(_ outcome: ActiveMachine.SwitchOutcome) {
+        switch outcome {
+        case .switched, .alreadyActive: dismiss()
+        case .failed:
+            if switcher?.pending?.hostKeyChallenge == nil {
+                switchError = switcher?.switchError ?? "Connection failed"
+                switcher?.switchError = nil
+            }
+        case .needsCredentials, .superseded: break
+        }
+    }
+}
+
+struct ManageMachinesView: View {
+    @Environment(\.dismiss) private var dismiss
+    let defaults: UserDefaults
+    @State private var draft: RecentConnectionStore.ManagementDraft
+    @State private var renaming: RecentConnection?
+    @State private var error: String?
+
+    init(connections: [RecentConnection], defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        _draft = State(initialValue: RecentConnectionStore.ManagementDraft(connections: connections))
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if let error { ErrorBanner(message: error) }
+                ForEach(draft.connections) { connection in
+                    Button {
+                        renaming = connection
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(connection.displayName).font(.jost(.headline))
+                            Text("\(connection.username)@\(connection.host) · Port \(String(connection.port))")
+                                .font(.jost(.subheadline)).foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("manage-machine-\(connection.id.uuidString)")
+                }
+                .onMove { draft.move(fromOffsets: $0, toOffset: $1) }
+                .onDelete { draft.delete(at: $0) }
+            }
+            .environment(\.editMode, .constant(.active))
+            .scrollContentBackground(.hidden)
+            .background(Theme.backgroundGradient)
+            .navigationTitle("Manage Machines")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark").frame(width: 48, height: 48)
+                    }
+                    .accessibilityLabel("Close")
+                    .accessibilityHint("Discard management changes")
+                    .accessibilityIdentifier("manage-machines-close")
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        do { try draft.save(defaults: defaults); dismiss() }
+                        catch { self.error = error.localizedDescription }
+                    } label: {
+                        Image(systemName: "checkmark").frame(width: 48, height: 48)
+                    }
+                    .accessibilityLabel("Save Changes")
+                    .accessibilityIdentifier("manage-machines-save")
+                }
+            }
+            .sheet(item: $renaming) { connection in
+                RenameMachineView(connection: connection) { name in
+                    draft.rename(id: connection.id, to: name)
+                }
+            }
+        }
+        .presentationDetents([.large])
+    }
+}
+
+private struct RenameMachineView: View {
+    @Environment(\.dismiss) private var dismiss
+    let onSave: (String) throws -> Void
+    @State private var name: String
+    @State private var error: String?
+
+    init(connection: RecentConnection, onSave: @escaping (String) throws -> Void) {
+        self.onSave = onSave
+        _name = State(initialValue: connection.name ?? "")
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Name (optional)", text: $name)
+                if let error { ErrorBanner(message: error) }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Theme.backgroundGradient)
+            .navigationTitle("Rename Machine")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        do { try onSave(name); dismiss() }
+                        catch { self.error = error.localizedDescription }
+                    }
+                }
+            }
+        }
+        .presentationDetents([.large])
+    }
+}
+
+#if DEBUG
+/// Opt-in simulator fixture; its profile and host trust have a unique run identity.
+private struct ConnectionUITestFixture {
+    let entry: RecentConnection
+    let key: String
+    let cleanup: Bool
+
+    static var current: Self? {
+        let process = ProcessInfo.processInfo
+        guard process.arguments.contains("-connectionReadyUITest"),
+              let run = process.environment["HC_CONNECTION_READY_RUN"], let id = UUID(uuidString: run),
+              let key = process.environment["HC_CONNECTION_READY_KEY"],
+              let port = Int(process.environment["HC_CONNECTION_READY_PORT"] ?? ""),
+              let user = process.environment["HC_CONNECTION_READY_USER"] else { return nil }
+        return Self(entry: RecentConnection(id: id, host: "127.0.0.1", port: port,
+            username: user, authMode: "privateKey", remember: true), key: key,
+            cleanup: process.arguments.contains("-connectionFixtureCleanup"))
+    }
+
+    func prepare() throws {
+        try KeychainStore.save(key, account: entry.secretAccount)
+        try RecentConnectionStore.record(entry, in: RecentConnectionStore.load(), stampConnected: false)
+    }
+}
+#endif

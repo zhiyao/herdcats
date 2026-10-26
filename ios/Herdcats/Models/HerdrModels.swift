@@ -1,14 +1,5 @@
 import Foundation
 
-/// `machine list --json` returns a bare array, unlike socket API envelopes.
-struct HerdrMachine: Codable, Hashable, Identifiable, Sendable {
-    let id: String
-    let label: String
-    let target: String
-    let session: String
-    let enabled: Bool
-}
-
 // MARK: - Response envelope
 
 /// Every `herdr` CLI command responds with a single-line JSON envelope that
@@ -452,22 +443,11 @@ enum AgentStatus: String, Hashable {
 // MARK: - Joined view model
 
 /// A workspace joined with the agents that live inside it — the unit the UI renders.
-struct SpaceMachine: Identifiable, Hashable {
-    let scope: ConnectionIdentity
-    let label: String
-    let order: Int
-    var id: String { scope.storageKey }
-}
-
 struct Space: Identifiable, Hashable {
     let workspace: Workspace
     let agents: [AgentEntry]
-    var machine: SpaceMachine? = nil
 
-    var id: String {
-        guard let machine else { return workspace.workspaceId }
-        return machine.id + "|w=" + ConnectionIdentity.encodeComponent(workspace.workspaceId)
-    }
+    var id: String { workspace.workspaceId }
 
     var label: String {
         workspace.label.isEmpty ? workspace.workspaceId : workspace.label
@@ -535,10 +515,6 @@ struct SpaceGroup: Identifiable, Hashable {
             return lhs.status.attentionPriority > rhs.status.attentionPriority
         }
 
-        if lhs.root.machine?.id != rhs.root.machine?.id {
-            return (lhs.root.machine?.order ?? 0, lhs.root.machine?.id ?? "")
-                < (rhs.root.machine?.order ?? 0, rhs.root.machine?.id ?? "")
-        }
         switch (lhs.latestStateChangeSeq, rhs.latestStateChangeSeq) {
         case let (left?, right?) where left != right:
             return left > right
@@ -561,8 +537,7 @@ struct SpaceGroup: Identifiable, Hashable {
 
         for space in spaces {
             if let repoRoot = space.workspace.worktree?.repoRoot, !repoRoot.isEmpty {
-                let key = (space.machine?.id ?? "") + "|repo=" + ConnectionIdentity.encodeComponent(repoRoot)
-                byRepo[key, default: []].append(space)
+                byRepo[repoRoot, default: []].append(space)
             } else {
                 standalone.append(SpaceGroup(root: space, worktrees: []))
             }
@@ -582,8 +557,8 @@ struct SpaceGroup: Identifiable, Hashable {
         }
 
         return (grouped + standalone).sorted {
-            ($0.root.machine?.order ?? 0, $0.root.workspace.number, $0.id)
-                < ($1.root.machine?.order ?? 0, $1.root.workspace.number, $1.id)
+            ($0.root.workspace.number, $0.id)
+                < ($1.root.workspace.number, $1.id)
         }
     }
 }

@@ -29,10 +29,14 @@ extension AppModel {
             state.watchdog.cancel()
             isCheckingHerdr = true
             connectionProgressMessage = "Checking Herdr…"
+            #if DEBUG
             print("[HC] ssh connected, checking herdr…")
+            #endif
 
             let version = try await connection.serverVersion(timeoutPolicy: .teardownSilently)
+            #if DEBUG
             print("[HC] herdr version: \(version)")
+            #endif
             if ownership.isCurrent(state.attempt) {
                 connectionProgressMessage = "Checking default session…"
             }
@@ -61,10 +65,13 @@ extension AppModel {
     func prepareConnectAttempt(
         config: ConnectionConfig
     ) async -> ConnectAttemptState? {
+        lastConnectPassphraseRejected = false
+        lastConnectNeedsSignIn = false
         hostKeyChallenge = nil
         hostKeyVerificationBlocked = false
+        #if DEBUG
         print("[HC] connect start \(config.host):\(config.port)")
-        resetMachines()
+        #endif
         activeConfig = config
         let wasOffline = isOffline
         phase = .connecting
@@ -107,7 +114,9 @@ extension AppModel {
         wasOffline: Bool,
         isCheckingHerdr: Bool
     ) {
+        #if DEBUG
         print("[HC] connect failed: \(error)")
+        #endif
         logPrivateKeyDiagnostics(config)
         switch ownership.fail(for: attempt) {
         case .stale:
@@ -126,6 +135,13 @@ extension AppModel {
             }
             if hostKeyVerificationBlocked || error is OpenSSHKeyError { cancelReconnect() }
             let message = HerdrConnection.friendlyMessage(for: error, config: config)
+            if let keyError = error as? OpenSSHKeyError {
+                switch keyError {
+                case .invalidPassphraseOrKey, .passphraseRequired: lastConnectPassphraseRejected = true
+                default: lastConnectPassphraseRejected = false
+                }
+            }
+            lastConnectNeedsSignIn = Self.needsSignIn(after: error)
             lastError = message
             herdrMissingOnLastConnect = (error as? HerdrError) == .herdrNotFound
             herdrSessionUnavailableOnLastConnect = (error as? HerdrError) == .sessionUnavailable
@@ -157,6 +173,7 @@ extension AppModel {
     }
 
     private func logPrivateKeyDiagnostics(_ config: ConnectionConfig) {
+        #if DEBUG
         if case let .privateKey(pem, _) = config.auth,
            let pubKey = try? OpenSSHEd25519.parseOpenSSHPublicKeyString(pem: pem),
            let fingerprint = try? OpenSSHEd25519.parseFingerprint(pem: pem) {
@@ -169,6 +186,14 @@ extension AppModel {
                     + "on '\(config.host)' for user '\(config.username)'."
             )
         }
+        #endif
+    }
+
+    static func needsSignIn(after error: Error) -> Bool {
+        if error is OpenSSHKeyError { return true }
+        if error is SSHHostKeyError || error is SSHHostKeyStore.StoreError || error is HerdrError { return false }
+        let description = String(describing: error).lowercased()
+        return description.contains("authentication")
     }
 
     static func connectFailureDisposition(

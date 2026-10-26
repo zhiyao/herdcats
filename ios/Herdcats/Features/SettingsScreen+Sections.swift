@@ -10,7 +10,7 @@ extension SettingsScreen {
     }
     var phoneAnswersScreenKey: PhoneAnswersScreenKey {
         PhoneAnswersScreenKey(target: appModel.connectionIdentity, generation: appModel.ownership.transportGeneration,
-            active: settingsVisible && scenePhase == .active && appModel.isSceneActive && appModel.supportsHostServices
+            active: settingsVisible && scenePhase == .active && appModel.isSceneActive
                 && AgentTimelineConnectionState(phase: appModel.phase, generation: appModel.ownership.transportGeneration).isReady)
     }
     func phoneAnswersKey(_ agent: ApprovalAgent) -> PhoneAnswersStore.Key? {
@@ -281,17 +281,10 @@ extension SettingsScreen {
 
     var connectionSection: some View {
         Section {
-            if let machine = appModel.selectedMachine {
-                Label(machine.label, systemImage: "desktopcomputer")
-                    .listRowBackground(Theme.cardBackground)
-                Text("\(machine.target) · \(machine.session)")
-                    .font(.jost(.caption))
-                    .listRowBackground(Theme.cardBackground)
-            }
-            if case let .connected(host, username) = appModel.machineCatalog.phase {
+            if case let .connected(host, username) = appModel.phase {
                 Label("\(username)@\(host)", systemImage: "link")
                     .listRowBackground(Theme.cardBackground)
-            } else if case let .offline(host, username) = appModel.machineCatalog.phase {
+            } else if case let .offline(host, username) = appModel.phase {
                 Label("\(username)@\(host) (offline)", systemImage: "link.badge.plus")
                     .listRowBackground(Theme.cardBackground)
             }
@@ -302,7 +295,9 @@ extension SettingsScreen {
             }
 
             Button(role: .destructive) {
-                Task { await appModel.disconnect() }
+                Task {
+                    if let activeMachine { await activeMachine.disconnect() } else { await appModel.disconnect() }
+                }
             } label: {
                 Label("Disconnect", systemImage: "xmark.circle")
             }

@@ -21,12 +21,10 @@ enum AgentBridgeError: Error, LocalizedError, Equatable, Sendable {
     case closed, timeout
     case unavailable(String)
     case questionFailure(code: String, stepsSent: Int?)
-    case routedHostUnsupported
     var code: String {
         switch self {
         case .unavailable(let code): return code
         case .questionFailure(let code, _): return code
-        case .routedHostUnsupported: return "routed_host_unsupported"
         case .timeout: return "bridge_timeout"
         case .protocolMismatch: return "protocol_mismatch"
         default: return "bridge_unavailable"
@@ -67,6 +65,7 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
     var questions: Bool? = nil
     var approvals: Bool? = nil
     var recordContent: Bool? = nil
+    var modelControl: Bool = false
 
     init(
         claudeTimeline: Bool,
@@ -75,9 +74,11 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
         codexDaemonStop: Bool? = false,
         recordContent: Bool? = nil,
         approvals: Bool? = nil,
-        questions: Bool? = nil
+        questions: Bool? = nil,
+        modelControl: Bool = false
     ) {
         self.claudeTimeline = claudeTimeline
+        self.modelControl = modelControl
         self.codexTimeline = codexTimeline
         self.codexDaemonConfig = codexDaemonConfig
         self.codexDaemonStop = codexDaemonStop
@@ -88,6 +89,7 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.modelControl = try container.decodeIfPresent(Bool.self, forKey: .modelControl) ?? false
         self.claudeTimeline = try container.decode(Bool.self, forKey: .claudeTimeline)
         self.codexTimeline = try container.decodeIfPresent(Bool.self, forKey: .codexTimeline) ?? false
         self.codexDaemonConfig = try container.decodeIfPresent(Bool.self, forKey: .codexDaemonConfig) ?? false
@@ -234,6 +236,12 @@ struct AgentBridgePayload: Codable, Sendable {
     var step: AgentQuestionStep?
     var fresh: Bool?
     var countdown: String?
+    var model: AgentModelOption?
+    var effort: String?
+    var models: [AgentModelOption]?
+    var efforts: [AgentEffortOption]?
+    var applied: AgentModelPair?
+    var error: String?
 }
 struct AgentBridgeRemoteError: Codable, Sendable {
     let code: String
@@ -259,21 +267,41 @@ struct AgentBridgeFramer {
     init(limit: Int = 1024 * 1024) { self.limit = limit }
     mutating func append(_ chunk: Data) throws -> [AgentBridgeFrame] {
         var frames: [AgentBridgeFrame] = []
-        // Bound the partial line even when an SSH chunk contains many frames.
-        for byte in chunk {
-            if byte == 10 {
-                do { frames.append(try AgentBridgeFrame.decode(bytes)) } catch {
+        var cursor = chunk.startIndex
+
+        while cursor < chunk.endIndex {
+            if let newlineIndex = chunk[cursor...].firstIndex(of: 0x0A) {
+                let segment = chunk[cursor..<newlineIndex]
+                cursor = chunk.index(after: newlineIndex)
+
+                if bytes.count + segment.count > limit {
+                    throw AgentBridgeError.frameTooLarge
+                }
+
+                bytes.append(segment)
+                do {
+                    frames.append(try AgentBridgeFrame.decode(bytes))
+                } catch {
+                    bytes.removeAll(keepingCapacity: true)
                     throw AgentBridgeError.invalidFrame
                 }
                 bytes.removeAll(keepingCapacity: true)
             } else {
-                guard bytes.count < limit else { throw AgentBridgeError.frameTooLarge }
-                bytes.append(byte)
+                let segment = chunk[cursor...]
+                cursor = chunk.endIndex
+
+                if bytes.count + segment.count > limit {
+                    throw AgentBridgeError.frameTooLarge
+                }
+
+                bytes.append(segment)
             }
         }
         return frames
     }
-    func finish() throws { if !bytes.isEmpty { throw AgentBridgeError.incompleteFrame } }
+    func finish() throws {
+        if !bytes.isEmpty { throw AgentBridgeError.incompleteFrame }
+    }
 }
 
 /// Readiness plus transport identity; "connecting" must not share the stream
@@ -546,7 +574,6 @@ enum TimelineHistoryDiagnostics {
         case .incompleteFrame: return "incomplete_frame"
         case .protocolMismatch: return "protocol_mismatch"
         case .sequenceGap: return "sequence_gap"
-        case .routedHostUnsupported: return "routed_host_unsupported"
         case .unavailable(let code), .questionFailure(let code, _):
             let safe = code.prefix(64).filter { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_") }
             return "remote_\(safe)"
@@ -554,93 +581,60 @@ enum TimelineHistoryDiagnostics {
     }
 }
 
-struct TimelineDiffLine: Identifiable, Sendable {
-    enum Kind: Sendable { case context, added, removed, omitted }
-    let id: Int
-    let kind: Kind
-    let text: String
+struct AgentEffortOption: Codable, Equatable, Identifiable, Sendable {
+    let id: String
+    let label: String
 }
 
-/// Session edit excerpts, independent of whatever the working file contains now.
-struct TimelineFileChange: Identifiable, Sendable {
+/// Status replies carry an object; model.updated carries just the model id.
+struct AgentModelOption: Codable, Equatable, Identifiable, Sendable {
     let id: String
-    let path: String
-    let writtenContent: Bool
-    let previewShortened: Bool
-    let replacesAll: Bool
-    let lines: [TimelineDiffLine]
-    var additions: Int { lines.filter { $0.kind == .added }.count }
-    var deletions: Int { lines.filter { $0.kind == .removed }.count }
-    var displayPath: String { path.split(separator: "/").suffix(2).joined(separator: "/") }
-    var previewLines: [TimelineDiffLine] {
-        if writtenContent { return lines }
-        var result: [TimelineDiffLine] = []
-        var index = 0
-        while index < lines.count {
-            if lines[index].kind != .context { result.append(lines[index]); index += 1; continue }
-            let start = index
-            while index < lines.count && lines[index].kind == .context { index += 1 }
-            if index - start > 6 {
-                result.append(contentsOf: lines[start..<start + 3])
-                result.append(TimelineDiffLine(id: -start - 1, kind: .omitted, text: "\(index - start - 6) unchanged lines"))
-                result.append(contentsOf: lines[index - 3..<index])
-            } else { result.append(contentsOf: lines[start..<index]) }
-        }
-        return result
-    }
+    let label: String
+    var efforts: [AgentEffortOption] = []
+    var current: Bool? = nil
 
-    static func from(_ entry: AgentTimelineEntry, inputData: Data? = nil) -> [Self] {
-        guard entry.kind == "tool", entry.status == "completed",
-              let data = inputData ?? entry.details?.data(using: .utf8),
-              let input = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let path = (input["file_path"] ?? input["path"]) as? String, !path.isEmpty else { return [] }
-        let name = entry.toolName?.lowercased()
-        if name == "write", let content = input["content"] as? String {
-            let rows = splitLines(content)
-            return [Self(id: "\(entry.id):diff:0", path: path, writtenContent: true, previewShortened: rows.count > 2048, replacesAll: false,
-                         lines: rows.prefix(2048).enumerated().map { TimelineDiffLine(id: $0.offset, kind: .context, text: $0.element) })]
-        }
-        guard name == "edit" || name == "multiedit" else { return [] }
-        let edits = name == "multiedit" ? (input["edits"] as? [[String: Any]] ?? []) : [input]
-        return edits.enumerated().compactMap { index, edit in
-            guard let old = edit["old_string"] as? String, let new = edit["new_string"] as? String,
-                  old != new else { return nil }
-            let before = splitLines(old), after = splitLines(new)
-            // Bound diff computation even if future helpers send larger inputs.
-            guard before.count <= 2048, after.count <= 2048,
-                  old.utf8.count + new.utf8.count <= 128 * 1024 else { return nil }
-            return Self(id: "\(entry.id):diff:\(index)", path: path, writtenContent: false, previewShortened: false,
-                        replacesAll: edit["replace_all"] as? Bool == true, lines: diff(before: before, after: after))
+    init(id: String, label: String, efforts: [AgentEffortOption] = [], current: Bool? = nil) {
+        self.id = id
+        self.label = label
+        self.efforts = efforts
+        self.current = current
+    }
+    init(from decoder: Decoder) throws {
+        if let id = try? decoder.singleValueContainer().decode(String.self) {
+            self.init(id: id, label: Self.label(for: id))
+        } else {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            self.init(id: try c.decode(String.self, forKey: .id),
+                label: try c.decode(String.self, forKey: .label),
+                efforts: try c.decodeIfPresent([AgentEffortOption].self, forKey: .efforts) ?? [],
+                current: try c.decodeIfPresent(Bool.self, forKey: .current))
         }
     }
-
-    private static func splitLines(_ text: String) -> [String] {
-        guard !text.isEmpty else { return [] }
-        var rows = text.components(separatedBy: "\n")
-        if rows.last == "" { rows.removeLast() }
-        return rows
+    static func label(for id: String) -> String {
+        let parts = id.replacingOccurrences(of: "claude-", with: "").split(separator: "-")
+        if let tier = parts.first, ["opus", "sonnet", "haiku", "fable"].contains(String(tier)) {
+            let version = parts.dropFirst().prefix(while: { part in
+                part.count <= 2 && part.allSatisfy { $0.isASCII && $0.isNumber }
+            }).joined(separator: ".")
+            return tier.capitalized + (version.isEmpty ? "" : " " + version)
+        }
+        return id
     }
+}
 
-    private static func diff(before: [String], after: [String]) -> [TimelineDiffLine] {
-        var removed: Set<Int> = [], added: Set<Int> = []
-        for change in after.difference(from: before) {
-            switch change {
-            case .remove(let offset, _, _): removed.insert(offset)
-            case .insert(let offset, _, _): added.insert(offset)
-            }
-        }
-        var result: [TimelineDiffLine] = []
-        var old = 0, new = 0
-        func append(_ kind: TimelineDiffLine.Kind, _ text: String) {
-            result.append(TimelineDiffLine(id: result.count, kind: kind, text: text))
-        }
-        while old < before.count || new < after.count {
-            if old < before.count && removed.contains(old) { append(.removed, before[old]); old += 1 }
-            else if new < after.count && added.contains(new) { append(.added, after[new]); new += 1 }
-            else if old < before.count && new < after.count { append(.context, after[new]); old += 1; new += 1 }
-            else if old < before.count { append(.removed, before[old]); old += 1 }
-            else { append(.added, after[new]); new += 1 }
-        }
-        return result
+struct AgentModelPair: Codable, Equatable, Sendable {
+    var model: AgentModelOption?
+    var effort: String?
+}
+
+/// Nulls must be encoded: the bridge requires both keys even before the first turn.
+struct AgentModelExpectation: Encodable, Sendable {
+    let model: String?
+    let effort: String?
+    enum CodingKeys: String, CodingKey { case model, effort }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(model, forKey: .model)
+        try c.encode(effort, forKey: .effort)
     }
 }

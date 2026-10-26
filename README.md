@@ -106,6 +106,11 @@ and logo assets with `python3 ios/scripts/generate_logo.py`.
 5. Compare the host-key fingerprint shown by the app with the server's
    fingerprint through a trusted channel, then approve it.
 
+Add each machine as its own SSH connection, then switch from the menu under the
+Herdcats logo. Give connections optional names and tap **Edit** in the connection
+list to drag them into your preferred order. Auto-connect uses the last-used
+machine. Herdcats no longer uses Herdr's saved machines.
+
 Remembered credentials and approved host keys stay in the iOS Keychain. A
 changed host key blocks connection, including automatic reconnects. The app shows
 both fingerprints and lets you replace the approved key after explicitly confirming
@@ -201,8 +206,7 @@ hosted independently of the iPhone app.
 - Uploaded photos remain under `~/.cache/herdrcat/attachments` on the connected
   machine until you remove them; the app does not automatically delete them.
   The legacy `herdrcat` cache name is retained for compatibility with existing uploads.
-- Saved-machine routing uses the gateway machine's SSH configuration. Quota and
-  photos are available only on the directly connected host.
+- Each machine must be reachable over SSH from your iPhone.
 
 ## Contributing
 

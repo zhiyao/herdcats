@@ -181,10 +181,9 @@ struct PaneLiveShells: Sendable {
 }
 
 extension HerdrConnection {
-    /// Probe only shell I/O, before any mutation. Saved-machine routing stays
-    /// on the established CLI path; no direct-host stream may bypass its route.
+    /// Probe only shell I/O, before any mutation.
     func prepareLiveShells(session: PaneLiveInputSession) async {
-        guard route == nil, let client,
+        guard let client,
               liveShellUnavailableGeneration != session.generation else { return }
         let pair = PaneLiveShells(session: session, input: PanePersistentShell(), output: PanePersistentShell())
         preparingLiveShells[session.paneId] = session.streamID
