@@ -21,8 +21,10 @@ struct AgentBridgeParams: Encodable, Sendable {
     var model: String? = nil
     var effort: String? = nil
     var expect: AgentModelExpectation? = nil
+    var text: String? = nil
+    var value: AgentPiDialogValue? = nil
 }
-enum AgentBridgeMethod: String, Sendable { case initialize, watch, history, content; case respond = "interaction.respond"; case modelStatus = "model.status", modelSet = "model.set" }
+enum AgentBridgeMethod: String, Sendable { case initialize, watch, history, content; case respond = "interaction.respond"; case modelStatus = "model.status", modelSet = "model.set"; case piPrompt = "pi.prompt", piCancel = "pi.cancel", piDialogRespond = "pi.dialog.respond" }
 
 /// One non-PTY channel, with bounded requests and guarded approval responses.
 /// Cancellation closes this channel explicitly: canceling an async iterator
@@ -81,6 +83,8 @@ actor AgentBridgeClient {
             guard handshake.capabilities?.codexTimeline == true else {
                 throw AgentBridgeError.unavailable(Self.unavailableCodeForCodex(handshake: handshake))
             }
+        } else if agent == "pi" {
+            guard handshake.capabilities?.pi == true else { throw AgentBridgeError.unavailable("pi_bridge_required") }
         } else if TimelineAgentAvailability.canonical(agent) == "antigravity_cli" {
             guard handshake.capabilities?.agy == true else {
                 throw AgentBridgeError.unavailable("agy_bridge_required")
@@ -98,6 +102,14 @@ actor AgentBridgeClient {
         try Task.checkCancellation()
     }
 
+    func piAction(_ method: AgentBridgeMethod, identity: AgentTimelineIdentity, generation: UInt64,
+        text: String? = nil, requestId: String? = nil, value: AgentPiDialogValue? = nil) async throws -> AgentBridgePayload {
+        guard capabilities?.pi == true, identity.agent == "pi",
+              [.piPrompt, .piCancel, .piDialogRespond].contains(method) else { throw AgentBridgeError.unavailable("unsupported_capability") }
+        return try await request(method, params: AgentBridgeParams(paneId: identity.paneId, requestId: requestId,
+            expect: AgentModelExpectation(model: nil, effort: nil, identity: identity, generation: generation), text: text, value: value))
+    }
+
     func modelStatus() async throws -> AgentBridgePayload {
         guard capabilities?.modelControl == true else { throw AgentBridgeError.unavailable("unsupported_capability") }
         // Agy discovery shares a six-second version/catalog budget, plus
@@ -107,7 +119,7 @@ actor AgentBridgeClient {
     func setModel(model: String?, effort: String?, expect: AgentModelExpectation) async throws -> AgentBridgePayload {
         guard capabilities?.modelControl == true else { throw AgentBridgeError.unavailable("unsupported_capability") }
         // Claude confirms two commands separately; each can take four seconds.
-        return try await request(.modelSet, params: AgentBridgeParams(model: model, effort: effort, expect: expect), timeout: 20)
+        return try await request(.modelSet, params: AgentBridgeParams(paneId: expect.identity?.paneId, model: model, effort: effort, expect: expect), timeout: 20)
     }
 
     func respond(requestId: String, option: UInt32, labelLines: [String]) async throws -> AgentApprovalResponse {

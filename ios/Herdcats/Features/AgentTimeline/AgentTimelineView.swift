@@ -108,7 +108,7 @@ struct AgentTimelineView: View {
     }
 
     var conversationItems: [TimelineConversationItem] {
-        TimelineConversationItem.group(timeline.entries, showsRecords: agent == "codex")
+        TimelineConversationItem.group(timeline.entries, showsRecords: agent == "codex" || agent == "pi")
     }
 
     var connectionState: AgentTimelineConnectionState {
@@ -205,6 +205,15 @@ struct AgentTimelineView: View {
                                 Text("Source update delayed; showing verified history.")
                                     .font(.jost(.caption)).foregroundStyle(Theme.textMuted)
                             }
+                            if let dialog = timeline.pendingPiDialog {
+                                PiDialogCard(dialog: dialog, isSending: timeline.isPiActionPending,
+                                    onSubmit: { answer in Task { await timeline.respondPiDialog(dialog, value: answer) } },
+                                    onUseTerminal: onUseTerminal)
+                                    .id("\(contentScope):pi-dialog:\(dialog.requestId)")
+                            }
+                            if let message = timeline.piActionError {
+                                Text(message).font(.jost(.caption)).foregroundStyle(Theme.textMuted)
+                            }
                             if showsApproval, let pending = timeline.pendingApproval {
                                 ApprovalCard(pending: pending, response: approvalResponse) { option in
                                     respondToApproval(pending, option: option)
@@ -268,6 +277,14 @@ struct AgentTimelineView: View {
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
                     questionKeyboardFrame = .null
+                }
+                .onChange(of: timeline.pendingPiDialog?.requestId, initial: true) { _, requestId in
+                    guard requestId != nil else { return }
+                    following = true
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    withAnimation(reduceMotion ? nil : .smooth(duration: 0.4)) {
+                        proxy.scrollTo("timeline-bottom", anchor: .bottom)
+                    }
                 }
                 .onChange(of: timeline.pendingApproval?.requestId, initial: true) { _, requestId in
                     guard requestId != nil, showsApproval else { return }
@@ -333,7 +350,7 @@ struct AgentTimelineView: View {
                         }
                 )
                 .onChange(of: timeline.revision) { _, _ in
-                    guard following, timeline.pendingQuestion == nil, (!conversationItems.isEmpty || showsApproval) else { return }
+                    guard following, timeline.pendingQuestion == nil, timeline.pendingPiDialog == nil, (!conversationItems.isEmpty || showsApproval) else { return }
                     proxy.scrollTo("timeline-bottom", anchor: .bottom)
                 }
                 .onChange(of: timeline.identity) { _, _ in
@@ -579,4 +596,69 @@ struct AgentTimelineView: View {
         }
     }
 
+}
+
+
+/// Render only Pi's standard dialog contract. Option strings are sent back
+/// verbatim, including permission scopes supplied by the originating extension.
+private struct PiDialogCard: View {
+    let dialog: AgentPiDialog
+    let isSending: Bool
+    let onSubmit: (AgentPiDialogValue) -> Void
+    let onUseTerminal: () -> Void
+    @State private var text = ""
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(verbatim: dialog.title)
+                    .font(.jost(.title3, weight: .semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                if isSending { ProgressView().accessibilityLabel("Sending answer") }
+            }
+            if let message = dialog.message, !message.isEmpty {
+                Text(verbatim: message)
+                    .font(.jost(.subheadline))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+            switch dialog.kind {
+            case "confirm":
+                VStack(spacing: 10) {
+                    option("Yes") { onSubmit(.boolean(true)) }.buttonStyle(.herdrPrimary())
+                    option("No") { onSubmit(.boolean(false)) }.buttonStyle(ApprovalOptionButtonStyle())
+                }
+            case "select":
+                VStack(spacing: 10) {
+                    ForEach(Array(dialog.options.enumerated()), id: \.element) { index, label in
+                        if index == 0 {
+                            option(label) { onSubmit(.text(label)) }.buttonStyle(.herdrPrimary())
+                        } else {
+                            option(label) { onSubmit(.text(label)) }.buttonStyle(ApprovalOptionButtonStyle())
+                        }
+                    }
+                }
+            case "input":
+                TextField("Answer", text: $text, axis: .vertical)
+                    .lineLimit(1...6)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("timeline-pi-dialog-answer")
+                Button("Submit") { onSubmit(.text(text)) }.buttonStyle(.herdrPrimary)
+            default:
+                Text("This custom Pi dialog needs Terminal.").font(.jost(.body))
+                Button("Use Terminal", action: onUseTerminal).buttonStyle(.herdrSecondary)
+            }
+        }
+        .padding(16)
+        .foregroundStyle(Theme.text)
+        .herdrCard()
+        .disabled(isSending)
+        .onAppear { text = dialog.value ?? "" }
+        .accessibilityIdentifier("timeline-pi-dialog")
+    }
+    private func option(_ label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(verbatim: label).frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
 }

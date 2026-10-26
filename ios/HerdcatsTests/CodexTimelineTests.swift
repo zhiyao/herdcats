@@ -141,7 +141,7 @@ struct CodexTimelineGatingTests {
     @Test func supportsCodexAndClaude() {
         #expect(TimelineAgentAvailability.supports(agent: "claude"))
         #expect(TimelineAgentAvailability.supports(agent: "codex"))
-        #expect(!TimelineAgentAvailability.supports(agent: "pi"))
+        #expect(TimelineAgentAvailability.supports(agent: "pi"))
         #expect(!TimelineAgentAvailability.supports(agent: "cursor"))
         #expect(!TimelineAgentAvailability.supports(agent: nil))
     }

@@ -12,6 +12,10 @@ import Observation
     let modelControl = AgentModelControlState()
     private(set) var pendingQuestion: AgentPendingQuestion?
     private(set) var pendingApproval: AgentPendingApproval?
+    private(set) var pendingPiDialog: AgentPiDialog?
+    private var piClient: AgentBridgeClient?
+    private(set) var isPiActionPending = false
+    var piActionError: String?
     private(set) var entries: [AgentTimelineEntry] = []
     private(set) var identity: AgentTimelineIdentity?
     private(set) var phase: Phase = .loading
@@ -33,6 +37,7 @@ import Observation
     private var evictedIds: Set<String> = []
 
     func begin(owner: UUID, paneId: String) {
+        piClient = nil
         modelControl.connect(nil, supported: false)
         self.owner = owner
         self.paneId = paneId
@@ -119,6 +124,14 @@ import Observation
             droppedEntries = data.droppedEntries ?? droppedEntries
             delayed = data.delayed ?? delayed
             revision += 1
+        case "pi.dialog":
+            guard phase == .ready, data.identity == identity, data.generation == generation else { throw AgentBridgeError.identityMismatch }
+            pendingPiDialog = try AgentPiDialog.decode(data)
+            piActionError = nil
+            revision += 1
+        case "pi.dialog.cleared":
+            guard phase == .ready, data.identity == identity, data.generation == generation else { throw AgentBridgeError.identityMismatch }
+            if data.requestId == pendingPiDialog?.requestId { pendingPiDialog = nil; revision += 1 }
         case "model.updated":
             guard phase == .ready, data.identity == identity, data.generation == generation else {
                 throw AgentBridgeError.identityMismatch
@@ -171,6 +184,7 @@ import Observation
     }
     func end(owner: UUID, error: AgentBridgeError) {
         guard self.owner == owner else { return }
+        piClient = nil
         modelControl.connect(nil, supported: false)
         self.owner = nil
         clear()
@@ -180,6 +194,9 @@ import Observation
         modelControl.reset()
         pendingQuestion = nil
         pendingApproval = nil
+        pendingPiDialog = nil
+        isPiActionPending = false
+        piActionError = nil
         evictedIds.removeAll()
         entries = []
         identity = nil
@@ -192,6 +209,37 @@ import Observation
         delayed = false
         codexDaemon = nil
         revision += 1
+    }
+
+    func connectPi(_ client: AgentBridgeClient?) { piClient = client }
+    var canSubmitPiPrompt: Bool { identity?.agent == "pi" && phase == .ready && piClient != nil && !isPiActionPending && pendingPiDialog == nil && ["idle", "done"].contains(agentStatus ?? "") }
+    var canCancelPi: Bool { identity?.agent == "pi" && phase == .ready && piClient != nil && !isPiActionPending && agentStatus == "working" && pendingPiDialog == nil }
+    func submitPiPrompt(_ text: String) async throws {
+        guard canSubmitPiPrompt, let client = piClient, let identity, let generation else { throw AgentBridgeError.unavailable("agent_busy") }
+        let reply = try await client.piAction(.piPrompt, identity: identity, generation: generation, text: text)
+        guard reply.confirmed == true else { throw AgentBridgeError.unavailable("delivery_unconfirmed") }
+    }
+    func cancelPi() async { await performPiAction(.piCancel) }
+    func respondPiDialog(_ dialog: AgentPiDialog, value: AgentPiDialogValue) async {
+        guard pendingPiDialog == dialog, dialog.accepts(value) else { return }
+        await performPiAction(.piDialogRespond, dialog: dialog, value: value)
+    }
+    private func performPiAction(_ method: AgentBridgeMethod, dialog: AgentPiDialog? = nil, value: AgentPiDialogValue? = nil) async {
+        guard !isPiActionPending, phase == .ready, let client = piClient, let identity, let generation, let owner else { return }
+        guard method != .piCancel || canCancelPi else { return }
+        isPiActionPending = true
+        piActionError = nil
+        do {
+            let reply = try await client.piAction(method, identity: identity, generation: generation, requestId: dialog?.requestId, value: value)
+            guard self.owner == owner, self.identity == identity, self.generation == generation else { return }
+            guard reply.confirmed == true, dialog == nil || reply.requestId == dialog?.requestId else { throw AgentBridgeError.invalidFrame }
+        } catch {
+            guard self.owner == owner, self.identity == identity, self.generation == generation else { return }
+            piActionError = (error as? AgentBridgeError)?.code == "stale"
+                ? "This Pi session changed. Check the current request and try again."
+                : "Could not confirm delivery. Check Terminal before trying again."
+        }
+        if self.owner == owner, self.identity == identity, self.generation == generation { isPiActionPending = false }
     }
 
     /// Older bridges omit `codex_daemon`; future values the app does not know
@@ -381,8 +429,8 @@ import Observation
         do {
             let payload = try await client.setModel(model: model, effort: effort,
                 expect: AgentModelExpectation(model: pair.model?.id, effort: pair.effort,
-                    identity: TimelineAgentAvailability.canonical(identity.agent) == "antigravity_cli" ? identity : nil,
-                    generation: TimelineAgentAvailability.canonical(identity.agent) == "antigravity_cli" ? generation : nil))
+                    identity: ["antigravity_cli", "pi"].contains(TimelineAgentAvailability.canonical(identity.agent) ?? "") ? identity : nil,
+                    generation: ["antigravity_cli", "pi"].contains(TimelineAgentAvailability.canonical(identity.agent) ?? "") ? generation : nil))
             guard self.scope == scope, self.identity == identity, self.generation == generation else { return }
             try apply(payload)
         } catch {

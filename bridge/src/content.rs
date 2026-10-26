@@ -2,7 +2,7 @@ use crate::{
     Result,
     claude::{Entry, Transcript, entry_id, is_routine_metadata},
 };
-use serde_json::value::RawValue;
+use serde_json::{Value, value::RawValue};
 use std::collections::BTreeMap;
 fn object(raw: &str) -> Option<BTreeMap<String, &RawValue>> {
     serde_json::from_str(raw).ok()
@@ -198,6 +198,36 @@ impl Transcript {
             }
         }
         self.content_bubble(&mut context, &kind, raw.get(), false)
+    }
+    pub fn preserve_pi_record(&mut self, part: &[u8], session: &str, offset: usize) -> Result<()> {
+        if !crate::resolver::session_id(session) { return Err("session_mismatch"); }
+        let raw: &RawValue = serde_json::from_slice(part).map_err(|_| "invalid_transcript")?;
+        let fields = object(raw.get()).unwrap_or_default();
+        if string(fields.get("type")).as_deref() != Some("message") { return Ok(()); }
+        let message = fields.get("message").and_then(|m|object(m.get())).ok_or("invalid_transcript")?;
+        let source_id = string(fields.get("id")).filter(|id|!id.is_empty()&&id.len()<=256).ok_or("invalid_transcript")?;
+        let role = string(message.get("role")).ok_or("invalid_transcript")?;
+        let reference=format!("source:{offset}:{}",part.len());
+        let mut keys=Vec::new();
+        if role=="toolResult" {
+            if let Some(id)=message.get("toolCallId").and_then(|v|string(Some(v))) { keys.push(entry_id("pi:tool",&id)?); }
+        } else {
+            keys.push(entry_id("pi",&source_id)?);
+            if let Some(content)=message.get("content").and_then(|v|serde_json::from_str::<Vec<&RawValue>>(v.get()).ok()) {
+                for block in content {
+                    let value:Value=serde_json::from_str(block.get()).map_err(|_|"invalid_transcript")?;
+                    if value["type"]=="toolCall" {
+                        if let Some(id)=value["id"].as_str() { keys.push(entry_id("pi:tool",id)?); }
+                    }
+                }
+            }
+        }
+        for key in keys { self.attach_record(&key,&reference); }
+        let mut context=RecordContext{part,offset,reference,role:(role=="user"||role=="assistant").then_some(role),counter:0};
+        if let Some(content)=message.get("content").and_then(|v|serde_json::from_str::<Vec<&RawValue>>(v.get()).ok()) {
+            for block in content { self.preserve_block(block,&mut context,0)?; }
+        }
+        Ok(())
     }
 }
 #[cfg(test)]

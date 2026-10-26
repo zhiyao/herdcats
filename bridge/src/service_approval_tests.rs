@@ -179,6 +179,7 @@ fn test_pending(request_id: &str) -> PendingApproval {
             terminal_id: "terminal-one".into(),
             agent: "claude".into(),
             native_session_id: SESSION.into(),
+            native_instance_id: None,
         },
         generation: 1,
         request: PendingRequest {
@@ -223,6 +224,8 @@ fn test_watch() -> Watch {
         model_stamp: None,
         last_model: None,
         model_override: None,
+        pi_state: None,
+        pi_dialog: None,
     }
 }
 

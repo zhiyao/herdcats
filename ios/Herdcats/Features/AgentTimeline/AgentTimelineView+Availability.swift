@@ -406,6 +406,8 @@ extension AgentTimelineView {
         let isCwdMismatch = code == "session_cwd_mismatch"
         let isMissing = code == "helper_missing"
         if isNeedsUpgrade { return "Upgrade Herdcats Bridge" }
+        if agent == "pi" && code == "pi_extension_unavailable" { return "Load Herdcats Pi extension" }
+        if agent == "pi" && code == "unsafe_transcript_path" { return "Session history could not be read safely" }
         if isCodex && isNoSession { return "Waiting for Codex session" }
         if isCodex && isCwdMismatch { return "This pane’s Codex session could not be confirmed" }
         if isMissing { return "Set up Timeline" }
@@ -419,6 +421,26 @@ extension AgentTimelineView {
         pinnedVersion: String = HostHelperSetupPlan.version,
         supportedAgents: Set<String> = Set(HostHelperSetupPlan.agents)
     ) -> String {
+        if agent == "pi" {
+            if ["helper_missing", "helper_update_required", "unsupported_agent", "pi_bridge_required"].contains(code) {
+                return "Pi conversations require a source build of Herdcats Bridge and the Herdcats Pi extension. The published \(pinnedVersion) installer supports Claude and Codex. Set up Pi on this SSH computer, then check again. You can continue in Terminal."
+            }
+            if code == "session_reference_unavailable" || code == "unsupported_session_source" {
+                return "Herdr did not provide an exact Pi session reference for this pane. Keep using Terminal; Herdcats will not guess which Pi session to open."
+            }
+            if code == "transcript_unavailable" || code == "invalid_transcript" || code == "session_mismatch" {
+                return "Herdcats could not verify this pane's Pi session file. Check the Pi session and bridge agent directory, then check again."
+            }
+            if code == "pi_extension_unavailable" {
+                return "Install the Herdcats extension on this SSH host, then load it in the Pi 1.4.0 TUI for this pane. Copy `bridge/pi-extension/index.ts` and `runtime.mjs` to `~/.pi/agent/extensions/herdcats/` (or `$PI_CODING_AGENT_DIR/extensions/herdcats/`), then run `/reload` in this same TUI and tap Check again."
+            }
+            if code == "invalid_pi_response" {
+                return "The Herdcats extension returned an unrecognized response. Check that this Pi TUI has the extension version from the same source checkout, then run `/reload` and check again."
+            }
+            if code.hasPrefix("pi_") {
+                return "Load the Herdcats extension in the existing Pi TUI, using Pi 1.4.0, then check again. No second Pi process is started. Use Terminal to continue."
+            }
+        }
         if TimelineAgentAvailability.canonical(agent) == "antigravity_cli",
            ["helper_missing", "helper_update_required", "unsupported_agent", "agy_bridge_required"].contains(code) {
             return "Agy conversations require a source build of Herdcats Bridge with Agy support. The published \(pinnedVersion) installer supports Claude and Codex. Install the source bridge manually on this SSH computer, then check again. You can continue in Terminal."
