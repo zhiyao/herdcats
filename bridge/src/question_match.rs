@@ -36,6 +36,27 @@ pub struct PendingQuestion {
     pub questions: Vec<Question>,
 }
 
+/// Wire limits mirrored by AgentPendingQuestion.decode in iOS. Count UTF-8
+/// bytes, not characters. Unsupported Agy cards retain history/Terminal access.
+pub mod client_limits {
+    pub const QUESTIONS: usize = 8;
+    pub const OPTIONS: usize = 32;
+    pub const TEXT: usize = 4096;
+    pub const HEADER: usize = 1024;
+    pub const LABEL: usize = 1024;
+    pub const DESCRIPTION: usize = 4096;
+}
+impl PendingQuestion {
+    pub fn client_compatible(&self) -> bool {
+        !self.questions.is_empty() && self.questions.len() <= client_limits::QUESTIONS
+            && self.questions.iter().all(|q| !q.text.is_empty() && q.text.len() <= client_limits::TEXT
+                && q.header.as_ref().is_none_or(|h| h.len() <= client_limits::HEADER)
+                && !q.options.is_empty() && q.options.len() <= client_limits::OPTIONS
+                && q.options.iter().all(|o| !o.label.is_empty() && o.label.len() <= client_limits::LABEL
+                    && o.description.as_ref().is_none_or(|d| d.len() <= client_limits::DESCRIPTION)))
+    }
+}
+
 fn text(value: &Value) -> Option<&str> {
     value.as_str().filter(|s| !s.trim().is_empty())
 }
@@ -386,25 +407,25 @@ pub fn pending_agy_questions(history: &[Value]) -> Vec<PendingQuestion> {
                 return None;
             }
             let values: Vec<Value> = serde_json::from_str(encoded).ok()?;
-            if values.is_empty() || values.len() > 32 {
+            if values.is_empty() || values.len() > client_limits::QUESTIONS {
                 return None;
             }
             let questions = values
                 .iter()
                 .map(|value| {
                     let question = text(&value["question"])?;
-                    if question.len() > 8192 {
+                    if question.len() > client_limits::TEXT {
                         return None;
                     }
                     let opts = value["options"].as_array()?;
-                    if opts.is_empty() || opts.len() > 64 {
+                    if opts.is_empty() || opts.len() > client_limits::OPTIONS {
                         return None;
                     }
                     let options = opts
                         .iter()
                         .map(|v| {
                             let label = text(v)?;
-                            if label.len() > 8192 {
+                            if label.len() > client_limits::LABEL {
                                 return None;
                             }
                             Some(QuestionOption {
@@ -424,12 +445,13 @@ pub fn pending_agy_questions(history: &[Value]) -> Vec<PendingQuestion> {
                     })
                 })
                 .collect::<Option<Vec<_>>>()?;
-            Some(PendingQuestion {
+            let pending = PendingQuestion {
                 request_id: id,
                 kind: QuestionKind::AgyAsk,
                 turn_id: None,
                 questions,
-            })
+            };
+            pending.client_compatible().then_some(pending)
         })
         .collect()
 }

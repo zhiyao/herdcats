@@ -699,3 +699,66 @@ fn agy_gpt_oss_full_label_footer_switches_away_and_back_with_native_guards() {
     assert_eq!(herdr.lock().unwrap().inputs.len(), 3);
     cleanup(&service, root);
 }
+
+#[test]
+fn agy_question_history_cannot_advertise_or_authorize_a_response() {
+    let (mut service, root, herdr, _) = agy_idle_question_fixture("idle");
+    let live = herdr.lock().unwrap().screen.clone();
+    let quoted = format!("Historical example:\n```text\n{live}\n```\n");
+    herdr.lock().unwrap().screen = quoted.clone();
+    let mut out = Vec::new();
+    service.poll(&mut out).unwrap();
+    assert!(service.watch.as_ref().unwrap().pending.is_none());
+    assert!(!frames(out).iter().any(|f| f["event"] == "interaction.pending"));
+    assert!(service.respond_interaction(&json!({"request_id":"agy:1:tool:0","answers":[{"index":0,"options":[2]}]})).is_err());
+    herdr.lock().unwrap().screen = format!("{quoted}\n{live}");
+    service.poll(&mut Vec::new()).unwrap();
+    assert!(matches!(service.watch.as_ref().unwrap().pending, Some(PendingInteraction::Question(_))));
+    // A previously advertised card must be revalidated, never answered using
+    // the identical-looking fenced example after the live picker disappears.
+    herdr.lock().unwrap().screen = quoted;
+    assert!(service.respond_interaction(&json!({"request_id":"agy:1:tool:0","answers":[{"index":0,"options":[2]}]})).is_err());
+    assert!(herdr.lock().unwrap().inputs.is_empty());
+    cleanup(&service, root);
+}
+
+#[test]
+fn agy_oversized_question_cards_retain_history_and_block_inputs_without_pending() {
+    let ordinary = json!({"question":"Which probe color?","options":["Red","Blue"],"is_multi_select":false});
+    let mut options = ordinary.clone();
+    options["options"] = json!((0..33).map(|i|format!("Choice {i}")).collect::<Vec<_>>());
+    let mut text = ordinary.clone(); text["question"] = json!(format!("{}a", "é".repeat(2048)));
+    let mut label = ordinary.clone(); label["options"][0] = json!(format!("{}a", "é".repeat(512)));
+    for questions in [vec![ordinary; 9], vec![options], vec![text], vec![label]] {
+        let (mut service, root, herdr, path) = agy_idle_question_fixture("idle");
+        let mut rows: Vec<Value> = fs::read_to_string(&path).unwrap().lines().map(|l|serde_json::from_str(l).unwrap()).collect();
+        rows[1]["tool_calls"][0]["args"]["questions"] = json!(serde_json::to_string(&questions).unwrap());
+        fs::write(&path, rows.iter().map(|r|format!("{r}\n")).collect::<String>()).unwrap();
+        // Supply a complete matching picker: the wire limit, not an unrelated
+        // screen mismatch, must suppress the unsupported native request.
+        let q = &questions[0];
+        let labels = q["options"].as_array().unwrap();
+        let mut screen = format!("Question 1/{}: {}\n", questions.len(), q["question"].as_str().unwrap());
+        for (i, label) in labels.iter().enumerate() {
+            screen.push_str(&format!("{}{}. {}\n", if i == 0 {"> "} else {"  "}, i + 1, label.as_str().unwrap()));
+        }
+        screen.push_str(&format!("  {}. Write-in...\n↑/↓ Navigate · enter Submit · esc Skip", labels.len() + 1));
+        herdr.lock().unwrap().screen = screen;
+        service.include_model_control = true;
+        let mut out = Vec::new(); service.poll(&mut out).unwrap();
+        let emitted = frames(out);
+        assert!(!emitted.iter().any(|f|f["event"] == "interaction.pending"));
+        let watch = service.watch.as_ref().unwrap();
+        assert!(watch.unavailable.is_none());
+        assert!(watch.pending.is_none());
+        assert!(watch.previous.iter().any(|e|e.id == "agy:1:tool:0"));
+        assert_eq!(watch.status, "unknown"); // unresolved call, Terminal fallback
+        let identity = watch.identity.clone().unwrap();
+        assert_eq!(service.composer_clear(&identity, "agy").unwrap_err(), "agent_busy");
+        assert_eq!(service.model_status().unwrap_err(), "agent_busy");
+        assert_eq!(service.model_set(&json!({"effort":"low","expect":{"identity":identity,"generation":service.generation}})).unwrap_err(), "agent_busy");
+        assert!(service.respond_interaction(&json!({"request_id":"agy:1:tool:0","answers":[{"index":0,"options":[1]}]})).is_err());
+        assert!(herdr.lock().unwrap().inputs.is_empty());
+        cleanup(&service, root);
+    }
+}

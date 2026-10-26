@@ -341,7 +341,16 @@
         "fresh": "boolean; untouched first Claude tab with cursor on option 1 and no checks/text or completed tabs; Codex Plan Question 1/n with n unanswered and no notes; async queued or picker cursor on 1 without text",
         "countdown": "string|null; visible Codex async countdown"
       },
-      "question_effect": "Enabled only by initialize params.questions true. Match newest pending Claude question from its recording hook spool plus answered transcript calls, or Codex question from the rollout alone, while blocked; cache Claude by spool and transcript stamps and Codex by rollout stamp, re-read visible screen each poll. Suppress secret questions, multi-question async requests, async requests when more than one async call is pending in the session, async queued banners whose count is not exactly 1, and screens that do not parse. Approvals take priority. Emit on changed step or fresh state (also countdown/payload changes)."
+      "question_effect": "Enabled only by initialize params.questions true. Match newest pending Claude question from its recording hook spool plus answered transcript calls, or Codex question from the rollout alone, while blocked; cache Claude by spool and transcript stamps and Codex by rollout stamp, re-read visible screen each poll. Suppress secret questions, multi-question async requests, async requests when more than one async call is pending in the session, async queued banners whose count is not exactly 1, and screens that do not parse. Approvals take priority. Emit on changed step or fresh state (also countdown/payload changes).",
+      "question_client_limits": {
+        "questions": 8,
+        "options_per_question": 32,
+        "text_utf8_bytes": 4096,
+        "header_utf8_bytes": 1024,
+        "option_label_utf8_bytes": 1024,
+        "option_description_utf8_bytes": 4096,
+        "agy_behavior": "Enforced before advertising a pending card. Oversized or unsupported native requests remain in history with Terminal fallback; unresolved native calls still block composition and model changes. Fenced terminal-history examples never authorize a question response or count as a second live picker."
+      }
     },
     "interaction.resolved": {
       "fields": [

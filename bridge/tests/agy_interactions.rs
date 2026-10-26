@@ -257,3 +257,52 @@ fn agy_review_footer_is_exact_and_quoted_history_cannot_claim_current_dialog() {
     assert_eq!(dialog.title, "Command");
     assert_eq!(dialog.options.len(), 4);
 }
+
+#[test]
+fn agy_question_fenced_history_is_not_a_live_picker_or_ambiguity() {
+    let pending = question_match::pending_agy_questions(&fixture()[..2]).remove(0);
+    let live = "Question 1/1: Which probe color?\n> 1. (Recommended) Red\n  2. Blue\n  3. Write-in...\n↑/↓ Navigate · enter Select · esc Skip";
+    for (open, close) in [("```text", "```"), ("~~~text", "~~~")] {
+        let quoted = format!("Historical example:\n{open}\n{live}\n{close}\n");
+        assert!(question_screen::parse(pending.kind, &quoted, &pending).is_none());
+        assert!(question_screen::parse(pending.kind, &format!("{quoted}\n{live}"), &pending).is_some());
+        assert!(question_screen::parse(pending.kind, &format!("{open}\n{live}"), &pending).is_none());
+    }
+    assert!(question_screen::parse(pending.kind, &format!("{live}\n{live}"), &pending).is_none());
+}
+
+fn agy_question_history(questions: Vec<Value>) -> Vec<Value> {
+    vec![json!({"type":"PLANNER_RESPONSE","source":"MODEL","step_index":1,"status":"DONE","created_at":"2026-10-25T08:39:44Z",
+        "tool_calls":[{"name":"ask_question","args":{"questions":serde_json::to_string(&questions).unwrap()}}]})]
+}
+fn agy_question_value(text: &str, labels: Vec<String>) -> Value {
+    json!({"question":text,"options":labels,"is_multi_select":false})
+}
+#[test]
+fn agy_pending_questions_match_client_count_and_utf8_byte_boundaries() {
+    let ordinary = agy_question_value("Question?", vec!["Choice".into()]);
+    for (questions, accepted) in [
+        (vec![ordinary.clone(); 8], true), (vec![ordinary; 9], false),
+        (vec![agy_question_value("Question?", vec!["Choice".into(); 32])], true),
+        (vec![agy_question_value("Question?", vec!["Choice".into(); 33])], false),
+        (vec![agy_question_value(&"é".repeat(2048), vec!["Choice".into()])], true),
+        (vec![agy_question_value(&format!("{}a", "é".repeat(2048)), vec!["Choice".into()])], false),
+        (vec![agy_question_value("Question?", vec!["é".repeat(512)])], true),
+        (vec![agy_question_value("Question?", vec![format!("{}a", "é".repeat(512))])], false),
+    ] {
+        assert_eq!(!question_match::pending_agy_questions(&agy_question_history(questions)).is_empty(), accepted);
+    }
+}
+
+#[test]
+fn agy_client_wire_limits_include_optional_header_and_description_bytes() {
+    let mut pending = question_match::pending_agy_questions(&fixture()[..2]).remove(0);
+    pending.questions[0].header = Some("é".repeat(512));
+    pending.questions[0].options[0].description = Some("é".repeat(2048));
+    assert!(pending.client_compatible());
+    pending.questions[0].header.as_mut().unwrap().push('a');
+    assert!(!pending.client_compatible());
+    pending.questions[0].header.as_mut().unwrap().pop();
+    pending.questions[0].options[0].description.as_mut().unwrap().push('a');
+    assert!(!pending.client_compatible());
+}

@@ -1055,6 +1055,21 @@ fn parse_agy(screen: &str, pending: &PendingQuestion) -> Option<QuestionScreen> 
     if rows.len() > 2000 {
         return None;
     }
+    // Fenced examples in terminal history are content, never live pickers.
+    // Match the Agy approval parser's fail-closed handling of open fences.
+    let mut fence = None;
+    let quoted: Vec<_> = rows.iter().map(|row| {
+        let row = row.trim();
+        if let Some(marker) = fence {
+            if row.strip_prefix(marker).is_some_and(|rest| rest.trim().is_empty()) {
+                fence = None;
+            }
+            true
+        } else if row.starts_with("```") || row.starts_with("~~~") {
+            fence = Some(if row.starts_with("```") { "```" } else { "~~~" });
+            true
+        } else { false }
+    }).collect();
     let mut chosen = None;
     for (index, q) in pending.questions.iter().enumerate() {
         let title = format!(
@@ -1064,7 +1079,7 @@ fn parse_agy(screen: &str, pending: &PendingQuestion) -> Option<QuestionScreen> 
             q.text
         );
         for start in 0..rows.len() {
-            if !rows[start].trim().starts_with(&format!(
+            if quoted[start] || !rows[start].trim().starts_with(&format!(
                 "Question {}/{}:",
                 index + 1,
                 pending.questions.len()
@@ -1163,6 +1178,7 @@ fn parse_agy(screen: &str, pending: &PendingQuestion) -> Option<QuestionScreen> 
                         return None;
                     }
                 }
+                if quoted[start..=pos].iter().any(|quoted| *quoted) { return None; }
                 Some(QuestionScreen {
                     step: QuestionStep::AgyQuestion {
                         index,
