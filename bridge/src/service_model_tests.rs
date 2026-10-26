@@ -134,7 +134,8 @@ fn model_fixture_codex() -> (Service, PathBuf, SharedHerdr, PathBuf) {
     fs::create_dir_all(root.join("codex-home")).unwrap();
     service = service
         .with_codex_root(root.join("codex"))
-        .with_codex_home(root.join("codex-home"));
+        .with_codex_home(root.join("codex-home"))
+        .with_codex_executable(root.join("no-such-codex"));
     fs::write(
         root.join("codex-home/models_cache.json"),
         json!({"models":[
@@ -265,10 +266,11 @@ fn model_status_reads_claude_transcript_and_options() {
         result["models"],
         json!([
             {"id":"default","label":"Default","efforts":efforts},
-            {"id":"fable","label":"Fable 5.1","efforts":efforts},
-            {"id":"opus","label":"Opus 5.5","current":true,"efforts":efforts},
-            {"id":"sonnet","label":"Sonnet 5.5","efforts":efforts},
-            {"id":"haiku","label":"Haiku 5.5","efforts":efforts}
+            {"id":"fable","label":"Fable","efforts":efforts},
+            {"id":"opus","label":"Opus","efforts":efforts},
+            {"id":"sonnet","label":"Sonnet","efforts":efforts},
+            {"id":"haiku","label":"Haiku","efforts":efforts},
+            {"id":"claude-opus-5-5","label":"Opus 5.5","current":true,"observedOnly":true,"efforts":efforts}
         ])
     );
     assert_eq!(result["efforts"], efforts);
@@ -1246,7 +1248,7 @@ fn model_status_lists_an_older_dated_claude_id_as_its_own_current_row() {
     let reply = model_request(&mut service, "model.status", json!({}));
     let models = result_frame(&reply)["result"]["models"].as_array().unwrap().clone();
     let haiku = models.iter().find(|m| m["id"] == "haiku").unwrap();
-    assert_eq!(haiku["label"], "Haiku 5.5");
+    assert_eq!(haiku["label"], "Haiku");
     assert!(haiku.get("current").is_none(), "{models:?}");
     let current: Vec<_> = models.iter().filter(|m| m["current"] == true).collect();
     assert_eq!(current.len(), 1);
@@ -1790,4 +1792,97 @@ fn model_override_keeps_confirmed_label_only_while_the_baseline_holds() {
     let actual = Some(("claude-haiku-5-5".into(), Some("medium".into())));
     assert_eq!(ModelOverride::resolve(&mut slot, actual.clone()), actual);
     assert!(slot.is_none());
+}
+
+fn fake_codex(root: &std::path::Path, body: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = root.join("fake-codex");
+    fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    path
+}
+
+const REFRESHED_CATALOG: &str = r#"{"models":[
+  {"slug":"gpt-7-new","display_name":"GPT-7-New","visibility":"list","priority":1,
+   "supported_reasoning_levels":[{"effort":"low"},{"effort":"turbo"},{"effort":"Bad Value!"}]},
+  {"slug":"hidden","visibility":"hide","priority":0,"supported_reasoning_levels":[]}]}"#;
+
+fn catalog_script(catalog: &str) -> String {
+    format!("case \"$1\" in --version) echo 'codex-cli 9.9.9';; debug) cat <<'EOF_JSON'\n{catalog}\nEOF_JSON\n;; esac")
+}
+
+#[test]
+fn codex_status_refreshes_through_cli_and_reports_unknown_efforts() {
+    let (mut service, root, _, _) = model_fixture_codex();
+    let exe = fake_codex(&root, &catalog_script(REFRESHED_CATALOG));
+    service = service.with_codex_executable(exe);
+    let reply = model_request(&mut service, "model.status", json!({}));
+    let result = &result_frame(&reply)["result"];
+    assert_eq!(result["catalog"]["source"], "refreshed");
+    assert_eq!(result["catalog"]["fresh"], true);
+    assert_eq!(result["catalog"]["complete"], true);
+    let models = result["models"].as_array().unwrap();
+    let new = models.iter().find(|m| m["id"] == "gpt-7-new").unwrap();
+    assert_eq!(new["efforts"], json!([{"id":"low","label":"Low"}]));
+    // Unknown levels are reported, never silently omitted nor selectable;
+    // free-form text is rejected outright.
+    assert_eq!(new["unsupportedEfforts"], json!(["turbo"]));
+    assert!(models.iter().all(|m| m["id"] != "hidden"));
+    // The running session's model stays visible, marked as observed only.
+    let current = models.iter().find(|m| m["current"] == true).unwrap();
+    assert_eq!(current["id"], "gpt-6.1-sol");
+    assert_eq!(current["observedOnly"], true);
+    cleanup(&service, root);
+}
+
+#[test]
+fn codex_discovery_failure_keeps_cache_labelled_and_retry_recovers() {
+    let (mut service, root, herdr, _) = model_fixture_codex();
+    let before = fs::read_to_string(root.join("codex-home/models_cache.json")).unwrap();
+    let exe = fake_codex(&root, "exit 1");
+    service = service.with_codex_executable(exe.clone());
+    let reply = model_request(&mut service, "model.status", json!({}));
+    let result = &result_frame(&reply)["result"];
+    assert_eq!(result["catalog"]["source"], "cache");
+    assert_eq!(result["catalog"]["fresh"], false);
+    assert_eq!(result["catalog"]["complete"], false);
+    assert!(result["catalog"]["error"].is_string());
+    assert!(result["models"].as_array().unwrap().iter().any(|m| m["id"] == "gpt-6-astra"));
+    // Repair; an explicit retry bypasses the failure backoff immediately.
+    fake_codex(&root, &catalog_script(REFRESHED_CATALOG));
+    let reply = model_request(&mut service, "model.status", json!({}));
+    let result = &result_frame(&reply)["result"];
+    assert_eq!(result["catalog"]["source"], "refreshed");
+    assert!(result["catalog"]["error"].is_null());
+    // Discovery never types into the pane nor rewrites the cache itself.
+    assert!(herdr.lock().unwrap().inputs.is_empty());
+    assert_eq!(fs::read_to_string(root.join("codex-home/models_cache.json")).unwrap(), before);
+    cleanup(&service, root);
+}
+
+#[test]
+fn codex_corrupt_and_missing_cache_surface_errors_without_dropping_current() {
+    let (mut service, root, _, _) = model_fixture_codex();
+    fs::write(root.join("codex-home/models_cache.json"), "{\"models\":[{\"slug\":").unwrap();
+    let reply = model_request(&mut service, "model.status", json!({}));
+    let result = &result_frame(&reply)["result"];
+    assert_eq!(result["catalog"]["source"], "unavailable");
+    assert!(result["catalog"]["error"].is_string());
+    assert_eq!(result["models"].as_array().unwrap().len(), 1);
+    assert_eq!(result["models"][0]["current"], true);
+    fs::remove_file(root.join("codex-home/models_cache.json")).unwrap();
+    let reply = model_request(&mut service, "model.status", json!({}));
+    assert_eq!(result_frame(&reply)["result"]["catalog"]["source"], "unavailable");
+    cleanup(&service, root);
+}
+
+#[test]
+fn claude_status_marks_catalog_as_maintained_fallback() {
+    let (mut service, root, _, _) = model_fixture_claude();
+    let reply = model_request(&mut service, "model.status", json!({}));
+    let catalog = &result_frame(&reply)["result"]["catalog"];
+    assert_eq!(catalog["source"], "fallback");
+    assert_eq!(catalog["complete"], false);
+    assert_eq!(catalog["fresh"], false);
+    cleanup(&service, root);
 }
