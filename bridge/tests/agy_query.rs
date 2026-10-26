@@ -6,6 +6,11 @@ use std::{
     path::PathBuf,
     time::{Duration, Instant},
 };
+// Keep fixture writes and process launches mutually exclusive. On Linux, a
+// concurrent spawn can inherit another test's writable script descriptor until
+// exec closes it, making that script temporarily fail to execute with ETXTBSY.
+static CLI_FIXTURE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 struct Temp(PathBuf);
 impl Temp {
     fn new() -> Self {
@@ -33,6 +38,7 @@ impl Drop for Temp {
 }
 #[test]
 fn executable_resolution_supports_restricted_path_without_global_environment_changes() {
+    let _guard = CLI_FIXTURE_LOCK.lock().unwrap();
     let temp = Temp::new();
     let executable = temp.cli("exit 0");
     assert_eq!(
@@ -58,6 +64,7 @@ fn executable_resolution_supports_restricted_path_without_global_environment_cha
 }
 #[test]
 fn catalog_discovery_reports_version_empty_malformed_and_missing_errors() {
+    let _guard = CLI_FIXTURE_LOCK.lock().unwrap();
     let temp = Temp::new();
     for (body, error) in [
         ("printf '1.4.8\\n'", "agy_unsupported_version"),
@@ -93,6 +100,7 @@ fn catalog_discovery_reports_version_empty_malformed_and_missing_errors() {
 }
 #[test]
 fn version_and_models_share_one_deadline_and_output_is_bounded() {
+    let _guard = CLI_FIXTURE_LOCK.lock().unwrap();
     let temp = Temp::new();
     let executable=temp.cli("/bin/sleep 0.09\nif [ \"$1\" = --version ]; then printf '1.4.7\\n'; else printf 'gemini-3.8-flash-low\\tGemini 3.8 Flash (Low)\\n'; fi");
     let start = Instant::now();
