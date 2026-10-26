@@ -51,7 +51,7 @@ extension SettingsScreen {
                     if let key = phoneAnswersKey(agent) {
                         let result = appModel.phoneAnswers.result(for: key)
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("\(agent == .codex ? "Codex" : "Claude") phone answers")
+                            Text("\(agent.displayName) phone answers")
                             Text(PhoneAnswersPresentation.status(result)).font(.jost(.caption)).foregroundStyle(Theme.textMuted)
                             if agent == .codex, result?.error == nil,
                                 result?.status == .needsTrust || result?.status == .disabled {

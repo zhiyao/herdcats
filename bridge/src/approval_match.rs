@@ -294,7 +294,9 @@ fn match_records(
     // eligibility alone cannot distinguish parallel identical calls.
     let mut ordered: Vec<_> = records.iter().enumerate().collect();
     ordered.sort_by(|(ai, a), (bi, b)| {
-        a["t"].as_f64().unwrap_or(f64::NEG_INFINITY)
+        a["t"]
+            .as_f64()
+            .unwrap_or(f64::NEG_INFINITY)
             .total_cmp(&b["t"].as_f64().unwrap_or(f64::NEG_INFINITY))
             .then(ai.cmp(bi))
     });
@@ -304,7 +306,8 @@ fn match_records(
         let Some(candidates) = matcher(record, history, false) else {
             continue;
         };
-        let Some(request) = candidates.iter()
+        let Some(request) = candidates
+            .iter()
             .find(|r| !paired.contains(&r.request_id))
             .or_else(|| candidates.last())
             .cloned()
@@ -319,7 +322,8 @@ fn match_records(
     // earlier identical call survived longer than its pruned spool record.
     for (mut request, pending) in assignments {
         if !pending.iter().any(|r| r.request_id == request.request_id) {
-            let mut unclaimed = pending.into_iter()
+            let mut unclaimed = pending
+                .into_iter()
                 .filter(|r| !paired.contains(&r.request_id));
             let Some(fallback) = unclaimed.next() else {
                 continue;
@@ -346,4 +350,72 @@ fn match_records(
     let mut requests: Vec<_> = latest.into_values().collect();
     requests.sort_by(|a, b| a.recorded_at.total_cmp(&b.recorded_at));
     requests
+}
+
+/// Agy has no durable call IDs in the observed transcript. Accept only the
+/// newest planner batch with a unique step index. A GENERIC result can only be
+/// attributed when that batch contains one call; ambiguity disables controls.
+pub(crate) fn agy_pending_calls(history: &[Value]) -> Vec<(String, &Value, f64)> {
+    let mut pending = Vec::new();
+    let mut steps = std::collections::HashSet::new();
+    for record in history {
+        match record["type"].as_str() {
+            Some("USER_INPUT") => pending.clear(),
+            Some("PLANNER_RESPONSE") => {
+                pending.clear();
+                let Some(step) = record["step_index"].as_u64() else {
+                    continue;
+                };
+                if !steps.insert(step) {
+                    return vec![];
+                }
+                let Some(calls) = record["tool_calls"].as_array().filter(|c| c.len() == 1) else {
+                    continue;
+                };
+                let Some(time) = utc_timestamp(&record["created_at"]) else {
+                    continue;
+                };
+                for (index, call) in calls.iter().enumerate() {
+                    pending.push((format!("agy:{step}:tool:{index}"), call, time));
+                }
+            }
+            Some("GENERIC") => pending.clear(),
+            _ => {}
+        }
+    }
+    pending
+}
+
+/// Transcript candidates still require an exact live command permission card.
+pub fn pending_agy_commands(session_id: &str, history: &[Value]) -> Vec<PendingRequest> {
+    if session_id.is_empty() {
+        return vec![];
+    }
+    agy_pending_calls(history)
+        .into_iter()
+        .filter_map(|(id, call, time)| {
+            if call["name"] != "run_command" {
+                return None;
+            }
+            let encoded = call["args"]["CommandLine"].as_str()?;
+            if encoded.len() > 262_144 {
+                return None;
+            }
+            let command: String = serde_json::from_str(encoded).ok()?;
+            if command.is_empty() {
+                return None;
+            }
+            Some(PendingRequest {
+                agent: Agent::Agy,
+                session_id: session_id.into(),
+                request_id: id,
+                tool_name: "run_command".into(),
+                tool_input: serde_json::json!({"command":command}),
+                justification: None,
+                turn_id: None,
+                suggestions: None,
+                recorded_at: time,
+            })
+        })
+        .collect()
 }

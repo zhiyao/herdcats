@@ -163,10 +163,21 @@ struct AgentBridgeFramingTests {
 
 @Suite("Timeline agent availability")
 struct TimelineAgentAvailabilityTests {
+    @Test func agyRequiresItsOwnCapabilityAndExplicitSessionSource() throws {
+        #expect(TimelineAgentAvailability.supports(agent: "agy"))
+        #expect(TimelineAgentAvailability.supports(agent: "antigravity_cli"))
+        let old = try AgentBridgeFrame.decode(Data(#"{"result":{"capabilities":{"claude_timeline":true,"record_content":true}}}"#.utf8))
+        #expect(old.result?.capabilities?.agy == false)
+        let current = try AgentBridgeFrame.decode(Data(#"{"result":{"capabilities":{"claude_timeline":false,"agy":true}}}"#.utf8))
+        #expect(current.result?.capabilities?.agy == true)
+        #expect(TimelineAgentAvailability.matchesSession(agent: "agy", referenceAgent: "antigravity_cli", source: "herdr:antigravity_cli", identityAgent: "antigravity_cli"))
+        #expect(!TimelineAgentAvailability.matchesSession(agent: "agy", referenceAgent: "agy", source: "herdr:agy", identityAgent: "antigravity_cli"))
+        #expect(!TimelineAgentAvailability.matchesSession(agent: "claude", referenceAgent: "agy", source: "herdr:antigravity_cli", identityAgent: "antigravity_cli"))
+    }
     @Test func onlyImplementedAdaptersExposeTimeline() {
         #expect(TimelineAgentAvailability.supports(agent: "claude"))
         #expect(TimelineAgentAvailability.supports(agent: "codex"))
-        for agent in [nil, "", "chatgpt", "cursor", "agy", "unknown"] as [String?] {
+        for agent in [nil, "", "chatgpt", "cursor", "unknown"] as [String?] {
             #expect(!TimelineAgentAvailability.supports(agent: agent))
         }
     }
@@ -532,6 +543,17 @@ struct TimelineMarkdownTests {
         #expect(object["model"] is NSNull)
         #expect(object["effort"] is NSNull)
     }
+    @Test func agyModelExpectationCarriesExactSessionAndGeneration() throws {
+        let identity = AgentTimelineIdentity(paneId: "p", terminalId: "t", agent: "antigravity_cli", nativeSessionId: "s")
+        let encoder = JSONEncoder(); encoder.keyEncodingStrategy = .convertToSnakeCase
+        let data = try encoder.encode(AgentModelExpectation(model: "flash", effort: "low", identity: identity, generation: 7))
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["generation"] as? Int == 7)
+        #expect(object["identity"] as? NSDictionary == ["pane_id": "p", "terminal_id": "t", "agent": "antigravity_cli", "native_session_id": "s"] as NSDictionary)
+        let legacy = try #require(JSONSerialization.jsonObject(with: encoder.encode(AgentModelExpectation(model: nil, effort: nil))) as? [String: Any])
+        #expect(legacy["identity"] == nil && legacy["generation"] == nil)
+        #expect(!TimelineAgentAvailability.matchesSession(agent: "agy", referenceAgent: "agy", source: "herdr:antigravity_cli", identityAgent: "antigravity_cli", referenceKind: "path"))
+    }
     @Test func statusUsesSelectedModelsEffortsAndFormatsLabels() throws {
         let state = state()
         try state.update(payload([
@@ -620,5 +642,187 @@ struct TimelineMarkdownTests {
         timeline.end(owner: owner, error: .closed)
         #expect(timeline.modelControl.pair.model == nil)
         #expect(!timeline.modelControl.isVisible)
+    }
+}
+
+private actor ModelCatalogTestWire {
+    var commands: [Data] = []
+    func write(_ data: Data) { commands.append(data) }
+    func lastID() throws -> String {
+        let object = try JSONSerialization.jsonObject(with: commands.last!) as! [String: Any]
+        return object["id"] as! String
+    }
+}
+@Suite("Agy model catalog loading")
+@MainActor struct AgyModelCatalogLoadingTests {
+    let identity = AgentTimelineIdentity(paneId: "p", terminalId: "t", agent: "antigravity_cli", nativeSessionId: "s")
+    private func wait(_ wire: ModelCatalogTestWire, count: Int) async throws {
+        for _ in 0..<500 {
+            if await wire.commands.count >= count { return }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        Issue.record("Catalog request was not sent")
+    }
+    private func client() async throws -> (AgentBridgeClient, ModelCatalogTestWire) {
+        let wire = ModelCatalogTestWire()
+        let client = AgentBridgeClient(write: { await wire.write($0) }, close: {}, onEvent: { _ in })
+        let handshake = Task { try await client.performHandshakeAndWatch(paneId: "p", agent: "antigravity_cli") }
+        try await wait(wire, count: 1)
+        await client.receive(Data("{\"id\":\"\(try await wire.lastID())\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":{\"claude_timeline\":false,\"agy\":true,\"record_content\":true,\"model_control\":true}}}\n".utf8))
+        try await wait(wire, count: 2)
+        await client.receive(Data("{\"id\":\"\(try await wire.lastID())\",\"result\":{}}\n".utf8))
+        try await handshake.value
+        return (client, wire)
+    }
+    func payload(generation: UInt64 = 1, session: String = "s", models: [[String: Any]] = []) throws -> AgentBridgePayload {
+        let body: [String: Any] = ["identity": ["pane_id":"p", "terminal_id":"t", "agent":"antigravity_cli", "native_session_id":session],
+            "generation":generation, "entries":[], "models":models, "effort":"high", "model":["id":"gemini-3.8-flash-high", "label":"Gemini 3.8 Flash (High)"]]
+        return try #require(AgentBridgeFrame.decode(JSONSerialization.data(withJSONObject: ["result":body])).result)
+    }
+    private func answer(_ client: AgentBridgeClient, wire: ModelCatalogTestWire, empty: Bool = false) async throws {
+        let result: [String: Any] = ["identity":["pane_id":"p","terminal_id":"t","agent":"antigravity_cli","native_session_id":"s"], "generation":1,
+            "model":["id":"gemini-3.8-flash-high","label":"Gemini 3.8 Flash (High)"],"effort":"high",
+            "models":empty ? [] : [["id":"gemini-3.8-flash-high","label":"Gemini 3.8 Flash (High)"]]]
+        await client.receive(try JSONSerialization.data(withJSONObject: ["id":try await wire.lastID(),"result":result]) + Data("\n".utf8))
+    }
+    @Test func discoveryFailureIsExplicitAndRetryActuallyLoadsChoices() async throws {
+        let (client, wire) = try await client(); defer { Task { await client.close() } }
+        let state = AgentModelControlState(); state.bind(identity:identity,generation:1);state.connect(client,supported:true)
+        let first=Task { await state.refresh() };try await wait(wire,count:3)
+        #expect(state.isLoadingModels);#expect(state.isVisible)
+        await client.receive(Data("{\"id\":\"\(try await wire.lastID())\",\"error\":{\"code\":\"agy_unavailable\"}}\n".utf8));await first.value
+        #expect(!state.isLoadingModels);#expect(state.models.isEmpty)
+        #expect(state.errorMessage == "Agy wasn't found on this computer. Update Herdcats Bridge or check the Agy installation, then retry.")
+        let retry=Task { await state.refresh() };try await wait(wire,count:4);try await answer(client,wire:wire);await retry.value
+        #expect(!state.isLoadingModels);#expect(state.errorMessage == nil);#expect(state.models.count == 1);#expect(state.isVisible)
+    }
+    @Test func legacyEmptySuccessShowsFailureInsteadOfBlankChoices() async throws {
+        let (client,wire)=try await client();defer {Task {await client.close()}}
+        let state=AgentModelControlState();state.bind(identity:identity,generation:1);state.connect(client,supported:true)
+        let request=Task {await state.refresh()};try await wait(wire,count:3);try await answer(client,wire:wire,empty:true);await request.value
+        #expect(state.models.isEmpty);#expect(state.errorMessage == "No model choices were returned. Retry or use Terminal.")
+    }
+    @Test func snapshotOrderingPreservesTransportButReplacesCatalogScope() async throws {
+        for connectFirst in [false,true] {
+            let (client,wire)=try await client();defer {Task {await client.close()}}
+            let timeline=AgentTimelineState(),owner=UUID();timeline.begin(owner:owner,paneId:"p")
+            if connectFirst {timeline.modelControl.connect(client,supported:true)}
+            try timeline.consume(.init(event:"timeline.snapshot",epoch:"e",seq:1,data:payload()),owner:owner)
+            if !connectFirst {timeline.modelControl.connect(client,supported:true)}
+            #expect(timeline.modelControl.isVisible)
+            try timeline.modelControl.update(payload(models:[["id":"old","label":"Old model"]]),options:true)
+            try timeline.consume(.init(event:"timeline.snapshot",epoch:"e",seq:2,data:payload(generation:2,session:"replacement")),owner:owner)
+            #expect(timeline.modelControl.isVisible);#expect(timeline.modelControl.models.isEmpty)
+            let request=Task {await timeline.modelControl.refresh()};try await wait(wire,count:3)
+            timeline.end(owner:owner,error:.closed)
+            try await answer(client,wire:wire);await request.value
+            #expect(!timeline.modelControl.isVisible);#expect(timeline.modelControl.models.isEmpty)
+            let next=UUID();timeline.begin(owner:next,paneId:"p");timeline.modelControl.connect(nil,supported:false)
+            try timeline.consume(.init(event:"timeline.snapshot",epoch:"next",seq:1,data:payload()),owner:next)
+            #expect(!timeline.modelControl.isVisible)
+        }
+    }
+}
+
+@Suite("Bridge model family presentation")
+@MainActor struct AgyModelFamilyTests {
+    let identity = AgentTimelineIdentity(paneId: "p", terminalId: "t", agent: "antigravity_cli", nativeSessionId: "s")
+    func catalog() -> [AgentModelOption] {
+        [("gemini-3.8-flash", "Gemini 3.8 Flash"), ("gemini-4-argon", "Gemini 4 Argon"),
+         ("claude-opus-5-5", "Claude Opus 5.5"), ("claude-sonnet-5-5", "Claude Sonnet 5.5"), ("gpt-oss-120b", "GPT-OSS 120B")].map { id, label in
+            AgentModelOption(id: id, label: label, efforts: (id == "gpt-oss-120b" ? ["medium"] : ["low", "medium", "high"]).map { AgentEffortOption(id: $0, label: $0.capitalized) })
+        }
+    }
+    func payload(current: AgentModelOption, effort: String = "high", catalog: [AgentModelOption]? = nil) throws -> AgentBridgePayload {
+        let encoder = JSONEncoder(); encoder.keyEncodingStrategy = .convertToSnakeCase
+        var body: [String: Any] = ["identity": ["pane_id":"p","terminal_id":"t","agent":"antigravity_cli","native_session_id":"s"], "generation":1,
+            "model":try JSONSerialization.jsonObject(with:encoder.encode(current)), "effort":effort]
+        if let catalog { body["models"] = try JSONSerialization.jsonObject(with:encoder.encode(catalog)) }
+        return try #require(AgentBridgeFrame.decode(JSONSerialization.data(withJSONObject:["result":body])).result)
+    }
+    func state(current: AgentModelOption? = nil, effort: String = "high", catalog: [AgentModelOption]? = nil) throws -> AgentModelControlState {
+        let state = AgentModelControlState()
+        state.bind(identity: identity, generation: 1); state.connect(nil, supported: true)
+        try state.update(payload(current: current ?? self.catalog()[0], effort: effort, catalog: catalog ?? self.catalog()), options: true)
+        return state
+    }
+    @Test func normalizedCatalogIsRenderedWithoutRewritingIDsOrLabels() throws {
+        let state = try state()
+        #expect(state.models.map(\.id) == catalog().map(\.id))
+        #expect(state.models.map(\.label) == catalog().map(\.label))
+        #expect(state.models.count == 5)
+        #expect(state.modelName == "Gemini 3.8 Flash")
+        #expect(state.label == "Gemini 3.8 Flash high")
+        #expect(state.accessibilityLabel == "Model Gemini 3.8 Flash, effort high")
+        #expect(state.selectedModelID == "gemini-3.8-flash")
+        #expect(state.efforts.map(\.id) == ["low", "medium", "high"])
+    }
+    @Test func barePublicIDUsesCatalogLabel() throws {
+        let state = try state(current: AgentModelOption(id: "gemini-3.8-flash", label: "gemini-3.8-flash"))
+        #expect(state.modelName == "Gemini 3.8 Flash")
+    }
+    @Test func currentDisplayAndEffortsWorkBeforeCatalogArrives() throws {
+        let state = try state(catalog: [])
+        #expect(state.modelName == "Gemini 3.8 Flash")
+        #expect(state.effortLabel == "High")
+        #expect(state.efforts.map(\.id) == ["low", "medium", "high"])
+    }
+    @Test func nativeAndUnknownLabelsAreNeverInterpretedByClient() throws {
+        let native = AgentModelOption(id: "odd-high", label: "Odd (High)")
+        let state = try state(current: native, catalog: [native])
+        #expect(state.modelName == "Odd (High)")
+        #expect(state.models[0].id == "odd-high")
+        #expect(state.models[0].label == "Odd (High)")
+        #expect(state.efforts.isEmpty)
+    }
+    private func wait(_ wire: ModelCatalogTestWire, count: Int) async throws {
+        for _ in 0..<500 {
+            if await wire.commands.count >= count { return }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        Issue.record("Missing synthetic model request")
+    }
+    @Test func familyAndEffortRequestsPassThroughWithAuthoritativeScope() async throws {
+        let state = try state()
+        let wire = ModelCatalogTestWire()
+        let client = AgentBridgeClient(write: { await wire.write($0) }, close: {}, onEvent: { _ in })
+        let handshake = Task { try await client.performHandshakeAndWatch(paneId: "p", agent: "agy") }
+        try await wait(wire, count: 1)
+        await client.receive(Data("{\"id\":\"\(try await wire.lastID())\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":{\"claude_timeline\":false,\"agy\":true,\"record_content\":true,\"model_control\":true}}}\n".utf8))
+        try await wait(wire, count: 2)
+        await client.receive(Data("{\"id\":\"\(try await wire.lastID())\",\"result\":{}}\n".utf8)); try await handshake.value
+        state.connect(client, supported: true)
+        for (index, target, effort) in [(3, Optional("gemini-4-argon"), Optional<String>.none), (4, nil, "low")] {
+            let change = Task { await state.change(model: target, effort: effort) }
+            try await wait(wire, count: index)
+            let request = try #require(JSONSerialization.jsonObject(with: await wire.commands[index - 1]) as? [String: Any])
+            let params = try #require(request["params"] as? [String: Any])
+            #expect(params["model"] as? String == target)
+            #expect(params["effort"] as? String == effort)
+            let expect = try #require(params["expect"] as? [String: Any])
+            #expect(expect["model"] as? String == "gemini-3.8-flash")
+            #expect(expect["generation"] as? Int == 1)
+            #expect((expect["identity"] as? [String: String])?["native_session_id"] == "s")
+            await client.receive(Data("{\"id\":\"\(try await wire.lastID())\",\"error\":{\"code\":\"composer_not_empty\"}}\n".utf8)); await change.value
+        }
+        await client.close()
+    }
+    @Test func singleEffortFamilyUsesOnlyBridgeProvidedOptions() throws {
+        let current = catalog()[4]
+        let state = try state(current: current, effort: "medium")
+        #expect(state.efforts.map(\.id) == ["medium"])
+        #expect(state.selectedModelID == current.id)
+    }
+    @Test func snapshotBindsNormalizedPairImmediately() throws {
+        let timeline = AgentTimelineState(), owner = UUID()
+        timeline.begin(owner: owner, paneId: "p")
+        let modelPayload = try payload(current: catalog()[0])
+        let encoder = JSONEncoder(); encoder.keyEncodingStrategy = .convertToSnakeCase
+        var body = try #require(JSONSerialization.jsonObject(with: encoder.encode(modelPayload)) as? [String: Any])
+        body["entries"] = []; body["has_more"] = false
+        let snapshot = try #require(AgentBridgeFrame.decode(JSONSerialization.data(withJSONObject:["result":body])).result)
+        try timeline.consume(.init(event: "timeline.snapshot", epoch: "e", seq: 1, data: snapshot), owner: owner)
+        #expect(timeline.modelControl.modelName == "Gemini 3.8 Flash")
+        #expect(timeline.modelControl.effortLabel == "High")
     }
 }

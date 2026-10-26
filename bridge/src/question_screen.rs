@@ -12,6 +12,10 @@ pub enum QuestionStep {
     },
     AsyncQueued,
     AsyncPicker(usize),
+    AgyQuestion {
+        index: usize,
+        total: usize,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -56,16 +60,26 @@ pub struct QuestionScreen {
 impl QuestionScreen {
     pub fn is_fresh(&self, pending: &PendingQuestion) -> bool {
         let untouched = self.options.iter().all(|o| o.checked != Some(true))
-            && self.free_text.as_ref().is_none_or(|t| t.text.is_empty() && !t.active);
-        untouched && match self.step {
-            QuestionStep::ClaudeQuestion(0) => !self.completed_tabs
-                && self.cursor == Some(QuestionCursor::Option(1)),
-            QuestionStep::CodexQuestion { index: 0, total } => self.unanswered == Some(total),
-            QuestionStep::AsyncQueued => true,
-            QuestionStep::AsyncPicker(0) => self.cursor == Some(QuestionCursor::Option(1))
-                && pending.questions.len() == 1,
-            _ => false,
-        }
+            && self
+                .free_text
+                .as_ref()
+                .is_none_or(|t| t.text.is_empty() && !t.active);
+        untouched
+            && match self.step {
+                QuestionStep::ClaudeQuestion(0) => {
+                    !self.completed_tabs && self.cursor == Some(QuestionCursor::Option(1))
+                }
+                QuestionStep::CodexQuestion { index: 0, total } => self.unanswered == Some(total),
+                QuestionStep::AgyQuestion { index: 0, total } => {
+                    total == pending.questions.len()
+                        && self.cursor == Some(QuestionCursor::Option(1))
+                }
+                QuestionStep::AsyncQueued => true,
+                QuestionStep::AsyncPicker(0) => {
+                    self.cursor == Some(QuestionCursor::Option(1)) && pending.questions.len() == 1
+                }
+                _ => false,
+            }
     }
 }
 
@@ -267,7 +281,7 @@ fn claude(rows: &[&str], pending: &PendingQuestion) -> Option<QuestionScreen> {
         (Some(mut dialog), None) | (None, Some(mut dialog)) => {
             dialog.completed_tabs = rows[0].contains('☒');
             Some(dialog)
-        },
+        }
         (None, None) => None,
     }
 }
@@ -452,11 +466,7 @@ fn sync(rows: &[&str], pending: &PendingQuestion) -> Option<QuestionScreen> {
     let (index, total) = position.split_once('/')?;
     let index: usize = index.parse().ok()?;
     let total: usize = total.parse().ok()?;
-    if total != pending.questions.len()
-        || index == 0
-        || index > total
-        || remaining > total
-    {
+    if total != pending.questions.len() || index == 0 || index > total || remaining > total {
         return None;
     }
     let q = pending.questions.get(index.checked_sub(1)?)?;
@@ -539,7 +549,11 @@ fn sync(rows: &[&str], pending: &PendingQuestion) -> Option<QuestionScreen> {
                     // observed 2026-10-22: Codex 0.163.0 shows Add notes while
                     // the active editor is empty. Literal identical input is
                     // indistinguishable; the following typed-text check fails safe.
-                    if text == "Add notes" { String::new() } else { text }
+                    if text == "Add notes" {
+                        String::new()
+                    } else {
+                        text
+                    }
                 },
             });
             i = rows.len().checked_sub(1)?;
@@ -926,12 +940,16 @@ pub fn parse(
     if kind != pending.kind || pending.questions.is_empty() {
         return None;
     }
+    if kind == QuestionKind::AgyAsk {
+        return parse_agy(screen, pending);
+    }
     let raw: Vec<_> = screen.lines().collect();
     let (logical, spans) = anchor_rows(screen, pending);
     let rows: Vec<_> = logical.iter().map(String::as_str).collect();
     let mut chosen = None;
     for start in 0..rows.len() {
         let candidate = match kind {
+            QuestionKind::AgyAsk => false,
             QuestionKind::ClaudeAsk => {
                 let row = rows[start].trim();
                 (indent(raw[spans[start].0]) == 0 && row.starts_with("← "))
@@ -964,6 +982,7 @@ pub fn parse(
             // End candidates are whole controls at their terminal columns, never
             // substrings inside a selected option, notes, or typed continuations.
             match kind {
+                QuestionKind::AgyAsk => false,
                 QuestionKind::ClaudeAsk => {
                     (column == 0
                         && original.starts_with("Enter ")
@@ -998,6 +1017,7 @@ pub fn parse(
             }
             let slice = rows.get(start..=end)?;
             let dialog = match kind {
+                QuestionKind::AgyAsk => None,
                 QuestionKind::ClaudeAsk => claude(slice, pending),
                 QuestionKind::CodexPlan => sync(slice, pending),
                 QuestionKind::CodexAsync => asynchronous(slice, pending),
@@ -1016,3 +1036,156 @@ pub fn parse(
 
 #[cfg(test)]
 mod tests;
+
+fn agy_numbered(row: &str) -> Option<(u32, &str, bool)> {
+    let row = row.trim();
+    let (row, selected) = match row.strip_prefix("> ") {
+        Some(r) => (r, true),
+        None => (row, false),
+    };
+    let (number, label) = row.split_once(". ")?;
+    if number.is_empty() || !number.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    Some((number.parse().ok()?, label, selected))
+}
+
+fn parse_agy(screen: &str, pending: &PendingQuestion) -> Option<QuestionScreen> {
+    let rows: Vec<_> = screen.lines().collect();
+    if rows.len() > 2000 {
+        return None;
+    }
+    let mut chosen = None;
+    for (index, q) in pending.questions.iter().enumerate() {
+        let title = format!(
+            "Question {}/{}: {}",
+            index + 1,
+            pending.questions.len(),
+            q.text
+        );
+        for start in 0..rows.len() {
+            if !rows[start].trim().starts_with(&format!(
+                "Question {}/{}:",
+                index + 1,
+                pending.questions.len()
+            )) {
+                continue;
+            }
+            let Some(mut pos) = known_end(&rows, start, rows[start].trim(), &title) else {
+                continue;
+            };
+            let candidate = (|| {
+                let mut options = Vec::new();
+                let mut cursor = None;
+                for (i, label) in q
+                    .options
+                    .iter()
+                    .map(|o| o.label.as_str())
+                    .chain(std::iter::once("Write-in..."))
+                    .enumerate()
+                {
+                    while rows.get(pos).is_some_and(|r| r.trim().is_empty()) {
+                        pos += 1;
+                    }
+                    let (n, mut seen, selected) = agy_numbered(rows.get(pos)?)?;
+                    if n as usize != i + 1 {
+                        return None;
+                    }
+                    let checked = if q.multi_select && i < q.options.len() {
+                        let (value, rest) = if let Some(rest) = seen.strip_prefix("[ ] ") {
+                            (false, rest)
+                        } else {
+                            (true, seen.strip_prefix("[x] ")?)
+                        };
+                        seen = rest;
+                        Some(value)
+                    } else {
+                        None
+                    };
+                    if selected && cursor.replace(QuestionCursor::Option(n)).is_some() {
+                        return None;
+                    }
+                    pos = known_end(&rows, pos, seen, label)?;
+                    options.push(ScreenOption {
+                        number: n,
+                        label: label.into(),
+                        description: None,
+                        checked,
+                    });
+                }
+                let cursor = cursor?;
+                while rows.get(pos).is_some_and(|r| r.trim().is_empty()) {
+                    pos += 1;
+                }
+                let mut free_text = None;
+                if let Some(first) = rows.get(pos)?.trim().strip_prefix("Your answer:") {
+                    if cursor != QuestionCursor::Option(options.len() as u32) {
+                        return None;
+                    }
+                    let mut text_rows = vec![first.trim()];
+                    pos += 1;
+                    while rows.get(pos)?.trim() != "enter Submit · esc Back" {
+                        // Typed content may wrap but never become new numbered rows.
+                        if agy_numbered(rows[pos]).is_some() || text_rows.len() > 500 {
+                            return None;
+                        }
+                        text_rows.push(rows[pos].trim());
+                        pos += 1;
+                    }
+                    free_text = Some(FreeText {
+                        active: true,
+                        text: text_rows.join(" ").trim().into(),
+                    });
+                } else {
+                    let footer = rows.get(pos)?.trim();
+                    let single = "↑/↓ Navigate · enter Submit · esc Skip";
+                    let single_back = "↑/↓ Navigate · ← Back · enter Submit · esc Skip";
+                    let multi = "↑/↓ Navigate · space Toggle · enter Submit All · esc Skip";
+                    let multi_back =
+                        "↑/↓ Navigate · ← Back · space Toggle · enter Submit All · esc Skip";
+                    let mut live_footer = String::from("↑/↓ Navigate · ");
+                    if index > 0 {
+                        live_footer.push_str("← Back · ");
+                    }
+                    if index + 1 < pending.questions.len() {
+                        live_footer.push_str("→ Next · ");
+                    }
+                    if cursor == QuestionCursor::Option(options.len() as u32) {
+                        live_footer.push_str("enter Write-in · esc Skip");
+                    } else {
+                        live_footer.push_str("enter Select · esc Skip");
+                    }
+                    if !(if q.multi_select {
+                        [multi, multi_back].contains(&footer)
+                    } else {
+                        [single, single_back, live_footer.as_str()].contains(&footer)
+                    }) {
+                        return None;
+                    }
+                }
+                Some(QuestionScreen {
+                    step: QuestionStep::AgyQuestion {
+                        index,
+                        total: pending.questions.len(),
+                    },
+                    options,
+                    cursor: Some(cursor),
+                    free_text,
+                    countdown: None,
+                    queued_count: None,
+                    unanswered: None,
+                    completed_tabs: false,
+                    highlighted: None,
+                    review_answers: vec![],
+                    fingerprint: fingerprint(&rows[start..=pos]),
+                })
+            })();
+            if let Some(dialog) = candidate {
+                if chosen.replace(dialog).is_some() {
+                    return None;
+                }
+            }
+        }
+    }
+    chosen
+}

@@ -8,6 +8,7 @@ pub enum QuestionKind {
     ClaudeAsk,
     CodexPlan,
     CodexAsync,
+    AgyAsk,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -370,3 +371,65 @@ pub fn pending_codex_questions(rollout: &[Value]) -> Vec<PendingQuestion> {
 
 #[cfg(test)]
 mod tests;
+
+/// Decode the observed JSON-string-valued questions argument. Planner DONE is
+/// deliberately ignored: Agy writes it before displaying the question picker.
+pub fn pending_agy_questions(history: &[Value]) -> Vec<PendingQuestion> {
+    crate::approval_match::agy_pending_calls(history)
+        .into_iter()
+        .filter_map(|(id, call, _)| {
+            if call["name"] != "ask_question" {
+                return None;
+            }
+            let encoded = call["args"]["questions"].as_str()?;
+            if encoded.len() > 262_144 {
+                return None;
+            }
+            let values: Vec<Value> = serde_json::from_str(encoded).ok()?;
+            if values.is_empty() || values.len() > 32 {
+                return None;
+            }
+            let questions = values
+                .iter()
+                .map(|value| {
+                    let question = text(&value["question"])?;
+                    if question.len() > 8192 {
+                        return None;
+                    }
+                    let opts = value["options"].as_array()?;
+                    if opts.is_empty() || opts.len() > 64 {
+                        return None;
+                    }
+                    let options = opts
+                        .iter()
+                        .map(|v| {
+                            let label = text(v)?;
+                            if label.len() > 8192 {
+                                return None;
+                            }
+                            Some(QuestionOption {
+                                label: label.into(),
+                                description: None,
+                            })
+                        })
+                        .collect::<Option<Vec<_>>>()?;
+                    Some(Question {
+                        id: None,
+                        header: None,
+                        text: question.into(),
+                        options,
+                        multi_select: value["is_multi_select"].as_bool()?,
+                        allows_other: true,
+                        secret: false,
+                    })
+                })
+                .collect::<Option<Vec<_>>>()?;
+            Some(PendingQuestion {
+                request_id: id,
+                kind: QuestionKind::AgyAsk,
+                turn_id: None,
+                questions,
+            })
+        })
+        .collect()
+}

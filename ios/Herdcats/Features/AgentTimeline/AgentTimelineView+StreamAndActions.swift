@@ -251,7 +251,7 @@ extension AgentTimelineView {
                     ), owner: owner)
                     if AgentTimelineScreenshotFixture.showsApproval {
                         try timeline.consume(AgentTimelineScreenshotFixture.approvalFrame(paneId: paneId, agent: ScreenshotFixtures.paneAgent), owner: owner)
-                        approvalResponse.sync(timeline.pendingApproval)
+                        AgentTimelineScreenshotFixture.prepareApprovalResponse(approvalResponse, pending: timeline.pendingApproval)
                         updateTimelineSheet()
                     }
                     if AgentTimelineScreenshotFixture.showsQuestion {
@@ -259,7 +259,7 @@ extension AgentTimelineView {
                         questionResponse.sync(timeline.pendingQuestion)
                     }
                     if ScreenshotFixtures.screen.hasPrefix("timeline-model") {
-                        timeline.modelControl.loadScreenshotFixture(agent: ScreenshotFixtures.paneAgent)
+                        await timeline.modelControl.loadScreenshotFixture(agent: ScreenshotFixtures.paneAgent)
                     }
                 } catch { timeline.end(owner: owner, error: (error as? AgentBridgeError) ?? .invalidFrame) }
                 return

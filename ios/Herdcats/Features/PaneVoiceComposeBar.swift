@@ -851,7 +851,7 @@ private struct AgentModelConfigurationSheet: View {
             Form {
                 Section {
                     NavigationLink(value: "Model") {
-                        row("Model", value: state.pair.model?.label ?? "Unknown")
+                        row("Model", value: state.pair.model == nil ? "Unknown" : state.modelName)
                     }
                     .accessibilityIdentifier("model-configuration-model")
                     if !state.efforts.isEmpty {
@@ -863,12 +863,7 @@ private struct AgentModelConfigurationSheet: View {
                 }
                 .listRowBackground(Theme.cardBackground)
                 .disabled(state.isChanging)
-                if let error = state.errorMessage {
-                    Text(error)
-                        .foregroundStyle(Theme.destructive)
-                        .listRowBackground(Theme.cardBackground)
-                        .accessibilityIdentifier("model-configuration-error")
-                }
+                catalogStatus
             }
             .scrollContentBackground(.hidden)
             .contentMargins(.top, 8, for: .scrollContent)
@@ -889,6 +884,7 @@ private struct AgentModelConfigurationSheet: View {
             .navigationDestination(for: String.self) { destination in
                 List {
                     if destination == "Model" {
+                        catalogStatus
                         ForEach(state.models) { model in
                             option(model.label, selected: state.selectedModelID == model.id) {
                                 Task { await state.change(model: model.id) }
@@ -902,7 +898,7 @@ private struct AgentModelConfigurationSheet: View {
                         }
                     }
                 }
-                .disabled(state.isChanging)
+                .disabled(state.isChanging || state.isLoadingModels)
                 .scrollContentBackground(.hidden)
                 .background(Theme.background)
                 .navigationTitle(destination)
@@ -914,6 +910,34 @@ private struct AgentModelConfigurationSheet: View {
         .presentationDetents(path.isEmpty && !typeSize.isAccessibilitySize ? [.height(300)] : [.medium, .large])
         .presentationDragIndicator(.visible)
         .task { await state.refresh() }
+    }
+
+    @ViewBuilder private var catalogStatus: some View {
+        if state.isLoadingModels {
+            HStack(spacing: 10) {
+                ProgressView().accessibilityLabel("Loading model choices")
+                Text("Loading model choices…")
+            }
+            .listRowBackground(Theme.cardBackground)
+        } else if let error = state.errorMessage {
+            Text(error)
+                .foregroundStyle(Theme.destructive)
+                .fixedSize(horizontal: false, vertical: true)
+                .listRowBackground(Theme.cardBackground)
+                .accessibilityIdentifier("model-choices-error")
+            retryCatalog
+        } else if state.models.isEmpty {
+            Text("Model choices haven't loaded yet.")
+                .foregroundStyle(Theme.textMuted)
+                .listRowBackground(Theme.cardBackground)
+            retryCatalog
+        }
+    }
+    private var retryCatalog: some View {
+        Button("Retry") { Task { await state.refresh() } }
+            .disabled(state.isChanging || state.isLoadingModels)
+            .listRowBackground(Theme.cardBackground)
+            .accessibilityIdentifier("model-choices-retry")
     }
 
     private func row(_ title: String, value: String) -> some View {

@@ -1,6 +1,7 @@
 use crate::{
     Result,
     adapter::Adapter,
+    agy::AgyAdapter,
     approval_match::{self, PendingRequest, Resolution},
     approval_screen::{self, ApprovalDialog, OptionKey},
     claude::{ClaudeAdapter, Entry},
@@ -81,6 +82,7 @@ impl PendingApproval {
             (Agent::Claude, OptionKey::Digit(n)) if *n > 0 => Ok(n.to_string()),
             (Agent::Codex, OptionKey::Letter(c)) if c.is_ascii_alphabetic() => Ok(c.to_string()),
             (Agent::Codex, OptionKey::Escape) => Ok("esc".into()),
+            (Agent::Agy, OptionKey::Navigate(_)) => Ok("navigate".into()),
             _ => Err("mismatch"),
         }
     }
@@ -90,6 +92,7 @@ impl PendingApproval {
                 OptionKey::Digit(n) => n.to_string(),
                 OptionKey::Letter(c) => c.to_string(),
                 OptionKey::Escape => "esc".into(),
+                OptionKey::Navigate(_) => "navigate".into(),
             };
             json!({"number":option.number,"label_lines":option.label_lines,"key":key})
         }).collect();
@@ -133,6 +136,7 @@ impl PendingInteraction {
                 }).collect();
                 let step = match p.screen.step {
                     QuestionStep::ClaudeQuestion(index) => json!({"kind":"claude_question","index":index}),
+                    QuestionStep::AgyQuestion { index, total } => json!({"kind":"agy_question","index":index,"total":total}),
                     QuestionStep::ClaudeReview => json!({"kind":"claude_review"}),
                     QuestionStep::CodexQuestion { index, total } => json!({"kind":"codex_question","index":index,"total":total}),
                     QuestionStep::AsyncQueued => json!({"kind":"async_queued"}),
@@ -141,6 +145,7 @@ impl PendingInteraction {
                 let kind = match p.request.kind {
                     QuestionKind::ClaudeAsk => "claude", QuestionKind::CodexPlan => "codex_plan",
                     QuestionKind::CodexAsync => "codex_async",
+                    QuestionKind::AgyAsk => "agy",
                 };
                 json!({"identity":p.identity,"generation":p.generation,"request_id":p.request.request_id,
                     "agent":p.identity.agent,"kind":"question","question_kind":kind,
@@ -153,6 +158,7 @@ impl PendingInteraction {
 enum QuestionInputStamp {
     Claude(ApprovalInputStamp),
     Codex(ApprovalFileStamp),
+    Agy(ApprovalFileStamp),
 }
 struct QuestionMatchCache {
     identity: Identity,
@@ -248,6 +254,9 @@ pub struct Service {
     pub resolver: Option<Resolver>,
     pub codex_resolver: Option<CodexResolver>,
     adapters: Vec<Box<dyn Adapter>>,
+    agy_catalog_cache: std::cell::RefCell<Option<(Instant, Vec<model_control::AgyModel>)>>,
+    agy_catalog_error: std::cell::RefCell<Option<(Instant, &'static str)>>,
+    agy_executable: std::cell::RefCell<Option<PathBuf>>,
     epoch: String,
     sequence: u64,
     generation: u64,
@@ -322,12 +331,16 @@ impl Service {
         let adapters: Vec<Box<dyn Adapter>> = vec![
             Box::new(ClaudeAdapter::new(resolver.clone())),
             Box::new(CodexAdapter::new(codex_resolver.clone())),
+            Box::new(AgyAdapter::new(AgyAdapter::default_root())),
         ];
         Self {
             client: Client { socket },
             resolver,
             codex_resolver,
             adapters,
+            agy_catalog_cache: std::cell::RefCell::new(None),
+            agy_catalog_error: std::cell::RefCell::new(None),
+            agy_executable: std::cell::RefCell::new(None),
             epoch,
             sequence: 0,
             generation: 0,
@@ -390,7 +403,13 @@ impl Service {
         self.adapters = vec![
             Box::new(ClaudeAdapter::new(self.resolver.clone())),
             Box::new(CodexAdapter::new(self.codex_resolver.clone())),
+            Box::new(AgyAdapter::new(AgyAdapter::default_root())),
         ];
+        self
+    }
+    pub fn with_agy_root(mut self, root: PathBuf) -> Self {
+        self.adapters.retain(|a| a.name() != "antigravity_cli");
+        self.adapters.push(Box::new(AgyAdapter::new(Some(root))));
         self
     }
     fn adapter_for(&self, agent: &str) -> Option<&dyn Adapter> {
@@ -454,14 +473,14 @@ impl Service {
             watch.approval_cache = None;
             watch.question_cache = None;
         }
-        if pane.agent_status != "blocked" {
+        if pane.agent_status != "blocked" || identity.agent == "antigravity_cli" {
             watch.approval_cache = None;
             watch.question_cache = None;
         }
         watch.source_pane = Some(pane.clone());
         // Clone only the descriptor. Tail reading happens after timeline work,
         // using the same adapter-verified source and no additional path lookup.
-        let approval_file = if (self.include_approvals || self.include_questions) && pane.agent_status == "blocked" {
+        let approval_file = if identity.agent == "antigravity_cli" || ((self.include_approvals || self.include_questions) && pane.agent_status == "blocked") {
             file.try_clone().ok()
         } else {
             None
@@ -579,6 +598,50 @@ impl Service {
                 let was_delayed = watch.delayed;
                 watch.source_changing_count = 0;
                 watch.delayed = false;
+                // Agy's local Herdr detection can report idle/done/working on
+                // a live question card. Never use that label as an input oracle.
+                // Discover before emitting status, even when cards are opted out.
+                if reset {
+                    watch.approval_cache = None;
+                    watch.question_cache = None;
+                    self.generation += 1;
+                }
+                let status = if identity.agent == "antigravity_cli" {
+                    match approval_file {
+                        Some(file) => {
+                            let verified = watch.follower.verify_source(file.try_clone().map_err(io::Error::other)?)
+                                .and_then(|()| self.agy_interaction(&identity, file, &watch.follower));
+                            match verified {
+                                Ok(Some(found)) => {
+                                    let opted_in = match &found {
+                                        PendingInteraction::Approval(_) => self.include_approvals,
+                                        PendingInteraction::Question(_) => self.include_questions,
+                                    };
+                                    if opted_in { pending = Some(found); }
+                                    "blocked".to_owned()
+                                }
+                                // An unresolved call alone never authorizes a
+                                // card or input. Hide compose until it is known.
+                                Ok(None) => status,
+                                Err(_) => "unknown".to_owned(),
+                            }
+                        }
+                        None => "unknown".to_owned(),
+                    }
+                } else {
+                    if status == "blocked" && let Some(file) = approval_file {
+                        if self.include_approvals {
+                            pending = file.try_clone().ok().and_then(|file|
+                                self.read_pending(&identity, file, &mut watch.approval_cache))
+                                .map(PendingInteraction::Approval);
+                        }
+                        if pending.is_none() && self.include_questions {
+                            pending = self.read_question(&identity, file, &mut watch.question_cache)
+                                .map(PendingInteraction::Question);
+                        }
+                    }
+                    status
+                };
                 let data = &watch.follower.transcript;
                 let evicted: Vec<_> = watch
                     .previous
@@ -587,12 +650,9 @@ impl Service {
                     .map(|old| old.id.clone())
                     .collect();
                 if reset {
-                    watch.approval_cache = None;
-                    watch.question_cache = None;
                     watch.last_model = None;
                     watch.model_override = None;
                     watch.model_stamp = None;
-                    self.generation += 1;
                     let mut body = page(&data.entries, data.entries.len());
                     body["identity"] = json!(identity);
                     body["generation"] = json!(self.generation);
@@ -600,6 +660,15 @@ impl Service {
                     body["unknown_records"] = json!(data.unknown_records);
                     body["dropped_entries"] = json!(data.dropped_entries);
                     body["delayed"] = json!(false);
+                    if self.include_model_control && identity.agent == "antigravity_cli"
+                        && let (Some(pane), Some(file)) = (watch.source_pane.as_ref(), model_file.as_ref())
+                        && let Ok(file) = file.try_clone()
+                        && let Some((id, effort)) = self.model_scan_raw(&identity.agent, pane, file)
+                        && let Ok(catalog) = self.agy_catalog()
+                    {
+                        body["model"] = model_control::agy_model_value(&id, &catalog);
+                        body["effort"] = json!(effort);
+                    }
                     self.event(out, "timeline.snapshot", body)?;
                 } else {
                     let changed: Vec<_> = data
@@ -651,19 +720,6 @@ impl Service {
                 watch.unknown_records = data.unknown_records;
                 watch.dropped_entries = data.dropped_entries;
                 watch.previous = data.entries.clone();
-                if status == "blocked" {
-                    if let Some(file) = approval_file {
-                        if self.include_approvals {
-                            pending = file.try_clone().ok().and_then(|file|
-                                self.read_pending(&identity, file, &mut watch.approval_cache))
-                                .map(PendingInteraction::Approval);
-                        }
-                        if pending.is_none() && self.include_questions {
-                            pending = self.read_question(&identity, file, &mut watch.question_cache)
-                                .map(PendingInteraction::Question);
-                        }
-                    }
-                }
                 watch.identity = Some(identity);
                 watch.status = status;
                 watch.unavailable = None;
@@ -712,6 +768,11 @@ impl Service {
         cache: &mut Option<ApprovalMatchCache>,
         mut read_tail: impl FnMut(std::fs::File) -> Result<Vec<Value>>,
     ) -> Option<PendingRequest> {
+        if Agent::parse(&identity.agent) == Some(Agent::Agy) {
+            *cache = None;
+            let history = read_tail(file).ok()?;
+            return approval_match::pending_agy_commands(&identity.native_session_id, &history).into_iter().last();
+        }
         let stamp = match self.approval_input_stamp(identity, &file) {
             Some(stamp) => stamp,
             None => {
@@ -738,9 +799,11 @@ impl Service {
         let requests = match agent {
             Agent::Claude => approval_match::match_claude_records(&records, &history),
             Agent::Codex => approval_match::match_codex_records(&records, &history),
+            Agent::Agy => return None,
         };
         let request = requests.into_iter().rfind(|request| {
             let resolution = match agent {
+                Agent::Agy => return false,
                 Agent::Claude => approval_match::claude_resolution(&request.request_id, &history),
                 Agent::Codex => match request.turn_id.as_deref() {
                     Some(turn) => approval_match::codex_resolution(&request.request_id, turn, &history),
@@ -776,6 +839,10 @@ impl Service {
     fn question_input_stamp(&self, identity: &Identity, file: &std::fs::File) -> Option<QuestionInputStamp> {
         match Agent::parse(&identity.agent)? {
             Agent::Claude => self.approval_input_stamp(identity, file).map(QuestionInputStamp::Claude),
+            Agent::Agy => {
+                let meta = file.metadata().ok()?;
+                meta.is_file().then(|| QuestionInputStamp::Agy(ApprovalFileStamp::of(&meta)))
+            }
             Agent::Codex => {
                 let meta = file.metadata().ok()?;
                 meta.is_file().then(|| QuestionInputStamp::Codex(ApprovalFileStamp::of(&meta)))
@@ -807,6 +874,7 @@ impl Service {
                     question_match::pending_claude_spool_questions(&records, &history)
                 },
                 Agent::Codex => question_match::pending_codex_questions(&history),
+                Agent::Agy => question_match::pending_agy_questions(&history),
             };
             // A queued banner cannot identify which async call shift+left opens,
             // even when the calls have identical questions. Preserve Plan selection.
@@ -837,6 +905,45 @@ impl Service {
         let fresh = screen.is_fresh(&request);
         Some(PendingQuestionEvent { identity: identity.clone(), generation: self.generation,
             request, screen, fresh })
+    }
+    /// Native record + exact live screen, then fresh occupant/source again.
+    /// Err means unresolved/uncertain; None means no outstanding interaction.
+    fn agy_interaction(&self, identity: &Identity, file: std::fs::File, follower: &Follower) -> Result<Option<PendingInteraction>> {
+        let history = crate::follower::read_tail(file.try_clone().map_err(|_| "stale")?)?;
+        let outstanding = Self::agy_unresolved_tools(&history);
+        if !outstanding { return Ok(None); }
+        let found = self.read_pending(identity, file.try_clone().map_err(|_| "stale")?, &mut None)
+            .map(PendingInteraction::Approval)
+            .or_else(|| self.read_question(identity, file, &mut None).map(PendingInteraction::Question))
+            .ok_or("stale")?;
+        let (_, fresh) = self.model_pane_file(identity)?;
+        // Verify the same bytes still supply the pending call after screen I/O.
+        follower.verify_source(fresh.try_clone().map_err(|_|"stale")?)?;
+        let current = crate::follower::read_tail(fresh)?;
+        if history != current { return Err("stale"); }
+        Ok(Some(found))
+    }
+    fn agy_unresolved_tools(history: &[Value]) -> bool {
+        let mut unresolved = false;
+        for row in history {
+            match row["type"].as_str() {
+                Some("USER_INPUT") => unresolved = false,
+                Some("PLANNER_RESPONSE") => unresolved = row.get("tool_calls").is_some_and(|calls| calls.as_array().is_none_or(|calls| !calls.is_empty())),
+                Some("GENERIC") if matches!(row["status"].as_str(), Some("DONE" | "ERROR")) => unresolved = false,
+                _ => {},
+            }
+        }
+        unresolved
+    }
+    fn agy_require_no_pending(&self, identity: &Identity, file: std::fs::File) -> Result<()> {
+        if identity.agent != "antigravity_cli" { return Ok(()); }
+        let watch=self.watch.as_ref().ok_or("stale")?;
+        watch.follower.verify_source(file.try_clone().map_err(|_|"stale")?)?;
+        let history=crate::follower::read_tail(file)?;
+        // Refusal can be conservative; authorization still needs an empty
+        // composer and an idle occupant, never transcript completion alone.
+        if Self::agy_unresolved_tools(&history) {return Err("agent_busy");}
+        Ok(())
     }
     fn update_pending(
         &mut self,
@@ -885,6 +992,7 @@ impl Service {
         let Some(identity) = watch.identity.clone() else {
             return Ok(());
         };
+        if identity.agent == "antigravity_cli" && !matches!(watch.status.as_str(), "idle" | "done") { return Ok(()); }
         let stamp = match file.metadata() {
             Ok(metadata) if metadata.is_file() => {
                 use std::os::unix::fs::MetadataExt;
@@ -893,7 +1001,7 @@ impl Service {
             _ => return Ok(()),
         };
         let live_footer =
-            identity.agent == "codex" && matches!(watch.status.as_str(), "idle" | "done");
+            matches!(identity.agent.as_str(), "codex" | "antigravity_cli") && matches!(watch.status.as_str(), "idle" | "done");
         if watch.model_stamp == Some(stamp) && !live_footer {
             return Ok(());
         }
@@ -909,7 +1017,6 @@ impl Service {
             return Ok(());
         };
         if watch.last_model.as_ref() != Some(&observed) {
-            watch.last_model = Some(observed.clone());
             let label = watch
                 .model_override
                 .as_ref()
@@ -917,6 +1024,7 @@ impl Service {
             // Always a labeled object, so clients never fall back to raw ids.
             let label = label.unwrap_or_else(|| match identity.agent.as_str() {
                 "claude" => model_control::claude_display_label(&observed.0),
+                "antigravity_cli" => self.agy_catalog().ok().and_then(|catalog| catalog.iter().find(|m| m.id == observed.0).map(|m|m.label.clone())).unwrap_or_else(||observed.0.clone()),
                 _ => self
                     .codex_catalog()
                     .iter()
@@ -924,7 +1032,11 @@ impl Service {
                     .map(|model| model.label.clone())
                     .unwrap_or_else(|| model_control::codex_slug_label(&observed.0)),
             });
-            let model = json!({"id":observed.0,"label":label});
+            let model = if identity.agent == "antigravity_cli" {
+                let Ok(catalog) = self.agy_catalog() else { return Ok(()) };
+                model_control::agy_model_value(&observed.0, &catalog)
+            } else { json!({"id":observed.0,"label":label}) };
+            watch.last_model = Some(observed.clone());
             self.event(
                 out,
                 "model.updated",
@@ -969,6 +1081,9 @@ impl Service {
         }
     }
     fn model_scan_raw(&self, agent: &str, pane: &Pane, file: std::fs::File) -> ModelPair {
+        if agent == "antigravity_cli" {
+            return self.client.read_visible(&pane.pane_id).ok().and_then(|screen| { let catalog = self.agy_catalog().ok()?; model_control::agy_idle_footer(&screen, &catalog) });
+        }
         if agent == "codex"
             && matches!(pane.agent_status.as_str(), "idle" | "done")
             && let Ok(screen) = self.client.read_visible(&pane.pane_id)
@@ -1007,6 +1122,71 @@ impl Service {
             None => scanned,
         }
     }
+    fn agy_catalog(&self) -> Result<Vec<model_control::AgyModel>> {
+        if let Some((at, catalog)) = self.agy_catalog_cache.borrow().as_ref()
+            && at.elapsed() < Duration::from_secs(60) { return Ok(catalog.clone()); }
+        // Automatic footer polling must not repeatedly spawn a failing CLI.
+        // Explicit model.status clears this failure throttle before polling.
+        if let Some((at, code)) = self.agy_catalog_error.borrow().as_ref()
+            && at.elapsed() < Duration::from_secs(60) { return Err(*code); }
+        let result = (|| {
+            let pinned = self.agy_executable.borrow().clone();
+            let executable = match pinned {
+                Some(path) => path,
+                None => {
+                    let path = crate::agy::installed_executable()?;
+                    *self.agy_executable.borrow_mut() = Some(path.clone());
+                    path
+                }
+            };
+            crate::agy::discover_catalog(&executable, Instant::now() + crate::agy::CATALOG_TIMEOUT)
+        })();
+        match &result {
+            Ok(catalog) => {
+                *self.agy_catalog_cache.borrow_mut() = Some((Instant::now(), catalog.clone()));
+                *self.agy_catalog_error.borrow_mut() = None;
+            }
+            Err(code) => *self.agy_catalog_error.borrow_mut() = Some((Instant::now(), *code)),
+        }
+        result
+    }
+    fn set_agy_model(&self, identity: &Identity, current: &ModelPair, model: Option<&str>, effort: Option<&str>) -> Result<Value> {
+        let catalog = self.agy_catalog()?;
+        let (current_id, current_effort) = current.as_ref().ok_or("stale")?;
+        let target = model_control::agy_target(&catalog, current_id, current_effort.as_deref(), model, effort)?;
+        let target_effort = model_control::agy_native_effort(target).ok_or("invalid_effort")?;
+        let result = |confirmed, error: Option<&str>, pair: &ModelPair| json!({"identity":identity,"generation":self.generation,"applied":{
+            "model":pair.as_ref().map(|(id,_)|json!({"id":id,"label":catalog.iter().find(|m|m.id==*id).map(|m|m.label.as_str()).unwrap_or(id)})),
+            "effort":pair.as_ref().and_then(|(_,e)|e.as_deref())},"confirmed":confirmed,"error":error});
+        if target.id==*current_id && current_effort.as_deref()==Some(target_effort) { return Ok(result(true,None,current)); }
+        // Refuse changed installed versions even if a previous catalog is cached.
+        let executable = self.agy_executable.borrow().clone().ok_or("agy_unavailable")?;
+        let version=crate::agy::query_executable(&executable, &["--version"], Instant::now() + crate::agy::CATALOG_TIMEOUT)?;
+        if !model_control::agy_supported_version(&version) {return Err("agy_unsupported_version");}
+        self.composer_clear(identity,"agy")?;
+        let before=self.client.read_visible(&identity.pane_id)?;
+        if model_control::agy_composer_state(&before, &catalog)!=model_control::Composer::Empty {return Err("composer_not_empty");}
+        if model_control::agy_idle_footer(&before,&catalog).as_ref()!=current.as_ref() {return Err("stale");}
+        self.recheck_idle(identity)?;
+        let (_,file)=self.model_pane_file(identity)?;
+        self.watch.as_ref().ok_or("stale")?.follower.verify_source(file)?;
+        let command=if model.is_some() {format!("/model {}",target.id)} else {format!("/effort {target_effort}")};
+        // A failed send may have been delivered. The caller must refresh; no retry.
+        self.client.agent_prompt(&identity.pane_id,&command)?;
+        let deadline=Instant::now()+Duration::from_secs(4);
+        loop {
+            self.recheck_idle(identity)?;
+            let screen=self.client.read_visible(&identity.pane_id)?;
+            let observed=model_control::agy_idle_footer(&screen,&catalog);
+            let acknowledgement=model_control::agy_fresh_confirmation(&screen,&before,
+                model.map(|_|target.label.as_str()),if model.is_none(){Some(target_effort)}else{None});
+            if acknowledgement && observed.as_ref().is_some_and(|(id,e)|id==&target.id && e.as_deref()==Some(target_effort)) {
+                return Ok(result(true,None,&observed));
+            }
+            if Instant::now()>=deadline {return Ok(result(false,Some("confirm_timeout"),current));}
+            thread::sleep(Duration::from_millis(100));
+        }
+    }
     fn codex_catalog(&self) -> Vec<model_control::CodexCatalogModel> {
         let Some(home) = self
             .codex_home
@@ -1031,7 +1211,7 @@ impl Service {
             .ok_or("stale")?
             .clone();
         if pane.terminal_id != identity.terminal_id
-            || pane.agent.as_deref() != Some(identity.agent.as_str())
+            || !pane.agent.as_deref().is_some_and(|agent| self.adapter_for(agent).is_some_and(|a| a.name() == identity.agent))
         {
             return Err("stale");
         }
@@ -1055,6 +1235,7 @@ impl Service {
             .filter(|_| watch.unavailable.is_none())
             .ok_or("timeline_unavailable")?;
         let (pane, file) = self.model_pane_file(&identity)?;
+        self.agy_require_no_pending(&identity, file.try_clone().map_err(|_|"stale")?)?;
         let agent = identity.agent.as_str();
         let current = self.model_scan_current(agent, &pane, file);
         let current_id = current.as_ref().map(|(id, _)| id.as_str());
@@ -1099,6 +1280,12 @@ impl Service {
                 for entry in &mut models {
                     entry["efforts"] = json!(efforts);
                 }
+                (models, efforts)
+            }
+            "antigravity_cli" => {
+                let catalog = self.agy_catalog()?;
+                let models = model_control::agy_model_values(&catalog, current_id);
+                let efforts = current_id.map(|id| model_control::agy_model_value(id, &catalog)["efforts"].as_array().cloned().unwrap_or_default()).unwrap_or_default();
                 (models, efforts)
             }
             "codex" => {
@@ -1149,6 +1336,7 @@ impl Service {
         let current_label = confirmed_label.or_else(|| {
             current.as_ref().map(|(id, _)| match agent {
                 "claude" => model_control::claude_display_label(id),
+                "antigravity_cli" => self.agy_catalog().ok().and_then(|catalog| catalog.iter().find(|m| m.id == *id).map(|m|m.label.clone())).unwrap_or_else(||id.clone()),
                 _ => self
                     .codex_catalog()
                     .iter()
@@ -1160,7 +1348,9 @@ impl Service {
         Ok(json!({
             "identity":identity, "generation":self.generation, "agent":agent,
             "model": current.as_ref().and_then(|(id, _)| {
-                current_label.clone().map(|label| json!({"id":id, "label":label}))
+                if agent == "antigravity_cli" {
+                    Some(model_control::agy_model_value(id, &self.agy_catalog().ok()?))
+                } else { current_label.clone().map(|label| json!({"id":id, "label":label})) }
             }),
             "effort": current.as_ref().and_then(|(_, effort)| effort.clone()),
             "models":models, "efforts":efforts,
@@ -1177,21 +1367,27 @@ impl Service {
             .filter(|_| watch.unavailable.is_none())
             .ok_or("timeline_unavailable")?;
         let agent = identity.agent.as_str();
+        if agent=="antigravity_cli" && (params["expect"]["identity"]!=serde_json::to_value(&identity).map_err(|_|"stale")? || params["expect"]["generation"].as_u64()!=Some(self.generation)) {return Err("stale");}
         let target_model = params["model"].as_str();
         let target_effort = params["effort"].as_str();
-        model_control::valid_set_target(agent, target_model, target_effort)?;
+        model_control::valid_set_target(if agent=="antigravity_cli" {"agy"} else {agent}, target_model, target_effort)?;
         if !params["expect"].is_object() {
             return Err("invalid_request");
         }
         let expect_model = params["expect"]["model"].as_str();
         let expect_effort = params["expect"]["effort"].as_str();
         let (pane, file) = self.model_pane_file(&identity)?;
+        self.agy_require_no_pending(&identity, file.try_clone().map_err(|_|"stale")?)?;
         if !matches!(pane.agent_status.as_str(), "idle" | "done") {
             return Err("agent_busy");
         }
         let scanned_at_set = self.model_scan_raw(agent, &pane, file);
         let current = self.resolve_model_scan(scanned_at_set.clone());
-        if current.as_ref().map(|(id, _)| id.as_str()) != expect_model
+        let current_id = current.as_ref().map(|(id, _)| id.as_str());
+        let model_matches = if agent == "antigravity_cli" {
+            model_control::agy_expect_matches(current_id, expect_model, &self.agy_catalog()?)
+        } else { current_id == expect_model };
+        if !model_matches
             || current.as_ref().and_then(|(_, effort)| effort.as_deref()) != expect_effort
         {
             return Err("stale");
@@ -1199,6 +1395,7 @@ impl Service {
         let result = match agent {
             "claude" => self.set_claude_model(&identity, &current, target_model, target_effort)?,
             "codex" => self.set_codex_model(&identity, &current, target_model, target_effort)?,
+            "antigravity_cli" => self.set_agy_model(&identity, &current, target_model, target_effort)?,
             _ => return Err("unsupported_agent"),
         };
         // Force the next poll to re-scan and emit `model.updated` for the new
@@ -1220,6 +1417,12 @@ impl Service {
                     scanned_at_set,
                 });
             }
+        }
+        // Overrides, scans, footer checks and acknowledgements stay native.
+        // Project only after the authoritative raw result has been recorded.
+        let mut result = result;
+        if agent == "antigravity_cli" && let Some(id) = result["applied"]["model"]["id"].as_str() {
+            result["applied"]["model"] = model_control::agy_model_value(id, &self.agy_catalog()?);
         }
         Ok(result)
     }
@@ -1322,6 +1525,7 @@ impl Service {
     /// `agent.prompt`, which would otherwise append to a desk-side draft.
     /// Fails closed: an unreadable or unparsable screen refuses the send.
     fn composer_clear(&self, identity: &Identity, agent: &str) -> Result<()> {
+        if identity.agent == "antigravity_cli" { self.recheck_idle(identity)?; }
         self.composer_empty(&identity.pane_id, agent)?;
         // Re-verify the occupant last, immediately before the caller's prompt,
         // so a pane replaced after the composer read never receives it.
@@ -1332,7 +1536,10 @@ impl Service {
             .client
             .read_visible(pane_id)
             .map_err(|_| "composer_not_empty")?;
-        match model_control::composer_state(agent, &screen) {
+        let composer = if matches!(agent, "agy" | "antigravity_cli") {
+            model_control::agy_composer_state(&screen, &self.agy_catalog()?)
+        } else { model_control::composer_state(agent, &screen) };
+        match composer {
             model_control::Composer::Empty => Ok(()),
             // Placeholder-shaped text may be the user's draft: accept it only
             // when the styled screen shows it faint, as idle suggestions are.
@@ -1353,7 +1560,8 @@ impl Service {
     /// Occupant and idle/done re-verification before every keystroke batch.
     /// Mid-flow failures map to `stale`, matching `interaction.respond`.
     fn recheck_idle(&self, identity: &Identity) -> Result<()> {
-        let (pane, _) = self.model_pane_file(identity)?;
+        let (pane, file) = self.model_pane_file(identity)?;
+        self.agy_require_no_pending(identity, file)?;
         if !matches!(pane.agent_status.as_str(), "idle" | "done") {
             return Err("stale");
         }
@@ -1801,8 +2009,8 @@ impl Service {
         let snapshot = self.client.snapshot().map_err(|_| "stale")?;
         let pane = snapshot.panes.iter().find(|p| p.pane_id == identity.pane_id)
             .ok_or("stale")?;
-        if pane.agent_status != "blocked" || pane.terminal_id != identity.terminal_id
-            || pane.agent.as_deref() != Some(&identity.agent)
+        if (identity.agent != "antigravity_cli" && pane.agent_status != "blocked") || pane.terminal_id != identity.terminal_id
+            || !pane.agent.as_deref().is_some_and(|agent| self.adapter_for(agent).is_some_and(|a| a.name() == identity.agent))
         {
             return Err("stale");
         }
@@ -1810,7 +2018,36 @@ impl Service {
         if session != identity.native_session_id {
             return Err("stale");
         }
-        self.client.send_keys(&identity.pane_id, &[key.as_str()])?;
+        if pending.request.agent == Agent::Agy {
+            let target = params["option"].as_u64().and_then(|n| n.checked_sub(1)).ok_or("mismatch")? as usize;
+            let plan = approval_screen::agy_plan(&current, target).ok_or("mismatch")?;
+            let mut expected = current.selected;
+            for (key, after) in plan {
+                let file = self.question_pane_file(identity)?;
+                watch.follower.verify_source(file.try_clone().map_err(|_|"stale")?)?;
+                let newest = self.matched_request(identity, file, &mut None, crate::follower::read_tail).ok_or("stale")?;
+                if newest != pending.request { return Err("stale"); }
+                let screen = self.client.read_visible(&identity.pane_id).map_err(|_|"stale")?;
+                let dialog = approval_screen::parse(Agent::Agy, &screen, command).ok_or("stale")?;
+                if !pending.dialog.same_dialog(&dialog) || dialog.selected != expected { return Err("stale"); }
+                // No retry after this call: transport failure can mean delivered.
+                self.client.send_keys(&identity.pane_id, &[key.as_str()])?;
+                if let Some(after) = after {
+                    let deadline = Instant::now()+Duration::from_secs(1);
+                    loop {
+                        let screen = self.client.read_visible(&identity.pane_id).map_err(|_|"stale")?;
+                        let dialog=approval_screen::parse(Agent::Agy,&screen,command).ok_or("stale")?;
+                        if !pending.dialog.same_dialog(&dialog) { return Err("stale"); }
+                        if dialog.selected == Some(after) {break;}
+                        if Instant::now()>=deadline {return Err("stale");}
+                        thread::sleep(Duration::from_millis(50));
+                    }
+                    expected=Some(after);
+                }
+            }
+        } else {
+            self.client.send_keys(&identity.pane_id, &[key.as_str()])?;
+        }
 
         let deadline = Instant::now() + Duration::from_secs(2);
         let mut confirmed = false;
@@ -1819,8 +2056,14 @@ impl Service {
             let same = approval_screen::parse(pending.request.agent, &screen, command)
                 .is_some_and(|dialog| pending.dialog.same_dialog(&dialog));
             if !same {
-                confirmed = true;
-                break;
+                if pending.request.agent==Agent::Agy {
+                    let Ok((_,file))=self.model_pane_file(identity) else {break};
+                    if watch.follower.verify_source(file.try_clone().map_err(|_|"stale")?).is_err() {break;}
+                    if let Ok(history)=crate::follower::read_tail(file) {
+                        confirmed=crate::agy::completed_call(&history,&pending.request.request_id,"run_command");
+                    }
+                    if confirmed {break;}
+                } else { confirmed=true;break; }
             }
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
@@ -1833,8 +2076,8 @@ impl Service {
     fn question_pane_file(&self, identity: &Identity) -> Result<std::fs::File> {
         let snapshot = self.client.snapshot().map_err(|_| "stale")?;
         let pane = snapshot.panes.iter().find(|p| p.pane_id == identity.pane_id).ok_or("stale")?;
-        if pane.agent_status != "blocked" || pane.terminal_id != identity.terminal_id
-            || pane.agent.as_deref() != Some(&identity.agent) { return Err("stale"); }
+        if (identity.agent != "antigravity_cli" && pane.agent_status != "blocked") || pane.terminal_id != identity.terminal_id
+            || !pane.agent.as_deref().is_some_and(|agent| self.adapter_for(agent).is_some_and(|a| a.name() == identity.agent)) { return Err("stale"); }
         let adapter = self.adapter_for(&identity.agent).ok_or("stale")?;
         let (session, file) = adapter.resolve_and_open(pane).map_err(|_| "stale")?;
         if session != identity.native_session_id { return Err("stale"); }
@@ -1858,12 +2101,35 @@ impl Service {
         }
         if !current.is_fresh(&newest) { return Err("in_progress".into()); }
         let steps = question_keys::plan(newest.kind, &newest, &current, params)?;
-        let confirmed = self.execute_question(identity, &newest, current, &steps)?;
+        let mut confirmed = self.execute_question(identity, &newest, current, &steps)?;
+        if newest.kind == QuestionKind::AgyAsk {
+            confirmed=false;
+            let deadline=Instant::now()+Duration::from_secs(2);
+            loop {
+                let Ok((_,file))=self.model_pane_file(identity) else {break};
+                if watch.follower.verify_source(file.try_clone().map_err(|_|"stale")?).is_err() {break;}
+                if let Ok(history)=crate::follower::read_tail(file)
+                    && crate::agy::completed_question(&history,&newest.request_id,newest.questions.len()) {confirmed=true;break;}
+                if Instant::now()>=deadline {break;}
+                thread::sleep(Duration::from_millis(100));
+            }
+        }
         Ok(json!({"request_id":newest.request_id,"confirmed":confirmed}))
     }
     fn execute_question(&self, identity: &Identity, pending: &PendingQuestion, mut current: QuestionScreen, steps: &[Step]) -> InteractionResult<bool> {
         let mut steps_sent = 0;
         for (index, step) in steps.iter().enumerate() {
+            if pending.kind == QuestionKind::AgyAsk {
+                let file=self.question_pane_file(identity).map_err(|_|InteractionError::stale_after(steps_sent))?;
+                let watch=self.watch.as_ref().ok_or("stale")?;
+                watch.follower.verify_source(file.try_clone().map_err(|_|"stale")?).map_err(|_|InteractionError::stale_after(steps_sent))?;
+                if self.matched_question(identity,file,&mut None).as_ref()!=Some(pending) {return Err(InteractionError::stale_after(steps_sent));}
+                if index==0 {
+                    let visible=self.client.read_visible(&identity.pane_id).map_err(|_|InteractionError::stale_after(steps_sent))?;
+                    if question_screen::parse(pending.kind,&visible,pending).is_none_or(|s|s.fingerprint!=current.fingerprint) {return Err(InteractionError::stale_after(steps_sent));}
+                }
+            }
+            if index == 0 { self.question_pane_file(identity).map_err(|_| InteractionError::stale_after(steps_sent))?; }
             if index > 0 {
                 let occupant = self.question_pane_file(identity);
                 // A guard read immediately before each later input catches desk
@@ -1960,7 +2226,7 @@ impl Service {
             let codex_available = self.adapter_for("codex").is_some_and(|a| a.is_available());
             return Self::write(
                 out,
-                &json!({"id":id,"result":{"protocol":1,"bridge_version":env!("CARGO_PKG_VERSION"),"epoch":self.epoch,"capabilities":{"claude_timeline":claude_available,"record_content":true,"codex_timeline":codex_available,"codex_daemon_config":true,"codex_daemon_stop":true,"git":false,"prompts":false,"approvals":true,"questions":true,"model_control":true,"routed_hosts":false}}}),
+                &json!({"id":id,"result":{"protocol":1,"bridge_version":env!("CARGO_PKG_VERSION"),"epoch":self.epoch,"capabilities":{"agy":self.adapter_for("agy").is_some_and(|a| a.is_available()),"claude_timeline":claude_available,"record_content":true,"codex_timeline":codex_available,"codex_daemon_config":true,"codex_daemon_stop":true,"git":false,"prompts":false,"approvals":true,"questions":true,"model_control":true,"routed_hosts":false}}}),
             );
         }
         if !self.initialized {
@@ -1975,6 +2241,10 @@ impl Service {
                 Err(error) => Self::write(out, &json!({"id":id,"error":error.data()})),
             },
             "model.status" => {
+                // Retry failures once per explicit request, before the mandatory
+                // refresh. Its result is reused below, so slow failures cannot
+                // consume two discovery budgets in one RPC.
+                *self.agy_catalog_error.borrow_mut() = None;
                 self.poll_with_refresh(out, refresh)?;
                 match self.model_status() {
                     Ok(result) => Self::write(out, &json!({"id":id,"result":result})),
@@ -2212,6 +2482,7 @@ mod tests {
         hide_pane: bool,
         terminal_id: Option<String>,
         session_override: Option<String>,
+        transcript_after_inputs: Option<(usize, PathBuf, String)>,
     }
     type SharedHerdr = std::sync::Arc<std::sync::Mutex<HerdrState>>;
     fn fixture() -> (Service, PathBuf, std::sync::Arc<std::sync::Mutex<String>>) {
@@ -2318,13 +2589,16 @@ mod tests {
                         json!({})
                     }
                     "session.snapshot" => {
+                        if let Some((count, path, text))=state.transcript_after_inputs.as_ref()
+                            && state.inputs.len()>=*count {fs::write(path,text).unwrap();}
+
                         if let Some((count, status)) = state.status_after_inputs.clone()
                             && state.inputs.len() >= count { state.status = Some(status); }
                         if !state.inputs.is_empty() && let Some(terminal) = state.terminal_after_input.clone() {
                             state.terminal_id = Some(terminal);
                         }
                         let agent = state.agent.as_deref().unwrap_or("claude");
-                        let mut snapshot = json!({"protocol":22,"version":"0.9.3","panes":[{"pane_id":"w1:p1","terminal_id":state.terminal_id.as_deref().unwrap_or("terminal-one"),"workspace_id":"w1","tab_id":"w1:t1","agent":agent,"agent_status":state.status.as_deref().unwrap_or("idle"),"foreground_cwd":"/fixture/work","revision":1,"agent_session":{"agent":agent,"source":format!("herdr:{agent}"),"kind":"id","value":state.session_override.clone().unwrap_or_else(|| session_for_server.lock().unwrap().clone())}}]});
+                        let mut snapshot = json!({"protocol":22,"version":"0.9.3","panes":[{"pane_id":"w1:p1","terminal_id":state.terminal_id.as_deref().unwrap_or("terminal-one"),"workspace_id":"w1","tab_id":"w1:t1","agent":agent,"agent_status":state.status.as_deref().unwrap_or("idle"),"foreground_cwd":"/fixture/work","revision":1,"agent_session":{"agent":agent,"source":if crate::agy::is_agent(agent) {"herdr:antigravity_cli".to_string()}else{format!("herdr:{agent}")},"kind":"id","value":state.session_override.clone().unwrap_or_else(|| session_for_server.lock().unwrap().clone())}}]});
                         if state.hide_pane {
                             snapshot["panes"] = json!([]);
                         }
@@ -2352,6 +2626,7 @@ mod tests {
             .unwrap();
         (service, root, session, herdr)
     }
+    include!("service_agy_tests.rs");
     include!("service_approval_tests.rs");
     include!("service_question_tests.rs");
     include!("service_question_response_tests.rs");

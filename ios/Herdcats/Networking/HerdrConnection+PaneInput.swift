@@ -243,9 +243,9 @@ extension HerdrConnection {
             let reference = live.agentSession
             let sessionId = reference?.kind == "path" ? URL(fileURLWithPath:reference?.value ?? "").deletingPathExtension().lastPathComponent : reference?.value
             guard live.paneId == identity.paneId, live.terminalId == identity.terminalId,
-                  live.agent == identity.agent, reference?.agent == identity.agent,
+                  TimelineAgentAvailability.matchesSession(agent: live.agent, referenceAgent: reference?.agent, source: reference?.source, identityAgent: identity.agent, referenceKind: reference?.kind ?? ""),
                   TimelineAgentAvailability.supports(agent: identity.agent),
-                  reference?.source == "herdr:\(identity.agent)", sessionId == identity.nativeSessionId,
+                  sessionId == identity.nativeSessionId,
                   TimelineComposePolicy.canSend(identity:identity,paneId:live.paneId,status:live.agentStatus,connected:true)
             else {throw AgentBridgeError.identityMismatch}
             try await self.requireGeneration(owned)

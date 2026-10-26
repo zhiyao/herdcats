@@ -4,16 +4,11 @@ struct ApprovalCard: View {
     let pending: AgentPendingApproval
     let response: ApprovalResponseState
     let onRespond: (AgentApprovalOption) -> Void
-    private var toolTitle: String {
-        let entry = AgentTimelineEntry(id: pending.requestId, kind: "tool", text: "",
-            role: nil, toolName: pending.toolName, status: nil, details: nil, truncated: false)
-        return TimelineActivitySummary.isCommand(entry) ? "Run command" : TimelineActivitySummary.purpose(entry)
-    }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
             commandBox
-            if let text = pending.agent == "codex" ? pending.justification : pending.description {
+            if let text = pending.explanation {
                 Text(verbatim: text)
                     .font(.jost(.subheadline)).foregroundStyle(Theme.text)
                     .fixedSize(horizontal: false, vertical: true)
@@ -39,16 +34,12 @@ struct ApprovalCard: View {
         .accessibilityIdentifier("timeline-approval-card")
     }
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("\(pending.agent == "codex" ? "Codex" : "Claude") · \(toolTitle)")
-                    .font(.jost(.caption, weight: .semibold)).foregroundStyle(.secondary)
-                Spacer(minLength: 8)
-                if response.phase == .sending { ProgressView().accessibilityLabel("Sending answer") }
-            }
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(verbatim: pending.title)
                 .font(.jost(.title3, weight: .semibold))
                 .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            if response.phase == .sending { ProgressView().accessibilityLabel("Sending answer") }
         }
     }
     private var commandBox: some View {

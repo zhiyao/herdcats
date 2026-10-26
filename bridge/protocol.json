@@ -8,7 +8,8 @@
       "--socket": "Herdr Unix socket; defaults to HERDR_SOCKET_PATH",
       "--claude-root": "defaults to HOME/.claude/projects",
       "--codex-root": "defaults to CODEX_HOME/sessions or HOME/.codex/sessions",
-      "--poll-ms": "50..5000; default 300"
+      "--poll-ms": "50..5000; default 300",
+      "--agy-root": "defaults to HOME/.gemini/antigravity-cli/brain; descriptor-pinned root; no symlink traversal"
     }
   },
   "capabilities": {
@@ -22,7 +23,8 @@
     "questions": true,
     "model_control": true,
     "routed_hosts": false,
-    "record_content": "true; rich entries and bounded content retrieval are enabled only when initialize params.record_content is true"
+    "record_content": "true; rich entries and bounded content retrieval are enabled only when initialize params.record_content is true",
+    "agy": "source adapter implemented; exact Herdr agent agy/antigravity_cli and source herdr:antigravity_cli required; delayed transcript creation retried"
   },
   "subcommands": {
     "herdcats-bridge codex-config daemon-status": "Reports running/not_running/unknown state of the managed daemon and updater, and config.toml auto_start setting; exits 0 and prints JSON",
@@ -160,10 +162,10 @@
       "result_types": {
         "identity": "object; the watched timeline identity",
         "generation": "u64; current timeline generation",
-        "agent": "claude or codex",
-        "model": "{id, label} or null; the model in effect from the transcript (Claude assistant message.model + effort, Codex idle/done catalog-matched live footer, otherwise last turn_context), falling back to Claude settings.json or Codex config.toml when no turns exist yet",
+        "agent": "claude, codex or antigravity_cli",
+        "model": "{id, label} or null; the model in effect from the transcript (Claude assistant message.model + effort, Codex idle/done catalog-matched live footer, otherwise last turn_context), falling back to Claude settings.json or Codex config.toml when no turns exist yet; Agy exposes the normalized family ID/base label and discovered efforts from its verified live footer (base · effort or an exact native catalog label carrying a recognized effort suffix)",
         "effort": "reasoning effort id (low, medium, high, xhigh, max, ultra, minimal) or null",
-        "models": "selectable {id, label, efforts: [{id, label}], current?: bool} models, each with its own effort options (empty when none): Claude tier aliases (fable, opus, sonnet, haiku) plus the live current id when unmapped; Codex catalog slugs from models_cache.json filtered to visibility=list and ordered by priority; exactly one entry carries current=true when a model is known",
+        "models": "selectable {id, label, efforts: [{id, label}], current?: bool} models, each with its own effort options (empty when none): Claude tier aliases (fable, opus, sonnet, haiku) plus the live current id when unmapped; Codex catalog slugs from models_cache.json filtered to visibility=list and ordered by priority; exactly one entry carries current=true when a model is known; Agy groups matching terminal -low/-medium/-high IDs and (Low)/(Medium)/(High) labels into base family IDs/labels with discovered efforts. Unknown or ambiguous native rows remain lossless",
         "efforts": "effort options for the current model: Claude low/medium/high/xhigh/max (auto hidden); Codex per-model supported_reasoning_levels, or the standard set when the model is unknown; empty when none"
       },
       "requires": "initialize with params.model_control true and a watch with a resolved native identity",
@@ -172,16 +174,16 @@
         "not_watching": "No active watch.",
         "timeline_unavailable": "The watch has no resolved identity or its timeline is unavailable.",
         "stale": "The pane or occupant changed or the transcript could not be re-verified.",
-        "unsupported_agent": "The watched agent is neither claude nor codex."
+        "unsupported_agent": "The watched agent has no supported model adapter."
       },
       "effect": "Runs a poll first (emitting any pending timeline events), then reads the current model/effort and option lists. Read-only: never sends input."
     },
     {
       "method": "model.set",
       "params": {
-        "model": "optional model id or Claude alias to switch to; omit to keep",
+        "model": "optional model id or Claude alias to switch to; omit to keep; Agy accepts normalized family IDs or exact discovered native IDs for legacy clients",
         "effort": "optional effort id to switch to; omit to keep",
-        "expect": "required {model: id|null, effort: id|null}; the client's last observed pair from model.status or model.updated"
+        "expect": "required {model: id|null, effort: id|null}; the client's last observed pair from model.status or model.updated; Agy also requires identity and generation. A family expectation is accepted only with the exact effort of the authoritative native pair"
       },
       "result_fields": [
         "identity",
@@ -219,7 +221,7 @@
         "confirm_timeout": "The command or picker never confirmed within about 4 seconds; the Codex picker is dismissed with Escape.",
         "herdr_unavailable": "Herdr socket I/O failed mid-flow."
       },
-      "effect": "Applies from the next turn in the session. Claude writes the CLI's own persisted defaults (settings.json); Codex applies for this session only and writes nothing. Confirmed and partially applied pairs override the unchanged scan for model.status, subsequent expect checks and model.updated. The override is discarded when the scanned pair changes or the identity/generation resets."
+      "effect": "Applies from the next turn in the session. Claude writes the CLI's own persisted defaults (settings.json); Codex applies for this session only and writes nothing. Confirmed and partially applied pairs override the unchanged scan for model.status, subsequent expect checks and model.updated. The override is discarded when the scanned pair changes or the identity/generation resets. Agy keeps scans, overrides and confirmations native and normalizes only wire results. Family switches preserve current effort if discovered, otherwise prefer medium, low, then high. Explicit legacy native targets retain their concrete selection; effort-only requests resolve a discovered variant of the current family. No native ID is invented for submission."
     }
   ],
   "envelopes": {
@@ -266,7 +268,7 @@
         "dropped_entries",
         "delayed"
       ],
-      "effect": "replace state; recent page only; fetch earlier retained entries separately"
+      "effect": "replace state; recent page only; fetch earlier retained entries separately With model_control opted in and a verified Agy footer, optional model and effort fields carry the normalized current family, matching model.status and model.updated."
     },
     "timeline.updated": {
       "fields": [
@@ -364,7 +366,7 @@
       "field_types": {
         "identity": "object; the watched timeline identity",
         "generation": "u64; current timeline generation",
-        "model": "{id, label}; the label is the CLI-confirmed one while an override holds, otherwise the Codex catalog display name or the derived Claude label",
+        "model": "{id, label}; the label is the CLI-confirmed one while an override holds, otherwise the Codex catalog display name or the derived Claude label; Agy exposes the normalized family ID/base label and discovered efforts",
         "effort": "string or null; the effort observed in the transcript"
       },
       "effect": "Emitted only when initialize opted into model control, after a transcript or live Codex idle-footer scan observes a different model/effort pair (and once after an identity/generation reset). Claude confirmed labels remain authoritative while the watch override holds. Codex session-only changes survive reconnects through the catalog-matched idle/done footer; missing or unparseable footers fall back to transcript/config. Pairs with model.set results: the request's applied pair is authoritative until the transcript catches up."
@@ -475,5 +477,13 @@
     "eligibility": "Newest pending request, no secrets, exactly one question and exactly one pending async call for Codex async, a queued banner count of exactly 1 if queued, and exactly one parsed visible question screen. Approval cards take priority.",
     "resolution": "Resolve when request is no longer pending, pane leaves blocked, screen no longer parses, or identity changes. Same-identity source_changing preserves pending state. initialize/unwatch silently reset.",
     "bounds": "Suppress oversized events rather than truncating question text or options."
+  },
+  "agy": {
+    "source": "<brain>/<UUID>/.system_generated/logs/transcript.jsonl",
+    "identity": "canonical antigravity_cli; native id only; never cwd/newest discovery",
+    "interactions": "verified Agy 1.4.7 command permission card only; once/conversation/persistent/deny; guarded arrows and Enter. Unsupported file/URL/MCP cards use Terminal. Questions decode args.questions JSON string; planner DONE remains pending until GENERIC result; only unambiguous single-call batches. Each input rechecks identity/source/screen. No uncertain send retries.",
+    "model_control": "agy --version and bounded agy models catalog; only tested 1.4.7; idle empty composer; exact slash command; fresh acknowledgement plus footer. /model may persist across sessions. expect.identity and expect.generation required for model.set.",
+    "limits": "64 MiB source, 1 MiB record, 1000 retained entries, 8192-byte previews, 64 KiB content chunks. Rewrite/rotation reset generation and invalidate pending actions.",
+    "distribution": "source support only; app published installer remains 0.3.0. Publish and verify real artifact/checksum before changing app release pin."
   }
 }

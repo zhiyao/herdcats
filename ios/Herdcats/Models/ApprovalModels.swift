@@ -1,6 +1,20 @@
 import Foundation
 
-enum ApprovalAgent: String, Codable, CaseIterable, Sendable { case claude, codex }
+enum ApprovalAgent: String, Codable, CaseIterable, Sendable {
+    case claude, codex
+    var displayName: String {
+        switch self {
+        case .claude: "Claude"
+        case .codex: "Codex"
+        }
+    }
+    var hookSettingsPath: String {
+        switch self {
+        case .claude: "~/.claude/settings.json"
+        case .codex: "~/.codex/hooks.json"
+        }
+    }
+}
 struct AgentApprovalOption: Codable, Equatable, Sendable {
     let number: UInt32
     let labelLines: [String]
@@ -26,16 +40,24 @@ struct AgentPendingApproval: Equatable, Sendable {
     let options: [AgentApprovalOption]
     let selected: Int?
 
+    /// A permission reason can arrive in either field; identity does not decide
+    /// which explanation is available. Preserve the original text for display.
+    var explanation: String? {
+        [justification, description].compactMap { $0 }.first {
+            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
     static func decode(_ data: AgentBridgePayload) throws -> Self {
         guard let identity = data.identity, let generation = data.generation,
             data.kind == "approval", let requestId = data.requestId,
             !requestId.isEmpty, requestId.utf8.count <= 264,
-            let agent = data.agent, ApprovalAgent(rawValue: agent) != nil, identity.agent == agent,
+            let agent = data.agent, (ApprovalAgent(rawValue: agent) != nil || agent == "antigravity_cli"), identity.agent == agent,
             let toolName = data.toolName, let command = data.command, command.utf8.count <= 65536,
             let title = data.title, let options = data.options, !options.isEmpty, options.count <= 16,
             Set(options.map(\.number)).count == options.count,
             options.allSatisfy({ $0.number > 0 && !$0.labelLines.isEmpty && $0.labelLines.count <= 8
-                && $0.labelLines.allSatisfy { $0.utf8.count <= 1024 } && AgentApprovalOption.validKey($0.key) }),
+                && $0.labelLines.allSatisfy { $0.utf8.count <= 1024 } && (agent == "antigravity_cli" ? $0.key == "navigate" : AgentApprovalOption.validKey($0.key)) }),
             data.selected.map({ options.indices.contains($0) }) ?? true
         else { throw AgentBridgeError.invalidFrame }
         return Self(identity: identity, generation: generation, requestId: requestId, agent: agent,
