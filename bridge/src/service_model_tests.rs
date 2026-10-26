@@ -134,7 +134,8 @@ fn model_fixture_codex() -> (Service, PathBuf, SharedHerdr, PathBuf) {
     fs::create_dir_all(root.join("codex-home")).unwrap();
     service = service
         .with_codex_root(root.join("codex"))
-        .with_codex_home(root.join("codex-home"));
+        .with_codex_home(root.join("codex-home"))
+        .with_codex_executable(root.join("no-such-codex"));
     fs::write(
         root.join("codex-home/models_cache.json"),
         json!({"models":[
@@ -265,10 +266,11 @@ fn model_status_reads_claude_transcript_and_options() {
         result["models"],
         json!([
             {"id":"default","label":"Default","efforts":efforts},
-            {"id":"fable","label":"Fable 5.1","efforts":efforts},
-            {"id":"opus","label":"Opus 5.5","current":true,"efforts":efforts},
-            {"id":"sonnet","label":"Sonnet 5.5","efforts":efforts},
-            {"id":"haiku","label":"Haiku 5.5","efforts":efforts}
+            {"id":"fable","label":"Fable","efforts":efforts},
+            {"id":"opus","label":"Opus","efforts":efforts},
+            {"id":"sonnet","label":"Sonnet","efforts":efforts},
+            {"id":"haiku","label":"Haiku","efforts":efforts},
+            {"id":"claude-opus-5-5","label":"Opus 5.5","current":true,"observedOnly":true,"efforts":efforts}
         ])
     );
     assert_eq!(result["efforts"], efforts);
@@ -1246,7 +1248,7 @@ fn model_status_lists_an_older_dated_claude_id_as_its_own_current_row() {
     let reply = model_request(&mut service, "model.status", json!({}));
     let models = result_frame(&reply)["result"]["models"].as_array().unwrap().clone();
     let haiku = models.iter().find(|m| m["id"] == "haiku").unwrap();
-    assert_eq!(haiku["label"], "Haiku 5.5");
+    assert_eq!(haiku["label"], "Haiku");
     assert!(haiku.get("current").is_none(), "{models:?}");
     let current: Vec<_> = models.iter().filter(|m| m["current"] == true).collect();
     assert_eq!(current.len(), 1);
@@ -1361,18 +1363,35 @@ fn model_set_codex_reselecting_the_current_effort_sends_nothing() {
 }
 
 #[test]
-fn model_set_claude_treats_the_active_alias_as_unchanged() {
-    // The session runs claude-opus-5-5; the checked "opus" row plus a new
-    // effort sends only /effort, never /model.
+fn model_set_claude_effort_only_sends_no_model_command() {
     let (mut service, root, herdr, _) = model_fixture_claude();
     script_model(&herdr, vec![claude_effort_screen()]);
     let reply = model_request(
         &mut service,
         "model.set",
-        json!({"model":"opus","effort":"high","expect":expect_pair("claude-opus-5-5", Some("medium"))}),
+        json!({"effort":"high","expect":expect_pair("claude-opus-5-5", Some("medium"))}),
     );
     assert_eq!(result_frame(&reply)["result"]["confirmed"], true, "{reply:?}");
     assert_eq!(herdr.lock().unwrap().inputs, vec![prompt_input("/effort high")]);
+    cleanup(&service, root);
+}
+
+#[test]
+fn model_set_claude_alias_is_sent_even_when_session_runs_a_concrete_id() {
+    // `opus` may resolve to a newer model than the running claude-opus-5-5,
+    // so selecting the alias must send /model rather than report a no-op.
+    let (mut service, root, herdr, _) = model_fixture_claude();
+    let screen = claude_model_screen("/model opus").replace("Sonnet 5.5", "Opus 5.6");
+    script_model(&herdr, vec![screen]);
+    let reply = model_request(
+        &mut service,
+        "model.set",
+        json!({"model":"opus","expect":expect_pair("claude-opus-5-5", Some("medium"))}),
+    );
+    let result = result_frame(&reply)["result"].clone();
+    assert_eq!(result["confirmed"], true, "{reply:?}");
+    assert_eq!(result["applied"]["model"]["id"], "opus");
+    assert_eq!(herdr.lock().unwrap().inputs, vec![prompt_input("/model opus")]);
     cleanup(&service, root);
 }
 
@@ -1790,4 +1809,158 @@ fn model_override_keeps_confirmed_label_only_while_the_baseline_holds() {
     let actual = Some(("claude-haiku-5-5".into(), Some("medium".into())));
     assert_eq!(ModelOverride::resolve(&mut slot, actual.clone()), actual);
     assert!(slot.is_none());
+}
+
+fn fake_codex(root: &std::path::Path, body: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = root.join("fake-codex");
+    fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    path
+}
+
+const REFRESHED_CATALOG: &str = r#"{"models":[
+  {"slug":"gpt-7-new","display_name":"GPT-7-New","visibility":"list","priority":1,
+   "supported_reasoning_levels":[{"effort":"low"},{"effort":"turbo"},{"effort":"Bad Value!"}]},
+  {"slug":"hidden","visibility":"hide","priority":0,"supported_reasoning_levels":[]}]}"#;
+
+fn catalog_script(catalog: &str) -> String {
+    format!("case \"$1\" in --version) echo 'codex-cli 9.9.9';; debug) cat <<'EOF_JSON'\n{catalog}\nEOF_JSON\n;; esac")
+}
+
+#[test]
+fn codex_status_refreshes_through_cli_and_reports_unknown_efforts() {
+    let (mut service, root, _, _) = model_fixture_codex();
+    let exe = fake_codex(&root, &catalog_script(REFRESHED_CATALOG));
+    service = service.with_codex_executable(exe);
+    let reply = model_request(&mut service, "model.status", json!({}));
+    let result = &result_frame(&reply)["result"];
+    assert_eq!(result["catalog"]["source"], "refreshed");
+    assert_eq!(result["catalog"]["fresh"], true);
+    assert_eq!(result["catalog"]["complete"], true);
+    let models = result["models"].as_array().unwrap();
+    let new = models.iter().find(|m| m["id"] == "gpt-7-new").unwrap();
+    assert_eq!(new["efforts"], json!([{"id":"low","label":"Low"}]));
+    // Unknown levels are reported, never silently omitted nor selectable;
+    // free-form text is rejected outright.
+    assert_eq!(new["unsupportedEfforts"], json!(["turbo"]));
+    assert!(models.iter().all(|m| m["id"] != "hidden"));
+    // The running session's model stays visible, marked as observed only.
+    let current = models.iter().find(|m| m["current"] == true).unwrap();
+    assert_eq!(current["id"], "gpt-6.1-sol");
+    assert_eq!(current["observedOnly"], true);
+    cleanup(&service, root);
+}
+
+#[test]
+fn codex_discovery_failure_keeps_cache_labelled_and_retry_recovers() {
+    let (mut service, root, herdr, _) = model_fixture_codex();
+    let before = fs::read_to_string(root.join("codex-home/models_cache.json")).unwrap();
+    let exe = fake_codex(&root, "exit 1");
+    service = service.with_codex_executable(exe.clone());
+    let reply = model_request(&mut service, "model.status", json!({}));
+    let result = &result_frame(&reply)["result"];
+    assert_eq!(result["catalog"]["source"], "cache");
+    assert_eq!(result["catalog"]["fresh"], false);
+    assert_eq!(result["catalog"]["complete"], false);
+    assert!(result["catalog"]["error"].is_string());
+    assert!(result["models"].as_array().unwrap().iter().any(|m| m["id"] == "gpt-6-astra"));
+    // Repair; an explicit retry bypasses the failure backoff immediately.
+    fake_codex(&root, &catalog_script(REFRESHED_CATALOG));
+    let reply = model_request(&mut service, "model.status", json!({}));
+    let result = &result_frame(&reply)["result"];
+    assert_eq!(result["catalog"]["source"], "refreshed");
+    assert!(result["catalog"]["error"].is_null());
+    // Discovery never types into the pane nor rewrites the cache itself.
+    assert!(herdr.lock().unwrap().inputs.is_empty());
+    assert_eq!(fs::read_to_string(root.join("codex-home/models_cache.json")).unwrap(), before);
+    cleanup(&service, root);
+}
+
+#[test]
+fn codex_corrupt_and_missing_cache_surface_errors_without_dropping_current() {
+    let (mut service, root, _, _) = model_fixture_codex();
+    fs::write(root.join("codex-home/models_cache.json"), "{\"models\":[{\"slug\":").unwrap();
+    let reply = model_request(&mut service, "model.status", json!({}));
+    let result = &result_frame(&reply)["result"];
+    assert_eq!(result["catalog"]["source"], "unavailable");
+    assert!(result["catalog"]["error"].is_string());
+    assert_eq!(result["models"].as_array().unwrap().len(), 1);
+    assert_eq!(result["models"][0]["current"], true);
+    fs::remove_file(root.join("codex-home/models_cache.json")).unwrap();
+    let reply = model_request(&mut service, "model.status", json!({}));
+    assert_eq!(result_frame(&reply)["result"]["catalog"]["source"], "unavailable");
+    cleanup(&service, root);
+}
+
+#[test]
+fn claude_status_marks_catalog_as_maintained_fallback() {
+    let (mut service, root, _, _) = model_fixture_claude();
+    let reply = model_request(&mut service, "model.status", json!({}));
+    let catalog = &result_frame(&reply)["result"]["catalog"];
+    assert_eq!(catalog["source"], "fallback");
+    assert_eq!(catalog["complete"], false);
+    assert_eq!(catalog["fresh"], false);
+    cleanup(&service, root);
+}
+
+#[test]
+fn codex_expired_discovery_still_serves_non_refreshing_lookups() {
+    let (mut service, root, _, _) = model_fixture_codex();
+    service = service.with_codex_executable(fake_codex(&root, &catalog_script(REFRESHED_CATALOG)));
+    let reply = model_request(&mut service, "model.status", json!({}));
+    assert_eq!(result_frame(&reply)["result"]["catalog"]["source"], "refreshed");
+    // Age the remembered discovery past its TTL.
+    service.codex_catalog_cache.borrow_mut().as_mut().unwrap().0 = Instant::now()
+        .checked_sub(Duration::from_secs(3600))
+        .unwrap();
+    let catalog = service.codex_catalog();
+    assert!(catalog.iter().any(|m| m.slug == "gpt-7-new" && m.label == "GPT-7-New"));
+    // A discovering read treats it as expired and refreshes again.
+    assert_eq!(service.codex_catalog_view(true).source, "refreshed");
+    assert!(service.codex_catalog_cache.borrow().as_ref().unwrap().0.elapsed() < Duration::from_secs(60));
+    cleanup(&service, root);
+}
+
+#[test]
+fn codex_remembers_exactly_the_live_catalog_it_returned() {
+    let (mut service, root, _, _) = model_fixture_codex();
+    // The disk cache differs from the live result.
+    service = service.with_codex_executable(fake_codex(&root, &catalog_script(REFRESHED_CATALOG)));
+    let reply = model_request(&mut service, "model.status", json!({}));
+    let shown: Vec<_> = result_frame(&reply)["result"]["models"].as_array().unwrap()
+        .iter().filter(|m| m["observedOnly"].is_null()).map(|m| m["id"].clone()).collect();
+    assert_eq!(shown, vec![json!("gpt-7-new")]);
+    let used: Vec<_> = service.codex_catalog().into_iter().map(|m| m.slug).collect();
+    assert_eq!(used, vec!["gpt-7-new".to_string()]);
+    cleanup(&service, root);
+}
+
+#[test]
+fn codex_status_scans_idle_footer_with_newly_discovered_models() {
+    let (mut service, root, herdr, _) = model_fixture_codex();
+    // Screen shows an idle footer for GPT-7-New, which is NOT in disk models_cache.json.
+    herdr.lock().unwrap().screen = "› Ask Codex to do anything\n  GPT-7-New low · Context 96% left\n".into();
+    service = service.with_codex_executable(fake_codex(&root, &catalog_script(REFRESHED_CATALOG)));
+
+    // model.status refreshes catalog BEFORE scanning current model,
+    // so it successfully recognizes gpt-7-new in the footer.
+    let reply = model_request(&mut service, "model.status", json!({}));
+    let result = &result_frame(&reply)["result"];
+    assert_eq!(result["model"]["id"], "gpt-7-new");
+    assert_eq!(result["model"]["label"], "GPT-7-New");
+    assert_eq!(result["effort"], "low");
+    let models = result["models"].as_array().unwrap();
+    let current = models.iter().find(|m| m["id"] == "gpt-7-new").unwrap();
+    assert_eq!(current["current"], true);
+    // Discovered model is part of the catalog, not observedOnly.
+    assert_eq!(current["observedOnly"], Value::Null);
+
+    // Subsequent model.status preserves the catalog in memory so polling and
+    // rescanning keep recognizing the footer.
+    let reply2 = model_request(&mut service, "model.status", json!({}));
+    let result2 = &result_frame(&reply2)["result"];
+    assert_eq!(result2["model"]["id"], "gpt-7-new");
+
+    cleanup(&service, root);
 }

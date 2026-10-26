@@ -249,6 +249,25 @@ struct Watch {
     last_model: Option<(String, Option<String>)>,
     model_override: Option<ModelOverride>,
 }
+// Last supported-CLI Codex discovery attempt and failure backoff are kept in
+// memory so repeated background status reads never respawn the CLI. Explicit
+// Retry clears error backoff while preserving the last successful catalog.
+
+/// Codex catalog plus where it came from, for honest UI labelling.
+struct CodexCatalogView {
+    models: Vec<model_control::CodexCatalogModel>,
+    /// `refreshed` (live CLI), `cache` (models_cache.json), or `unavailable`.
+    source: &'static str,
+    fresh: bool,
+    fetched_at: Option<String>,
+    cli_version: Option<String>,
+    error: Option<&'static str>,
+}
+
+const CODEX_REFRESH_OK_TTL: Duration = Duration::from_secs(300);
+const CODEX_REFRESH_FAIL_TTL: Duration = Duration::from_secs(60);
+const CODEX_CATALOG_MAX_BYTES: usize = 1 << 20;
+
 pub struct Service {
     pub client: Client,
     pub resolver: Option<Resolver>,
@@ -257,6 +276,9 @@ pub struct Service {
     agy_catalog_cache: std::cell::RefCell<Option<(Instant, Vec<model_control::AgyModel>)>>,
     agy_catalog_error: std::cell::RefCell<Option<(Instant, &'static str)>>,
     agy_executable: std::cell::RefCell<Option<PathBuf>>,
+    codex_executable: std::cell::RefCell<Option<PathBuf>>,
+    codex_catalog_cache: std::cell::RefCell<Option<(Instant, Vec<model_control::CodexCatalogModel>)>>,
+    codex_catalog_error: std::cell::RefCell<Option<(Instant, &'static str)>>,
     epoch: String,
     sequence: u64,
     generation: u64,
@@ -341,6 +363,9 @@ impl Service {
             agy_catalog_cache: std::cell::RefCell::new(None),
             agy_catalog_error: std::cell::RefCell::new(None),
             agy_executable: std::cell::RefCell::new(None),
+            codex_executable: std::cell::RefCell::new(None),
+            codex_catalog_cache: std::cell::RefCell::new(None),
+            codex_catalog_error: std::cell::RefCell::new(None),
             epoch,
             sequence: 0,
             generation: 0,
@@ -386,6 +411,11 @@ impl Service {
         };
         self.codex_daemon_cache = Some((std::time::Instant::now(), status));
         status
+    }
+    #[doc(hidden)]
+    pub fn with_codex_executable(self, executable: PathBuf) -> Self {
+        *self.codex_executable.borrow_mut() = Some(executable);
+        self
     }
     #[doc(hidden)]
     pub fn with_codex_home(mut self, home: PathBuf) -> Self {
@@ -1187,18 +1217,97 @@ impl Service {
             thread::sleep(Duration::from_millis(100));
         }
     }
+    /// Catalog for guards, footer matching, and label lookups: never spawns the CLI.
     fn codex_catalog(&self) -> Vec<model_control::CodexCatalogModel> {
-        let Some(home) = self
-            .codex_home
-            .clone()
-            .or_else(crate::codex_config::resolve_codex_dir)
-        else {
-            return Vec::new();
+        if let Some((_, models)) = self.codex_catalog_cache.borrow().as_ref() {
+            return models.clone();
+        }
+        self.codex_catalog_view(false).models
+    }
+    fn codex_home_dir(&self) -> Option<PathBuf> {
+        self.codex_home.clone().or_else(crate::codex_config::resolve_codex_dir)
+    }
+    fn codex_executable_path(&self) -> Result<PathBuf> {
+        if let Some(path) = self.codex_executable.borrow().clone() { return Ok(path); }
+        crate::agy::resolve_named_executable(
+            "codex",
+            std::env::var_os("PATH").as_deref(),
+            std::env::var_os("HOME").as_deref().map(Path::new),
+        )
+    }
+    /// Read-only supported discovery: `codex --version` then
+    /// `codex debug models`, pinned to this session's CODEX_HOME, bounded in
+    /// time and output. Returns the installed version with the catalog.
+    fn codex_discover(&self) -> std::result::Result<(String, Vec<model_control::CodexCatalogModel>), &'static str> {
+        let executable = self.codex_executable_path()?;
+        let home = self.codex_home_dir();
+        let deadline = Instant::now() + crate::agy::CATALOG_TIMEOUT;
+        let map = |code: &'static str| match code {
+            "agy_timeout" => "timeout",
+            "agy_unavailable" => "codex_unavailable",
+            "agy_catalog_invalid" => "codex_catalog_invalid",
+            other => other,
         };
-        std::fs::read_to_string(home.join("models_cache.json"))
-            .ok()
-            .map(|text| model_control::parse_codex_catalog(&text))
-            .unwrap_or_default()
+        let version = crate::agy::run_bounded(&executable, &["--version"], home.as_deref(), deadline, 4096).map_err(map)?;
+        let version = model_control::parse_codex_version(&version).ok_or("codex_catalog_invalid")?;
+        let text = crate::agy::run_bounded(&executable, &["debug", "models"], home.as_deref(), deadline, CODEX_CATALOG_MAX_BYTES).map_err(map)?;
+        let models = model_control::parse_codex_catalog_checked(&text).map_err(|e| e.code())?;
+        Ok((version, models))
+    }
+    /// `discover` permits a bounded CLI refresh when the cache is missing,
+    /// stale, corrupt, or from another CLI version. Failure never discards a
+    /// readable cache; the view says it is cached and why.
+    fn codex_catalog_view(&self, discover: bool) -> CodexCatalogView {
+        let cache = self.codex_home_dir().and_then(|home| std::fs::read_to_string(home.join("models_cache.json")).ok());
+        let meta = cache.as_deref().map(model_control::parse_codex_catalog_meta).unwrap_or_default();
+        let parsed = match cache.as_deref() {
+            Some(text) => model_control::parse_codex_catalog_checked(text).map_err(|e| e.code()),
+            None => Err("codex_catalog_missing"),
+        };
+        let from_cache = |fresh: bool, error: Option<&'static str>| {
+            if let Some((_, models)) = self.codex_catalog_cache.borrow().as_ref() {
+                return CodexCatalogView {
+                    models: models.clone(),
+                    source: "cache",
+                    fresh,
+                    fetched_at: None,
+                    cli_version: None,
+                    error,
+                };
+            }
+            match &parsed {
+                Ok(models) => CodexCatalogView { models: models.clone(), source: "cache", fresh, fetched_at: meta.fetched_at.clone(), cli_version: meta.client_version.clone(), error },
+                Err(code) => CodexCatalogView { models: Vec::new(), source: "unavailable", fresh: false, fetched_at: None, cli_version: None, error: Some(error.unwrap_or(code)) },
+            }
+        };
+        // Expiry only permits a refresh; lookups that don't discover keep the
+        // last successful catalog so labels and efforts of rows already shown
+        // stay available to `set_codex_model` and footer scans.
+        if let Some((at, models)) = self.codex_catalog_cache.borrow().as_ref()
+            && (!discover || at.elapsed() < CODEX_REFRESH_OK_TTL)
+        {
+            return CodexCatalogView { models: models.clone(), source: "refreshed", fresh: true, fetched_at: None, cli_version: None, error: None };
+        }
+        if !discover { return from_cache(false, None); }
+        if let Some((at, code)) = *self.codex_catalog_error.borrow()
+            && at.elapsed() < CODEX_REFRESH_FAIL_TTL
+        {
+            return from_cache(false, Some(code));
+        }
+        match self.codex_discover() {
+            Ok((version, models)) => {
+                // The live result is authoritative and is exactly what stays
+                // remembered, so later label/effort lookups match what iOS was
+                // shown. A disk cache is only a fallback when discovery fails.
+                *self.codex_catalog_cache.borrow_mut() = Some((Instant::now(), models.clone()));
+                *self.codex_catalog_error.borrow_mut() = None;
+                CodexCatalogView { models, source: "refreshed", fresh: true, fetched_at: None, cli_version: Some(version), error: None }
+            }
+            Err(code) => {
+                *self.codex_catalog_error.borrow_mut() = Some((Instant::now(), code));
+                from_cache(false, Some(code))
+            }
+        }
     }
     /// Fresh occupant check shared by both model methods: returns the live
     /// pane and the adapter-verified transcript for the watched identity.
@@ -1237,46 +1346,41 @@ impl Service {
         let (pane, file) = self.model_pane_file(&identity)?;
         self.agy_require_no_pending(&identity, file.try_clone().map_err(|_|"stale")?)?;
         let agent = identity.agent.as_str();
+        let codex_view = (agent == "codex").then(|| self.codex_catalog_view(true));
         let current = self.model_scan_current(agent, &pane, file);
         let current_id = current.as_ref().map(|(id, _)| id.as_str());
+        let catalog_info;
         let (models, efforts) = match agent {
             "claude" => {
-                // Claude's default stays selectable so a session can switch back.
+                // Claude Code 2.1.x has no structured model-listing command, so
+                // these maintained tier aliases are an explicit fallback, not a
+                // verified account catalog. Aliases carry no version label.
+                catalog_info = json!({
+                    "source":"fallback", "fresh":false, "complete":false,
+                    "fetchedAt":Value::Null, "cliVersion":Value::Null, "error":Value::Null,
+                });
                 let default = model_control::CLAUDE_DEFAULT_MODEL;
                 let mut models: Vec<Value> = std::iter::once(&(default, ""))
                     .chain(model_control::CLAUDE_MODELS.iter())
-                    .map(|(alias, _)| {
-                        json!({"id":alias,"label":model_control::claude_display_label(alias)})
-                    })
+                    .map(|(alias, _)| json!({"id":alias,"label":model_control::claude_model_label(alias)}))
                     .collect();
-                // An alias row is current only when the session runs exactly
-                // what the alias resolves to; an older or dated id of the same
-                // tier (claude-haiku-4-5-20251001) gets its own checked row, so
-                // picking the alias is a real switch rather than a no-op.
-                let matches_alias = |alias: &str| {
-                    current_id.is_some_and(|id| {
-                        id == alias || model_control::claude_alias_id(alias).as_deref() == Some(id)
-                    })
-                };
+                // Current matching is exact only: no assumption about which
+                // version an alias resolves to. The observed id always keeps
+                // its own checked row, including older or custom ids.
                 let mut marked = false;
                 for entry in &mut models {
-                    if entry["id"].as_str().is_some_and(matches_alias) {
+                    if entry["id"].as_str().is_some_and(|alias| current_id == Some(alias)) {
                         entry["current"] = json!(true);
-                        // The transcript's concrete id carries the real version.
-                        if let Some(id) = current_id {
-                            entry["label"] = json!(model_control::claude_display_label(id));
-                        }
                         marked = true;
                     }
                 }
                 if !marked && let Some(id) = current_id {
-                    models.push(json!({"id":id,"label":model_control::claude_display_label(id),"current":true}));
+                    models.push(json!({"id":id,"label":model_control::claude_display_label(id),"current":true,"observedOnly":true}));
                 }
                 let efforts = model_control::CLAUDE_EFFORTS
                     .iter()
                     .map(|effort| json!({"id":effort,"label":model_control::effort_label(effort)}))
                     .collect::<Vec<_>>();
-                // Every Claude tier offers the same static effort set.
                 for entry in &mut models {
                     entry["efforts"] = json!(efforts);
                 }
@@ -1284,12 +1388,21 @@ impl Service {
             }
             "antigravity_cli" => {
                 let catalog = self.agy_catalog()?;
+                catalog_info = json!({"source":"cli","fresh":true,"complete":true,"fetchedAt":Value::Null,"cliVersion":Value::Null,"error":Value::Null});
                 let models = model_control::agy_model_values(&catalog, current_id);
                 let efforts = current_id.map(|id| model_control::agy_model_value(id, &catalog)["efforts"].as_array().cloned().unwrap_or_default()).unwrap_or_default();
                 (models, efforts)
             }
             "codex" => {
-                let catalog = self.codex_catalog();
+                let view = codex_view.expect("codex view computed");
+                let catalog = view.models.clone();
+                catalog_info = json!({
+                    "source":view.source, "fresh":view.fresh,
+                    // Only a verified live/fresh catalog is a complete list.
+                    "complete":view.fresh && !catalog.is_empty(),
+                    "fetchedAt":view.fetched_at, "cliVersion":view.cli_version,
+                    "error":view.error,
+                });
                 let fallback = model_control::CODEX_EFFORTS
                     .iter()
                     .map(|effort| json!({"id":effort,"label":model_control::effort_label(effort)}))
@@ -1304,7 +1417,11 @@ impl Service {
                                 json!({"id":effort,"label":model_control::effort_label(effort)})
                             })
                             .collect();
-                        json!({"id":model.slug,"label":model.label,"efforts":efforts})
+                        let mut entry = json!({"id":model.slug,"label":model.label,"efforts":efforts});
+                        if !model.unsupported_efforts.is_empty() {
+                            entry["unsupportedEfforts"] = json!(model.unsupported_efforts);
+                        }
+                        entry
                     })
                     .collect();
                 let mut marked = false;
@@ -1316,7 +1433,7 @@ impl Service {
                 }
                 if !marked && let Some(id) = current_id {
                     models.push(
-                        json!({"id":id,"label":model_control::codex_slug_label(id),"current":true,"efforts":fallback}),
+                        json!({"id":id,"label":model_control::codex_slug_label(id),"current":true,"observedOnly":true,"efforts":fallback}),
                     );
                 }
                 let efforts: Vec<Value> = models
@@ -1353,7 +1470,7 @@ impl Service {
                 } else { current_label.clone().map(|label| json!({"id":id, "label":label})) }
             }),
             "effort": current.as_ref().and_then(|(_, effort)| effort.clone()),
-            "models":models, "efforts":efforts,
+            "models":models, "efforts":efforts, "catalog":catalog_info,
         }))
     }
     fn model_set(&mut self, params: &Value) -> Result<Value> {
@@ -1587,14 +1704,10 @@ impl Service {
         let mut applied_effort = current.as_ref().and_then(|(_, effort)| effort.clone());
         let mut error: Option<&str> = None;
         if let Some(target) = target_model
-            // A checked alias row (`opus`) is unchanged when the session runs the
-            // id it resolves to (`claude-opus-5-5`); sending /model would only
-            // rewrite the user's saved default.
-            .filter(|target| {
-                !current.as_ref().is_some_and(|(id, _)| {
-                    id == target || model_control::claude_alias_id(target).as_deref() == Some(id)
-                })
-            })
+            // Only the exact observed id is unchanged. An alias (`opus`) may
+            // now resolve to a newer model than the one running, so it is
+            // sent; no maintained alias-version table decides otherwise.
+            .filter(|target| !current.as_ref().is_some_and(|(id, _)| id == target))
         {
             let command = format!("/model {target}");
             self.composer_clear(identity, "claude")?;
@@ -2245,6 +2358,7 @@ impl Service {
                 // refresh. Its result is reused below, so slow failures cannot
                 // consume two discovery budgets in one RPC.
                 *self.agy_catalog_error.borrow_mut() = None;
+                *self.codex_catalog_error.borrow_mut() = None;
                 self.poll_with_refresh(out, refresh)?;
                 match self.model_status() {
                     Ok(result) => Self::write(out, &json!({"id":id,"result":result})),
