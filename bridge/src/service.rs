@@ -249,9 +249,9 @@ struct Watch {
     last_model: Option<(String, Option<String>)>,
     model_override: Option<ModelOverride>,
 }
-/// Last supported-CLI Codex discovery attempt and failure backoff, kept in
-/// memory so repeated background status reads never respawn the CLI. Explicit
-/// Retry clears error backoff while preserving the last successful catalog.
+// Last supported-CLI Codex discovery attempt and failure backoff are kept in
+// memory so repeated background status reads never respawn the CLI. Explicit
+// Retry clears error backoff while preserving the last successful catalog.
 
 /// Codex catalog plus where it came from, for honest UI labelling.
 struct CodexCatalogView {
