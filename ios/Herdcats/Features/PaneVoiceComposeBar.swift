@@ -54,14 +54,14 @@ private struct PaneInputGlassSurface: ViewModifier {
                     // while giving the card a subtle glass-like rim.
                     shape.strokeBorder(
                         LinearGradient(
-                            colors: [
-                                .white.opacity(colorScheme == .dark ? 0.4 : 0.95),
-                                .white.opacity(0.08),
-                                .black.opacity(colorScheme == .dark ? 0.18 : 0.08),
-                                .white.opacity(colorScheme == .dark ? 0.2 : 0.6)
+                            stops: [
+                                .init(color: .white.opacity(colorScheme == .dark ? 0.4 : 0.95), location: 0),
+                                .init(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.2), location: 0.08),
+                                .init(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.2), location: 0.92),
+                                .init(color: .white.opacity(colorScheme == .dark ? 0.4 : 0.95), location: 1)
                             ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+                            startPoint: .top,
+                            endPoint: .bottom
                         ),
                         lineWidth: 1
                     )
