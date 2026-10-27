@@ -10,6 +10,12 @@ import UIKit
 final class PaneDictation: NSObject, SFSpeechRecognizerDelegate {
     private(set) var isBusy = false
     private(set) var isPreparing = false
+    /// Smoothed microphone level (0…1) for the recording visualizer; 0 when idle.
+    private(set) var audioLevel: Float = 0
+    /// The merged text most recently delivered through `onText`, for the recording panel.
+    private(set) var liveText = ""
+    /// Trailing, not-yet-final words within `liveText`.
+    private(set) var partialText = ""
     private let engine = AVAudioEngine()
     private let recognizer = SFSpeechRecognizer()
     private var request: SFSpeechAudioBufferRecognitionRequest?
@@ -27,13 +33,27 @@ final class PaneDictation: NSObject, SFSpeechRecognizerDelegate {
     private var audioSessionActive = false
     private var previousIdleTimerDisabled: Bool?
     private var reportError: ((String) -> Void)?
-
+    private var levelMeter: DictationLevelMeter?
 #if DEBUG && targetEnvironment(simulator)
-    /// Displays the recording surface for screenshots without opening a microphone.
+    private var screenshotLevel: Task<Void, Never>?
+
+    /// Displays the recording surface for screenshots without opening a microphone,
+    /// with a sample transcript and an animated fake level.
     func showScreenshotRecording() {
         guard ScreenshotFixtures.enabled else { return }
         isBusy = true
         isPreparing = false
+        liveText = "Let's split the reconnect logic into its own type, then add a test that drops the socket mid-turn"
+        partialText = "and checks the draft survives"
+        liveText += " " + partialText
+        screenshotLevel = Task { [weak self] in
+            var phase = 0.0
+            while !Task.isCancelled {
+                phase += 1.0 / 30
+                self?.audioLevel = Float(0.45 + 0.3 * sin(phase * 2.1) * sin(phase * 0.7 + 1))
+                try? await Task.sleep(for: .milliseconds(33))
+            }
+        }
     }
 #endif
 
@@ -65,7 +85,16 @@ final class PaneDictation: NSObject, SFSpeechRecognizerDelegate {
         previousIdleTimerDisabled = UIApplication.shared.isIdleTimerDisabled
         UIApplication.shared.isIdleTimerDisabled = true
         transcript = DictationTranscript(committed: initialText())
+        liveText = transcript.text
+        partialText = ""
         self.onText = onText
+        let meter = DictationLevelMeter { [weak self] level in
+            Task { @MainActor [weak self] in
+                guard let self, self.sessionID == id, !self.isFinishing else { return }
+                self.audioLevel = level
+            }
+        }
+        levelMeter = meter
         isFinishing = false
         do {
             let audioSession = AVAudioSession.sharedInstance()
@@ -89,13 +118,13 @@ final class PaneDictation: NSObject, SFSpeechRecognizerDelegate {
                     try await modern.prepare(format: format) { [weak self] text, isFinal in
                         guard let self, self.sessionID == id else { return }
                         modernTranscript.receive(text, isFinal: isFinal)
-                        self.onText?(modernTranscript.text)
+                        self.deliver(modernTranscript.text, partial: modernTranscript.volatile)
                     } onError: { [weak self] message in
                         guard let self, self.sessionID == id else { return }
                         self.fail(message)
                     }
                     guard sessionID == id else { modern.cancel(); return }
-                    modern.installTap(on: input, format: format)
+                    modern.installTap(on: input, format: format, meter: meter)
                     hasTap = true
                     engine.prepare()
                     try engine.start()
@@ -123,6 +152,7 @@ final class PaneDictation: NSObject, SFSpeechRecognizerDelegate {
             let router = audioRouter
             input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
                 router.append(buffer)
+                meter.measure(buffer)
             }
             hasTap = true
             beginRecognition(request)
@@ -132,6 +162,12 @@ final class PaneDictation: NSObject, SFSpeechRecognizerDelegate {
         } catch {
             fail(error.localizedDescription)
         }
+    }
+
+    private func deliver(_ text: String, partial: String) {
+        liveText = text
+        partialText = partial
+        onText?(text)
     }
 
     private func makeRequest() -> SFSpeechAudioBufferRecognitionRequest {
@@ -158,7 +194,7 @@ final class PaneDictation: NSObject, SFSpeechRecognizerDelegate {
                       self.segmentID == segmentID else { return }
                 let ended = self.transcript.receive(text, isFinal: isFinal,
                                                     speechDuration: speechDuration)
-                self.onText?(self.transcript.text)
+                self.deliver(self.transcript.text, partial: self.transcript.partial)
                 // On-device recognition can finish an utterance after a pause without
                 // marking the task final. Start a fresh request at that boundary:
                 // otherwise its next hypothesis can replace the preceding sentence.
@@ -256,12 +292,21 @@ final class PaneDictation: NSObject, SFSpeechRecognizerDelegate {
         request = nil
         reportError = nil
         onText = nil
+        levelMeter = nil
+        audioLevel = 0
+        liveText = ""
+        partialText = ""
+#if DEBUG && targetEnvironment(simulator)
+        screenshotLevel?.cancel()
+        screenshotLevel = nil
+#endif
         isFinishing = false
         isBusy = false
         isPreparing = false
     }
 
     private func stopCapture() {
+        audioLevel = 0
         engine.stop()
         if hasTap {
             engine.inputNode.removeTap(onBus: 0)
@@ -299,7 +344,7 @@ protocol PaneSpeechSession: AnyObject {
 struct AnalyzerDictationTranscript {
     let draft: String
     private var finalized = ""
-    private var volatile = ""
+    private(set) var volatile = ""
 
     init(draft: String = "") { self.draft = draft }
 
@@ -369,10 +414,11 @@ final class AnalyzerDictationSession: PaneSpeechSession {
         }
     }
 
-    func installTap(on input: AVAudioInputNode, format: AVAudioFormat) {
+    func installTap(on input: AVAudioInputNode, format: AVAudioFormat, meter: DictationLevelMeter) {
         guard let audio else { return }
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
             audio.append(buffer)
+            meter.measure(buffer)
         }
     }
 
@@ -467,7 +513,7 @@ final class AnalyzerAudioInput: @unchecked Sendable {
 /// Partial hypotheses replace only the current segment, never earlier dictation.
 struct DictationTranscript {
     private(set) var committed = ""
-    private var partial = ""
+    private(set) var partial = ""
 
     init(committed: String = "") { self.committed = committed }
 
@@ -513,5 +559,37 @@ final class DictationAudioRouter: @unchecked Sendable {
         defer { lock.unlock() }
         request?.endAudio()
         request = next
+    }
+}
+
+/// Measures tap buffers on the audio thread: RMS mapped from -50…0 dBFS to 0…1,
+/// with a fast attack and slow release, published at most ~30 times a second.
+final class DictationLevelMeter: @unchecked Sendable {
+    private let lock = NSLock()
+    private let publish: @Sendable (Float) -> Void
+    private var level: Float = 0
+    private var lastPublish: UInt64 = 0
+    private static let interval: UInt64 = 33_000_000
+
+    init(publish: @escaping @Sendable (Float) -> Void) { self.publish = publish }
+
+    func measure(_ buffer: AVAudioPCMBuffer) {
+        guard let channel = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return }
+        let count = Int(buffer.frameLength)
+        var sum: Float = 0
+        for index in 0..<count { sum += channel[index] * channel[index] }
+        let target = Self.normalizedLevel(rms: (sum / Float(count)).squareRoot())
+        let now = DispatchTime.now().uptimeNanoseconds
+        lock.lock()
+        level += (target - level) * (target > level ? 0.5 : 0.12)
+        let value = level
+        let due = now &- lastPublish >= Self.interval
+        if due { lastPublish = now }
+        lock.unlock()
+        if due { publish(value) }
+    }
+
+    static func normalizedLevel(rms: Float) -> Float {
+        min(max((20 * log10(max(rms, 1e-7)) + 50) / 50, 0), 1)
     }
 }

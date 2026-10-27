@@ -38,6 +38,28 @@ struct AnalyzerDictationTranscriptTests {
     }
 }
 
+@Suite("Dictation level meter")
+struct DictationLevelMeterTests {
+    @Test func mapsSilenceAndFullScale() {
+        #expect(DictationLevelMeter.normalizedLevel(rms: 0) == 0)
+        #expect(DictationLevelMeter.normalizedLevel(rms: 1) == 1)
+        #expect(DictationLevelMeter.normalizedLevel(rms: 4) == 1)
+    }
+
+    @Test func speechLevelsLandMidRange() {
+        // -20 dBFS is typical close speech.
+        let level = DictationLevelMeter.normalizedLevel(rms: 0.1)
+        #expect(abs(level - 0.6) < 0.001)
+    }
+
+    @Test func partialSuffixIsExposed() {
+        var transcript = DictationTranscript(committed: "Draft.")
+        _ = transcript.receive("still talking", isFinal: false)
+        #expect(transcript.text.hasSuffix(transcript.partial))
+        #expect(transcript.partial == "still talking")
+    }
+}
+
 @Suite("Pane command history")
 struct PaneCommandHistoryTests {
     @Test func recordsNewestFirstAndDedupes() {
