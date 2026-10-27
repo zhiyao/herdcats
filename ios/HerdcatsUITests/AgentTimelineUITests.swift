@@ -389,6 +389,39 @@ final class AgentTimelineUITests: XCTestCase {
         app.terminate()
     }
 
+    func testLatestStaysAboveExpandedComposerWithKeyboard() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline", "-hc.timeline-long", "-hc.light", "-paneShowComposeByDefault", "YES"]
+        launch(app)
+        let scroll = app.scrollViews["agent-timeline-scroll"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: 5))
+        let field = app.textFields["timeline-compose-field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        field.typeText(String(repeating: "Please check the conversation layout. ", count: 5))
+        // Drag within the transcript to move away from the newest message.
+        scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25))
+            .press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)))
+        let latest = app.buttons["timeline-latest"]
+        XCTAssertTrue(latest.waitForExistence(timeout: 5))
+        let composer = app.descendants(matching: .any)["pane-compose-bar"].firstMatch
+        XCTAssertTrue(composer.exists)
+        let clearOfComposer = NSPredicate { _, _ in
+            latest.exists && latest.frame.maxY <= composer.frame.minY - 4
+        }
+        expectation(for: clearOfComposer, evaluatedWith: nil)
+        waitForExpectations(timeout: 5)
+        XCTAssertTrue(latest.isHittable)
+        let capture = XCTAttachment(screenshot: app.screenshot())
+        capture.name = "Latest button above expanded conversation composer"
+        capture.lifetime = .keepAlways
+        add(capture)
+        latest.tap()
+        XCTAssertTrue(latest.waitForNonExistence(timeout: 5))
+        app.terminate()
+    }
+
     func testShortTimelineDoesNotShowLatestAfterDragging() {
         let app = XCUIApplication()
         app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-empty", "-hc.light", "-paneShowComposeByDefault", "NO"]

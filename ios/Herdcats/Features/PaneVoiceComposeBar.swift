@@ -30,17 +30,67 @@ enum PaneLiveModifier: String, CaseIterable, Identifiable, Hashable, Sendable {
     }
 }
 
-/// One solid surface for a whole pane input group. The controls inside keep
+/// One surface for a whole pane input group. The controls inside keep
 /// their plain style so the Live row does not turn into separate pills.
-/// Moonlit uses no glass or blur: `--surface` with a `--border` outline.
+/// Uses the theme surface and border, with optional translucency for Compose.
 private struct PaneInputGlassSurface: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorScheme) private var colorScheme
     let cornerRadius: CGFloat
+    var backgroundOpacity: Double = 1
+    var usesGlassBorder = false
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle.continuous(cornerRadius)
+        let opacity = reduceTransparency ? 1 : backgroundOpacity
         content
-            .background(Theme.cardBackground, in: shape)
-            .overlay(shape.strokeBorder(Theme.hairline, lineWidth: 1))
+            .background {
+                if usesGlassBorder && !reduceTransparency {
+                    shape.fill(
+                        Theme.cardBackground.opacity(opacity)
+                            .shadow(.inner(
+                                color: .black.opacity(colorScheme == .dark ? 0.16 : 0.035),
+                                radius: 10, x: 0, y: 4
+                            ))
+                    )
+                    .shadow(color: .black.opacity(colorScheme == .dark ? 0.16 : 0.05),
+                            radius: 12, x: 0, y: 6)
+                } else {
+                    shape.fill(Theme.cardBackground.opacity(opacity))
+                }
+            }
+            .overlay {
+                if usesGlassBorder && !reduceTransparency {
+                    // A fine outer rim and inset highlight give the edge depth
+                    // while preserving the nearly opaque field background.
+                    shape.strokeBorder(
+                        .black.opacity(colorScheme == .dark ? 0.45 : 0.18),
+                        lineWidth: 0.5
+                    )
+                    .allowsHitTesting(false)
+                } else {
+                    shape.strokeBorder(Theme.hairline, lineWidth: 1)
+                        .allowsHitTesting(false)
+                }
+            }
+            .overlay {
+                if usesGlassBorder && !reduceTransparency {
+                    shape.inset(by: 0.75).strokeBorder(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .white.opacity(colorScheme == .dark ? 0.4 : 0.95), location: 0),
+                                .init(color: .clear, location: 0.15),
+                                .init(color: .clear, location: 0.85),
+                                .init(color: .white.opacity(colorScheme == .dark ? 0.35 : 0.85), location: 1)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 1
+                    )
+                    .allowsHitTesting(false)
+                }
+            }
     }
 }
 
@@ -643,7 +693,11 @@ struct PaneVoiceComposeBar: View {
                 .padding(.vertical, 4)
             }
         }
-        .modifier(PaneInputGlassSurface(cornerRadius: DesignSystem.CornerRadius.lg))
+        .modifier(PaneInputGlassSurface(
+            cornerRadius: modelControl != nil ? 24 : DesignSystem.CornerRadius.lg,
+            backgroundOpacity: modelControl != nil ? 0.98 : 1,
+            usesGlassBorder: modelControl != nil
+        ))
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
                 .onEnded { value in
