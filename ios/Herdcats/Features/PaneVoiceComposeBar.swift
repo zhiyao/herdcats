@@ -148,7 +148,7 @@ struct PaneAttachmentInfo: Identifiable, Sendable {
 
 /// A unified SwiftUI input bar for Herdr terminal panes supporting:
 /// 1. Default Live mode: fixed rail (Esc, Tab, Up, Ctrl, Alt, Keys, Voice, Keyboard).
-/// 2. Recording mode: recording status with exactly one checkmark finish action.
+/// 2. Recording mode: live transcript over a level visualizer, with exactly one checkmark finish action.
 /// 3. Compose mode: message bubble with editable 1-to-6-row field, external image picker,
 ///    Voice immediately left of Send, and Send hidden for blank/whitespace text.
 struct PaneVoiceComposeBar: View {
@@ -282,7 +282,9 @@ struct PaneVoiceComposeBar: View {
                     .transition(.opacity)
             case .recording:
                 recordingBar
-                    .transition(.opacity)
+                    .transition(reduceMotion ? .opacity : .modifier(
+                        active: VoiceRecordingPanelReveal(isCollapsed: true),
+                        identity: VoiceRecordingPanelReveal(isCollapsed: false)))
             case .compose:
                 composeBar
                     .transition(.opacity)
@@ -588,75 +590,22 @@ struct PaneVoiceComposeBar: View {
 
     // MARK: - 2. Recording Mode Bar
 
-    /// Recording bar with exactly one action: checkmark to finish.
+    /// Expanded recording panel with exactly one action: checkmark to finish.
     /// Does NOT set mode = .compose early; Pi owns dictation finalization and the mode transition.
     private var recordingBar: some View {
-        HStack(spacing: 10) {
-            recordingIndicator
-
-            Text(recordingStatusText)
-                .font(.jost(.subheadline, weight: .medium))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-
-            Spacer(minLength: 0)
-
-            Button {
-                HapticFeedback.impact(.light)
-                onFinishVoice()
-            } label: {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.jost(26))
-                    .foregroundStyle(Theme.accent)
-                    .frame(width: 34, height: 36)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(isVoiceDraining)
-            .accessibilityLabel("Finish recording")
-            .accessibilityIdentifier("pane-recording-finish-button")
-        }
-        .padding(.horizontal, 12)
-        .frame(height: 42)
-        .modifier(PaneInputGlassSurface(cornerRadius: DesignSystem.CornerRadius.lg))
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("pane-recording-bar")
+        VoiceRecordingPanel(
+            phase: recordingPhase,
+            level: dictation?.audioLevel ?? 0,
+            text: dictation?.liveText ?? draft,
+            partial: dictation?.partialText ?? "",
+            onFinish: onFinishVoice
+        )
     }
 
-    private var isRecordingActive: Bool {
-        dictation?.isBusy == true && dictation?.isPreparing == false && !isVoiceDraining
-    }
-
-    private var recordingIndicator: some View {
-        ZStack {
-            if isRecordingActive && !reduceMotion {
-                Circle()
-                    .fill(Theme.destructive.opacity(0.4))
-                    .frame(width: 20, height: 20)
-                    .phaseAnimator([false, true]) { content, expanded in
-                        content
-                            .scaleEffect(expanded ? 1.5 : 0.6)
-                            .opacity(expanded ? 0 : 0.9)
-                    } animation: { expanded in
-                        expanded ? .easeOut(duration: 1.15) : .linear(duration: 0.01)
-                    }
-            }
-            Circle()
-                .fill(isRecordingActive ? Theme.destructive : Color.secondary)
-                .frame(width: 9, height: 9)
-        }
-        .frame(width: 22, height: 22)
-        .accessibilityHidden(true)
-    }
-
-    private var recordingStatusText: String {
-        if isVoiceDraining {
-            return "Finishing dictation…"
-        }
-        if let dictation, dictation.isPreparing {
-            return "Preparing dictation…"
-        }
-        return "Recording message…"
+    private var recordingPhase: VoiceRecordingPanel.Phase {
+        if isVoiceDraining { return .finishing }
+        if dictation?.isPreparing == true { return .preparing }
+        return .recording
     }
 
     // MARK: - 3. Compose Mode Bar
