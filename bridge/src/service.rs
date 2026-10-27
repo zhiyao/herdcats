@@ -149,6 +149,7 @@ impl PendingInteraction {
                 let step = match p.screen.step {
                     QuestionStep::ClaudeQuestion(index) => json!({"kind":"claude_question","index":index}),
                     QuestionStep::AgyQuestion { index, total } => json!({"kind":"agy_question","index":index,"total":total}),
+                    QuestionStep::CursorQuestion { index, total } => json!({"kind":"cursor_question","index":index,"total":total}),
                     QuestionStep::ClaudeReview => json!({"kind":"claude_review"}),
                     QuestionStep::CodexQuestion { index, total } => json!({"kind":"codex_question","index":index,"total":total}),
                     QuestionStep::AsyncQueued => json!({"kind":"async_queued"}),
@@ -158,6 +159,7 @@ impl PendingInteraction {
                     QuestionKind::ClaudeAsk => "claude", QuestionKind::CodexPlan => "codex_plan",
                     QuestionKind::CodexAsync => "codex_async",
                     QuestionKind::AgyAsk => "agy",
+                    QuestionKind::CursorAsk => "cursor",
                 };
                 json!({"identity":p.identity,"generation":p.generation,"request_id":p.request.request_id,
                     "agent":p.identity.agent,"kind":"question","question_kind":kind,
@@ -570,7 +572,9 @@ impl Service {
         watch.source_pane = Some(pane.clone());
         // Clone only the descriptor. Tail reading happens after timeline work,
         // using the same adapter-verified source and no additional path lookup.
-        let approval_file = if identity.agent == "antigravity_cli" || ((self.include_approvals || self.include_questions) && pane.agent_status == "blocked") {
+        let approval_file = if identity.agent == "antigravity_cli"
+            || (identity.agent == "cursor" && (self.include_approvals || self.include_questions))
+            || ((self.include_approvals || self.include_questions) && pane.agent_status == "blocked") {
             file.as_ref().and_then(|f| f.try_clone().ok())
         } else {
             None
@@ -728,6 +732,26 @@ impl Service {
                             }
                         }
                         None => "unknown".to_owned(),
+                    }
+                } else if identity.agent == "cursor" {
+                    // Herdr reports a live question form as done, so the screen
+                    // decides. Cards still need the blocked status Herdr gives them.
+                    match approval_file {
+                        Some(file) => {
+                            if self.include_approvals && status == "blocked" {
+                                pending = file.try_clone().ok().and_then(|file|
+                                    self.read_pending(&identity, file, &mut None))
+                                    .map(PendingInteraction::Approval);
+                            }
+                            if pending.is_none() && self.include_questions
+                                && matches!(status.as_str(), "blocked" | "idle" | "done") {
+                                pending = self.read_question(&identity, file, &mut None)
+                                    .map(PendingInteraction::Question);
+                            }
+                            // A pending decision closes the composer for the phone too.
+                            if pending.is_some() { "blocked".to_owned() } else { status }
+                        }
+                        None => status,
                     }
                 } else {
                     if status == "blocked" && let Some(file) = approval_file {
@@ -993,6 +1017,14 @@ impl Service {
         file: std::fs::File,
         cache: &mut Option<QuestionMatchCache>,
     ) -> Option<PendingQuestion> {
+        if Agent::parse(&identity.agent) == Some(Agent::Cursor) {
+            // Nothing about a pending Cursor form is in the transcript: the
+            // screen is the request. Never cached; the length anchors the ID.
+            *cache = None;
+            let length = file.metadata().ok().filter(|m| m.is_file())?.len();
+            let form = crate::cursor_form::parse_form(&self.client.read_visible(&identity.pane_id).ok()?)?;
+            return crate::cursor_form::pending(&form, length);
+        }
         let stamp = match self.question_input_stamp(identity, &file) {
             Some(stamp) => stamp,
             None => { *cache = None; return None; }
@@ -2448,7 +2480,14 @@ impl Service {
     fn question_pane_file(&self, identity: &Identity) -> Result<std::fs::File> {
         let snapshot = self.client.snapshot().map_err(|_| "stale")?;
         let pane = snapshot.panes.iter().find(|p| p.pane_id == identity.pane_id).ok_or("stale")?;
-        if (identity.agent != "antigravity_cli" && pane.agent_status != "blocked") || pane.terminal_id != identity.terminal_id
+        // Herdr reports a live Cursor question form as done, so Cursor is judged
+        // by its screen; a working or unknown pane is still refused.
+        let status_ok = match identity.agent.as_str() {
+            "antigravity_cli" => true,
+            "cursor" => matches!(pane.agent_status.as_str(), "blocked" | "idle" | "done"),
+            _ => pane.agent_status == "blocked",
+        };
+        if !status_ok || pane.terminal_id != identity.terminal_id
             || !pane.agent.as_deref().is_some_and(|agent| self.adapter_for(agent).is_some_and(|a| a.name() == identity.agent)) { return Err("stale"); }
         let adapter = self.adapter_for(&identity.agent).ok_or("stale")?;
         let (session, file) = adapter.resolve_and_open(pane).map_err(|_| "stale")?;
@@ -2474,6 +2513,9 @@ impl Service {
         if !current.is_fresh(&newest) { return Err("in_progress".into()); }
         let steps = question_keys::plan(newest.kind, &newest, &current, params)?;
         let mut confirmed = self.execute_question(identity, &newest, current, &steps)?;
+        if newest.kind == QuestionKind::CursorAsk {
+            confirmed = self.confirm_cursor_question(watch, identity, &newest);
+        }
         if newest.kind == QuestionKind::AgyAsk {
             confirmed=false;
             let deadline=Instant::now()+Duration::from_secs(2);
@@ -2488,10 +2530,37 @@ impl Service {
         }
         Ok(json!({"request_id":newest.request_id,"confirmed":confirmed}))
     }
+    /// The question left the screen. Confirmed means the form moved on: the next
+    /// question is showing, or (for the last one) the form closed and Cursor
+    /// appended the `AskQuestion` call. The answers themselves are not in the
+    /// transcript, so neither proves what was chosen.
+    fn confirm_cursor_question(&self, watch: &Watch, identity: &Identity, asked: &PendingQuestion) -> bool {
+        let Some((anchor, number, total)) = crate::cursor_form::request_parts(&asked.request_id) else { return false };
+        let prompt = asked.questions.first().map(|q| q.text.as_str()).unwrap_or("");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            let Ok(screen) = self.client.read_visible(&identity.pane_id) else { return false };
+            match crate::cursor_form::parse_form(&screen) {
+                // The same question again: Enter has not taken effect yet.
+                Some(form) if form.index + 1 == number && form.total == total => {}
+                Some(form) => return number < total && form.index + 1 == number + 1 && form.total == total,
+                None if number < total => return false,
+                None => {
+                    let Ok((_, file)) = self.model_pane_file(identity) else { return false };
+                    if watch.follower.verify_source(match file.try_clone() { Ok(f) => f, Err(_) => return false }).is_err() {
+                        return false;
+                    }
+                    if crate::cursor::recorded_question(&file, anchor, prompt) { return true; }
+                }
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+        false
+    }
     fn execute_question(&self, identity: &Identity, pending: &PendingQuestion, mut current: QuestionScreen, steps: &[Step]) -> InteractionResult<bool> {
         let mut steps_sent = 0;
         for (index, step) in steps.iter().enumerate() {
-            if pending.kind == QuestionKind::AgyAsk {
+            if matches!(pending.kind, QuestionKind::AgyAsk | QuestionKind::CursorAsk) {
                 let file=self.question_pane_file(identity).map_err(|_|InteractionError::stale_after(steps_sent))?;
                 let watch=self.watch.as_ref().ok_or("stale")?;
                 watch.follower.verify_source(file.try_clone().map_err(|_|"stale")?).map_err(|_|InteractionError::stale_after(steps_sent))?;

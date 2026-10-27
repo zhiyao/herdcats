@@ -288,19 +288,35 @@ pub fn request_offset(request_id: &str) -> Option<u64> {
     (parts.next().is_some() && parts.next().is_none()).then_some(offset)
 }
 
-/// True when a `Shell` call for exactly `command` was appended at or after
-/// `offset`. This shows only that the call was recorded after its card was
-/// resolved: Cursor writes no result, so run versus denied is not visible.
-pub fn recorded_shell(file: &File, offset: u64, command: &str) -> bool {
+/// True when an `AskQuestion` call that asked exactly `prompt` was appended at
+/// or after `offset`: the form was submitted. Compared without whitespace
+/// because the screen wraps the prompt. Answers are not in the transcript.
+pub fn recorded_question(file: &File, offset: u64, prompt: &str) -> bool {
+    let want: String = prompt.chars().filter(|c| !c.is_whitespace()).collect();
+    appended_blocks(file, offset).iter().any(|block| {
+        block["type"] == "tool_use"
+            && block["name"] == "AskQuestion"
+            && block["input"]["questions"].as_array().is_some_and(|questions| {
+                questions.iter().any(|q| {
+                    q["prompt"].as_str().is_some_and(|p| {
+                        p.chars().filter(|c| !c.is_whitespace()).collect::<String>() == want
+                    })
+                })
+            })
+    })
+}
+
+/// Assistant content blocks appended at or after `offset` (bounded read).
+fn appended_blocks(file: &File, offset: u64) -> Vec<Value> {
     use std::io::{Read, Seek, SeekFrom};
-    let Ok(mut file) = file.try_clone() else { return false };
-    let Ok(length) = file.metadata().map(|m| m.len()) else { return false };
+    let Ok(mut file) = file.try_clone() else { return vec![] };
+    let Ok(length) = file.metadata().map(|m| m.len()) else { return vec![] };
     if offset > length || file.seek(SeekFrom::Start(offset)).is_err() {
-        return false;
+        return vec![];
     }
     let mut bytes = Vec::new();
     if file.take(4 * 1024 * 1024).read_to_end(&mut bytes).is_err() {
-        return false;
+        return vec![];
     }
     bytes
         .split_inclusive(|b| *b == b'\n')
@@ -309,6 +325,15 @@ pub fn recorded_shell(file: &File, offset: u64, command: &str) -> bool {
         .filter(|row| row["role"] == "assistant")
         .filter_map(|row| row["message"]["content"].as_array().cloned())
         .flatten()
+        .collect()
+}
+
+/// True when a `Shell` call for exactly `command` was appended at or after
+/// `offset`. This shows only that the call was recorded after its card was
+/// resolved: Cursor writes no result, so run versus denied is not visible.
+pub fn recorded_shell(file: &File, offset: u64, command: &str) -> bool {
+    appended_blocks(file, offset)
+        .iter()
         .any(|block| {
             block["type"] == "tool_use"
                 && block["name"] == "Shell"

@@ -480,3 +480,226 @@ fn cursor_card_with_a_non_empty_allowlist_notice_is_advertised() {
     assert_eq!(pending.request.tool_input["command"], "printf HERDCATS_CURSOR_PROBE");
     cleanup(&service, root);
 }
+
+const FORM_TOP: &str = " ┌───────────────────────────────────────────────────────────────────────┐";
+const FORM_BOTTOM: &str = " └───────────────────────────────────────────────────────────────────────┘";
+fn form_row(text: &str) -> String { format!(" │ {text:<69} │") }
+fn cursor_form(position: &str, prompt: &str, options: &[&str]) -> String {
+    let mut rows = vec![FORM_TOP.to_owned(), form_row("README clarifications"), form_row(""), form_row(position), form_row(""), form_row(prompt), form_row("")];
+    rows.extend(options.iter().map(|o| form_row(o)));
+    rows.push(form_row(""));
+    rows.push(form_row("↑/↓ option · ←/→ question · Space select · Enter next/submit · Esc to"));
+    rows.push(form_row("skip"));
+    rows.push(FORM_BOTTOM.to_owned());
+    format!("\n  Asking.\n\n{}", rows.join("\n"))
+}
+fn q1(cursor: usize, checked: &[usize], other: &str) -> String {
+    let labels = ["Alpha", "Beta"];
+    let mut rows: Vec<String> = labels.iter().enumerate().map(|(i, l)| format!("{}[{}] {l}", if i + 1 == cursor { "  › " } else { "    " }, if checked.contains(&(i + 1)) { 'x' } else { ' ' })).collect();
+    rows.push(format!("{}[{}] Other: {other}", if cursor == 3 { "  › " } else { "    " }, if checked.contains(&3) { 'x' } else { ' ' }));
+    let refs: Vec<&str> = rows.iter().map(String::as_str).collect();
+    cursor_form("Question 1 of 2", "1. Which label?", &refs)
+}
+fn q2(cursor: usize, checked: &[usize]) -> String {
+    let labels = ["One", "Two", "Three"];
+    let mut rows: Vec<String> = labels.iter().enumerate().map(|(i, l)| format!("{}[{}] {l}", if i + 1 == cursor { "  › " } else { "    " }, if checked.contains(&(i + 1)) { 'x' } else { ' ' })).collect();
+    rows.push(format!("{}[ ] Other: (type to answer)", if cursor == 4 { "  › " } else { "    " }));
+    let refs: Vec<&str> = rows.iter().map(String::as_str).collect();
+    cursor_form("Question 2 of 2", "2. Which features? (multi-select)", &refs)
+}
+fn ask_question_record(prompt: &str) -> String {
+    format!("{}\n", json!({"role":"assistant","message":{"content":[{"type":"tool_use","name":"AskQuestion","input":{"title":"README clarifications","questions":[{"id":"q","prompt":prompt,"options":[{"id":"a","label":"Alpha"}]}]}}]}}))
+}
+fn cursor_question_fixture(screen: &str) -> (Service, PathBuf, SharedHerdr, PathBuf, String) {
+    let (mut service, root, herdr, file) = cursor_fixture();
+    let user = "{\"role\":\"user\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"<user_query>\\nask me\\n</user_query>\"}]}}\n";
+    fs::write(&file, user).unwrap();
+    // Herdr reports a live question form as done, not blocked.
+    set_screen(&herdr, "done", screen, screen);
+    service.poll(&mut Vec::new()).unwrap();
+    (service, root, herdr, file, user.into())
+}
+fn pending_question(service: &Service) -> &PendingQuestionEvent {
+    match service.watch.as_ref().unwrap().pending.as_ref().expect("pending question") {
+        PendingInteraction::Question(q) => q,
+        _ => panic!("expected question"),
+    }
+}
+fn queue(herdr: &SharedHerdr, screens: Vec<String>) {
+    let mut state = herdr.lock().unwrap();
+    for screen in screens {
+        state.screens_after_input.push_back(std::collections::VecDeque::from([screen]));
+    }
+}
+fn sent_keys(herdr: &SharedHerdr) -> Vec<String> {
+    herdr.lock().unwrap().inputs.iter().map(|i| match i["method"].as_str().unwrap() {
+        "pane.send_keys" => i["params"]["keys"][0].as_str().unwrap().to_owned(),
+        "pane.send_text" => format!("text:{}", i["params"]["text"].as_str().unwrap()),
+        other => other.to_owned(),
+    }).collect()
+}
+
+#[test]
+fn cursor_question_form_is_found_from_the_screen_while_herdr_says_done() {
+    let (service, root, _herdr, _file, user) = cursor_question_fixture(&q1(1, &[], "(type to answer)"));
+    let event = pending_question(&service);
+    assert!(event.fresh);
+    assert_eq!(event.request.kind, QuestionKind::CursorAsk);
+    assert!(event.request.request_id.starts_with(&format!("cursor-q:{}:1of2:", user.len())));
+    let data = PendingInteraction::Question(PendingQuestionEvent {
+        identity: event.identity.clone(), generation: event.generation, request: event.request.clone(),
+        screen: event.screen.clone(), fresh: event.fresh,
+    }).data();
+    assert_eq!(data["question_kind"], "cursor");
+    assert_eq!(data["agent"], "cursor");
+    assert_eq!(data["step"], json!({"kind":"cursor_question","index":0,"total":2}));
+    assert_eq!(data["questions"][0]["text"], "Which label?");
+    assert_eq!(data["questions"][0]["header"], "README clarifications");
+    assert_eq!(data["questions"][0]["allows_other"], true);
+    assert_eq!(data["questions"][0]["options"], json!([
+        {"number":1,"label":"Alpha","description":null},{"number":2,"label":"Beta","description":null}]));
+    // The phone's composer closes while the form is up.
+    assert_eq!(service.watch.as_ref().unwrap().status, "blocked");
+    cleanup(&service, root);
+}
+
+#[test]
+fn cursor_question_is_only_advertised_when_questions_are_opted_in() {
+    let (mut service, root, herdr, _file) = cursor_fixture();
+    service.include_questions = false;
+    set_screen(&herdr, "done", &q1(1, &[], "(type to answer)"), &q1(1, &[], "(type to answer)"));
+    service.poll(&mut Vec::new()).unwrap();
+    assert!(service.watch.as_ref().unwrap().pending.is_none());
+    assert_eq!(service.watch.as_ref().unwrap().status, "done");
+    cleanup(&service, root);
+}
+
+#[test]
+fn cursor_single_select_answer_walks_arrows_space_enter_and_confirms_the_next_question() {
+    let (service, root, herdr, _file, _user) = cursor_question_fixture(&q1(1, &[], "(type to answer)"));
+    let id = pending_question(&service).request.request_id.clone();
+    queue(&herdr, vec![q1(2, &[], "(type to answer)"), q1(2, &[2], "(type to answer)"), q2(1, &[])]);
+    let reply = service.respond_interaction(&json!({"request_id":id,"answers":[{"index":0,"options":[2]}]})).unwrap();
+    assert_eq!(reply["confirmed"], true, "the next question is showing");
+    assert_eq!(sent_keys(&herdr), ["down", "space", "enter"]);
+    cleanup(&service, root);
+}
+
+#[test]
+fn cursor_write_in_types_on_the_other_row_and_multi_select_checks_in_order() {
+    let (service, root, herdr, _file, _user) = cursor_question_fixture(&q1(1, &[], "(type to answer)"));
+    let id = pending_question(&service).request.request_id.clone();
+    queue(&herdr, vec![q1(2, &[], "(type to answer)"), q1(3, &[], "(type to answer)"), q1(3, &[3], "Gamma"), q2(1, &[])]);
+    let reply = service.respond_interaction(&json!({"request_id":id,"answers":[{"index":0,"options":[],"text":"Gamma"}]})).unwrap();
+    assert_eq!(reply["confirmed"], true);
+    assert_eq!(sent_keys(&herdr), ["down", "down", "text:Gamma", "enter"]);
+    cleanup(&service, root);
+
+    // Multi-select on the second (last) question: One and Three, then Enter submits.
+    let (service, root, herdr, file, user) = cursor_question_fixture(&q2(1, &[]));
+    let id = pending_question(&service).request.request_id.clone();
+    assert!(id.contains(":2of2:"));
+    {
+        let mut state = herdr.lock().unwrap();
+        for screen in [q2(1, &[1]), q2(2, &[1]), q2(3, &[1]), q2(3, &[1, 3]), "\n  Done.\n".to_owned()] {
+            state.screens_after_input.push_back(std::collections::VecDeque::from([screen]));
+        }
+        // The submitted form is recorded once Cursor appends the call.
+        state.transcript_after_inputs = Some((5, file.clone(), format!("{user}{}", ask_question_record("Which features?"))));
+    }
+    let reply = service.respond_interaction(&json!({"request_id":id,"answers":[{"index":0,"options":[1,3]}]})).unwrap();
+    assert_eq!(reply["confirmed"], true, "form closed and the AskQuestion call was recorded");
+    assert_eq!(sent_keys(&herdr), ["space", "down", "down", "space", "enter"]);
+    cleanup(&service, root);
+}
+
+#[test]
+fn cursor_last_question_without_a_recorded_call_is_unconfirmed() {
+    let (service, root, herdr, _file, _user) = cursor_question_fixture(&q2(1, &[]));
+    let id = pending_question(&service).request.request_id.clone();
+    queue(&herdr, vec![q2(1, &[1]), "\n  Done.\n".to_owned()]);
+    let started = Instant::now();
+    let reply = service.respond_interaction(&json!({"request_id":id,"answers":[{"index":0,"options":[1]}]})).unwrap();
+    assert_eq!(reply["confirmed"], false);
+    assert!(started.elapsed() >= Duration::from_secs(4));
+    assert_eq!(sent_keys(&herdr), ["space", "enter"]);
+    cleanup(&service, root);
+}
+
+#[test]
+fn cursor_question_that_the_desk_already_touched_is_not_answerable() {
+    for touched in [q1(2, &[], "(type to answer)"), q1(1, &[1], "(type to answer)"), q1(1, &[], "typing")] {
+        let (service, root, herdr, _file, _user) = cursor_question_fixture(&touched);
+        let event = pending_question(&service);
+        assert!(!event.fresh);
+        let id = event.request.request_id.clone();
+        let error = service.respond_interaction(&json!({"request_id":id,"answers":[{"index":0,"options":[1]}]})).unwrap_err();
+        assert_eq!(error.data()["code"], "in_progress");
+        assert!(sent_keys(&herdr).is_empty());
+        cleanup(&service, root);
+    }
+}
+
+#[test]
+fn cursor_question_responses_validate_before_any_key_and_skip_stays_in_terminal() {
+    let (service, root, herdr, _file, _user) = cursor_question_fixture(&q1(1, &[], "(type to answer)"));
+    let id = pending_question(&service).request.request_id.clone();
+    for params in [
+        json!({"request_id":id,"skip":true}),                                          // Esc would discard the whole form
+        json!({"request_id":id,"answers":[]}),
+        json!({"request_id":id,"answers":[{"index":1,"options":[1]}]}),                // only one question per request
+        json!({"request_id":id,"answers":[{"index":0,"options":[3]}]}),                // beyond the options
+        json!({"request_id":id,"answers":[{"index":0,"options":[1,2]}]}),              // radio
+        json!({"request_id":id,"answers":[{"index":0,"options":[1],"text":"x"}]}),     // radio plus write-in
+        json!({"request_id":id,"answers":[{"index":0,"options":[]}]}),
+        json!({"request_id":id,"answers":[{"index":0,"options":[],"text":"a\nb"}]}),
+        json!({"request_id":id,"answers":[{"index":0,"options":[],"text":"x".repeat(501)}]}),
+        json!({"request_id":"cursor-q:0:1of2:00","answers":[{"index":0,"options":[1]}]}),
+    ] {
+        assert!(service.respond_interaction(&params).is_err(), "{params}");
+    }
+    assert!(sent_keys(&herdr).is_empty());
+    cleanup(&service, root);
+}
+
+#[test]
+fn cursor_question_response_is_stale_when_the_form_changed_or_left() {
+    let (service, root, herdr, _file, _user) = cursor_question_fixture(&q1(1, &[], "(type to answer)"));
+    let id = pending_question(&service).request.request_id.clone();
+    let params = json!({"request_id":id,"answers":[{"index":0,"options":[1]}]});
+    // Answered at the desk: the form moved to question 2.
+    let next = q2(1, &[]);
+    set_screen(&herdr, "done", &next, &next);
+    assert!(service.respond_interaction(&params).is_err());
+    // The form is gone.
+    let (idle, _) = cursor_idle();
+    set_screen(&herdr, "done", &idle, &idle);
+    assert!(service.respond_interaction(&params).is_err());
+    // The pane is working again.
+    let form = q1(1, &[], "(type to answer)");
+    set_screen(&herdr, "working", &form, &form);
+    assert!(service.respond_interaction(&params).is_err());
+    assert!(sent_keys(&herdr).is_empty());
+    cleanup(&service, root);
+}
+
+#[test]
+fn cursor_question_stops_when_a_step_leaves_the_expected_screen() {
+    let (service, root, herdr, _file, _user) = cursor_question_fixture(&q1(1, &[], "(type to answer)"));
+    let id = pending_question(&service).request.request_id.clone();
+    // The first key lands on the wrong row; nothing further may be sent.
+    queue(&herdr, vec![q1(3, &[], "(type to answer)")]);
+    assert!(service.respond_interaction(&json!({"request_id":id,"answers":[{"index":0,"options":[2]}]})).is_err());
+    assert_eq!(sent_keys(&herdr), ["down"]);
+    cleanup(&service, root);
+}
+
+#[test]
+fn cursor_question_card_does_not_collide_with_an_approval_card() {
+    let (mut service, root, herdr, _file) = cursor_fixture();
+    let card = cursor_card("printf X", 0);
+    set_screen(&herdr, "blocked", &card, &card);
+    service.poll(&mut Vec::new()).unwrap();
+    assert!(matches!(service.watch.as_ref().unwrap().pending, Some(PendingInteraction::Approval(_))));
+    cleanup(&service, root);
+}

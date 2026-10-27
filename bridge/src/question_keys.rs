@@ -445,6 +445,10 @@ pub fn plan(
         (QuestionKind::AgyAsk, QuestionStep::AgyQuestion { total, .. }) => {
             *total == pending.questions.len()
         }
+        // One visible question per request; the form's own position is on screen.
+        (QuestionKind::CursorAsk, QuestionStep::CursorQuestion { index, total }) => {
+            pending.questions.len() == 1 && index < total
+        }
         (QuestionKind::ClaudeAsk, QuestionStep::ClaudeQuestion(_) | QuestionStep::ClaudeReview) => {
             true
         }
@@ -465,6 +469,7 @@ pub fn plan(
     }
     match kind {
         QuestionKind::AgyAsk => agy(pending, screen, answers.as_deref().ok_or("invalid")?),
+        QuestionKind::CursorAsk => cursor(pending, screen, answers.as_deref().ok_or("invalid")?),
         QuestionKind::ClaudeAsk => claude(pending, screen, answers.as_deref().ok_or("invalid")?),
         QuestionKind::CodexPlan => codex(pending, screen, answers.as_deref().ok_or("invalid")?),
         QuestionKind::CodexAsync => asynchronous(pending, screen, answers.as_deref()),
@@ -472,6 +477,65 @@ pub fn plan(
 }
 #[cfg(test)]
 mod tests;
+
+/// Answer the visible Cursor question: arrows to each row, Space to check it,
+/// typing on the write-in row, then Enter. Single-select is a radio, so a
+/// second Space moves the check. The Enter leaves this question; the caller
+/// confirms the next question's form (or the submitted form) separately.
+fn cursor(
+    pending: &PendingQuestion,
+    screen: &QuestionScreen,
+    answers: &[Answer],
+) -> Result<Vec<Step>> {
+    let ([question], [answer]) = (&pending.questions[..], answers) else {
+        return Err("mismatch");
+    };
+    let mut state = dialog(screen.step.clone(), QuestionCursor::Option(1));
+    state.cursor = screen.cursor.clone();
+    let mut cursor = match state.cursor {
+        Some(QuestionCursor::Option(n)) => n,
+        _ => return Err("mismatch"),
+    };
+    let other = u32::try_from(question.options.len() + 1).map_err(|_| "mismatch")?;
+    let mut steps = Vec::new();
+    let mut navigate = |target: u32, state: &mut ExpectedDialog, steps: &mut Vec<Step>| {
+        while cursor != target {
+            let input = if cursor < target {
+                cursor += 1;
+                "down"
+            } else {
+                cursor -= 1;
+                "up"
+            };
+            state.cursor = Some(QuestionCursor::Option(cursor));
+            key(steps, input, ExpectedScreen::Dialog(state.clone()));
+        }
+    };
+    for &target in &answer.options {
+        navigate(target, &mut state, &mut steps);
+        if question.multi_select {
+            state.checked.push(target);
+        } else {
+            state.checked = vec![target];
+        }
+        key(&mut steps, "space", ExpectedScreen::Dialog(state.clone()));
+    }
+    if let Some(text) = &answer.text {
+        navigate(other, &mut state, &mut steps);
+        // Typing on the write-in row checks it (a radio unchecks the rest).
+        if question.multi_select {
+            state.checked.push(other);
+        } else {
+            state.checked = vec![other];
+        }
+        state.text = text.clone();
+        push(&mut steps, Input::Text(text.clone()), ExpectedScreen::Dialog(state.clone()));
+    }
+    // Enter moves to the next question or submits the form; either way this
+    // request's question leaves the screen.
+    key(&mut steps, "enter", ExpectedScreen::Gone);
+    Ok(steps)
+}
 
 fn agy(
     pending: &PendingQuestion,

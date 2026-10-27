@@ -22,6 +22,7 @@ fn claude_questions(transcript: &[Value]) -> Vec<PendingQuestion> {
 fn pending(kind: QuestionKind) -> PendingQuestion {
     let source = match kind {
         QuestionKind::AgyAsk => panic!("Agy fixtures are covered by agy_interactions"),
+        QuestionKind::CursorAsk => panic!("Cursor forms are covered by the cursor_form tests"),
         QuestionKind::ClaudeAsk => include_str!(
             "../../../compatibility/phase2/fixtures/claude-question-transcript-pending.jsonl"
         ),

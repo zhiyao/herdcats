@@ -159,15 +159,16 @@
   },
   "cursor_source_validation": {
     "date": "2026-10-27",
-    "status": "timeline, prompts and shell approvals implemented; unpublished; published iOS installer pin unchanged",
+    "status": "timeline, prompts, shell approvals and questions implemented; unpublished; published iOS installer pin unchanged",
     "research": "ios/docs/research/cursor-interactions-feasibility.md",
     "cli_version": "2026.10.22-27dcf5f",
     "evidence": "disposable PTY probes in /private/tmp/herdcats-cursor-probe; automated tests use the synthetic fixture only",
     "remaining": [
-      "questions and model/effort control are later sections",
+      "model/effort control is a later section",
       "no published artifact or checksum",
-      "non-shell cards, wrapped commands, a non-empty allowlist notice and custom statuslines are Terminal-only or untested"
+      "non-shell cards, wrapped commands and custom statuslines are Terminal-only or untested",
+      "question forms with more than 8 questions or 32 options, and skip, stay in Terminal"
     ],
-    "live_evidence": "Section 3: the release bridge was driven over stdio against a disposable Cursor pane (isolated CURSOR_CONFIG_DIR, harmless printf only): prompt.submit typed into the real faint-placeholder composer; a real shell card was advertised with options 1 and 4, Run once confirmed true, Skip walked three arrows then Enter then the empty feedback input and confirmed true; a pending card made prompt.submit return agent_busy (Herdr reports blocked); a leading / prompt was refused. The pending-card and question-form screen guard cases run against synthetic screens in automated tests."
+    "live_evidence": "Section 3: the release bridge was driven over stdio against a disposable Cursor pane (isolated CURSOR_CONFIG_DIR, harmless printf only): prompt.submit typed into the real faint-placeholder composer; a real shell card was advertised with options 1 and 4, Run once confirmed true, Skip walked three arrows then Enter then the empty feedback input and confirmed true; a pending card made prompt.submit return agent_busy (Herdr reports blocked); a leading / prompt was refused. The pending-card and question-form screen guard cases run against synthetic screens in automated tests. Section 4: a two-question AskQuestion form was answered through the bridge (single-select option, then a multi-select option plus a write-in); the TUI echoed exactly those choices. With a real form up and Herdr reporting done, prompt.submit returned question_pending. A card under a non-empty allowlist ('Not in allowlist: printf') was advertised and answered."
   }
 }
