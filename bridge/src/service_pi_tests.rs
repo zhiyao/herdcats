@@ -335,7 +335,7 @@ fn pi_branch_a_b_a_emits_fresh_snapshots_restoring_original_messages() {
     let listener = UnixListener::bind(&socket).unwrap();
     let pane = json!({"pane_id":"pane","terminal_id":"terminal","agent":"pi","agent_status":"idle","agent_session":{"agent":"pi","source":"herdr:pi","kind":"path","value":path}});
     let h = thread::spawn(move || {
-        for _ in 0..3 {
+        for _ in 0..4 {
             let (mut stream, _) = listener.accept().unwrap();
             let mut line = String::new();
             BufReader::new(stream.try_clone().unwrap()).read_line(&mut line).unwrap();
@@ -345,12 +345,12 @@ fn pi_branch_a_b_a_emits_fresh_snapshots_restoring_original_messages() {
     });
     let listener = UnixListener::bind(root.join(format!("herdcats/{session}.sock"))).unwrap();
     let extension = thread::spawn(move || {
-        for branch in ["a", "b", "a"] {
+        for branch in ["a", "b", "a", "a"] {
             let (mut stream, _) = listener.accept().unwrap();
             let mut line = String::new();
             BufReader::new(stream.try_clone().unwrap()).read_line(&mut line).unwrap();
             let entries = ["one", "two"].map(|suffix| json!({"type":"message","id":format!("{branch}-{suffix}"),"message":{"role":"user","content":format!("{branch} {suffix}")}}));
-            writeln!(stream,"{}",json!({"result":{"version":"1.4.0","session_id":session,"session_file":path,"instance_id":"runtime","revision":1,"entries":entries,"status":"idle"}})).unwrap();
+            writeln!(stream,"{}",json!({"result":{"version":"1.4.0","session_id":session,"session_file":path,"instance_id":"runtime","revision":1,"entries":entries,"status":"idle","pending":{"id":"same-dialog","kind":"confirm","title":"Continue?","message":"Allow once?"}}})).unwrap();
         }
     });
     let mut service = Service::with_resolvers(socket, None, None).with_pi_agent_dir(root.clone());
@@ -365,7 +365,18 @@ fn pi_branch_a_b_a_emits_fresh_snapshots_restoring_original_messages() {
         assert_eq!(snapshot["data"]["generation"], initial + index as u64);
         let ids: Vec<_> = snapshot["data"]["entries"].as_array().unwrap().iter().map(|e|e["id"].as_str().unwrap()).collect();
         assert_eq!(ids, vec![format!("pi:{branch}-one"),format!("pi:{branch}-two")]);
+        let dialog = frames.iter().find(|f| f["event"] == "pi.dialog").expect("pending dialog must be re-emitted after snapshot");
+        assert_eq!(dialog["data"]["generation"], initial + index as u64);
+        assert_eq!(dialog["data"]["request_id"], "same-dialog");
+        let snapshot_index = frames.iter().position(|f| f["event"] == "timeline.snapshot").unwrap();
+        let dialog_index = frames.iter().position(|f| f["event"] == "pi.dialog").unwrap();
+        assert!(dialog_index > snapshot_index);
+
     }
+    output.clear();
+    service.poll(&mut output).unwrap();
+    let frames: Vec<Value> = output.split(|b| *b == b'\n').filter(|line| !line.is_empty()).map(|line|serde_json::from_slice(line).unwrap()).collect();
+    assert!(!frames.iter().any(|f| f["event"] == "pi.dialog" || f["event"] == "timeline.snapshot"));
     h.join().unwrap(); extension.join().unwrap();
     fs::remove_dir_all(root).unwrap();
 }

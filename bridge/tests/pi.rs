@@ -273,3 +273,40 @@ fn pi_short_tool_result_keeps_argument_truncation() {
     assert!(transcript.entries[0].truncated);
     assert_eq!(transcript.entries[0].text, "done");
 }
+
+#[test]
+fn pi_uuid_references_resolve_native_timestamped_files_and_reject_ambiguity() {
+    let p = root();
+    let path = p.join("project").join(format!("2026-10-26T13-31-11-402Z_{ID}.jsonl"));
+    let header = format!("{{\"type\":\"session\",\"id\":\"{ID}\"}}\n");
+    fs::write(&path, &header).unwrap();
+    fs::write(p.join("project/unrelated.jsonl"), "not a session\n").unwrap();
+    let pane = serde_json::from_value(serde_json::json!({"pane_id":"p","terminal_id":"t","agent":"pi","agent_status":"idle","agent_session":{"agent":"pi","source":"herdr:pi","kind":"id","value":ID}})).unwrap();
+    let adapter = PiAdapter::new(Some(p.clone()));
+    assert_eq!(adapter.resolve_and_open(&pane).unwrap().0, ID);
+    let (session, file, resolved) = adapter.resolve_pi_live(&pane).unwrap();
+    assert_eq!(session, ID);
+    assert!(file.is_some());
+    assert_eq!(resolved, path);
+    let duplicate = p.join("project").join(format!("2026-10-27T00-00-00-000Z_{ID}.jsonl"));
+    fs::write(&duplicate, &header).unwrap();
+    assert_eq!(adapter.resolve_pi_live(&pane).unwrap_err(), "ambiguous_session");
+    fs::remove_file(&duplicate).unwrap();
+    fs::create_dir(p.join("other")).unwrap();
+    let duplicate = p.join("other").join(format!("{ID}.jsonl"));
+    fs::write(&duplicate, &header).unwrap();
+    assert_eq!(adapter.resolve_pi_live(&pane).unwrap_err(), "ambiguous_session");
+    fs::remove_file(&duplicate).unwrap();
+    fs::write(&path, "{\"type\":\"session\",\"id\":\"00000000-0000-0000-0000-000000000000\"}\n").unwrap();
+    assert_eq!(adapter.resolve_pi_live(&pane).unwrap_err(), "session_mismatch");
+    fs::remove_file(&path).unwrap();
+    let outside = p.join("outside.jsonl");
+    fs::write(&outside, &header).unwrap();
+    std::os::unix::fs::symlink(&outside, &path).unwrap();
+    assert!(adapter.resolve_pi_live(&pane).is_err());
+    fs::remove_file(&path).unwrap();
+    fs::create_dir(p.join("project/nested")).unwrap();
+    fs::write(p.join("project/nested").join(format!("{ID}.jsonl")), &header).unwrap();
+    assert!(adapter.resolve_pi_live(&pane).is_err());
+    fs::remove_dir_all(p).unwrap();
+}

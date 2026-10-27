@@ -49,10 +49,12 @@ impl PiAdapter {
         // Pi groups JSONL files below encoded-cwd directories. Search only
         // immediate session directories, and require a single matching header.
         let mut found = None;
-        let mut dirs = 0usize;
+        let mut indexed = 0usize;
+        let bare_name = format!("{value}.jsonl");
+        let native_suffix = format!("_{value}.jsonl");
         for entry in std::fs::read_dir(root).map_err(|_| "transcript_root_unavailable")? {
-            dirs += 1;
-            if dirs > 10000 {
+            indexed += 1;
+            if indexed > 10000 {
                 return Err("transcript_index_too_large");
             }
             let entry = entry.map_err(|_| "transcript_root_unavailable")?;
@@ -69,15 +71,29 @@ impl PiAdapter {
                 .map_err(|_| "unsafe_transcript_path")?;
             let child = PathBuf::from(name);
             let dir = open_beneath(anchor, &child, true)?;
-            let candidate = child.join(format!("{value}.jsonl"));
-            if let Ok(file) = open_beneath(&dir, Path::new(&format!("{value}.jsonl")), false) {
+            for candidate in std::fs::read_dir(entry.path()).map_err(|_| "transcript_unavailable")? {
+                indexed += 1;
+                if indexed > 10000 {
+                    return Err("transcript_index_too_large");
+                }
+                let candidate = candidate.map_err(|_| "transcript_unavailable")?;
+                let name = candidate.file_name();
+                let Some(name) = name.to_str() else { continue; };
+                if name != bare_name
+                    && !(name.len() > native_suffix.len() && name.ends_with(&native_suffix))
+                {
+                    continue;
+                }
+                // Enumeration supplies names only. Open through the pinned
+                // descriptor so symlink/parent replacement cannot redirect reads.
+                let file = open_beneath(&dir, Path::new(name), false)?;
                 if pi_header_id(file)? != value {
                     return Err("session_mismatch");
                 }
                 if found.is_some() {
                     return Err("ambiguous_session");
                 }
-                found = Some(root.join(candidate));
+                found = Some(root.join(&child).join(name));
             }
         }
         found

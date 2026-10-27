@@ -686,6 +686,9 @@ impl Service {
                 if reset {
                     watch.approval_cache = None;
                     watch.question_cache = None;
+                    // The snapshot clears iOS's pending dialog. Re-emit even
+                    // when the native dialog itself has not changed.
+                    watch.pi_dialog = None;
                     self.generation += 1;
                 }
                 let status = if identity.agent == "antigravity_cli" {
