@@ -156,5 +156,16 @@
       "ios_presentation_ui": "/private/tmp/hc-agy-focus-ui/presentation-final.log"
     },
     "conflict_resolution": "Retained current upstream removal of obsolete routed-host API tests and all new Agy tests; no production routing changes"
+  },
+  "cursor_source_validation": {
+    "date": "2026-10-27",
+    "status": "read-only timeline in progress; unpublished; published iOS installer pin unchanged",
+    "research": "ios/docs/research/cursor-interactions-feasibility.md",
+    "cli_version": "2026.10.22-27dcf5f",
+    "evidence": "disposable PTY probes in /private/tmp/herdcats-cursor-probe; automated tests use the synthetic fixture only",
+    "remaining": [
+      "prompts, approvals, questions and model control are later sections",
+      "no published artifact or checksum"
+    ]
   }
 }

@@ -12,7 +12,7 @@ fn run() -> std::result::Result<(), &'static str> {
         println!(
             "{}",
             serde_json::json!({
-                "agents": ["claude", "codex", "antigravity_cli", "pi"],
+                "agents": ["claude", "codex", "antigravity_cli", "pi", "cursor"],
                 "herdr_protocol": 22,
                 "name": "herdcats-bridge",
                 "protocol": 1,
@@ -76,7 +76,7 @@ fn run() -> std::result::Result<(), &'static str> {
     }
     if command.as_deref() != Some("serve") || args.next().as_deref() != Some("--stdio") {
         return Err(
-            "usage: herdcats-bridge serve --stdio [--socket PATH] [--claude-root PATH] [--codex-root PATH] [--pi-agent-dir PATH] [--poll-ms 50..5000]",
+            "usage: herdcats-bridge serve --stdio [--socket PATH] [--claude-root PATH] [--codex-root PATH] [--agy-root PATH] [--pi-agent-dir PATH] [--cursor-root PATH] [--poll-ms 50..5000]",
         );
     }
     let mut socket = std::env::var_os("HERDR_SOCKET_PATH").map(PathBuf::from);
@@ -84,6 +84,7 @@ fn run() -> std::result::Result<(), &'static str> {
     let mut codex_root: Option<PathBuf> = None;
     let mut agy_root: Option<PathBuf> = None;
     let mut pi_agent_dir: Option<PathBuf> = None;
+    let mut cursor_root: Option<PathBuf> = None;
     let mut poll = 300;
     while let Some(flag) = args.next() {
         let value = args.next().ok_or("missing_argument")?;
@@ -93,6 +94,7 @@ fn run() -> std::result::Result<(), &'static str> {
             "--codex-root" => codex_root = Some(value.into()),
             "--agy-root" => agy_root = Some(value.into()),
             "--pi-agent-dir" => pi_agent_dir = Some(value.into()),
+            "--cursor-root" => cursor_root = Some(value.into()),
             "--poll-ms" => {
                 poll = value
                     .parse::<u64>()
@@ -112,6 +114,7 @@ fn run() -> std::result::Result<(), &'static str> {
     }
     if let Some(ar) = agy_root { service = service.with_agy_root(ar); }
     if let Some(pr) = pi_agent_dir { service = service.with_pi_agent_dir(pr); }
+    if let Some(cr) = cursor_root { service = service.with_cursor_root(cr); }
     if let Some(dir) = herdcats_bridge::hooks::resolve_spool_dir() {
         let _ = herdcats_bridge::spool::prune(&dir, std::time::SystemTime::now());
     }

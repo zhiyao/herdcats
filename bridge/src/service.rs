@@ -3,6 +3,7 @@ use crate::{
     adapter::Adapter,
     agy::AgyAdapter,
     pi::PiAdapter,
+    cursor::CursorAdapter,
     approval_match::{self, PendingRequest, Resolution},
     approval_screen::{self, ApprovalDialog, OptionKey},
     claude::{ClaudeAdapter, Entry},
@@ -361,6 +362,7 @@ impl Service {
             Box::new(CodexAdapter::new(codex_resolver.clone())),
             Box::new(AgyAdapter::new(AgyAdapter::default_root())),
             Box::new(PiAdapter::new(PiAdapter::default_root())),
+            Box::new(CursorAdapter::new(CursorAdapter::default_root())),
         ];
         Self {
             client: Client { socket },
@@ -443,6 +445,7 @@ impl Service {
             Box::new(CodexAdapter::new(self.codex_resolver.clone())),
             Box::new(AgyAdapter::new(AgyAdapter::default_root())),
             Box::new(PiAdapter::new(PiAdapter::default_root())),
+            Box::new(CursorAdapter::new(CursorAdapter::default_root())),
         ];
         self
     }
@@ -461,6 +464,11 @@ impl Service {
         let dir=self.pi_agent_dir.as_deref().ok_or("pi_extension_unavailable")?;
         let socket=crate::pi::extension_socket_at(dir,session)?;
         crate::pi::extension_request_at(&socket,method,params)
+    }
+    pub fn with_cursor_root(mut self, root: PathBuf) -> Self {
+        self.adapters.retain(|a| a.name() != "cursor");
+        self.adapters.push(Box::new(CursorAdapter::new(Some(root))));
+        self
     }
     fn adapter_for(&self, agent: &str) -> Option<&dyn Adapter> {
         self.adapters
@@ -2482,7 +2490,7 @@ impl Service {
             let codex_available = self.adapter_for("codex").is_some_and(|a| a.is_available());
             return Self::write(
                 out,
-                &json!({"id":id,"result":{"protocol":1,"bridge_version":env!("CARGO_PKG_VERSION"),"epoch":self.epoch,"capabilities":{"agy":self.adapter_for("agy").is_some_and(|a| a.is_available()),"pi":self.adapter_for("pi").is_some_and(|a|a.is_available()),"claude_timeline":claude_available,"record_content":true,"codex_timeline":codex_available,"codex_daemon_config":true,"codex_daemon_stop":true,"git":false,"prompts":false,"approvals":true,"questions":true,"model_control":true,"routed_hosts":false}}}),
+                &json!({"id":id,"result":{"protocol":1,"bridge_version":env!("CARGO_PKG_VERSION"),"epoch":self.epoch,"capabilities":{"agy":self.adapter_for("agy").is_some_and(|a| a.is_available()),"pi":self.adapter_for("pi").is_some_and(|a|a.is_available()),"cursor":self.adapter_for("cursor").is_some_and(|a| a.is_available()),"cursor_prompts":self.adapter_for("cursor").is_some_and(|a| a.is_available()),"claude_timeline":claude_available,"record_content":true,"codex_timeline":codex_available,"codex_daemon_config":true,"codex_daemon_stop":true,"git":false,"prompts":false,"approvals":true,"questions":true,"model_control":true,"routed_hosts":false}}}),
             );
         }
         if !self.initialized {
@@ -2909,6 +2917,7 @@ mod tests {
         (service, root, session, herdr)
     }
     include!("service_agy_tests.rs");
+    include!("service_cursor_tests.rs");
     include!("service_approval_tests.rs");
     include!("service_question_tests.rs");
     include!("service_question_response_tests.rs");

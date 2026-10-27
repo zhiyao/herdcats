@@ -28,3 +28,5 @@ pub mod model_control;
 
 pub mod agy;
 pub mod pi;
+
+pub mod cursor;
