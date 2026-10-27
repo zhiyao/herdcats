@@ -228,8 +228,11 @@ extension PaneSessionView {
     /// transition, the error callback, or the reconciliation above — is the
     /// only path that opens the Compose bubble, so a partial transcript is
     /// never shown or sent.
+    /// Send only counts once capture is running: during setup `finish()`
+    /// cancels outright, and that idle must not send the prior draft.
     func finishVoice(send: Bool = false) {
-        guard surfaceModel.requestFinishDictation(sendWhenDone: send) else { return }
+        let capturing = dictation.isBusy && !dictation.isPreparing
+        guard surfaceModel.requestFinishDictation(sendWhenDone: send && capturing) else { return }
         voiceSession = nil
         dictation.finish()
     }
