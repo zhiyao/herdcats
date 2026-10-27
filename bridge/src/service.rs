@@ -19,6 +19,8 @@ use crate::{
     question_screen::{self, QuestionScreen, QuestionStep},
     spool,
 };
+mod cursor_control;
+use cursor_control::CursorCatalog;
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
@@ -292,6 +294,8 @@ pub struct Service {
     agy_catalog_cache: std::cell::RefCell<Option<(Instant, Vec<model_control::AgyModel>)>>,
     agy_catalog_error: std::cell::RefCell<Option<(Instant, &'static str)>>,
     agy_executable: std::cell::RefCell<Option<PathBuf>>,
+    /// Picker rows of the verified Cursor build, scanned once per version.
+    cursor_catalog: std::cell::RefCell<Option<CursorCatalog>>,
     codex_executable: std::cell::RefCell<Option<PathBuf>>,
     codex_catalog_cache: std::cell::RefCell<Option<(Instant, Vec<model_control::CodexCatalogModel>)>>,
     codex_catalog_error: std::cell::RefCell<Option<(Instant, &'static str)>>,
@@ -382,6 +386,7 @@ impl Service {
             agy_catalog_cache: std::cell::RefCell::new(None),
             agy_catalog_error: std::cell::RefCell::new(None),
             agy_executable: std::cell::RefCell::new(None),
+            cursor_catalog: std::cell::RefCell::new(None),
             codex_executable: std::cell::RefCell::new(None),
             codex_catalog_cache: std::cell::RefCell::new(None),
             codex_catalog_error: std::cell::RefCell::new(None),
@@ -1494,6 +1499,9 @@ impl Service {
             .clone()
             .filter(|_| watch.unavailable.is_none())
             .ok_or("timeline_unavailable")?;
+        if identity.agent == "cursor" {
+            return self.cursor_model_status(&identity);
+        }
         let (pane, file) = self.model_pane_file(&identity)?;
         self.agy_require_no_pending(&identity, file.try_clone().map_err(|_|"stale")?)?;
         let agent = identity.agent.as_str();
@@ -1634,6 +1642,9 @@ impl Service {
             .clone()
             .filter(|_| watch.unavailable.is_none())
             .ok_or("timeline_unavailable")?;
+        if identity.agent == "cursor" {
+            return self.cursor_model_set(&identity, params);
+        }
         let agent = identity.agent.as_str();
         if agent=="antigravity_cli" && (params["expect"]["identity"]!=serde_json::to_value(&identity).map_err(|_|"stale")? || params["expect"]["generation"].as_u64()!=Some(self.generation)) {return Err("stale");}
         let target_model = params["model"].as_str();
@@ -2960,6 +2971,10 @@ mod tests {
         terminal_id: Option<String>,
         session_override: Option<String>,
         transcript_after_inputs: Option<(usize, PathBuf, String)>,
+        // A stateful Cursor TUI emulator; when set it answers reads and inputs.
+        tui: Option<CursorTui>,
+        // Foreground process command lines for pane.process_info.
+        process_lines: Option<Vec<String>>,
     }
     type SharedHerdr = std::sync::Arc<std::sync::Mutex<HerdrState>>;
     fn fixture() -> (Service, PathBuf, std::sync::Arc<std::sync::Mutex<String>>) {
@@ -3003,6 +3018,30 @@ mod tests {
                 let request: Value = serde_json::from_str(&line).unwrap();
                 let mut state = server_state.lock().unwrap();
                 let result = match request["method"].as_str().unwrap() {
+                    "pane.read" if state.tui.is_some() => {
+                        let ansi = request["params"]["format"] == "ansi";
+                        let tui = state.tui.as_ref().unwrap();
+                        json!({"read":{"text":if ansi { tui.styled() } else { tui.plain() }}})
+                    }
+                    "pane.send_keys" if state.tui.is_some() => {
+                        let keys: Vec<String> = request["params"]["keys"].as_array().unwrap().iter().map(|k| k.as_str().unwrap().to_owned()).collect();
+                        assert_eq!(keys.len(), 1, "one key per call");
+                        state.inputs.push(json!({"method":"pane.send_keys","params":request["params"]}));
+                        state.tui.as_mut().unwrap().key(&keys[0]);
+                        json!({})
+                    }
+                    "pane.send_text" if state.tui.is_some() => {
+                        let text = request["params"]["text"].as_str().unwrap().to_owned();
+                        state.inputs.push(json!({"method":"pane.send_text","params":request["params"]}));
+                        state.tui.as_mut().unwrap().text(&text);
+                        json!({})
+                    }
+                    "pane.process_info" => {
+                        let lines = state.process_lines.clone().unwrap_or_else(|| vec![
+                            "/home/u/.local/bin/cursor-agent --use-system-ca /home/u/.local/share/cursor-agent/versions/2026.10.22-27dcf5f/index.js --trust".to_owned()]);
+                        let procs: Vec<Value> = lines.iter().map(|l| json!({"cmdline":l,"name":"node","pid":1})).collect();
+                        json!({"type":"pane_process_info","process_info":{"foreground_process_group_id":1,"foreground_processes":procs,"pane_id":"w1:p1","shell_pid":1}})
+                    }
                     "pane.read" if request["params"]["format"] == "ansi" => {
                         assert_eq!(request["params"], json!({"pane_id":"w1:p1","source":"visible","format":"ansi"}));
                         // Real agents draw idle placeholders faint; a test sets
@@ -3105,6 +3144,7 @@ mod tests {
     }
     include!("service_agy_tests.rs");
     include!("service_cursor_tests.rs");
+    include!("service_cursor_model_tests.rs");
     include!("service_approval_tests.rs");
     include!("service_question_tests.rs");
     include!("service_question_response_tests.rs");

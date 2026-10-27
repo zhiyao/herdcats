@@ -431,21 +431,6 @@ fn cursor_identical_retry_card_gets_a_new_request_id_once_the_record_lands() {
 }
 
 #[test]
-fn cursor_model_changes_are_refused_without_touching_the_pane_until_they_are_guarded() {
-    let (mut service, root, herdr, _file) = cursor_fixture();
-    service.include_model_control = true;
-    service.poll(&mut Vec::new()).unwrap();
-    let (plain, styled) = cursor_idle();
-    set_screen(&herdr, "idle", &plain, &styled);
-    let identity = service.watch.as_ref().unwrap().identity.clone().unwrap();
-    let params = json!({"model":"grok-4.7","expect":{"model":null,"effort":null,"identity":identity,"generation":service.generation}});
-    assert!(service.model_set(&params).is_err());
-    assert!(service.model_status().is_err());
-    assert!(herdr.lock().unwrap().inputs.is_empty(), "no key, text or prompt may reach the pane");
-    cleanup(&service, root);
-}
-
-#[test]
 fn cursor_ready_guard_for_model_changes_also_requires_agent_mode() {
     let (mut service, root, herdr, _file) = cursor_fixture();
     service.poll(&mut Vec::new()).unwrap();

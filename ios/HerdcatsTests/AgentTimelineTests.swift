@@ -181,6 +181,43 @@ struct TimelineAgentAvailabilityTests {
         #expect(!TimelineAgentAvailability.matchesSession(agent: "cursor", referenceAgent: "cursor", source: "herdr:cursor", identityAgent: "codex"))
         #expect(!TimelineAgentAvailability.matchesSession(agent: "cursor", referenceAgent: nil, source: nil, identityAgent: "cursor"))
     }
+    @MainActor @Test func cursorModelChoicesUseNativeIdentifiersAndShowTheirOwnEfforts() throws {
+        let identity = AgentTimelineIdentity(paneId: "p", terminalId: "t", agent: "cursor", nativeSessionId: "s")
+        func payload(_ body: [String: Any]) throws -> AgentBridgePayload {
+            var base: [String: Any] = ["identity": ["pane_id": "p", "terminal_id": "t", "agent": "cursor", "native_session_id": "s"], "generation": 1]
+            base.merge(body) { _, new in new }
+            return try #require(AgentBridgeFrame.decode(JSONSerialization.data(withJSONObject: ["result": base])).result)
+        }
+        let efforts: [[String: Any]] = [["id": "low", "label": "Low"], ["id": "high", "label": "High"], ["id": "xhigh", "label": "Extra High"]]
+        let state = AgentModelControlState(); state.bind(identity: identity, generation: 1); state.connect(nil, supported: true)
+        try state.update(payload([
+            "model": ["id": "claude-opus-5-5", "label": "Claude Opus 5.5", "efforts": efforts], "effort": "high", "efforts": efforts,
+            "models": [["id": "claude-opus-5-5", "label": "Claude Opus 5.5", "efforts": efforts, "current": true],
+                       ["id": "claude-opus-5", "label": "Claude Opus 5", "efforts": []], ["id": "auto", "label": "Auto", "efforts": []]],
+            "catalog": ["source": "picker", "fresh": true, "complete": true, "cliVersion": "2026.10.22-27dcf5f"],
+        ]), options: true)
+        #expect(state.models.map(\.id) == ["claude-opus-5-5", "claude-opus-5", "auto"])
+        #expect(state.modelName == "Claude Opus 5.5" && state.effortText == "high")
+        #expect(state.efforts.map(\.id) == ["low", "high", "xhigh"])
+        #expect(state.efforts.last?.label == "Extra High")
+        #expect(state.persistsAcrossSessions)
+        // A model whose efforts are not known yet offers none, never a guess.
+        #expect(state.models[1].efforts.isEmpty && state.models[2].efforts.isEmpty)
+        let other = AgentModelControlState(); other.bind(identity: AgentTimelineIdentity(paneId: "p", terminalId: "t", agent: "claude", nativeSessionId: "s"), generation: 1)
+        #expect(!other.persistsAcrossSessions)
+    }
+    @MainActor @Test func cursorModelRefusalsAreActionableAndNeverBlame() {
+        let codes = ["cursor_unsupported_version", "cursor_version_unverified", "mode_not_agent", "composer_not_empty", "approval_pending", "question_pending", "picker_open", "footer_unrecognized", "unknown_model", "invalid_effort", "picker_stuck", "picker_mismatch", "catalog_incomplete", "confirm_timeout"]
+        for code in codes {
+            let load = AgentModelControlState.catalogMessage(for: code)
+            let change = AgentModelControlState.message(for: code)
+            #expect(load != "Couldn't load model choices. Retry or use Terminal.", "\(code)")
+            #expect(change != "Couldn't change the model. Try again.", "\(code)")
+        }
+        #expect(AgentModelControlState.cursorMessage(for: "picker_stuck")?.contains("Terminal") == true)
+        #expect(AgentModelControlState.cursorMessage(for: "cursor_unsupported_version")?.contains("verified") == true)
+        #expect(AgentModelControlState.cursorMessage(for: "nonsense") == nil)
+    }
     @Test func slashPromptsAreRefusedForCursorOnly() {
         for text in ["/model grok-4.7", "/quit", "  /new", "\n/compact", "\t /x"] {
             #expect(CursorPromptPolicy.refusesSlashCommand(agent: "cursor", text: text), "\(text)")

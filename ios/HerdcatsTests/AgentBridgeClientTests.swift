@@ -178,6 +178,30 @@ struct AgentBridgeClientTests {
             await client.close()
         }
     }
+    @MainActor @Test func cursorModelChangeSendsTheCapturedSessionScopeAndTheNativeIdentifiers() async throws {
+        let wire = BridgeTestWire()
+        let client = try await cursorClient(capabilities: #"{"claude_timeline":false,"cursor":true,"cursor_prompts":true,"model_control":true,"record_content":true}"#, wire)
+        let identity = AgentTimelineIdentity(paneId: "p", terminalId: "t", agent: "cursor", nativeSessionId: "old-chat")
+        let state = AgentModelControlState(); state.bind(identity: identity, generation: 7); state.connect(client, supported: true)
+        let change = Task { await state.change(model: "claude-opus-5", effort: "high") }
+        for _ in 0..<500 {
+            if await wire.commands.count == 3 { break }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        let request = try #require(JSONSerialization.jsonObject(with: await wire.commands[2]) as? [String: Any])
+        #expect(request["method"] as? String == "model.set")
+        let params = try #require(request["params"] as? [String: Any])
+        #expect(params["model"] as? String == "claude-opus-5" && params["effort"] as? String == "high")
+        let expect = try #require(params["expect"] as? [String: Any])
+        #expect(expect["generation"] as? Int == 7)
+        #expect((expect["identity"] as? [String: String])?["native_session_id"] == "old-chat")
+        // The chat was replaced before the reply: the old answer must not touch the new one.
+        state.bind(identity: AgentTimelineIdentity(paneId: "p", terminalId: "t", agent: "cursor", nativeSessionId: "new-chat"), generation: 8)
+        await client.receive(Data("{\"id\":\"\(try await wire.requestId())\",\"error\":{\"code\":\"stale\"}}\n".utf8))
+        await change.value
+        #expect(state.pair.model == nil)
+        await client.close()
+    }
     @Test func cursorHandshakeWatchesWithCapabilityAndStillRequiresRecordContent() async throws {
         let wire = BridgeTestWire()
         let client = AgentBridgeClient(write: { await wire.write($0) }, close: { await wire.close() }, onEvent: { _ in })

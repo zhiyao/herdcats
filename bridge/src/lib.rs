@@ -34,3 +34,5 @@ pub mod cursor;
 pub mod cursor_screen;
 
 pub mod cursor_form;
+
+pub mod cursor_model;
