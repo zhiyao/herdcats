@@ -608,11 +608,11 @@ struct PaneSessionView: View {
             if phase == .background {
                 abandonLiveInput()
                 flushDraftSave()
-                dictation.cancel()
+                interruptDictation()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { _ in
-            dictation.cancel()
+            interruptDictation()
         }
         .onChange(of: photoItem) { _, item in
             guard let item else { return }

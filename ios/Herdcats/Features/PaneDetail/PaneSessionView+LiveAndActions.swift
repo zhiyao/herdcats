@@ -245,6 +245,17 @@ extension PaneSessionView {
         if surfaceModel.isComposeSurface { composeFieldFocused = true }
     }
 
+    /// Lifecycle cancellation (audio interruption, backgrounding) mid-recording
+    /// or mid-drain. Completes the surface as failed before the isBusy
+    /// transition can report it as a successful drain, so a pending Send never
+    /// sends an incomplete transcript; the captured text stays in Compose.
+    func interruptDictation() {
+        let wasRecording = surfaceModel.surface == .voiceRecording
+        voiceSession = nil
+        dictation.cancel()
+        if wasRecording { completeDictationSurface(failed: true) }
+    }
+
     /// Single idempotent funnel off the recording surface onto the Compose
     /// bubble; repeat calls no-op inside the surface state machine. The
     /// final `onText` (full merged transcript, prior draft included) always
