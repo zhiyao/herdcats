@@ -296,6 +296,8 @@ pub struct Service {
     agy_executable: std::cell::RefCell<Option<PathBuf>>,
     /// Picker rows of the verified Cursor build, scanned once per version.
     cursor_catalog: std::cell::RefCell<Option<CursorCatalog>>,
+    /// Where a scanned Cursor model list is saved between sessions; off unless set.
+    cursor_catalog_file: Option<PathBuf>,
     codex_executable: std::cell::RefCell<Option<PathBuf>>,
     codex_catalog_cache: std::cell::RefCell<Option<(Instant, Vec<model_control::CodexCatalogModel>)>>,
     codex_catalog_error: std::cell::RefCell<Option<(Instant, &'static str)>>,
@@ -387,6 +389,7 @@ impl Service {
             agy_catalog_error: std::cell::RefCell::new(None),
             agy_executable: std::cell::RefCell::new(None),
             cursor_catalog: std::cell::RefCell::new(None),
+            cursor_catalog_file: None,
             codex_executable: std::cell::RefCell::new(None),
             codex_catalog_cache: std::cell::RefCell::new(None),
             codex_catalog_error: std::cell::RefCell::new(None),
@@ -479,6 +482,10 @@ impl Service {
         let dir=self.pi_agent_dir.as_deref().ok_or("pi_extension_unavailable")?;
         let socket=crate::pi::extension_socket_at(dir,session)?;
         crate::pi::extension_request_at(&socket,method,params)
+    }
+    pub fn with_cursor_catalog_file(mut self, file: PathBuf) -> Self {
+        self.cursor_catalog_file = Some(file);
+        self
     }
     pub fn with_cursor_root(mut self, root: PathBuf) -> Self {
         self.adapters.retain(|a| a.name() != "cursor");

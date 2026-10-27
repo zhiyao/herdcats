@@ -27,6 +27,61 @@ pub(super) struct CursorModelEntry {
 pub(super) struct CursorCatalog {
     pub version: String,
     pub models: Vec<CursorModelEntry>,
+    /// Seconds since the epoch when the rows were scanned from a live picker.
+    pub scanned_at: u64,
+    /// Read back from the bridge's own cache file instead of scanned now.
+    pub persisted: bool,
+}
+
+/// A saved catalog older than this is scanned again.
+const CATALOG_MAX_AGE: u64 = 24 * 60 * 60;
+/// Models in a saved catalog; the live picker had 46.
+const CATALOG_MAX_MODELS: usize = 200;
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+/// Labels of a saved catalog, or `None` unless every check passes. The file is
+/// only a speed-up for the picker scan, so anything doubtful is ignored.
+fn read_saved_catalog(path: &std::path::Path, version: &str, now: u64) -> Option<(u64, Vec<String>)> {
+    use std::io::Read;
+    let meta = std::fs::symlink_metadata(path).ok()?;
+    if !meta.file_type().is_file() || meta.len() > 64 * 1024 {
+        return None;
+    }
+    let mut text = String::new();
+    std::fs::File::open(path).ok()?.take(64 * 1024).read_to_string(&mut text).ok()?;
+    let value: Value = serde_json::from_str(&text).ok()?;
+    let saved_at = value["scannedAt"].as_u64()?;
+    if value["version"].as_str() != Some(version) || saved_at > now + 60 || now.saturating_sub(saved_at) > CATALOG_MAX_AGE {
+        return None;
+    }
+    let labels: Vec<String> = value["labels"].as_array()?.iter().map(|l| l.as_str().map(str::to_owned)).collect::<Option<_>>()?;
+    let mut ids = std::collections::HashSet::new();
+    let sound = !labels.is_empty()
+        && labels.len() <= CATALOG_MAX_MODELS
+        && labels.iter().all(|l| {
+            let id = cm::slug(l);
+            !l.is_empty() && l.len() <= 128 && !l.chars().any(char::is_control) && !id.is_empty() && id.len() <= 64 && ids.insert(id)
+        });
+    sound.then_some((saved_at, labels))
+}
+
+/// Best effort: a failed write only means the next session scans again.
+fn write_saved_catalog(path: &std::path::Path, version: &str, scanned_at: u64, labels: &[String]) {
+    use std::{io::Write, os::unix::fs::{DirBuilderExt, OpenOptionsExt}};
+    let Some(dir) = path.parent() else { return };
+    if std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir).is_err() {
+        return;
+    }
+    let tmp = path.with_extension(format!("tmp{}", std::process::id()));
+    let body = json!({"version":version,"scannedAt":scanned_at,"labels":labels}).to_string();
+    let written = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&tmp)
+        .and_then(|mut f| f.write_all(body.as_bytes()).and_then(|()| f.sync_all()));
+    if written.is_err() || std::fs::rename(&tmp, path).is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
 }
 
 /// Longest wait for one screen change after one input.
@@ -266,23 +321,54 @@ impl Service {
         labels.into_iter().collect::<Option<Vec<_>>>().ok_or("catalog_incomplete")
     }
 
-    /// Catalog for this exact live version, scanned once and then cached.
+    /// Catalog for this exact live version: this session's copy, else the
+    /// bridge's saved copy of a recent scan, else a scan of the live picker.
     fn cursor_catalog_for(&self, identity: &Identity, version: &str) -> Result<CursorCatalog> {
         if let Some(cached) = self.cursor_catalog.borrow().as_ref().filter(|c| c.version == version) {
             return Ok(cached.clone());
         }
-        let labels = self.cursor_run(identity, None, |s| s.cursor_scan(identity))?;
-        let models: Vec<CursorModelEntry> = labels
-            .into_iter()
-            .map(|label| CursorModelEntry { id: cm::slug(&label), label, efforts: None })
-            .collect();
-        let mut ids = std::collections::HashSet::new();
-        if models.iter().any(|m| m.id.is_empty() || m.id.len() > 64 || !ids.insert(m.id.clone())) {
-            return Err("catalog_ambiguous");
-        }
-        let catalog = CursorCatalog { version: version.to_owned(), models };
+        let entries = |labels: Vec<String>| -> Vec<CursorModelEntry> {
+            labels.into_iter().map(|label| CursorModelEntry { id: cm::slug(&label), label, efforts: None }).collect()
+        };
+        let saved = self.cursor_catalog_file.as_deref().and_then(|path| read_saved_catalog(path, version, unix_now()));
+        let catalog = if let Some((scanned_at, labels)) = saved {
+            CursorCatalog { version: version.to_owned(), models: entries(labels), scanned_at, persisted: true }
+        } else {
+            let labels = self.cursor_run(identity, None, |s| s.cursor_scan(identity))?;
+            let models = entries(labels);
+            let mut ids = std::collections::HashSet::new();
+            if models.iter().any(|m| m.id.is_empty() || m.id.len() > 64 || !ids.insert(m.id.clone())) {
+                return Err("catalog_ambiguous");
+            }
+            let scanned_at = unix_now();
+            if let Some(path) = &self.cursor_catalog_file {
+                let labels: Vec<String> = models.iter().map(|m| m.label.clone()).collect();
+                write_saved_catalog(path, version, scanned_at, &labels);
+            }
+            CursorCatalog { version: version.to_owned(), models, scanned_at, persisted: false }
+        };
         *self.cursor_catalog.borrow_mut() = Some(catalog.clone());
         Ok(catalog)
+    }
+
+    /// The live picker or footer disagreed with the saved copy, so neither this
+    /// session nor the file is trusted again; the next call scans.
+    fn cursor_forget_catalog(&self, outcome: &Result<Value>) {
+        if matches!(outcome, Err("footer_unrecognized" | "unknown_model" | "catalog_ambiguous" | "picker_mismatch")) {
+            self.cursor_forget_saved_catalog();
+        }
+    }
+    /// Drop this session's catalog and the saved file, but only a catalog that
+    /// was read from the file: one scanned now is the live picker's own truth.
+    fn cursor_forget_saved_catalog(&self) -> bool {
+        if !self.cursor_catalog.borrow().as_ref().is_some_and(|c| c.persisted) {
+            return false;
+        }
+        *self.cursor_catalog.borrow_mut() = None;
+        if let Some(path) = &self.cursor_catalog_file {
+            let _ = std::fs::remove_file(path);
+        }
+        true
     }
 
     /// Run a picker operation and always return to the idle composer.
@@ -349,11 +435,20 @@ impl Service {
     /// `model.status` for Cursor: version gate, idle Agent-mode composer, then
     /// the catalog (picker scan, cached) and the model in use (footer).
     pub(super) fn cursor_model_status(&self, identity: &Identity) -> Result<Value> {
+        let outcome = self.cursor_model_status_inner(identity);
+        self.cursor_forget_catalog(&outcome);
+        outcome
+    }
+    fn cursor_model_status_inner(&self, identity: &Identity) -> Result<Value> {
         let version = self.cursor_version(identity)?;
         self.cursor_ready(identity, true)?;
         let catalog = self.cursor_catalog_for(identity, &version)?;
         let labels: Vec<String> = catalog.models.iter().map(|m| m.label.clone()).collect();
         let footer = self.cursor_footer(identity, &labels)?;
+        // A saved list that lacks the model in use is out of date: scan now.
+        if footer.is_none() && self.cursor_forget_saved_catalog() {
+            return self.cursor_model_status_inner(identity);
+        }
         let mut effort = footer.as_ref().and_then(|f| f.effort);
         if let Some(footer) = &footer {
             let known = catalog.models.iter().find(|m| m.label == footer.label).and_then(|m| m.efforts.clone());
@@ -377,7 +472,7 @@ impl Service {
             "effort":effort,
             "models":models,
             "efforts":current_json.as_ref().map(|m| m["efforts"].clone()).unwrap_or_else(|| json!([])),
-            "catalog":{"source":"picker","fresh":true,"complete":true,"fetchedAt":Value::Null,"cliVersion":version,"error":Value::Null},
+            "catalog":{"source":"picker","fresh":!catalog.persisted,"complete":true,"fetchedAt":catalog.scanned_at,"cliVersion":version,"error":Value::Null},
         }))
     }
 
@@ -453,6 +548,11 @@ impl Service {
 
     /// `model.set` for Cursor: change the model, the effort, or both.
     pub(super) fn cursor_model_set(&self, identity: &Identity, params: &Value) -> Result<Value> {
+        let outcome = self.cursor_model_set_inner(identity, params);
+        self.cursor_forget_catalog(&outcome);
+        outcome
+    }
+    fn cursor_model_set_inner(&self, identity: &Identity, params: &Value) -> Result<Value> {
         if params["expect"]["identity"] != serde_json::to_value(identity).map_err(|_| "stale")?
             || params["expect"]["generation"].as_u64() != Some(self.generation)
         {

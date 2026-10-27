@@ -641,3 +641,152 @@ fn cursor_model_control_refuses_when_the_statusline_name_matches_no_picker_row()
     assert_eq!(input_count(&herdr), before, "no key was sent while the footer could not be matched");
     cleanup(&service, root);
 }
+
+fn saved_catalog_file(root: &Path) -> PathBuf { root.join("cache/herdcats/cursor-model-catalog.json") }
+fn labels_of(herdr: &SharedHerdr) -> Vec<String> {
+    tui(herdr).models.iter().map(|m| m.label.to_owned()).collect()
+}
+fn write_saved(file: &Path, version: &str, scanned_at: u64, labels: &[String]) {
+    fs::create_dir_all(file.parent().unwrap()).unwrap();
+    fs::write(file, json!({"version":version,"scannedAt":scanned_at,"labels":labels}).to_string()).unwrap();
+}
+fn now() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() }
+/// A new bridge process: this session's own copy is gone, the file stays.
+fn restart(service: &Service) { *service.cursor_catalog.borrow_mut() = None; }
+
+#[test]
+fn cursor_catalog_is_not_saved_anywhere_unless_a_file_is_configured() {
+    let (service, root, _herdr, _file) = model_fixture();
+    assert!(service.cursor_catalog_file.is_none(), "tests and plain services never write a cache");
+    cleanup(&service, root);
+}
+
+#[test]
+fn cursor_scanned_catalog_is_saved_privately_and_reused_by_the_next_session_without_scanning() {
+    let (mut service, root, herdr, _file) = model_fixture();
+    let file = saved_catalog_file(&root);
+    service.cursor_catalog_file = Some(file.clone());
+    let identity = service.watch.as_ref().unwrap().identity.clone().unwrap();
+    let first = service.cursor_model_status(&identity).unwrap();
+    let scan_inputs = input_count(&herdr);
+    assert_eq!(first["catalog"]["fresh"], true);
+
+    use std::os::unix::fs::PermissionsExt;
+    assert_eq!(fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600);
+    assert_eq!(fs::metadata(file.parent().unwrap()).unwrap().permissions().mode() & 0o777, 0o700);
+    let saved: Value = serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+    assert_eq!(saved["version"], "2026.10.22-27dcf5f");
+    assert_eq!(saved["labels"].as_array().unwrap().len(), 8);
+    assert!(saved.get("efforts").is_none(), "only the picker rows are saved");
+    assert!(fs::read_dir(file.parent().unwrap()).unwrap().all(|e| e.unwrap().path() == file), "no temp file is left behind");
+
+    restart(&service);
+    let before = input_count(&herdr);
+    let second = service.cursor_model_status(&identity).unwrap();
+    let used = input_count(&herdr) - before;
+    assert!(used * 3 < scan_inputs, "the saved list replaced the scan: {used} inputs against {scan_inputs}");
+    assert_eq!(second["catalog"]["fresh"], false);
+    assert!(second["catalog"]["fetchedAt"].as_u64().is_some());
+    assert_eq!(second["models"].as_array().unwrap().len(), 8);
+    assert_eq!(second["model"]["id"], "claude-opus-5-5");
+    assert_eq!(second["efforts"], first["efforts"], "the current model's efforts are still read live");
+    closed(&herdr);
+    cleanup(&service, root);
+}
+
+#[test]
+fn cursor_saved_catalog_that_is_doubtful_is_ignored_and_scanned_again() {
+    let (mut service, root, herdr, _file) = model_fixture();
+    let file = saved_catalog_file(&root);
+    service.cursor_catalog_file = Some(file.clone());
+    let identity = service.watch.as_ref().unwrap().identity.clone().unwrap();
+    let labels = labels_of(&herdr);
+    let good = || labels.clone();
+    type Doubtful = (&'static str, Box<dyn Fn()>);
+    let mut doubtful: Vec<Doubtful> = Vec::new();
+    let f = file.clone();
+    let l = good();
+    doubtful.push(("another build", Box::new({ let (f, l) = (f.clone(), l.clone()); move || write_saved(&f, "2026.10.19-6bbf2c4", now(), &l) })));
+    doubtful.push(("older than a day", Box::new({ let (f, l) = (f.clone(), l.clone()); move || write_saved(&f, "2026.10.22-27dcf5f", now() - 25 * 3600, &l) })));
+    doubtful.push(("from the future", Box::new({ let (f, l) = (f.clone(), l.clone()); move || write_saved(&f, "2026.10.22-27dcf5f", now() + 3600, &l) })));
+    doubtful.push(("no rows", Box::new({ let f = f.clone(); move || write_saved(&f, "2026.10.22-27dcf5f", now(), &[]) })));
+    doubtful.push(("a repeated row", Box::new({ let (f, l) = (f.clone(), l.clone()); move || { let mut l = l.clone(); l.push(l[0].clone()); write_saved(&f, "2026.10.22-27dcf5f", now(), &l) } })));
+    doubtful.push(("a control character", Box::new({ let (f, l) = (f.clone(), l.clone()); move || { let mut l = l.clone(); l[1] = "Grok\u{1b}[2J".into(); write_saved(&f, "2026.10.22-27dcf5f", now(), &l) } })));
+    doubtful.push(("not JSON", Box::new({ let f = f.clone(); move || { fs::create_dir_all(f.parent().unwrap()).unwrap(); fs::write(&f, "{nope").unwrap() } })));
+    doubtful.push(("a symlink", Box::new({ let (f, l) = (f.clone(), l.clone()); move || {
+        let real = f.with_file_name("real.json");
+        write_saved(&real, "2026.10.22-27dcf5f", now(), &l);
+        let _ = fs::remove_file(&f);
+        std::os::unix::fs::symlink(&real, &f).unwrap();
+    } })));
+    for (why, make) in &doubtful {
+        let _ = fs::remove_file(&file);
+        make();
+        restart(&service);
+        let status = service.cursor_model_status(&identity).unwrap();
+        assert_eq!(status["catalog"]["fresh"], true, "ignored: {why}");
+        assert_eq!(status["models"].as_array().unwrap().len(), 8, "{why}");
+        closed(&herdr);
+    }
+    // A good file written the same way is used, so the cases above fail for their own reason.
+    let _ = fs::remove_file(&file);
+    write_saved(&file, "2026.10.22-27dcf5f", now() - 3600, &labels);
+    restart(&service);
+    assert_eq!(service.cursor_model_status(&identity).unwrap()["catalog"]["fresh"], false);
+    cleanup(&service, root);
+}
+
+#[test]
+fn cursor_saved_catalog_that_lacks_the_model_in_use_is_dropped_and_scanned() {
+    let (mut service, root, herdr, _file) = model_fixture();
+    let file = saved_catalog_file(&root);
+    service.cursor_catalog_file = Some(file.clone());
+    let identity = service.watch.as_ref().unwrap().identity.clone().unwrap();
+    let stale: Vec<String> = labels_of(&herdr).into_iter().filter(|l| l != "Claude Opus 5.5").collect();
+    write_saved(&file, "2026.10.22-27dcf5f", now(), &stale);
+    let status = service.cursor_model_status(&identity).unwrap();
+    assert_eq!(status["catalog"]["fresh"], true, "rescanned in the same call");
+    assert_eq!(status["model"]["id"], "claude-opus-5-5");
+    assert_eq!(status["models"].as_array().unwrap().len(), 8);
+    let rewritten: Value = serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+    assert_eq!(rewritten["labels"].as_array().unwrap().len(), 8, "the file now matches the live picker");
+    closed(&herdr);
+    cleanup(&service, root);
+}
+
+#[test]
+fn cursor_change_that_the_live_picker_cannot_find_forgets_the_saved_catalog() {
+    let (mut service, root, herdr, _file) = model_fixture();
+    let file = saved_catalog_file(&root);
+    service.cursor_catalog_file = Some(file.clone());
+    let identity = service.watch.as_ref().unwrap().identity.clone().unwrap();
+    // The saved list names a model the account no longer has.
+    let mut labels = labels_of(&herdr);
+    labels.push("Retired Model".into());
+    write_saved(&file, "2026.10.22-27dcf5f", now(), &labels);
+    let params = set_params(&service, Some("retired-model"), None, "claude-opus-5-5", Some("medium"));
+    assert_eq!(service.cursor_model_set(&identity, &params).unwrap_err(), "unknown_model");
+    closed(&herdr);
+    assert!(!file.exists(), "the file that sent us to a missing row is deleted");
+    assert!(service.cursor_catalog.borrow().is_none());
+    // The next visit scans the live picker and saves what is really there.
+    let status = service.cursor_model_status(&identity).unwrap();
+    assert_eq!(status["catalog"]["fresh"], true);
+    assert_eq!(status["models"].as_array().unwrap().len(), 8);
+    assert_eq!(serde_json::from_str::<Value>(&fs::read_to_string(&file).unwrap()).unwrap()["labels"].as_array().unwrap().len(), 8);
+    cleanup(&service, root);
+}
+
+#[test]
+fn cursor_a_catalog_scanned_in_this_session_is_not_forgotten_by_an_unrelated_refusal() {
+    let (mut service, root, herdr, _file) = model_fixture();
+    let file = saved_catalog_file(&root);
+    service.cursor_catalog_file = Some(file.clone());
+    let identity = service.watch.as_ref().unwrap().identity.clone().unwrap();
+    service.cursor_model_status(&identity).unwrap();
+    let params = set_params(&service, Some("claude-opus-5"), None, "wrong-model", Some("medium"));
+    assert_eq!(service.cursor_model_set(&identity, &params).unwrap_err(), "stale");
+    assert!(file.exists() && service.cursor_catalog.borrow().is_some());
+    closed(&herdr);
+    cleanup(&service, root);
+}

@@ -115,6 +115,9 @@ fn run() -> std::result::Result<(), &'static str> {
     if let Some(ar) = agy_root { service = service.with_agy_root(ar); }
     if let Some(pr) = pi_agent_dir { service = service.with_pi_agent_dir(pr); }
     if let Some(cr) = cursor_root { service = service.with_cursor_root(cr); }
+    if let Some(home) = std::env::var_os("HOME") {
+        service = service.with_cursor_catalog_file(PathBuf::from(home).join(".cache/herdcats/cursor-model-catalog.json"));
+    }
     if let Some(dir) = herdcats_bridge::hooks::resolve_spool_dir() {
         let _ = herdcats_bridge::spool::prune(&dir, std::time::SystemTime::now());
     }
