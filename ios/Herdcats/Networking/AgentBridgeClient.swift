@@ -143,7 +143,7 @@ actor AgentBridgeClient {
     }
 
     func respond(requestId: String, option: UInt32, labelLines: [String]) async throws -> AgentApprovalResponse {
-        let reply = try await request(.respond, params: AgentBridgeParams(requestId: requestId, option: option, labelLines: labelLines))
+        let reply = try await request(.respond, params: AgentBridgeParams(requestId: requestId, option: option, labelLines: labelLines), timeout: 20)
         guard reply.requestId == requestId, let sent = reply.sent, (AgentApprovalOption.validKey(sent) || (sent == "navigate" && (capabilities?.agy == true || capabilities?.cursor == true))),
             let confirmed = reply.confirmed else { throw AgentBridgeError.invalidFrame }
         return AgentApprovalResponse(requestId: requestId, sent: sent, confirmed: confirmed)

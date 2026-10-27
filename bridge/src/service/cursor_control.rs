@@ -582,7 +582,8 @@ impl Service {
         let current = self.cursor_footer(identity, &labels)?.ok_or("footer_unrecognized")?;
         let current_id = cm::slug(&current.label);
         if params["expect"]["model"].as_str() != Some(current_id.as_str())
-            || params["expect"]["effort"].as_str() != current.effort
+            // A status line without the effort leaves only the editor to tell it, which this check cannot read.
+            || current.effort.is_some_and(|e| params["expect"]["effort"].as_str() != Some(e))
         {
             return Err("stale");
         }
