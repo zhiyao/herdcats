@@ -35,14 +35,39 @@ enum PaneLiveModifier: String, CaseIterable, Identifiable, Hashable, Sendable {
 /// Uses the theme surface and border, with optional translucency for Compose.
 private struct PaneInputGlassSurface: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorScheme) private var colorScheme
     let cornerRadius: CGFloat
     var backgroundOpacity: Double = 1
+    var usesGlassBorder = false
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle.continuous(cornerRadius)
         content
             .background(Theme.cardBackground.opacity(reduceTransparency ? 1 : backgroundOpacity), in: shape)
-            .overlay(shape.strokeBorder(Theme.hairline, lineWidth: 1))
+            .overlay {
+                shape.strokeBorder(Theme.hairline, lineWidth: 1)
+                    .allowsHitTesting(false)
+            }
+            .overlay {
+                if usesGlassBorder && !reduceTransparency {
+                    // Reflective edges keep the nearly opaque field legible
+                    // while giving the card a subtle glass-like rim.
+                    shape.strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                .white.opacity(colorScheme == .dark ? 0.4 : 0.95),
+                                .white.opacity(0.08),
+                                .black.opacity(colorScheme == .dark ? 0.18 : 0.08),
+                                .white.opacity(colorScheme == .dark ? 0.2 : 0.6)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+                    .allowsHitTesting(false)
+                }
+            }
     }
 }
 
@@ -647,7 +672,8 @@ struct PaneVoiceComposeBar: View {
         }
         .modifier(PaneInputGlassSurface(
             cornerRadius: DesignSystem.CornerRadius.lg,
-            backgroundOpacity: modelControl != nil ? 0.94 : 1
+            backgroundOpacity: modelControl != nil ? 0.98 : 1,
+            usesGlassBorder: modelControl != nil
         ))
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
