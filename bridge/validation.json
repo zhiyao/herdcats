@@ -159,13 +159,15 @@
   },
   "cursor_source_validation": {
     "date": "2026-10-27",
-    "status": "read-only timeline in progress; unpublished; published iOS installer pin unchanged",
+    "status": "timeline, prompts and shell approvals implemented; unpublished; published iOS installer pin unchanged",
     "research": "ios/docs/research/cursor-interactions-feasibility.md",
     "cli_version": "2026.10.22-27dcf5f",
     "evidence": "disposable PTY probes in /private/tmp/herdcats-cursor-probe; automated tests use the synthetic fixture only",
     "remaining": [
-      "prompts, approvals, questions and model control are later sections",
-      "no published artifact or checksum"
-    ]
+      "questions and model/effort control are later sections",
+      "no published artifact or checksum",
+      "non-shell cards, wrapped commands, a non-empty allowlist notice and custom statuslines are Terminal-only or untested"
+    ],
+    "live_evidence": "Section 3: the release bridge was driven over stdio against a disposable Cursor pane (isolated CURSOR_CONFIG_DIR, harmless printf only): prompt.submit typed into the real faint-placeholder composer; a real shell card was advertised with options 1 and 4, Run once confirmed true, Skip walked three arrows then Enter then the empty feedback input and confirmed true; a pending card made prompt.submit return agent_busy (Herdr reports blocked); a leading / prompt was refused. The pending-card and question-form screen guard cases run against synthetic screens in automated tests."
   }
 }

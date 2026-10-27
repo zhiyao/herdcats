@@ -93,6 +93,9 @@ pub fn parse(agent: Agent, screen: &str, command: &str) -> Option<ApprovalDialog
         Agent::Claude => parse_claude(screen, command),
         Agent::Codex => parse_codex(screen, command),
         Agent::Agy => parse_agy(screen, command),
+        Agent::Cursor => crate::cursor_screen::parse_card(screen)
+            .filter(|(shown, _)| shown == command)
+            .map(|(_, dialog)| dialog),
     }
 }
 
@@ -357,6 +360,7 @@ fn options(lines: &[&str], agent: Agent) -> Option<(Vec<ApprovalOption>, Option<
         Agent::Claude => '❯',
         Agent::Codex => '›',
         Agent::Agy => '>',
+        Agent::Cursor => '→',
     };
     let mut options: Vec<ApprovalOption> = Vec::new();
     let mut selected = None;
@@ -551,7 +555,9 @@ pub fn parse_agy(screen: &str, command: &str) -> Option<ApprovalDialog> {
 /// Each tuple is one key and the expected selected index afterwards. None is
 /// reserved for Enter, whose acceptance must be confirmed by the executor.
 pub fn agy_plan(dialog: &ApprovalDialog, target: usize) -> Option<Vec<(String, Option<usize>)>> {
-    if dialog.agent != Agent::Agy || dialog.options.get(target)?.key != OptionKey::Navigate(target)
+    if !matches!(dialog.agent, Agent::Agy | Agent::Cursor)
+        || dialog.options.get(target)?.key != OptionKey::Navigate(target)
+        || (dialog.agent == Agent::Cursor && !crate::cursor_screen::phone_option(target))
     {
         return None;
     }

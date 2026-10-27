@@ -24,7 +24,7 @@ struct AgentBridgeParams: Encodable, Sendable {
     var text: String? = nil
     var value: AgentPiDialogValue? = nil
 }
-enum AgentBridgeMethod: String, Sendable { case initialize, watch, history, content; case respond = "interaction.respond"; case modelStatus = "model.status", modelSet = "model.set"; case piPrompt = "pi.prompt", piCancel = "pi.cancel", piDialogRespond = "pi.dialog.respond" }
+enum AgentBridgeMethod: String, Sendable { case initialize, watch, history, content; case respond = "interaction.respond"; case modelStatus = "model.status", modelSet = "model.set"; case piPrompt = "pi.prompt", piCancel = "pi.cancel", piDialogRespond = "pi.dialog.respond"; case promptSubmit = "prompt.submit" }
 
 /// One non-PTY channel, with bounded requests and guarded approval responses.
 /// Cancellation closes this channel explicitly: canceling an async iterator
@@ -126,9 +126,17 @@ actor AgentBridgeClient {
         return try await request(.modelSet, params: AgentBridgeParams(paneId: expect.identity?.paneId, model: model, effort: effort, expect: expect), timeout: 20)
     }
 
+    /// The bridge reads the terminal, refuses unless Cursor shows an idle empty
+    /// composer, and types the prompt in one call. Never retried.
+    func submitPrompt(text: String, identity: AgentTimelineIdentity, generation: UInt64) async throws {
+        guard capabilities?.cursorPrompts == true else { throw AgentBridgeError.unavailable("unsupported_capability") }
+        _ = try await request(.promptSubmit, params: AgentBridgeParams(
+            expect: AgentModelExpectation(model: nil, effort: nil, identity: identity, generation: generation), text: text), timeout: 20)
+    }
+
     func respond(requestId: String, option: UInt32, labelLines: [String]) async throws -> AgentApprovalResponse {
         let reply = try await request(.respond, params: AgentBridgeParams(requestId: requestId, option: option, labelLines: labelLines))
-        guard reply.requestId == requestId, let sent = reply.sent, (AgentApprovalOption.validKey(sent) || (sent == "navigate" && capabilities?.agy == true)),
+        guard reply.requestId == requestId, let sent = reply.sent, (AgentApprovalOption.validKey(sent) || (sent == "navigate" && (capabilities?.agy == true || capabilities?.cursor == true))),
             let confirmed = reply.confirmed else { throw AgentBridgeError.invalidFrame }
         return AgentApprovalResponse(requestId: requestId, sent: sent, confirmed: confirmed)
     }

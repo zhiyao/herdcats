@@ -52,12 +52,12 @@ struct AgentPendingApproval: Equatable, Sendable {
         guard let identity = data.identity, let generation = data.generation,
             data.kind == "approval", let requestId = data.requestId,
             !requestId.isEmpty, requestId.utf8.count <= 264,
-            let agent = data.agent, (ApprovalAgent(rawValue: agent) != nil || agent == "antigravity_cli"), identity.agent == agent,
+            let agent = data.agent, (ApprovalAgent(rawValue: agent) != nil || agent == "antigravity_cli" || agent == "cursor"), identity.agent == agent,
             let toolName = data.toolName, let command = data.command, command.utf8.count <= 65536,
             let title = data.title, let options = data.options, !options.isEmpty, options.count <= 16,
             Set(options.map(\.number)).count == options.count,
             options.allSatisfy({ $0.number > 0 && !$0.labelLines.isEmpty && $0.labelLines.count <= 8
-                && $0.labelLines.allSatisfy { $0.utf8.count <= 1024 } && (agent == "antigravity_cli" ? $0.key == "navigate" : AgentApprovalOption.validKey($0.key)) }),
+                && $0.labelLines.allSatisfy { $0.utf8.count <= 1024 } && (["antigravity_cli", "cursor"].contains(agent) ? $0.key == "navigate" : AgentApprovalOption.validKey($0.key)) }),
             data.selected.map({ options.indices.contains($0) }) ?? true
         else { throw AgentBridgeError.invalidFrame }
         return Self(identity: identity, generation: generation, requestId: requestId, agent: agent,

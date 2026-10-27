@@ -12,6 +12,7 @@ pub enum Agent {
     Claude,
     Codex,
     Agy,
+    Cursor,
 }
 impl Agent {
     pub fn parse(value: &str) -> Option<Self> {
@@ -19,6 +20,7 @@ impl Agent {
             "claude" => Some(Self::Claude),
             "codex" => Some(Self::Codex),
             "agy" | "antigravity_cli" => Some(Self::Agy),
+            "cursor" => Some(Self::Cursor),
             _ => None,
         }
     }
@@ -27,13 +29,14 @@ impl Agent {
             Self::Claude => "claude",
             Self::Codex => "codex",
             Self::Agy => "antigravity_cli",
+            Self::Cursor => "cursor",
         }
     }
     fn filename(self) -> &'static str {
         match self {
             Self::Claude => "settings.json",
             Self::Codex => "hooks.json",
-            Self::Agy => "unsupported",
+            Self::Agy | Self::Cursor => "unsupported",
         }
     }
 }
@@ -55,7 +58,7 @@ type Result<T> = std::result::Result<T, &'static str>;
 
 pub fn resolve_agent_dir(agent: Agent) -> Option<PathBuf> {
     match agent {
-        Agent::Agy => None,
+        Agent::Agy | Agent::Cursor => None,
         Agent::Codex => codex_config::resolve_codex_dir(),
         Agent::Claude => std::env::var_os("CLAUDE_CONFIG_DIR")
             .filter(|s| !s.is_empty())
@@ -130,7 +133,7 @@ fn recorder_matcher_valid(agent: Agent, group: &Value) -> bool {
     match agent {
         Agent::Claude => group.get("matcher").and_then(Value::as_str) == Some("*"),
         Agent::Codex => group.get("matcher").is_none(),
-        Agent::Agy => false,
+        Agent::Agy | Agent::Cursor => false,
     }
 }
 fn recorder_valid(agent: Agent, group: &Value, handler: &Value, command: &str) -> bool {
@@ -230,7 +233,7 @@ fn spool_confirmed(agent: Agent, dir: &Path) -> bool {
         })
 }
 pub fn status_in_dir(agent: Agent, dir: &Path, spool: &Path) -> HooksResult {
-    if agent == Agent::Agy { return HooksResult::error("unsupported_agent"); }
+    if matches!(agent, Agent::Agy | Agent::Cursor) { return HooksResult::error("unsupported_agent"); }
     match status_inner(agent, dir, spool) {
         Ok(r) => r,
         Err(e) => HooksResult::error(e),
@@ -312,7 +315,7 @@ fn status_inner(agent: Agent, dir: &Path, spool: &Path) -> Result<HooksResult> {
     Ok(HooksResult::state("missing", confirmed))
 }
 pub fn install_in_dir(agent: Agent, dir: &Path, spool: &Path) -> HooksResult {
-    if agent == Agent::Agy { return HooksResult::error("unsupported_agent"); }
+    if matches!(agent, Agent::Agy | Agent::Cursor) { return HooksResult::error("unsupported_agent"); }
     match install_inner(agent, dir, spool) {
         Ok(r) => r,
         Err(e) => HooksResult::error(e),
@@ -426,7 +429,7 @@ fn install_inner(agent: Agent, dir: &Path, spool: &Path) -> Result<HooksResult> 
     Ok(result)
 }
 pub fn uninstall_in_dir(agent: Agent, dir: &Path, spool: &Path) -> HooksResult {
-    if agent == Agent::Agy { return HooksResult::error("unsupported_agent"); }
+    if matches!(agent, Agent::Agy | Agent::Cursor) { return HooksResult::error("unsupported_agent"); }
     match uninstall_inner(agent, dir, spool) {
         Ok(r) => r,
         Err(e) => HooksResult::error(e),

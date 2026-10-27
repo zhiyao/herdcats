@@ -250,3 +250,68 @@ impl Transcript {
         Ok(())
     }
 }
+
+/// 64-bit FNV-1a, stable across runs, for request IDs only (not security).
+fn fingerprint(text: &str) -> u64 {
+    text.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+    })
+}
+
+/// The shell request behind a live permission card. `file` is the verified
+/// transcript; its current length anchors the ID because Cursor appends the
+/// call only after it is resolved.
+pub fn pending_shell(
+    session: &str,
+    file: &File,
+    command: &str,
+) -> Option<crate::approval_match::PendingRequest> {
+    let length = file.metadata().ok().filter(|m| m.is_file())?.len();
+    (!session.is_empty() && !command.is_empty()).then(|| crate::approval_match::PendingRequest {
+        agent: crate::hooks::Agent::Cursor,
+        session_id: session.into(),
+        request_id: format!("cursor:{length}:{:016x}", fingerprint(command)),
+        tool_name: "Shell".into(),
+        tool_input: serde_json::json!({"command": command}),
+        justification: None,
+        turn_id: None,
+        suggestions: None,
+        recorded_at: 0.0,
+    })
+}
+
+/// Byte offset a `pending_shell` request was anchored at.
+pub fn request_offset(request_id: &str) -> Option<u64> {
+    let mut parts = request_id.split(':');
+    (parts.next() == Some("cursor")).then_some(())?;
+    let offset = parts.next()?.parse().ok()?;
+    (parts.next().is_some() && parts.next().is_none()).then_some(offset)
+}
+
+/// True when a `Shell` call for exactly `command` was appended at or after
+/// `offset`. This shows only that the call was recorded after its card was
+/// resolved: Cursor writes no result, so run versus denied is not visible.
+pub fn recorded_shell(file: &File, offset: u64, command: &str) -> bool {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut file) = file.try_clone() else { return false };
+    let Ok(length) = file.metadata().map(|m| m.len()) else { return false };
+    if offset > length || file.seek(SeekFrom::Start(offset)).is_err() {
+        return false;
+    }
+    let mut bytes = Vec::new();
+    if file.take(4 * 1024 * 1024).read_to_end(&mut bytes).is_err() {
+        return false;
+    }
+    bytes
+        .split_inclusive(|b| *b == b'\n')
+        .filter(|line| line.last() == Some(&b'\n'))
+        .filter_map(|line| serde_json::from_slice::<Value>(line).ok())
+        .filter(|row| row["role"] == "assistant")
+        .filter_map(|row| row["message"]["content"].as_array().cloned())
+        .flatten()
+        .any(|block| {
+            block["type"] == "tool_use"
+                && block["name"] == "Shell"
+                && block["input"]["command"].as_str() == Some(command)
+        })
+}

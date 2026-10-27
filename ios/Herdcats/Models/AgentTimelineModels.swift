@@ -63,6 +63,7 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
     var agy: Bool = false
     var pi: Bool = false
     var cursor: Bool = false
+    var cursorPrompts: Bool = false
     var codexTimeline: Bool? = false
     var codexDaemonConfig: Bool? = false
     var codexDaemonStop: Bool? = false
@@ -76,6 +77,7 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
         agy: Bool = false,
         pi: Bool = false,
         cursor: Bool = false,
+        cursorPrompts: Bool = false,
         codexTimeline: Bool? = false,
         codexDaemonConfig: Bool? = false,
         codexDaemonStop: Bool? = false,
@@ -87,6 +89,7 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
         self.agy = agy
         self.pi = pi
         self.cursor = cursor
+        self.cursorPrompts = cursorPrompts
         self.claudeTimeline = claudeTimeline
         self.modelControl = modelControl
         self.codexTimeline = codexTimeline
@@ -102,6 +105,7 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
         self.agy = try container.decodeIfPresent(Bool.self, forKey: .agy) ?? false
         self.pi = try container.decodeIfPresent(Bool.self, forKey: .pi) ?? false
         self.cursor = try container.decodeIfPresent(Bool.self, forKey: .cursor) ?? false
+        self.cursorPrompts = try container.decodeIfPresent(Bool.self, forKey: .cursorPrompts) ?? false
         self.modelControl = try container.decodeIfPresent(Bool.self, forKey: .modelControl) ?? false
         self.claudeTimeline = try container.decode(Bool.self, forKey: .claudeTimeline)
         self.codexTimeline = try container.decodeIfPresent(Bool.self, forKey: .codexTimeline) ?? false
@@ -364,8 +368,38 @@ enum TimelineComposePolicy {
     static func canSend(identity: AgentTimelineIdentity?, paneId: String, status: String?, connected: Bool)
         -> Bool
     {
-        connected && identity?.paneId == paneId && TimelineAgentAvailability.supports(agent: identity?.agent)
-            && ["idle", "done", "working"].contains(status ?? "")
+        // Cursor is never typed into mid-turn: the bridge checks the screen for an
+        // idle, empty composer, so a working pane cannot queue a message.
+        let allowed = identity?.agent == "cursor" ? ["idle", "done"] : ["idle", "done", "working"]
+        return connected && identity?.paneId == paneId && TimelineAgentAvailability.supports(agent: identity?.agent)
+            && allowed.contains(status ?? "")
+    }
+}
+
+/// Phone prompts to Cursor go through the bridge, which reads the terminal first.
+enum CursorPromptPolicy {
+    /// Cursor runs a message that starts with "/" as one of its own commands
+    /// (/quit, /model, /new ...) instead of sending it to the model. The phone
+    /// refuses such a message rather than risk running one by accident.
+    static func refusesSlashCommand(agent: String?, text: String) -> Bool {
+        agent == "cursor" && text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/")
+    }
+    static let slashMessage = "Cursor treats a message that starts with “/” as a command, so Herdcats won't send it. Rephrase the message, or use Terminal."
+    static let bridgeMessage = "Cursor messages are sent from the conversation view once it is connected. Check the connection, or use Terminal."
+    static func message(forCode code: String?) -> String {
+        switch code {
+        case "approval_pending": return "Cursor is waiting for a permission decision. Answer it first, or use Terminal."
+        case "question_pending": return "Cursor is waiting for an answer to its question. Answer it first, or use Terminal."
+        case "composer_not_empty": return "Clear Cursor's input box at the desk first, or use Terminal."
+        case "agent_busy": return "Cursor is busy. Wait for it to finish, or use Terminal."
+        case "picker_open": return "A Cursor menu is open at the desk. Close it first, or use Terminal."
+        case "screen_unrecognized", "screen_unavailable": return "Herdcats can't tell what Cursor is showing. Use Terminal."
+        case "slash_command_refused": return slashMessage
+        case "stale": return "Cursor changed since this screen loaded. Check the conversation and try again."
+        case "prompt_unconfirmed": return "Couldn't confirm the message was delivered. Check Cursor before sending it again."
+        case "unsupported_capability", "unsupported_agent": return "This Herdcats Bridge can't send Cursor messages. Use Terminal."
+        default: return "Couldn't send the message to Cursor. Use Terminal."
+        }
     }
 }
 

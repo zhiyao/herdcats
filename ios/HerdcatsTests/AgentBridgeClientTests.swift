@@ -193,7 +193,7 @@ struct AgentBridgeClientTests {
         let watchId = try await wire.requestId()
         await client.receive(Data("{\"id\":\"\(watchId)\",\"result\":{}}\n".utf8))
         try await handshake.value
-        // Cursor has no navigate-style approvals in this version.
+        // Cursor answers cards by guarded navigation, so its capability accepts it.
         let response = Task { try await client.respond(requestId: "r", option: 1, labelLines: ["Yes"]) }
         for _ in 0..<500 {
             if await wire.commands.count == 3 { break }
@@ -201,8 +201,82 @@ struct AgentBridgeClientTests {
         }
         let responseId = try await wire.requestId()
         await client.receive(Data("{\"id\":\"\(responseId)\",\"result\":{\"request_id\":\"r\",\"sent\":\"navigate\",\"confirmed\":true}}\n".utf8))
-        do { _ = try await response.value; Issue.record("Accepted navigation from a Cursor-only bridge") }
+        #expect(try await response.value.confirmed)
+        await client.close()
+    }
+    @Test func navigationReplyIsRejectedFromABridgeWithoutAgyOrCursor() async throws {
+        let wire = BridgeTestWire()
+        let client = try await cursorClient(capabilities: #"{"claude_timeline":true,"record_content":true}"#, wire, agent: "claude")
+        let response = Task { try await client.respond(requestId: "r", option: 1, labelLines: ["Yes"]) }
+        for _ in 0..<500 {
+            if await wire.commands.count == 3 { break }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        await client.receive(Data("{\"id\":\"\(try await wire.requestId())\",\"result\":{\"request_id\":\"r\",\"sent\":\"navigate\",\"confirmed\":true}}\n".utf8))
+        do { _ = try await response.value; Issue.record("Accepted navigation without Agy or Cursor") }
         catch { #expect(error as? AgentBridgeError == .invalidFrame) }
+        await client.close()
+    }
+    private func cursorClient(capabilities: String, _ wire: BridgeTestWire, agent: String = "cursor") async throws -> AgentBridgeClient {
+        let client = AgentBridgeClient(write: { await wire.write($0) }, close: { await wire.close() }, onEvent: { _ in })
+        let handshake = Task { try await client.performHandshakeAndWatch(paneId: "p", agent: agent) }
+        try await wait(wire)
+        let initializeId = try await wire.requestId()
+        await client.receive(Data("{\"id\":\"\(initializeId)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":\(capabilities)}}\n".utf8))
+        for _ in 0..<500 {
+            if await wire.commands.count == 2 { break }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        let watchId = try await wire.requestId()
+        await client.receive(Data("{\"id\":\"\(watchId)\",\"result\":{}}\n".utf8))
+        try await handshake.value
+        return client
+    }
+    @Test func cursorPromptGoesThroughTheBridgeScopedToIdentityAndGeneration() async throws {
+        let wire = BridgeTestWire()
+        let client = try await cursorClient(capabilities: #"{"claude_timeline":false,"cursor":true,"cursor_prompts":true,"record_content":true}"#, wire)
+        let identity = AgentTimelineIdentity(paneId: "p", terminalId: "t", agent: "cursor", nativeSessionId: "s")
+        let send = Task { try await client.submitPrompt(text: "hello world", identity: identity, generation: 7) }
+        for _ in 0..<500 {
+            if await wire.commands.count == 3 { break }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        let request = try #require(JSONSerialization.jsonObject(with: await wire.commands[2]) as? [String: Any])
+        #expect(request["method"] as? String == "prompt.submit")
+        let params = try #require(request["params"] as? [String: Any])
+        #expect(params["text"] as? String == "hello world")
+        let expect = try #require(params["expect"] as? [String: Any])
+        #expect(expect["generation"] as? Int == 7)
+        #expect((expect["identity"] as? [String: String])?["native_session_id"] == "s")
+        await client.receive(Data("{\"id\":\"\(try await wire.requestId())\",\"result\":{\"submitted\":true}}\n".utf8))
+        try await send.value
+        #expect(await wire.commands.count == 3)
+        await client.close()
+    }
+    @Test func cursorPromptRefusalCodesSurfaceWithoutRetry() async throws {
+        for code in ["approval_pending", "question_pending", "composer_not_empty", "agent_busy", "slash_command_refused"] {
+            let wire = BridgeTestWire()
+            let client = try await cursorClient(capabilities: #"{"claude_timeline":false,"cursor":true,"cursor_prompts":true,"record_content":true}"#, wire)
+            let identity = AgentTimelineIdentity(paneId: "p", terminalId: "t", agent: "cursor", nativeSessionId: "s")
+            let send = Task { try await client.submitPrompt(text: "hi", identity: identity, generation: 1) }
+            for _ in 0..<500 {
+                if await wire.commands.count == 3 { break }
+                try await Task.sleep(for: .milliseconds(2))
+            }
+            await client.receive(Data("{\"id\":\"\(try await wire.requestId())\",\"error\":{\"code\":\"\(code)\"}}\n".utf8))
+            do { try await send.value; Issue.record("\(code) was accepted") }
+            catch { #expect((error as? AgentBridgeError)?.code == code) }
+            #expect(await wire.commands.count == 3, "no retry after \(code)")
+            await client.close()
+        }
+    }
+    @Test func cursorPromptNeedsTheBridgesPromptCapability() async throws {
+        let wire = BridgeTestWire()
+        let client = try await cursorClient(capabilities: #"{"claude_timeline":false,"cursor":true,"record_content":true}"#, wire)
+        let identity = AgentTimelineIdentity(paneId: "p", terminalId: "t", agent: "cursor", nativeSessionId: "s")
+        do { try await client.submitPrompt(text: "hi", identity: identity, generation: 1); Issue.record("sent without capability") }
+        catch { #expect((error as? AgentBridgeError)?.code == "unsupported_capability") }
+        #expect(await wire.commands.count == 2)
         await client.close()
     }
     @Test func agyWatchAndNavigationReplyRequireExplicitCapability() async throws {

@@ -10,6 +10,17 @@ import Observation
         case disconnected
     }
     let modelControl = AgentModelControlState()
+    /// The live bridge channel that submits Cursor prompts, or nil.
+    private var promptClient: AgentBridgeClient?
+    func connectPrompts(_ client: AgentBridgeClient?) { promptClient = client }
+    /// Sends one Cursor prompt through the bridge's screen guard. Throws the
+    /// bridge's refusal code (approval_pending, composer_not_empty, ...).
+    func submitCursorPrompt(_ text: String) async throws {
+        guard let client = promptClient, let identity, let generation, identity.agent == "cursor" else {
+            throw AgentBridgeError.unavailable("unsupported_capability")
+        }
+        try await client.submitPrompt(text: text, identity: identity, generation: generation)
+    }
     private(set) var pendingQuestion: AgentPendingQuestion?
     private(set) var pendingApproval: AgentPendingApproval?
     private(set) var pendingPiDialog: AgentPiDialog?
@@ -39,6 +50,7 @@ import Observation
     func begin(owner: UUID, paneId: String) {
         piClient = nil
         modelControl.connect(nil, supported: false)
+        promptClient = nil
         self.owner = owner
         self.paneId = paneId
         epoch = nil
@@ -186,6 +198,7 @@ import Observation
         guard self.owner == owner else { return }
         piClient = nil
         modelControl.connect(nil, supported: false)
+        promptClient = nil
         self.owner = nil
         clear()
         phase = error == .closed ? .disconnected : .unavailable(error.code)

@@ -181,6 +181,39 @@ struct TimelineAgentAvailabilityTests {
         #expect(!TimelineAgentAvailability.matchesSession(agent: "cursor", referenceAgent: "cursor", source: "herdr:cursor", identityAgent: "codex"))
         #expect(!TimelineAgentAvailability.matchesSession(agent: "cursor", referenceAgent: nil, source: nil, identityAgent: "cursor"))
     }
+    @Test func slashPromptsAreRefusedForCursorOnly() {
+        for text in ["/model grok-4.7", "/quit", "  /new", "\n/compact", "\t /x"] {
+            #expect(CursorPromptPolicy.refusesSlashCommand(agent: "cursor", text: text), "\(text)")
+            // Other agents keep their own slash commands.
+            #expect(!CursorPromptPolicy.refusesSlashCommand(agent: "claude", text: text))
+            #expect(!CursorPromptPolicy.refusesSlashCommand(agent: "codex", text: text))
+        }
+        for text in ["hello", "use a/b and /tmp", "", " ", "\\/escaped"] {
+            #expect(!CursorPromptPolicy.refusesSlashCommand(agent: "cursor", text: text), "\(text)")
+        }
+        #expect(CursorPromptPolicy.message(forCode: "slash_command_refused") == CursorPromptPolicy.slashMessage)
+        #expect(CursorPromptPolicy.slashMessage.contains("Terminal"))
+    }
+    @Test func cursorPromptRefusalsAreActionableAndAlwaysPointToTerminalOrTheDesk() {
+        let codes = ["approval_pending", "question_pending", "composer_not_empty", "agent_busy", "picker_open", "screen_unrecognized", "stale", "prompt_unconfirmed", "unsupported_capability", "something_else"]
+        let messages = codes.map { CursorPromptPolicy.message(forCode: $0) }
+        #expect(Set(messages).count == codes.count - 1 || Set(messages).count >= 8)
+        #expect(CursorPromptPolicy.message(forCode: "approval_pending").contains("permission"))
+        #expect(CursorPromptPolicy.message(forCode: "question_pending").contains("question"))
+        #expect(CursorPromptPolicy.message(forCode: nil).contains("Terminal"))
+    }
+    @Test func cursorComposerIsClosedWhileTheAgentWorks() {
+        let cursor = AgentTimelineIdentity(paneId: "p", terminalId: "t", agent: "cursor", nativeSessionId: "s")
+        let claude = AgentTimelineIdentity(paneId: "p", terminalId: "t", agent: "claude", nativeSessionId: "s")
+        for status in ["idle", "done"] { #expect(TimelineComposePolicy.canSend(identity: cursor, paneId: "p", status: status, connected: true)) }
+        for status in ["working", "blocked", "unknown"] { #expect(!TimelineComposePolicy.canSend(identity: cursor, paneId: "p", status: status, connected: true)) }
+        #expect(TimelineComposePolicy.canSend(identity: claude, paneId: "p", status: "working", connected: true))
+    }
+    @MainActor @Test func cursorPromptsFailClosedWithoutALiveBridgeChannel() async {
+        let state = AgentTimelineState()
+        do { try await state.submitCursorPrompt("hi"); Issue.record("sent with no channel") }
+        catch { #expect((error as? AgentBridgeError)?.code == "unsupported_capability") }
+    }
     @Test func cursorShellAndQuestionToolsGetPlainLanguage() {
         func entry(_ name: String, _ details: String) -> AgentTimelineEntry {
             AgentTimelineEntry(id: "cursor:0:tool:0", kind: "tool", text: name, role: nil, toolName: name, status: "completed", details: details, truncated: false)

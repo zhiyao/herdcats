@@ -1,4 +1,5 @@
 use crate::{
+    cursor_screen,
     Result,
     adapter::Adapter,
     agy::AgyAdapter,
@@ -87,11 +88,18 @@ impl PendingApproval {
             (Agent::Codex, OptionKey::Letter(c)) if c.is_ascii_alphabetic() => Ok(c.to_string()),
             (Agent::Codex, OptionKey::Escape) => Ok("esc".into()),
             (Agent::Agy, OptionKey::Navigate(_)) => Ok("navigate".into()),
+            (Agent::Cursor, OptionKey::Navigate(i)) if cursor_screen::phone_option(*i) => Ok("navigate".into()),
             _ => Err("mismatch"),
         }
     }
     fn data(&self) -> Value {
-        let options: Vec<_> = self.dialog.options.iter().map(|option| {
+        // Cursor's persistent and global-permission rows stay in Terminal. The
+        // rest keep their screen numbers and exact labels; `selected` indexes
+        // the advertised list, or is null while a hidden row is highlighted.
+        let advertised: Vec<usize> = (0..self.dialog.options.len())
+            .filter(|i| self.request.agent != Agent::Cursor || cursor_screen::phone_option(*i)).collect();
+        let selected = self.dialog.selected.and_then(|s| advertised.iter().position(|i| *i == s));
+        let options: Vec<_> = advertised.iter().map(|i| &self.dialog.options[*i]).map(|option| {
             let key = match option.key {
                 OptionKey::Digit(n) => n.to_string(),
                 OptionKey::Letter(c) => c.to_string(),
@@ -108,7 +116,7 @@ impl PendingApproval {
                 self.request.tool_input.get("description").and_then(Value::as_str)
             } else { None },
             "justification":self.request.justification,"environment":self.dialog.environment,
-            "title":self.dialog.title,"options":options,"selected":self.dialog.selected
+            "title":self.dialog.title,"options":options,"selected":selected
         })
     }
 }
@@ -886,6 +894,16 @@ impl Service {
         cache: &mut Option<ApprovalMatchCache>,
         mut read_tail: impl FnMut(std::fs::File) -> Result<Vec<Value>>,
     ) -> Option<PendingRequest> {
+        if Agent::parse(&identity.agent) == Some(Agent::Cursor) {
+            // Cursor writes nothing to its transcript while a card is pending,
+            // so the live screen supplies the request. The ID is anchored to the
+            // transcript length: resolving any call appends a record, so a new
+            // card for an identical command gets a new ID.
+            *cache = None;
+            let screen = self.client.read_visible(&identity.pane_id).ok()?;
+            let (command, _) = cursor_screen::parse_card(&screen)?;
+            return crate::cursor::pending_shell(&identity.native_session_id, &file, &command);
+        }
         if Agent::parse(&identity.agent) == Some(Agent::Agy) {
             *cache = None;
             let history = read_tail(file).ok()?;
@@ -917,11 +935,11 @@ impl Service {
         let requests = match agent {
             Agent::Claude => approval_match::match_claude_records(&records, &history),
             Agent::Codex => approval_match::match_codex_records(&records, &history),
-            Agent::Agy => return None,
+            Agent::Agy | Agent::Cursor => return None,
         };
         let request = requests.into_iter().rfind(|request| {
             let resolution = match agent {
-                Agent::Agy => return false,
+                Agent::Agy | Agent::Cursor => return false,
                 Agent::Claude => approval_match::claude_resolution(&request.request_id, &history),
                 Agent::Codex => match request.turn_id.as_deref() {
                     Some(turn) => approval_match::codex_resolution(&request.request_id, turn, &history),
@@ -961,6 +979,8 @@ impl Service {
                 let meta = file.metadata().ok()?;
                 meta.is_file().then(|| QuestionInputStamp::Agy(ApprovalFileStamp::of(&meta)))
             }
+            // Cursor questions arrive in a later section; none are advertised.
+            Agent::Cursor => None,
             Agent::Codex => {
                 let meta = file.metadata().ok()?;
                 meta.is_file().then(|| QuestionInputStamp::Codex(ApprovalFileStamp::of(&meta)))
@@ -993,6 +1013,7 @@ impl Service {
                 },
                 Agent::Codex => question_match::pending_codex_questions(&history),
                 Agent::Agy => question_match::pending_agy_questions(&history),
+                Agent::Cursor => vec![],
             };
             // A queued banner cannot identify which async call shift+left opens,
             // even when the calls have identical questions. Preserve Plan selection.
@@ -2282,8 +2303,9 @@ impl Service {
         if session != identity.native_session_id {
             return Err("stale");
         }
-        if pending.request.agent == Agent::Agy {
-            let target = params["option"].as_u64().and_then(|n| n.checked_sub(1)).ok_or("mismatch")? as usize;
+        let navigated = matches!(pending.request.agent, Agent::Agy | Agent::Cursor);
+        let target = params["option"].as_u64().and_then(|n| n.checked_sub(1)).unwrap_or(usize::MAX as u64) as usize;
+        if navigated {
             let plan = approval_screen::agy_plan(&current, target).ok_or("mismatch")?;
             let mut expected = current.selected;
             for (key, after) in plan {
@@ -2292,7 +2314,7 @@ impl Service {
                 let newest = self.matched_request(identity, file, &mut None, crate::follower::read_tail).ok_or("stale")?;
                 if newest != pending.request { return Err("stale"); }
                 let screen = self.client.read_visible(&identity.pane_id).map_err(|_|"stale")?;
-                let dialog = approval_screen::parse(Agent::Agy, &screen, command).ok_or("stale")?;
+                let dialog = approval_screen::parse(pending.request.agent, &screen, command).ok_or("stale")?;
                 if !pending.dialog.same_dialog(&dialog) || dialog.selected != expected { return Err("stale"); }
                 // No retry after this call: transport failure can mean delivered.
                 self.client.send_keys(&identity.pane_id, &[key.as_str()])?;
@@ -2300,7 +2322,7 @@ impl Service {
                     let deadline = Instant::now()+Duration::from_secs(1);
                     loop {
                         let screen = self.client.read_visible(&identity.pane_id).map_err(|_|"stale")?;
-                        let dialog=approval_screen::parse(Agent::Agy,&screen,command).ok_or("stale")?;
+                        let dialog=approval_screen::parse(pending.request.agent,&screen,command).ok_or("stale")?;
                         if !pending.dialog.same_dialog(&dialog) { return Err("stale"); }
                         if dialog.selected == Some(after) {break;}
                         if Instant::now()>=deadline {return Err("stale");}
@@ -2313,14 +2335,28 @@ impl Service {
             self.client.send_keys(&identity.pane_id, &[key.as_str()])?;
         }
 
-        let deadline = Instant::now() + Duration::from_secs(2);
+        let cursor = pending.request.agent == Agent::Cursor;
+        if cursor && target == cursor_screen::SKIP {
+            self.cursor_finish_skip(identity, pending)?;
+        }
+        // Cursor records the call only after the command finishes or is skipped.
+        let window = Duration::from_secs(if cursor { 5 } else { 2 });
+        let deadline = Instant::now() + window;
         let mut confirmed = false;
-        for _ in 0..20 {
+        for _ in 0..(window.as_millis() / 100) {
             let Ok(screen) = self.client.read_visible(&identity.pane_id) else { break };
             let same = approval_screen::parse(pending.request.agent, &screen, command)
                 .is_some_and(|dialog| pending.dialog.same_dialog(&dialog));
-            if !same {
-                if pending.request.agent==Agent::Agy {
+            if cursor && !same && matches!(cursor_screen::classify(&screen, ""), cursor_screen::Screen::DenyFeedback) {
+                // Still on the optional feedback input: nothing has resolved yet.
+            } else if !same {
+                if cursor {
+                    let Ok((_,file))=self.model_pane_file(identity) else {break};
+                    if watch.follower.verify_source(file.try_clone().map_err(|_|"stale")?).is_err() {break;}
+                    let anchor = crate::cursor::request_offset(&pending.request.request_id).ok_or("stale")?;
+                    confirmed = crate::cursor::recorded_shell(&file, anchor, command);
+                    if confirmed {break;}
+                } else if pending.request.agent==Agent::Agy {
                     let Ok((_,file))=self.model_pane_file(identity) else {break};
                     if watch.follower.verify_source(file.try_clone().map_err(|_|"stale")?).is_err() {break;}
                     if let Ok(history)=crate::follower::read_tail(file) {
@@ -2336,6 +2372,78 @@ impl Service {
             thread::sleep(Duration::from_millis(100).min(remaining));
         }
         Ok(json!({"request_id":pending.request.request_id,"sent":key,"confirmed":confirmed}))
+    }
+    /// After choosing Skip, Cursor shows an optional "tell the agent what to do
+    /// instead" input. Submit it empty so the skip completes without feedback.
+    fn cursor_finish_skip(&self, identity: &Identity, pending: &PendingApproval) -> Result<()> {
+        let command = pending.request.tool_input["command"].as_str().ok_or("stale")?;
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            let screen = self.client.read_visible(&identity.pane_id).map_err(|_| "stale")?;
+            match cursor_screen::classify(&screen, "") {
+                cursor_screen::Screen::DenyFeedback => {
+                    self.model_pane_file(identity)?;
+                    // Delivery is not retried: a transport error may still have sent it.
+                    self.client.send_keys(&identity.pane_id, &["enter"])?;
+                    return Ok(());
+                }
+                cursor_screen::Screen::Approval(dialog) if pending.dialog.same_dialog(&dialog)
+                    && approval_screen::parse(Agent::Cursor, &screen, command).is_some() => {}
+                // The card went away without a feedback input; confirm normally.
+                _ => return Ok(()),
+            }
+            if Instant::now() >= deadline { return Err("stale"); }
+            thread::sleep(Duration::from_millis(50));
+        }
+    }
+    /// The only safe basis for typing into a Cursor pane: an idle occupant whose
+    /// screen shows an empty composer and no approval card or question form.
+    /// Herdr can report `done` for a live question form, and Cursor writes no
+    /// pending card to its transcript, so neither status nor transcript counts.
+    fn cursor_ready(&self, identity: &Identity, require_agent_mode: bool) -> Result<()> {
+        let idle = |pane: &Pane| matches!(pane.agent_status.as_str(), "idle" | "done");
+        let (pane, _) = self.model_pane_file(identity)?;
+        if !idle(&pane) { return Err("agent_busy"); }
+        let plain = self.client.read_visible(&identity.pane_id).map_err(|_| "screen_unavailable")?;
+        let styled = self.client.read_visible_ansi(&identity.pane_id).map_err(|_| "screen_unavailable")?;
+        match cursor_screen::classify(&plain, &styled) {
+            cursor_screen::Screen::Idle { mode } if !require_agent_mode || mode.is_none() => {}
+            cursor_screen::Screen::Idle { .. } => return Err("mode_not_agent"),
+            cursor_screen::Screen::Draft => return Err("composer_not_empty"),
+            cursor_screen::Screen::Busy => return Err("agent_busy"),
+            cursor_screen::Screen::Approval(_) | cursor_screen::Screen::UnsupportedCard
+            | cursor_screen::Screen::DenyFeedback => return Err("approval_pending"),
+            cursor_screen::Screen::Question => return Err("question_pending"),
+            cursor_screen::Screen::Overlay => return Err("picker_open"),
+            cursor_screen::Screen::Unknown => return Err("screen_unrecognized"),
+        }
+        // Re-verify the occupant last, immediately before the caller types.
+        let (pane, _) = self.model_pane_file(identity)?;
+        if !idle(&pane) { return Err("agent_busy"); }
+        Ok(())
+    }
+    /// Submit one prompt to a Cursor pane. The screen guard and the prompt are
+    /// one bridge call, so no phone round trip separates check from send.
+    fn prompt_submit(&mut self, params: &Value) -> Result<Value> {
+        let watch = self.watch.as_ref().ok_or("not_watching")?;
+        let identity = watch.identity.clone().filter(|_| watch.unavailable.is_none())
+            .ok_or("timeline_unavailable")?;
+        if identity.agent != "cursor" { return Err("unsupported_agent"); }
+        if params["expect"]["identity"] != serde_json::to_value(&identity).map_err(|_| "stale")?
+            || params["expect"]["generation"].as_u64() != Some(self.generation) {
+            return Err("stale");
+        }
+        let text = params["text"].as_str().ok_or("invalid_request")?;
+        if text.trim().is_empty() || text.len() > 65_536 || text.chars().any(|c| c == '\0') {
+            return Err("invalid_request");
+        }
+        // A leading slash would run a Cursor command (/quit, /model ...) instead
+        // of reaching the model; the phone never sends one.
+        if text.trim_start().starts_with('/') { return Err("slash_command_refused"); }
+        self.cursor_ready(&identity, false)?;
+        // No retry: a failed transport call may still have delivered the prompt.
+        self.client.agent_prompt(&identity.pane_id, text).map_err(|_| "prompt_unconfirmed")?;
+        Ok(json!({"submitted":true}))
     }
     fn question_pane_file(&self, identity: &Identity) -> Result<std::fs::File> {
         let snapshot = self.client.snapshot().map_err(|_| "stale")?;
@@ -2527,6 +2635,16 @@ impl Service {
                 match result {
                     Ok(result) => Self::write(out, &json!({"id":id,"result":result})),
                     Err(code) => Self::error(out, id, code),
+                }
+            }
+            "prompt.submit" => {
+                self.poll_with_refresh(out, refresh)?;
+                match self.prompt_submit(params) {
+                    Ok(result) => {
+                        Self::write(out, &json!({"id":id,"result":result}))?;
+                        self.poll(out)
+                    }
+                    Err(code) => Self::write(out, &json!({"id":id,"error":{"code":code}})),
                 }
             }
             "model.set" => {
