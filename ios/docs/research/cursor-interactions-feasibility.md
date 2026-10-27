@@ -1,6 +1,6 @@
 # Cursor identity, approvals, questions, and model controls: verified feasibility
 
-Historical research snapshot for the Cursor CLI conversation work. Scope: research, not implementation.
+Historical research snapshot for the Cursor CLI conversation work. Scope: research, not implementation. See [current implementation and validation](../cursor-conversations.md); where the two differ, the implementation document is correct (see the corrections at the end of this file).
 
 Date: 2026-10-27. Installed CLI: `cursor-agent` 2026.10.19-6bbf2c4 at the start of the session. The CLI auto-updated to 2026.10.22-27dcf5f partway through (the `~/.local/bin/cursor-agent` symlink was re-pointed while a probe was open). The first session (identity and an auto-run `printf` under the host's unrestricted config) ran on 10.19; every approval, question, model, hook, and transcript-rewrite finding ran on 10.22. A version gate must therefore tolerate the binary changing underneath a running Herdr session.
 
@@ -362,3 +362,16 @@ herdr pane read <pane> --source visible
 herdr pane get <pane>            # agent, agent_status, agent_session
 cursor-agent --list-models
 ```
+
+## Corrections found while implementing
+
+Later probing and the implementation changed several conclusions above. They are kept as written for the record.
+
+- **`/model <id>` is not a reliable setter.** The decision table says a bare `/model <id>` is feasible. It is a fuzzy filter: `claude-opus-5` selected Claude Opus 5.5, `claude-fable-5` selected Fable 5.1, `claude-sonnet-5` selected Sonnet 5.5, and 17 of 57 family ids derived from `--list-models` are not in the picker at all. The implementation chooses a row in the picker by its exact label instead.
+- **`--list-models` is not the catalog.** Its 270 flat ids do not map onto the 46 picker families or their parameter ids. The picker is the catalog.
+- **The picker ignores pasted text.** Its filter takes single-character keys only. Down from the last row wraps to the first, and its first frame is drawn at the top of the list before it jumps to the current model; keys sent into that frame are lost.
+- **Parameter groups.** The effort group is titled `Effort` (Claude, Grok) or `Reasoning` (GPT, Kimi). A model with no parameters ignores Tab.
+- **Shell card notices.** With a non-empty allow list the card reads `Not in allowlist: a, b` instead of `Shell allowlist is empty`.
+- **Questions.** The cursor starts on the first option of each question, Enter with nothing selected advances, and single choice is a radio. Typed write-in text survives when another option is chosen later.
+- **Status lines.** A user's `statusLine` replaces the footer, and the footer lags changes by about a second.
+- **Version.** The running session's version is in its process command line; the installed symlink can already name a newer build.
