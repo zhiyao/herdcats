@@ -116,6 +116,7 @@ pub struct Transcript {
     pub unknown_records: usize,
     pub dropped_entries: usize,
     seen: HashSet<String>,
+    pub(crate) agy_pending: Vec<String>,
 }
 /// Claude Code records local slash commands (`/model`, `/effort`, ...) and
 /// their terminal output as user messages wrapped in these tags. They are

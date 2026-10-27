@@ -325,7 +325,7 @@ extension PaneSessionView {
     }
 
     var composerPlaceholder: String {
-        if let agent = pane.agent { return "Message \(agent)…" }
+        if let agent = pane.agent { return "Message \(TimelineAgentAvailability.displayName(for: agent))…" }
         return "Type to send to this pane…"
     }
 
@@ -398,7 +398,11 @@ extension PaneSessionView {
                 guard let owned=appModel.ownership.transportGeneration else {throw HerdrError.notConnected}
                 isTimelineSending=true
                 defer {isTimelineSending=false}
-                try await appModel.connection.submitTimelinePrompt(text:text,identity:identity,owned:owned)
+                if identity.agent == "pi" {
+                    try await timeline.submitPiPrompt(text)
+                } else {
+                    try await appModel.connection.submitTimelinePrompt(text:text,identity:identity,owned:owned)
+                }
             } else {
                 try await session.send(text:text,connection:appModel.connection)
             }

@@ -128,6 +128,20 @@ struct AgentBridgeClientTests {
         }
         #expect(await wire.closes == 1)
     }
+    @Test func agyHandshakeNeverFallsBackToClaudeCapability() async throws {
+        for agent in ["agy", "antigravity_cli"] {
+            let wire = BridgeTestWire()
+            let client = AgentBridgeClient(write: { await wire.write($0) }, close: { await wire.close() }, onEvent: { _ in })
+            let task = Task { try await client.performHandshakeAndWatch(paneId: "p1", agent: agent) }
+            try await wait(wire)
+            let id = try await wire.requestId()
+            await client.receive(Data("{\"id\":\"\(id)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":{\"claude_timeline\":true,\"record_content\":true}}}\n".utf8))
+            do { try await task.value; Issue.record("Agy accepted a Claude-only bridge") }
+            catch { #expect((error as? AgentBridgeError)?.code == "agy_bridge_required") }
+            #expect(await wire.commands.count == 1)
+            await client.close()
+        }
+    }
     @Test func handshakeOptsIntoApprovalsAndQuestions() async throws {
         let wire = BridgeTestWire()
         let client = AgentBridgeClient(write: { await wire.write($0) }, close: { await wire.close() }, onEvent: { _ in })
@@ -148,6 +162,148 @@ struct AgentBridgeClientTests {
         try await task.value
         #expect(await client.capabilities?.approvals == true)
         #expect(await client.capabilities?.questions == true)
+        await client.close()
+    }
+    @Test func agyWatchAndNavigationReplyRequireExplicitCapability() async throws {
+        let wire = BridgeTestWire()
+        let client = AgentBridgeClient(write: { await wire.write($0) }, close: { await wire.close() }, onEvent: { _ in })
+        let handshake = Task { try await client.performHandshakeAndWatch(paneId: "p", agent: "agy") }
+        try await wait(wire)
+        let initializeId = try await wire.requestId()
+        await client.receive(Data("{\"id\":\"\(initializeId)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":{\"claude_timeline\":false,\"agy\":true,\"record_content\":true}}}\n".utf8))
+        for _ in 0..<500 {
+            if await wire.commands.count == 2 { break }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        #expect(await wire.commands.count == 2)
+        let watchId = try await wire.requestId()
+        await client.receive(Data("{\"id\":\"\(watchId)\",\"result\":{}}\n".utf8))
+        try await handshake.value
+        let response = Task { try await client.respond(requestId: "r", option: 1, labelLines: ["Yes, once"]) }
+        for _ in 0..<500 {
+            if await wire.commands.count == 3 { break }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        let responseId = try await wire.requestId()
+        await client.receive(Data("{\"id\":\"\(responseId)\",\"result\":{\"request_id\":\"r\",\"sent\":\"navigate\",\"confirmed\":true}}\n".utf8))
+        #expect(try await response.value.confirmed)
+        await client.close()
+    }
+    @MainActor @Test func agyModelChangeSendsCapturedSessionScope() async throws {
+        let wire = BridgeTestWire()
+        let client = AgentBridgeClient(write: { await wire.write($0) }, close: { await wire.close() }, onEvent: { _ in })
+        let handshake = Task { try await client.performHandshakeAndWatch(paneId: "p", agent: "agy") }
+        try await wait(wire)
+        let initializeId = try await wire.requestId()
+        await client.receive(Data("{\"id\":\"\(initializeId)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":{\"claude_timeline\":false,\"agy\":true,\"model_control\":true,\"record_content\":true}}}\n".utf8))
+        for _ in 0..<500 {
+            if await wire.commands.count == 2 { break }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        let watchId = try await wire.requestId()
+        await client.receive(Data("{\"id\":\"\(watchId)\",\"result\":{}}\n".utf8))
+        try await handshake.value
+        let identity = AgentTimelineIdentity(paneId: "p", terminalId: "t", agent: "antigravity_cli", nativeSessionId: "old-session")
+        let state = AgentModelControlState(); state.bind(identity: identity, generation: 7); state.connect(client, supported: true)
+        let change = Task { await state.change(model: "flash") }
+        for _ in 0..<500 {
+            if await wire.commands.count == 3 { break }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        let bytes = await wire.commands[2]
+        let request = try #require(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+        let params = try #require(request["params"] as? [String: Any])
+        let expect = try #require(params["expect"] as? [String: Any])
+        #expect(expect["generation"] as? Int == 7)
+        #expect((expect["identity"] as? [String: String])?["native_session_id"] == "old-session")
+        // A replacement arrives before acknowledgement; the old reply must not mutate it.
+        state.bind(identity: AgentTimelineIdentity(paneId: "p", terminalId: "new", agent: "antigravity_cli", nativeSessionId: "new-session"), generation: 8)
+        let changeId = try await wire.requestId()
+        await client.receive(Data("{\"id\":\"\(changeId)\",\"error\":{\"code\":\"stale\"}}\n".utf8))
+        await change.value
+        #expect(state.pair.model == nil)
+        #expect(await wire.commands.count == 3)
+        await client.close()
+    }
+    @MainActor @Test func piPromptAndDialogUseGuardedWatchedSession() async throws {
+        let wire = BridgeTestWire()
+        let client = AgentBridgeClient(write: { await wire.write($0) }, close: { await wire.close() }, onEvent: { _ in })
+        let handshake = Task { try await client.performHandshakeAndWatch(paneId: "p", agent: "pi") }
+        try await wait(wire)
+        let initializeId = try await wire.requestId()
+        await client.receive(Data("{\"id\":\"\(initializeId)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":{\"claude_timeline\":false,\"pi\":true,\"record_content\":true}}}\n".utf8))
+        for _ in 0..<500 {
+            if await wire.commands.count == 2 { break }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        let watchId = try await wire.requestId()
+        await client.receive(Data("{\"id\":\"\(watchId)\",\"result\":{}}\n".utf8))
+        try await handshake.value
+        let identity = AgentTimelineIdentity(paneId: "p", terminalId: "t", agent: "pi", nativeSessionId: "s")
+        let action = Task { try await client.piAction(.piDialogRespond, identity: identity, generation: 9, requestId: "r", value: .boolean(false)) }
+        for _ in 0..<500 {
+            if await wire.commands.count == 3 { break }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        let bytes = await wire.commands[2]
+        let request = try #require(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+        let params = try #require(request["params"] as? [String: Any])
+        #expect(request["method"] as? String == "pi.dialog.respond")
+        #expect(params["value"] as? Bool == false)
+        #expect(params["request_id"] as? String == "r")
+        let expect = try #require(params["expect"] as? [String: Any])
+        #expect(expect["generation"] as? Int == 9)
+        #expect((expect["identity"] as? [String: String])?["native_session_id"] == "s")
+        let actionId = try await wire.requestId()
+        await client.receive(Data("{\"id\":\"\(actionId)\",\"result\":{\"confirmed\":true,\"request_id\":\"r\"}}\n".utf8))
+        #expect(try await action.value.confirmed == true)
+        await client.close()
+    }
+    @MainActor @Test func piModelChangeSendsCapturedSessionScope() async throws {
+        let wire = BridgeTestWire()
+        let client = AgentBridgeClient(write: { await wire.write($0) }, close: { await wire.close() }, onEvent: { _ in })
+        let handshake = Task { try await client.performHandshakeAndWatch(paneId: "p", agent: "pi") }
+        try await wait(wire)
+        let initializeId = try await wire.requestId()
+        await client.receive(Data("{\"id\":\"\(initializeId)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":{\"claude_timeline\":false,\"pi\":true,\"model_control\":true,\"record_content\":true}}}\n".utf8))
+        for _ in 0..<500 {
+            if await wire.commands.count == 2 { break }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        let watchId = try await wire.requestId()
+        await client.receive(Data("{\"id\":\"\(watchId)\",\"result\":{}}\n".utf8))
+        try await handshake.value
+        let identity = AgentTimelineIdentity(paneId: "p", terminalId: "t", agent: "pi", nativeSessionId: "old-session")
+        let state = AgentModelControlState(); state.bind(identity: identity, generation: 7); state.connect(client, supported: true)
+        let change = Task { await state.change(model: "provider/model") }
+        for _ in 0..<500 {
+            if await wire.commands.count == 3 { break }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        let bytes = await wire.commands[2]
+        let request = try #require(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+        let params = try #require(request["params"] as? [String: Any])
+        let expect = try #require(params["expect"] as? [String: Any])
+        #expect(expect["generation"] as? Int == 7)
+        #expect((expect["identity"] as? [String: String])?["native_session_id"] == "old-session")
+        // A replacement arrives before acknowledgement; the old reply must not mutate it.
+        state.bind(identity: AgentTimelineIdentity(paneId: "p", terminalId: "new", agent: "pi", nativeSessionId: "new-session"), generation: 8)
+        let changeId = try await wire.requestId()
+        await client.receive(Data("{\"id\":\"\(changeId)\",\"error\":{\"code\":\"stale\"}}\n".utf8))
+        await change.value
+        #expect(state.pair.model == nil)
+        #expect(await wire.commands.count == 3)
+        await client.close()
+    }
+    @Test func navigationReplyRequiresAgyCapability() async throws {
+        let wire = BridgeTestWire()
+        let client = AgentBridgeClient(write: { await wire.write($0) }, close: { await wire.close() }, onEvent: { _ in })
+        let response = Task { try await client.respond(requestId: "r", option: 1, labelLines: ["Yes, once"]) }
+        try await wait(wire)
+        let id = try await wire.requestId()
+        await client.receive(Data("{\"id\":\"\(id)\",\"result\":{\"request_id\":\"r\",\"sent\":\"navigate\",\"confirmed\":true}}\n".utf8))
+        do { _ = try await response.value; Issue.record("Accepted navigation without Agy capability") }
+        catch { #expect(error as? AgentBridgeError == .invalidFrame) }
         await client.close()
     }
     @Test func approvalResponseUsesExactRowsAndDecodesConfirmation() async throws {
@@ -752,7 +908,8 @@ extension AgentBridgeClientTests {
         for code in ["agent_busy", "composer_not_empty", "stale"] {
             let count = await wire.commands.count
             let change = Task { try await client.setModel(model: "sonnet", effort: nil,
-                expect: AgentModelExpectation(model: nil, effort: "medium")) }
+                expect: AgentModelExpectation(model: nil, effort: "medium",
+                    identity: AgentTimelineIdentity(paneId: "p1", terminalId: "t1", agent: "pi", nativeSessionId: "s1", nativeInstanceId: "runtime"), generation: 1)) }
             for _ in 0..<500 {
                 if await wire.commands.count > count { break }
                 try await Task.sleep(for: .milliseconds(2))
@@ -760,6 +917,7 @@ extension AgentBridgeClientTests {
             let request = try #require(JSONSerialization.jsonObject(with: await wire.commands.last!) as? [String: Any])
             #expect(request["method"] as? String == "model.set")
             let params = try #require(request["params"] as? [String: Any])
+            #expect(params["pane_id"] as? String == "p1")
             #expect(params["model"] as? String == "sonnet")
             #expect(params["effort"] == nil)
             let expect = try #require(params["expect"] as? [String: Any])
@@ -773,6 +931,37 @@ extension AgentBridgeClientTests {
             } catch { #expect((error as? AgentBridgeError)?.code == code) }
         }
         #expect(await wire.closes == 0)
+        await client.close()
+    }
+}
+
+@Suite("Agy source bridge setup")
+struct AgyBridgeSetupTests {
+    @Test func publishedInstallerCannotClaimAgySupport() throws {
+        #expect(HostHelperSetupPlan.version == "0.3.0")
+        #expect(!HostHelperSetupPlan.agents.contains("antigravity_cli"))
+        #expect(HostHelperSetupPlan.decision(probe: .missing, replace: true, checkOnly: false, agent: "agy") == .unsupportedByPinnedInstaller("agy"))
+        let report = "HC_HELPER_MANAGED\n" + #"{"name":"herdcats-bridge","version":"0.3.0","protocol":1,"herdr_protocol":22,"agents":["claude","codex","antigravity_cli"]}"#
+        let probe = try HostHelperProbe(output: report, agent: "agy")
+        #expect(HostHelperSetupPlan.decision(probe: probe, replace: false, checkOnly: true, agent: "agy") == .ready)
+    }
+}
+
+@Suite("Pi bridge capability and actions")
+struct PiBridgeClientTests {
+    @Test func piDoesNotUseClaudeCapabilityAndGuardsActionIdentity() async throws {
+        let wire = BridgeTestWire()
+        let client = AgentBridgeClient(write: { await wire.write($0) }, close: { await wire.close() }, onEvent: { _ in })
+        let handshake = Task { try await client.performHandshakeAndWatch(paneId: "p", agent: "pi") }
+        while await wire.commands.isEmpty { await Task.yield() }
+        let id = try await wire.requestId()
+        await client.receive(Data("{\"id\":\"\(id)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":{\"claude_timeline\":true,\"record_content\":true}}}\n".utf8))
+        do { try await handshake.value; Issue.record("Pi accepted a bridge without Pi capability") }
+        catch { #expect((error as? AgentBridgeError)?.code == "pi_bridge_required") }
+        #expect(await wire.commands.count == 1)
+        let identity = AgentTimelineIdentity(paneId: "p", terminalId: "t", agent: "pi", nativeSessionId: "s")
+        do { _ = try await client.piAction(.piCancel, identity: identity, generation: 4); Issue.record("Pi action lacked capability") }
+        catch { #expect((error as? AgentBridgeError)?.code == "unsupported_capability") }
         await client.close()
     }
 }

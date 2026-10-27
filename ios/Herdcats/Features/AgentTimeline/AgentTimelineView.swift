@@ -54,6 +54,9 @@ struct AgentTimelineView: View {
     @State var atBottom = true
     @State var entryFrames = TimelineEntryFrameStore()
     @State var viewportHeight: CGFloat = 0
+    @State private var focusedQuestionField: QuestionFieldTarget?
+    @State private var questionFieldFrames: [QuestionFieldTarget: CGRect] = [:]
+    @State private var questionKeyboardFrame: CGRect = .null
     @State var historyScrollAnchor: TimelineHistoryScrollAnchor?
     @State var bridgeCapabilities: AgentBridgeCapabilities?
     @State var bridgeVersion: String?
@@ -105,7 +108,7 @@ struct AgentTimelineView: View {
     }
 
     var conversationItems: [TimelineConversationItem] {
-        TimelineConversationItem.group(timeline.entries, showsRecords: agent == "codex")
+        TimelineConversationItem.group(timeline.entries, showsRecords: agent == "codex" || agent == "pi")
     }
 
     var connectionState: AgentTimelineConnectionState {
@@ -138,6 +141,27 @@ struct AgentTimelineView: View {
     static func replacementFeedback(probe: HostHelperProbe) -> String? {
         HostHelperSetupPlan.replacementFeedback(probe: probe)
     }
+    private func revealQuestionField(using proxy: ScrollViewProxy, viewport: GeometryProxy) {
+        guard let target = focusedQuestionField, showsQuestion,
+              target.scope == contentScope,
+              target.requestId == timeline.pendingQuestion?.requestId else { return }
+        let height = viewport.size.height
+        let viewportFrame = viewport.frame(in: .global)
+        var visibleBottom = height - viewport.safeAreaInsets.bottom
+        if questionKeyboardFrame.intersects(viewportFrame) {
+            visibleBottom = min(visibleBottom, questionKeyboardFrame.minY - viewportFrame.minY)
+        }
+        let top = topOverlayInset + 8
+        let bottom = visibleBottom - bottomOverlayInset - approvalInset - 8
+        if let frame = questionFieldFrames[target], frame.minY >= top, frame.maxY <= bottom { return }
+        // Center the selected field in the usable area, not the card's bottom:
+        // a later question can be much taller than the keyboard viewport.
+        let anchorY = height > 0 ? max(0, min(1, (top + max(top, bottom)) / (2 * height))) : 0.5
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.2)) {
+            proxy.scrollTo(target, anchor: UnitPoint(x: 0.5, y: anchorY))
+        }
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             GeometryReader { viewport in
@@ -181,6 +205,15 @@ struct AgentTimelineView: View {
                                 Text("Source update delayed; showing verified history.")
                                     .font(.jost(.caption)).foregroundStyle(Theme.textMuted)
                             }
+                            if let dialog = timeline.pendingPiDialog {
+                                PiDialogCard(dialog: dialog, isSending: timeline.isPiActionPending,
+                                    onSubmit: { answer in Task { await timeline.respondPiDialog(dialog, value: answer) } },
+                                    onUseTerminal: onUseTerminal)
+                                    .id("\(contentScope):pi-dialog:\(dialog.requestId)")
+                            }
+                            if let message = timeline.piActionError {
+                                Text(message).font(.jost(.caption)).foregroundStyle(Theme.textMuted)
+                            }
                             if showsApproval, let pending = timeline.pendingApproval {
                                 ApprovalCard(pending: pending, response: approvalResponse) { option in
                                     respondToApproval(pending, option: option)
@@ -189,9 +222,21 @@ struct AgentTimelineView: View {
                                 .disabled(approvalResponse.isDisabled)
                             }
                             if showsQuestion, let pending = timeline.pendingQuestion {
+                                let questionScope = contentScope
                                 QuestionCard(pending: pending, response: questionResponse,
                                     onSubmit: { respondToQuestion(pending) },
-                                    onSkip: { respondToQuestion(pending, skip: true) })
+                                    onSkip: { respondToQuestion(pending, skip: true) },
+                                    scope: questionScope,
+                                    onFieldFocus: { target in
+                                        if let target {
+                                            guard target.scope == contentScope,
+                                                  target.requestId == timeline.pendingQuestion?.requestId else { return }
+                                            focusedQuestionField = target
+                                        } else if focusedQuestionField?.scope == questionScope,
+                                                  focusedQuestionField?.requestId == pending.requestId {
+                                            focusedQuestionField = nil
+                                        }
+                                    })
                                     .id("\(contentScope):question:\(pending.requestId)")
                             }
                         } else {
@@ -218,7 +263,28 @@ struct AgentTimelineView: View {
                 .coordinateSpace(name: "timeline-viewport")
                 .onChange(of: viewport.size.height, initial: true) { _, height in
                     viewportHeight = height
-                    if following && showsApproval { proxy.scrollTo("timeline-bottom", anchor: .bottom) }
+                    if focusedQuestionField != nil {
+                        revealQuestionField(using: proxy, viewport: viewport)
+                    } else if following && showsApproval { proxy.scrollTo("timeline-bottom", anchor: .bottom) }
+                }
+                .onChange(of: viewport.safeAreaInsets.bottom) { _, _ in
+                    revealQuestionField(using: proxy, viewport: viewport)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { notification in
+                    guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+                    questionKeyboardFrame = frame
+                    revealQuestionField(using: proxy, viewport: viewport)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                    questionKeyboardFrame = .null
+                }
+                .onChange(of: timeline.pendingPiDialog?.requestId, initial: true) { _, requestId in
+                    guard requestId != nil else { return }
+                    following = true
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    withAnimation(reduceMotion ? nil : .smooth(duration: 0.4)) {
+                        proxy.scrollTo("timeline-bottom", anchor: .bottom)
+                    }
                 }
                 .onChange(of: timeline.pendingApproval?.requestId, initial: true) { _, requestId in
                     guard requestId != nil, showsApproval else { return }
@@ -229,12 +295,26 @@ struct AgentTimelineView: View {
                     }
                 }
                 .onChange(of: showsQuestion ? timeline.pendingQuestion?.requestId : nil, initial: true) { _, requestId in
+                    focusedQuestionField = nil
                     guard requestId != nil, showsQuestion else { return }
                     following = true
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                     withAnimation(reduceMotion ? nil : .smooth(duration: 0.4)) {
                         proxy.scrollTo("timeline-bottom", anchor: .bottom)
                     }
+                }
+                .onChange(of: focusedQuestionField) { _, target in
+                    guard target != nil else { return }
+                    following = false
+                    revealQuestionField(using: proxy, viewport: viewport)
+                }
+                .onChange(of: contentScope) { _, _ in
+                    focusedQuestionField = nil
+                    questionFieldFrames = [:]
+                }
+                .onPreferenceChange(QuestionFieldFramesPreferenceKey.self) { frames in
+                    questionFieldFrames = frames
+                    revealQuestionField(using: proxy, viewport: viewport)
                 }
                 .onPreferenceChange(TimelineEntryFramesPreferenceKey.self) { entryFrames.frames = $0 }
                 .onChange(of: historyScrollAnchor) { _, anchor in
@@ -270,7 +350,7 @@ struct AgentTimelineView: View {
                         }
                 )
                 .onChange(of: timeline.revision) { _, _ in
-                    guard following, timeline.pendingQuestion == nil, (!conversationItems.isEmpty || showsApproval) else { return }
+                    guard following, timeline.pendingQuestion == nil, timeline.pendingPiDialog == nil, (!conversationItems.isEmpty || showsApproval) else { return }
                     proxy.scrollTo("timeline-bottom", anchor: .bottom)
                 }
                 .onChange(of: timeline.identity) { _, _ in
@@ -282,12 +362,16 @@ struct AgentTimelineView: View {
                     #endif
                 }
                 .onChange(of: bottomOverlayInset) { _, _ in
-                    if following && (!conversationItems.isEmpty || showsApproval) {
+                    if focusedQuestionField != nil {
+                        revealQuestionField(using: proxy, viewport: viewport)
+                    } else if following && (!conversationItems.isEmpty || showsApproval) {
                         proxy.scrollTo("timeline-bottom", anchor: .bottom)
                     }
                 }
                 .onChange(of: approvalInset) { _, _ in
-                    if following && (!conversationItems.isEmpty || showsApproval) {
+                    if focusedQuestionField != nil {
+                        revealQuestionField(using: proxy, viewport: viewport)
+                    } else if following && (!conversationItems.isEmpty || showsApproval) {
                         proxy.scrollTo("timeline-bottom", anchor: .bottom)
                     }
                 }
@@ -512,4 +596,69 @@ struct AgentTimelineView: View {
         }
     }
 
+}
+
+
+/// Render only Pi's standard dialog contract. Option strings are sent back
+/// verbatim, including permission scopes supplied by the originating extension.
+private struct PiDialogCard: View {
+    let dialog: AgentPiDialog
+    let isSending: Bool
+    let onSubmit: (AgentPiDialogValue) -> Void
+    let onUseTerminal: () -> Void
+    @State private var text = ""
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(verbatim: dialog.title)
+                    .font(.jost(.title3, weight: .semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                if isSending { ProgressView().accessibilityLabel("Sending answer") }
+            }
+            if let message = dialog.message, !message.isEmpty {
+                Text(verbatim: message)
+                    .font(.jost(.subheadline))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+            switch dialog.kind {
+            case "confirm":
+                VStack(spacing: 10) {
+                    option("Yes") { onSubmit(.boolean(true)) }.buttonStyle(.herdrPrimary())
+                    option("No") { onSubmit(.boolean(false)) }.buttonStyle(ApprovalOptionButtonStyle())
+                }
+            case "select":
+                VStack(spacing: 10) {
+                    ForEach(Array(dialog.options.enumerated()), id: \.element) { index, label in
+                        if index == 0 {
+                            option(label) { onSubmit(.text(label)) }.buttonStyle(.herdrPrimary())
+                        } else {
+                            option(label) { onSubmit(.text(label)) }.buttonStyle(ApprovalOptionButtonStyle())
+                        }
+                    }
+                }
+            case "input":
+                TextField("Answer", text: $text, axis: .vertical)
+                    .lineLimit(1...6)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("timeline-pi-dialog-answer")
+                Button("Submit") { onSubmit(.text(text)) }.buttonStyle(.herdrPrimary)
+            default:
+                Text("This custom Pi dialog needs Terminal.").font(.jost(.body))
+                Button("Use Terminal", action: onUseTerminal).buttonStyle(.herdrSecondary)
+            }
+        }
+        .padding(16)
+        .foregroundStyle(Theme.text)
+        .herdrCard()
+        .disabled(isSending)
+        .onAppear { text = dialog.value ?? "" }
+        .accessibilityIdentifier("timeline-pi-dialog")
+    }
+    private func option(_ label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(verbatim: label).frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
 }

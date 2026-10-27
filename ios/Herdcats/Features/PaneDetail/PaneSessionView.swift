@@ -186,6 +186,7 @@ struct PaneSessionView: View {
         !trimmedDraft.isEmpty
             && !isSending && !isTimelineSending
             && (!showsTimeline || !timeline.modelControl.isChanging)
+            && (!showsTimeline || pane.agent != "pi" || timeline.canSubmitPiPrompt)
             && (!showsTimeline || TimelineComposePolicy.canCompose(identity:timeline.identity,paneId:pane.paneId,status:timeline.agentStatus,connected:AgentTimelineConnectionState(phase:appModel.phase,generation:appModel.ownership.transportGeneration).isReady))
             && !dictation.isBusy
             && !(attachment?.isUploading ?? false)

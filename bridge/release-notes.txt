@@ -1,6 +1,13 @@
-Herdcats Bridge (`herdcats-bridge`) is the optional companion on your computer that powers native Claude and Codex Timelines in Herdcats.
+SOURCE CHANGE — not a published Agy release. The app installer remains pinned to 0.3.0 until an actual artifact and checksum are verified.
 
-Changes in this release:
+Herdcats Bridge (`herdcats-bridge`) is the optional companion on your computer that powers native Claude, Codex and Agy Timelines in Herdcats.
+
+Changes in this source version:
+- GPT-OSS 120B model observation and switching accept its exact catalog-label idle footer (GPT-OSS 120B (Medium)), alongside the existing model · effort footer. Empty-composer checks share catalog verification and retain draft, border, source and stale-session guards.
+- Agy model families and discovered per-family efforts are normalized by the bridge across status, snapshots, events and set results. Native IDs remain internal for guarded submission and confirmation; legacy exact native target IDs remain accepted. Family switches preserve effort when available, otherwise prefer Medium, Low, then High. Rebuild the app and source bridge; the installer pin is unchanged.
+- Agy user bubbles unwrap only the recognized outer USER_REQUEST/ADDITIONAL_METADATA envelope (optional USER_SETTINGS_CHANGE), including single/double LF or CRLF separators. Literal user text and raw inspectable records remain intact.
+- Agy questions and command approvals now use verified native records plus live dialogs when Herdr mislabels the pane idle/done/working. Effective blocked status disables composition; uncertain pending state and model/composer guards fail closed. Claude/Codex status gates and caching are unchanged.
+- Agy history follows the exact Herdr native conversation with bounded, pinned-root transcript reads. Verified 1.4.7 command approvals, single/multiple questions, write-in and multi-select answers use guarded terminal controls; unverified cards stay in Terminal. Model controls use the installed CLI catalog and idle empty composer checks; /model may persist across sessions.
 - Change the model and reasoning effort of a Claude or Codex session from your phone. The bridge reads the current model from the session, then types `/model` or `/effort` only when the agent is idle and its input box is empty, and checks every screen before the next key. Claude's "Switch model?" question is answered only when it names exactly what you picked.
 - Codex changes apply to that session only and never write config.toml. Claude saves the new model and effort as your default for new sessions, as `/model` and `/effort` do at your desk.
 - Claude timelines no longer show local command records such as `/effort` and its output.

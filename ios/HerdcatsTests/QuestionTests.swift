@@ -5,14 +5,14 @@ import Testing
 @Suite("Question protocol and answers")
 @MainActor struct QuestionTests {
     func frame(kind: String = "claude", seq: Int = 1, event: String = "interaction.pending", extra: [String: Any] = [:]) throws -> AgentBridgeFrame {
-        let agent = kind == "claude" ? "claude" : "codex"
+        let agent = kind == "claude" ? "claude" : kind == "agy" ? "antigravity_cli" : "codex"
         var data: [String: Any] = [
             "identity": ["pane_id": "w1:p1", "terminal_id": "t1", "agent": agent, "native_session_id": "session-a"],
             "generation": 1, "request_id": "ask-prompt-123", "kind": "question", "agent": agent,
             "question_kind": kind, "fresh": true, "entries": [],
             "questions": [["index": 0, "header": "Size", "text": "Which size?", "multi_select": false, "allows_other": true,
                 "options": [["number": 1, "label": "Small", "description": "A small pizza"], ["number": 2, "label": "None of the above"]]]],
-            "step": kind == "claude" ? ["kind": "claude_question", "index": 0] : kind == "codex_plan"
+            "step": kind == "agy" ? ["kind": "agy_question", "index": 0, "total": 1] : kind == "claude" ? ["kind": "claude_question", "index": 0] : kind == "codex_plan"
                 ? ["kind": "codex_question", "index": 0, "total": 1] : ["kind": "async_queued"],
             "countdown": kind == "codex_async" ? "18s" as Any : NSNull(),
         ]
@@ -23,7 +23,7 @@ import Testing
         try AgentPendingQuestion.decode(#require(frame(kind: kind, extra: extra).data))
     }
     @Test func decodesKindsAndSteps() throws {
-        for kind in ["claude", "codex_plan", "codex_async"] {
+        for kind in ["claude", "codex_plan", "codex_async", "agy"] {
             let p = try pending(kind)
             #expect(p.questionKind.rawValue == kind)
             #expect(p.questions[0].options[0].description == "A small pizza")
@@ -31,6 +31,18 @@ import Testing
         #expect(try pending("codex_async").countdown == "18s")
         #expect(try pending(extra: ["step": ["kind": "claude_review"]]).step == .claudeReview)
         #expect(try pending("codex_async", extra: ["step": ["kind": "async_picker", "index": 0]]).step == .asyncPicker(index: 0))
+    }
+    @Test func agyMultiSelectAndWriteInPreserveDraftsAndRejectWrongSteps() throws {
+        var data = try #require(frame(kind: "agy").data)
+        data.questions = [AgentQuestion(index: 0, text: "Features?", options: [AgentQuestionOption(number: 1, label: "One"), AgentQuestionOption(number: 2, label: "Two")], multiSelect: true, allowsOther: true)]
+        let state = QuestionAnswerState()
+        state.sync(try AgentPendingQuestion.decode(data))
+        state.select(question: 0, option: 2)
+        state.select(question: 0, option: 1)
+        state.setText("Other", question: 0)
+        #expect(state.answers == [AgentQuestionAnswer(index: 0, options: [1, 2], text: "Other")])
+        data.step = .codexQuestion(index: 0, total: 1)
+        #expect(throws: (any Error).self) { try AgentPendingQuestion.decode(data) }
     }
     @Test func rejectsMalformedQuestions() throws {
         let base = try #require(frame().data?.questions?.first)
