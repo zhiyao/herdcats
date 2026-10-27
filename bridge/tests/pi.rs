@@ -101,7 +101,8 @@ fn pi_messages_upsert_streaming_tool_calls_and_results_without_private_content_f
     assert_eq!(call.status.as_deref(), Some("completed"));
     assert!(call.details.is_some());
     assert_eq!(call.text, "fixture result");
-    assert!(!call.record_refs.is_empty());
+    assert_eq!(call.record_refs.len(), 2);
+    assert!(!f.transcript.entries.iter().any(|e| e.id == "pi:r1"));
     assert!(
         !f.read_content(&call.record_refs[0], 0)
             .unwrap()
@@ -184,4 +185,91 @@ fn pi_live_branch_accepts_system_text_after_model_changes() {
     assert_eq!(follower.transcript.entries.len(), 2);
     assert_eq!(follower.transcript.entries[0].role.as_deref(), Some("system"));
     assert_eq!(follower.transcript.entries[1].text, "Hello");
+}
+
+#[test]
+fn pi_branch_switches_reset_generation_but_appends_and_streaming_do_not() {
+    use serde_json::json;
+    let mut f = Follower::for_agent(AgentType::Pi);
+    let a = vec![json!({"type":"message","id":"a","message":{"role":"user","content":"Branch A"}})];
+    let b = vec![json!({"type":"message","id":"b","message":{"role":"user","content":"Branch B"}})];
+    f.refresh_pi_entries(&a, ID).unwrap();
+    let generation = f.generation;
+    let mut live = a.clone();
+    live.push(json!({"type":"message","id":"herdcats-live:fixture","message":{"role":"assistant","content":"Streaming"}}));
+    f.refresh_pi_entries(&live, ID).unwrap();
+    live[1]["message"]["content"] = json!("Streaming update");
+    f.refresh_pi_entries(&live, ID).unwrap();
+    f.refresh_pi_entries(&a, ID).unwrap();
+    assert_eq!(f.generation, generation);
+    let mut appended = a.clone();
+    appended.push(json!({"type":"model_change","id":"model","modelId":"other"}));
+    appended.push(json!({"type":"thinking_level_change","id":"effort","thinkingLevel":"high"}));
+    f.refresh_pi_entries(&appended, ID).unwrap();
+    assert_eq!(f.generation, generation);
+    f.refresh_pi_entries(&b, ID).unwrap();
+    assert_eq!(f.generation, generation + 1);
+    f.refresh_pi_entries(&a, ID).unwrap();
+    assert_eq!(f.generation, generation + 2);
+    assert_eq!(f.transcript.entries[0].text, "Branch A");
+    f.refresh_pi_entries(&[], ID).unwrap();
+    assert_eq!(f.generation, generation + 3);
+    f.refresh_pi_entries(&a, "another-session").unwrap();
+    assert_eq!(f.generation, generation + 4);
+}
+
+#[test]
+fn pi_tool_results_are_only_tool_activity_including_orphans_and_errors() {
+    use serde_json::json;
+    for is_error in [false, true] {
+        for orphan in [false, true] {
+            let mut transcript = herdcats_bridge::claude::Transcript::default();
+            if !orphan {
+                transcript.apply_pi(&json!({"type":"message","id":"call","message":{"role":"assistant","content":[{"type":"toolCall","id":"tool","name":"bash","arguments":{"command":"fixture"}}]}}), ID).unwrap();
+            }
+            transcript.apply_pi(&json!({"type":"message","id":"result","message":{"role":"toolResult","toolCallId":"tool","toolName":"bash","isError":is_error,"content":[{"type":"text","text":"line one"},{"type":"text","text":"line two"}]}}), ID).unwrap();
+            assert_eq!(transcript.entries.len(), 1);
+            let entry = &transcript.entries[0];
+            assert_eq!(entry.kind, "tool");
+            assert_eq!(entry.text, "line one\nline two");
+            assert_eq!(entry.status.as_deref(), Some(if is_error {"failed"} else {"completed"}));
+            assert_eq!(entry.details.is_none(), orphan);
+        }
+    }
+}
+
+#[test]
+fn pi_tool_result_truncation_preserves_arguments_and_both_records() {
+    use serde_json::json;
+    let p = root();
+    let path = p.join("session.jsonl");
+    let rows = [
+        json!({"type":"session","id":ID}),
+        json!({"type":"message","id":"call","message":{"role":"assistant","content":[{"type":"toolCall","id":"tool","name":"read","arguments":{"path":"fixture"}}]}}),
+        json!({"type":"message","id":"result","message":{"role":"toolResult","toolCallId":"tool","toolName":"read","content":"é".repeat(10_000)}}),
+    ];
+    fs::write(&path, rows.iter().map(|row| format!("{row}\n")).collect::<String>()).unwrap();
+    let mut f = Follower::with_content_for_agent(AgentType::Pi);
+    f.refresh(&path.canonicalize().unwrap(), ID).unwrap();
+    assert!(!f.transcript.entries.iter().any(|e| e.kind == "message"));
+    let entry = f.transcript.entries.iter().find(|e| e.id == "pi:tool:tool").unwrap();
+    assert!(entry.truncated);
+    assert_eq!(entry.details.as_deref(), Some("{\"path\":\"fixture\"}"));
+    assert_eq!(entry.record_refs.len(), 2);
+    for reference in &entry.record_refs {
+        let (bytes, _) = f.read_content(reference, 0).unwrap();
+        let _: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    }
+    fs::remove_dir_all(p).unwrap();
+}
+
+#[test]
+fn pi_short_tool_result_keeps_argument_truncation() {
+    use serde_json::json;
+    let mut transcript = herdcats_bridge::claude::Transcript::default();
+    transcript.apply_pi(&json!({"type":"message","id":"call","message":{"role":"assistant","content":[{"type":"toolCall","id":"tool","name":"bash","arguments":{"command":"x".repeat(9000)}}]}}), ID).unwrap();
+    assert!(transcript.entries[0].truncated);
+    transcript.apply_pi(&json!({"type":"message","id":"result","message":{"role":"toolResult","toolCallId":"tool","toolName":"bash","content":"done"}}), ID).unwrap();
+    assert!(transcript.entries[0].truncated);
+    assert_eq!(transcript.entries[0].text, "done");
 }

@@ -909,6 +909,28 @@ struct ModelCatalogProvenanceTests {
         #expect(state.pendingPiDialog == nil)
     }
 
+    @Test func dialogByteBoundariesAndTerminalFallbackDecode() throws {
+        let state = AgentTimelineState(), owner = UUID()
+        state.begin(owner: owner, paneId: "w1:p1")
+        func frame(_ event: String, seq: Int, extra: [String: Any]) throws -> AgentBridgeFrame {
+            var data: [String: Any] = ["identity": ["pane_id": "w1:p1", "terminal_id": "t1", "agent": "pi", "native_session_id": "session-a"], "generation": 1]
+            data.merge(extra) { _, new in new }
+            return try AgentBridgeFrame.decode(JSONSerialization.data(withJSONObject: ["event": event, "epoch": "e", "seq": seq, "data": data]))
+        }
+        try state.consume(frame("timeline.snapshot", seq: 1, extra: ["entries": [], "agent_status": "blocked"]), owner: owner)
+        let boundary = String(repeating: "é", count: 4096)
+        try state.consume(frame("pi.dialog", seq: 2, extra: ["request_id": "boundary", "kind": "select", "title": boundary, "message": boundary, "dialog_options": [boundary]]), owner: owner)
+        #expect(state.pendingPiDialog?.accepts(.text(boundary)) == true)
+        for (index, title) in ["Continue in Terminal", "Custom dialog — continue in Terminal"].enumerated() {
+            try state.consume(frame("pi.dialog", seq: index + 3, extra: ["request_id": "fallback", "kind": "terminal", "title": title]), owner: owner)
+            #expect(state.pendingPiDialog?.isTerminalOnly == true)
+            #expect(state.pendingPiDialog?.title == title)
+        }
+        #expect(throws: AgentBridgeError.self) {
+            try state.consume(frame("pi.dialog", seq: 5, extra: ["request_id": "oversized", "kind": "input", "title": boundary + "a"]), owner: owner)
+        }
+    }
+
     @Test func unknownDialogRemainsTerminalOnlyAndConfirmPreservesBoolean() throws {
         let identity = AgentTimelineIdentity(paneId: "p", terminalId: "t", agent: "pi", nativeSessionId: "s")
         let terminal = AgentPiDialog(identity: identity, generation: 1, requestId: "r", kind: "custom", title: "Custom dialog", message: nil, options: [], value: nil)

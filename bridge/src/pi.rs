@@ -333,7 +333,7 @@ impl Transcript {
             }
         }
         let text = text_parts.join("\n");
-        if !text.is_empty() {
+        if role != "toolResult" && !text.is_empty() {
             let (text, truncated) = bounded(&text);
             self.upsert(Entry {
                 id: entry_id("pi", source_id)?,
@@ -373,11 +373,9 @@ impl Transcript {
             let call_id = message["toolCallId"].as_str().ok_or("invalid_transcript")?;
             let (text, truncated) = bounded(&text);
             let id = entry_id("pi:tool", call_id)?;
-            let arguments = self
-                .entries
-                .iter()
-                .find(|e| e.id == id)
-                .and_then(|e| e.details.clone());
+            let previous = self.entries.iter().find(|e| e.id == id);
+            let arguments = previous.and_then(|e| e.details.clone());
+            let truncated = truncated || previous.is_some_and(|e| e.truncated);
             self.upsert(Entry {
                 id,
                 kind: "tool".into(),

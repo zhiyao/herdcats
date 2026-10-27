@@ -9,6 +9,8 @@ const MAX_ENTRIES = 2000;
 const UUID = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
 const fail = code => { throw new Error(code); };
 function plain(value) { return typeof value === 'string' && Buffer.byteLength(value) <= 256 * 1024 && !value.includes('\0'); }
+function dialogString(value) { return plain(value) && Buffer.byteLength(value) <= 8192; }
+function answerString(value) { return plain(value) && Buffer.byteLength(value) <= 65536; }
 async function privateDirectory(path) {
   if (!isAbsolute(path)) fail('unsafe_control_directory');
   // Verify every component; mkdir's recursive traversal alone follows symlinks.
@@ -64,12 +66,12 @@ export function createIntegration(pi, {getSupportedThinkingLevels}) {
       if (opts?.signal?.aborted) return original(title,second,opts);
       // Only the plain public dialog schema is forwarded. Overlarge/ambiguous
       // schemas still display normally in Terminal and inhibit phone actions.
-      const supported=plain(title) && (kind==='select' ? Array.isArray(second) && second.length>0 && second.length<=100 && second.every(plain) && new Set(second).size===second.length : second===undefined || plain(second));
+      const supported=dialogString(title) && (kind==='select' ? Array.isArray(second) && second.length>0 && second.length<=100 && second.every(dialogString) && new Set(second).size===second.length : second===undefined || dialogString(second));
       const controller=new AbortController();
       const onAbort=()=>controller.abort(); opts?.signal?.addEventListener('abort',onAbort,{once:true});
       let settle;
       const remote=new Promise(resolve=>{settle=resolve;});
-      const item={public:{id:randomUUID(),kind:supported?kind:'terminal',title:plain(title)?title:'Continue in Terminal',...(kind==='select' && supported ? {options:[...second]} : {}),...(kind==='confirm' && supported ? {message:second} : {}),...(kind==='input' && supported ? {message:second ?? ''} : {})},settle};
+      const item={public:{id:randomUUID(),kind:supported?kind:'terminal',title:dialogString(title)?title:'Continue in Terminal',...(kind==='select' && supported ? {options:[...second]} : {}),...(kind==='confirm' && supported ? {message:second} : {}),...(kind==='input' && supported ? {message:second ?? ''} : {})},settle};
       pending.push(item);bump();
       let terminal;
       try { terminal=Promise.resolve(original(title,second,{...opts,signal:controller.signal})); }
@@ -82,7 +84,7 @@ export function createIntegration(pi, {getSupportedThinkingLevels}) {
       }).finally(()=>{opts?.signal?.removeEventListener('abort',onAbort);pending=pending.filter(value=>value!==item);bump();});
     });
     for(const kind of ['custom','editor']) install(kind,original=>(...args)=>{
-      const item={public:{id:randomUUID(),kind:'terminal',title:kind==='editor'&&plain(args[0])?args[0]:'Custom dialog — continue in Terminal'}};
+      const item={public:{id:randomUUID(),kind:'terminal',title:kind==='editor'&&dialogString(args[0])?args[0]:'Custom dialog — continue in Terminal'}};
       pending.push(item);bump();
       let result;try{result=original(...args);}catch(error){result=Promise.reject(error);}
       return Promise.resolve(result).finally(()=>{pending=pending.filter(value=>value!==item);bump();});
@@ -106,7 +108,7 @@ export function createIntegration(pi, {getSupportedThinkingLevels}) {
         const item=pending.at(-1);if(!item||item.public.id!==params.request_id)fail('stale');
         const kind=item.public.kind;
         if(kind==='terminal')fail('terminal_required');
-        if(kind==='confirm' ? typeof params.value!=='boolean' : kind==='select' ? !item.public.options.includes(params.value) : !plain(params.value))fail('invalid_response');
+        if(kind==='confirm' ? typeof params.value!=='boolean' : kind==='select' ? !item.public.options.includes(params.value) : !answerString(params.value))fail('invalid_response');
         bump();item.settle(params.value);return {accepted:true};
       }
       if(method==='model.set') {
@@ -166,7 +168,7 @@ export function createIntegration(pi, {getSupportedThinkingLevels}) {
   // Terminal-only gate, rather than allowing remote prompts past it.
   pi.on('ui_prompt_start',(event,context)=>{
     ctx=context;
-    if(!pending.length)pending.push({external:true,public:{id:randomUUID(),kind:'terminal',title:plain(event.title)?event.title:'Continue in Terminal'}});
+    if(!pending.length)pending.push({external:true,public:{id:randomUUID(),kind:'terminal',title:dialogString(event.title)?event.title:'Continue in Terminal'}});
     bump();
   });
   pi.on('ui_prompt_end',(_event,context)=>{ctx=context;pending=pending.filter(item=>!item.external);bump();});

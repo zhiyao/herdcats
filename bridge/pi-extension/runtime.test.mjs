@@ -44,3 +44,67 @@ test('effort-only changes return a confirmed model without changing provider ide
   const updated=await f.integration.request('state');
   assert.equal(updated.model.effort,'high');
 });
+
+test('dialog strings use iOS UTF-8 byte limits and omit oversized fields', async t => {
+  const f = await started(t);
+  for (const text of ['a'.repeat(8192), 'é'.repeat(4096), 'a'.repeat(8193), 'é'.repeat(4096)+'a']) {
+    const supported = Buffer.byteLength(text) === 8192;
+    for (const kind of ['confirm','input','select']) {
+      for (const field of ['title','second']) {
+        const title = field === 'title' ? text : 'Title';
+        const second = kind === 'select' ? [field === 'second' ? text : 'Option'] : field === 'second' ? text : 'Message';
+        const dialog = f.ctx.ui[kind](title, second);
+        const {pending} = await f.integration.request('state');
+        assert.equal(pending.kind, supported ? kind : 'terminal');
+        assert.ok(Buffer.byteLength(pending.title) <= 8192);
+        if (!supported) {
+          assert.equal(pending.message, undefined);
+          assert.equal(pending.options, undefined);
+        }
+        f.original[kind](undefined); await dialog;
+      }
+    }
+  }
+});
+
+test('editor and external prompt titles remain bounded for Terminal fallback', async t => {
+  const f = await started(t);
+  const title = '界'.repeat(2731);
+  const dialog = f.ctx.ui.editor(title, 'prefill');
+  assert.equal((await f.integration.request('state')).pending.title, 'Custom dialog — continue in Terminal');
+  f.original.editor('done'); await dialog;
+  f.hooks.get('ui_prompt_start')({title}, f.ctx);
+  const {pending} = await f.integration.request('state');
+  assert.equal(pending.kind, 'terminal');
+  assert.equal(pending.title, 'Continue in Terminal');
+  f.hooks.get('ui_prompt_end')({}, f.ctx);
+});
+
+test('text answers use the iOS 65536-byte limit while prompts retain their limit', async t => {
+  const f = await started(t);
+  const dialog = f.ctx.ui.input('Question', 'Answer');
+  const state = await f.integration.request('state');
+  for (const value of ['a'.repeat(65537), 'é'.repeat(32768)+'a', 'null\0byte']) {
+    await assert.rejects(f.integration.request('dialog.respond',{request_id:state.pending.id,value,expect:expectOf(state)}),/invalid_response/);
+  }
+  const answer = 'é'.repeat(32768);
+  await f.integration.request('dialog.respond',{request_id:state.pending.id,value:answer,expect:expectOf(state)});
+  assert.equal(await dialog, answer);
+  await f.integration.request('prompt',{text:'a'.repeat(65537),expect:expectOf(await f.integration.request('state'))});
+  assert.equal(f.sent[0].length, 65537);
+});
+
+test('ambiguous, null-byte and excessive selection schemas remain Terminal-only', async t => {
+  const f = await started(t);
+  for (const options of [[], ['duplicate','duplicate'], ['null\0byte'], Array.from({length:101},(_,i)=>`${i}`)]) {
+    const dialog = f.ctx.ui.select('Choose', options);
+    const {pending} = await f.integration.request('state');
+    assert.equal(pending.kind, 'terminal');
+    assert.equal(pending.options, undefined);
+    f.original.select(undefined); await dialog;
+  }
+  const options = Array.from({length:100},(_,i)=>`${i}`);
+  const dialog = f.ctx.ui.select('Choose', options);
+  assert.deepEqual((await f.integration.request('state')).pending.options, options);
+  f.original.select(undefined); await dialog;
+});

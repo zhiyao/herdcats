@@ -73,6 +73,7 @@ pub struct Follower {
     stamp: Option<Stamp>,
     bytes: Vec<u8>,
     session: String,
+    pi_branch_ids: Vec<String>,
     buf: Vec<u8>,
 }
 impl Follower {
@@ -130,13 +131,20 @@ impl Follower {
         let header = serde_json::json!({"type":"session","id":session});
         transcript.apply_pi(&header, session)?;
         for row in entries { transcript.apply_pi(row, session)?; }
-        let changed = self.session != session || self.transcript.entries != transcript.entries;
-        if self.session != session {
+        // Streaming entries are temporary projections, not native branch nodes.
+        let branch_ids: Vec<String> = entries.iter()
+            .filter_map(|row| row["id"].as_str())
+            .filter(|id| !id.starts_with("herdcats-live:"))
+            .map(str::to_owned).collect();
+        let reset = self.session != session || !branch_ids.starts_with(&self.pi_branch_ids);
+        let changed = reset || self.transcript.entries != transcript.entries;
+        if reset {
             self.generation += 1;
             self.offset = 0;
             self.bytes.clear();
             self.stamp = None;
         }
+        self.pi_branch_ids = branch_ids;
         self.transcript = transcript;
         self.session = session.to_owned();
         Ok(changed)
