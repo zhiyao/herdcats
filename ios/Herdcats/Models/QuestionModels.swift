@@ -1,6 +1,6 @@
 import Foundation
 
-enum AgentQuestionKind: String, Codable, Sendable { case claude, agy, codexPlan = "codex_plan", codexAsync = "codex_async" }
+enum AgentQuestionKind: String, Codable, Sendable { case claude, agy, cursor, codexPlan = "codex_plan", codexAsync = "codex_async" }
 struct AgentQuestionOption: Codable, Equatable, Sendable {
     let number: UInt32
     let label: String
@@ -16,6 +16,8 @@ struct AgentQuestion: Codable, Equatable, Sendable {
 }
 enum AgentQuestionStep: Codable, Equatable, Sendable {
     case claudeQuestion(index: Int), claudeReview, codexQuestion(index: Int, total: Int), agyQuestion(index: Int, total: Int)
+    /// The one question a Cursor form is showing now; `index` and `total` locate it in the form.
+    case cursorQuestion(index: Int, total: Int)
     case asyncQueued, asyncPicker(index: Int)
     private enum CodingKeys: String, CodingKey { case kind, index, total }
     init(from decoder: Decoder) throws {
@@ -24,6 +26,7 @@ enum AgentQuestionStep: Codable, Equatable, Sendable {
         case "claude_question": self = .claudeQuestion(index: try c.decode(Int.self, forKey: .index))
         case "claude_review": self = .claudeReview
         case "agy_question": self = .agyQuestion(index: try c.decode(Int.self, forKey: .index), total: try c.decode(Int.self, forKey: .total))
+        case "cursor_question": self = .cursorQuestion(index: try c.decode(Int.self, forKey: .index), total: try c.decode(Int.self, forKey: .total))
         case "codex_question": self = .codexQuestion(index: try c.decode(Int.self, forKey: .index), total: try c.decode(Int.self, forKey: .total))
         case "async_queued": self = .asyncQueued
         case "async_picker": self = .asyncPicker(index: try c.decode(Int.self, forKey: .index))
@@ -38,6 +41,8 @@ enum AgentQuestionStep: Codable, Equatable, Sendable {
         case .claudeReview: try c.encode("claude_review", forKey: .kind)
         case .agyQuestion(let index, let total):
             try c.encode("agy_question", forKey: .kind); try c.encode(index, forKey: .index); try c.encode(total, forKey: .total)
+        case .cursorQuestion(let index, let total):
+            try c.encode("cursor_question", forKey: .kind); try c.encode(index, forKey: .index); try c.encode(total, forKey: .total)
         case .codexQuestion(let index, let total):
             try c.encode("codex_question", forKey: .kind); try c.encode(index, forKey: .index); try c.encode(total, forKey: .total)
         case .asyncQueued: try c.encode("async_queued", forKey: .kind)
@@ -50,6 +55,8 @@ enum AgentQuestionStep: Codable, Equatable, Sendable {
         case (.claude, .claudeQuestion(let index)), (.codexAsync, .asyncPicker(let index)): return (0..<count).contains(index)
         case (.claude, .claudeReview): return true
         case (.agy, .agyQuestion(let index, let total)), (.codexPlan, .codexQuestion(let index, let total)): return total == count && (0..<count).contains(index)
+        // A Cursor form is answered one visible question at a time; the next arrives as a new request.
+        case (.cursor, .cursorQuestion(let index, let total)): return count == 1 && (1...8).contains(total) && (0..<total).contains(index)
         case (.codexAsync, .asyncQueued): return true
         default: return false
         }
@@ -73,7 +80,7 @@ struct AgentPendingQuestion: Equatable, Sendable {
             let generation = data.generation, let requestId = data.requestId, validId(requestId),
             let agent = data.agent, agent == identity.agent,
             let kind = data.questionKind.flatMap(AgentQuestionKind.init(rawValue:)),
-            agent == (kind == .claude ? "claude" : kind == .agy ? "antigravity_cli" : "codex"),
+            agent == (kind == .claude ? "claude" : kind == .agy ? "antigravity_cli" : kind == .cursor ? "cursor" : "codex"),
             let questions = data.questions, !questions.isEmpty, questions.count <= 8,
             kind != .codexAsync || questions.count == 1,
             questions.enumerated().allSatisfy({ offset, q in
@@ -83,7 +90,7 @@ struct AgentPendingQuestion: Equatable, Sendable {
                 && Set(q.options.map(\.number)).count == q.options.count
                 && q.options.allSatisfy { $0.number > 0 && !$0.label.isEmpty && $0.label.utf8.count <= 1024
                     && ($0.description?.utf8.count ?? 0) <= 4096 }
-                && (kind == .claude || kind == .agy || !q.multiSelect)
+                && (kind == .claude || kind == .agy || kind == .cursor || !q.multiSelect)
             }),
             let step = data.step, step.isValid(kind: kind, count: questions.count), let fresh = data.fresh,
             (data.countdown?.utf8.count ?? 0) <= 1024

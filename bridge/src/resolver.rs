@@ -149,3 +149,44 @@ pub(crate) fn open_absolute(path: &Path, directory: bool) -> Result<fs::File> {
     let anchor = fs::File::open("/").map_err(|_| "transcript_unavailable")?;
     open_beneath(&anchor, relative, directory)
 }
+
+/// Names directly inside a pinned directory descriptor. The duplicated
+/// descriptor is rewound first, so repeated listings of one anchor are complete.
+pub(crate) fn dir_names(dir: &fs::File, limit: usize) -> Result<Vec<std::ffi::OsString>> {
+    use std::{
+        ffi::{CStr, OsStr},
+        os::{fd::AsRawFd, unix::ffi::OsStrExt},
+    };
+    // SAFETY: dir owns a valid descriptor. fdopendir takes ownership of the
+    // duplicate on success; on failure it is closed here.
+    let fd = unsafe { libc::dup(dir.as_raw_fd()) };
+    if fd < 0 {
+        return Err("transcript_root_unavailable");
+    }
+    let stream = unsafe { libc::fdopendir(fd) };
+    if stream.is_null() {
+        unsafe { libc::close(fd) };
+        return Err("transcript_root_unavailable");
+    }
+    unsafe { libc::rewinddir(stream) };
+    let mut names = Vec::new();
+    let mut outcome = Ok(());
+    loop {
+        // SAFETY: stream is a live DIR; the entry is copied before the next call.
+        let entry = unsafe { libc::readdir(stream) };
+        if entry.is_null() {
+            break;
+        }
+        let name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) }.to_bytes();
+        if name == b"." || name == b".." {
+            continue;
+        }
+        if names.len() >= limit {
+            outcome = Err("transcript_index_too_large");
+            break;
+        }
+        names.push(OsStr::from_bytes(name).to_owned());
+    }
+    unsafe { libc::closedir(stream) };
+    outcome.map(|()| names)
+}

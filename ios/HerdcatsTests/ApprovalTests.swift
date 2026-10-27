@@ -26,6 +26,25 @@ import Testing
         let claude = try #require(event("interaction.pending", seq: 1, extra: ["options": options]).data)
         #expect(throws: (any Error).self) { try AgentPendingApproval.decode(claude) }
     }
+    @Test func cursorAdvertisesOnlyPhoneSafeRowsWithTheirScreenNumbers() throws {
+        let options: [[String: Any]] = [[1, "Run (once) (y)"], [4, "Skip & tell the agent what to do instead (esc or n)"]]
+            .map { ["number": $0[0], "label_lines": [$0[1]], "key": "navigate"] }
+        let data = try #require(event("interaction.pending", seq: 1, agent: "cursor", extra: ["options": options, "selected": 0, "tool_name": "Shell"]).data)
+        let pending = try AgentPendingApproval.decode(data)
+        #expect(pending.agent == "cursor")
+        #expect(pending.options.map(\.number) == [1, 4])
+        #expect(pending.options[0].labelLines == ["Run (once) (y)"])
+        // A hidden row highlighted at the desk arrives as a null selection.
+        let hidden = try #require(event("interaction.pending", seq: 1, agent: "cursor", extra: ["options": options, "selected": NSNull()]).data)
+        #expect(try AgentPendingApproval.decode(hidden).selected == nil)
+        // Cursor only ever answers by guarded navigation, never a typed key.
+        let typed: [[String: Any]] = [["number": 1, "label_lines": ["Run (once) (y)"], "key": "y"]]
+        let wrong = try #require(event("interaction.pending", seq: 1, agent: "cursor", extra: ["options": typed]).data)
+        #expect(throws: (any Error).self) { try AgentPendingApproval.decode(wrong) }
+        // The identity's agent must match the payload's agent.
+        let mismatched = try #require(event("interaction.pending", seq: 1, agent: "cursor", extra: ["options": options, "identity": ["pane_id": "w1:p1", "terminal_id": "t", "agent": "claude", "native_session_id": "s"]]).data)
+        #expect(throws: (any Error).self) { try AgentPendingApproval.decode(mismatched) }
+    }
     @Test func pendingAndResolvedPreserveRowsAndScope() throws {
         for agent in ["claude", "codex"] {
             let owner = UUID(), state = AgentTimelineState()

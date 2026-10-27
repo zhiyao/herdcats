@@ -61,6 +61,7 @@ pub enum AgentType {
     Codex,
     Agy,
     Pi,
+    Cursor,
 }
 
 #[derive(Default)]
@@ -75,6 +76,9 @@ pub struct Follower {
     session: String,
     pi_branch_ids: Vec<String>,
     buf: Vec<u8>,
+    /// Unconsumed bytes after `bytes` at the last pass: an unfinished line or,
+    /// for Cursor, the volatile final record. Equal bytes mean nothing new.
+    tail: Vec<u8>,
 }
 impl Follower {
     pub fn for_agent(agent_type: AgentType) -> Self {
@@ -202,7 +206,7 @@ impl Follower {
             || self.session != session
             || !self.buf.starts_with(&self.bytes);
 
-        if !reset && self.buf.len() == self.bytes.len() {
+        if !reset && self.buf[self.bytes.len()..] == self.tail[..] {
             self.stamp = Some(before);
             return Ok(false);
         }
@@ -218,12 +222,31 @@ impl Follower {
             if part.last() != Some(&b'\n') {
                 break;
             }
+            // Cursor overwrites its trailing `turn_ended` marker in place when
+            // the next prompt starts, and that write can be observed torn.
+            // A final complete line that is the marker or unparsable is held
+            // back, not consumed: the next pass rewinds to this line's start,
+            // and the unchanged prefix never counts as a rewrite.
+            if self.agent_type == AgentType::Cursor
+                && part != b"\n"
+                && offset + part.len() == self.buf.len()
+                && part.len() <= MAX_RECORD
+                && serde_json::from_slice::<serde_json::Value>(part)
+                    .map_or(true, |row| crate::cursor::is_turn_end(&row))
+            {
+                break;
+            }
             if part != b"\n" {
                 let result = match self.agent_type {
                     AgentType::Agy => {
                         if part.len() > MAX_RECORD { return Err("record_too_large"); }
                         let row = serde_json::from_slice(part).map_err(|_| "invalid_transcript")?;
                         transcript.apply_agy(&row, offset, part.len(), self.preserve_content)
+                    },
+                    AgentType::Cursor => {
+                        if part.len() > MAX_RECORD { return Err("record_too_large"); }
+                        let row = serde_json::from_slice(part).map_err(|_| "invalid_transcript")?;
+                        transcript.apply_cursor(&row, offset, part.len(), self.preserve_content)
                     },
                     AgentType::Claude => {
                         if part.len() > MAX_RECORD {
@@ -258,7 +281,7 @@ impl Follower {
                 }
                 if self.preserve_content {
                     match self.agent_type {
-                        AgentType::Agy => {},
+                        AgentType::Agy | AgentType::Cursor => {},
                         AgentType::Claude => transcript.preserve_record(part, session, offset)?,
                         AgentType::Codex => {
                             transcript.preserve_codex_record(part, session, offset)?
@@ -281,6 +304,8 @@ impl Follower {
                 .extend_from_slice(&self.buf[self.bytes.len()..offset]);
         }
         self.offset = offset as u64;
+        self.tail.clear();
+        self.tail.extend_from_slice(&self.buf[offset..]);
         self.transcript = transcript;
         self.stamp = Some(before);
         self.session = session.to_owned();

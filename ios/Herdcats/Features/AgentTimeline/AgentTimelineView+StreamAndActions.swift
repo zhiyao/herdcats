@@ -277,6 +277,7 @@ extension AgentTimelineView {
             if activeOwner == owner {
                 timeline.modelControl.connect(client, supported: capabilities?.modelControl == true)
                 timeline.connectPi(capabilities?.pi == true ? client : nil)
+                timeline.connectPrompts(capabilities?.cursorPrompts == true ? client : nil)
                 activeClient = client
                 bridgeCapabilities = await connection.bridgeCapabilities(for: ownedConnection.generation)
                 bridgeVersion = await connection.bridgeVersion(for: ownedConnection.generation)

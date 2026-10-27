@@ -9,6 +9,7 @@ pub enum QuestionKind {
     CodexPlan,
     CodexAsync,
     AgyAsk,
+    CursorAsk,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

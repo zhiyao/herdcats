@@ -101,6 +101,8 @@ extension HerdrConnection {
         owned: ConnectionGeneration
     ) async throws {
         try requireGeneration(owned)
+        // Cursor prompts need the bridge's screen guard; never type into it blind.
+        guard agent != "cursor" else { throw HerdrError.invalidConfiguration(CursorPromptPolicy.bridgeMessage) }
         if Self.shouldTypeAndEnterForTimelinePrompt(agent: agent ?? "", agentStatus: status?.rawValue) {
             try await paneSubmitWorkingCodexPromptUnlocked(paneId: paneId, text: text, owned: owned)
             return
@@ -237,6 +239,7 @@ extension HerdrConnection {
     /// Native composition uses the existing prompt API, with a fresh occupant
     /// check. It never falls back to shell input or answers a blocked request.
     func submitTimelinePrompt(text: String, identity: AgentTimelineIdentity, owned: ConnectionGeneration) async throws {
+        guard identity.agent != "cursor" else { throw HerdrError.invalidConfiguration(CursorPromptPolicy.bridgeMessage) }
         try await paneInput.run(paneId: identity.paneId) {
             try await self.requireGeneration(owned)
             let live = try await self.fetch(TimelinePromptAgentResult.self,args:"agent get \(Self.shellSafeArgument(identity.paneId))").agent

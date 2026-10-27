@@ -409,6 +409,7 @@ extension AgentTimelineView {
         if agent == "pi" && code == "pi_extension_unavailable" { return "Load Herdcats Pi extension" }
         if agent == "pi" && code == "unsafe_transcript_path" { return "Session history could not be read safely" }
         if isCodex && isNoSession { return "Waiting for Codex session" }
+        if agent == "cursor" && isNoSession { return "Cursor chat not identified" }
         if isCodex && isCwdMismatch { return "This pane’s Codex session could not be confirmed" }
         if isMissing { return "Set up Timeline" }
         return "Timeline unavailable"
@@ -444,6 +445,13 @@ extension AgentTimelineView {
         if TimelineAgentAvailability.canonical(agent) == "antigravity_cli",
            ["helper_missing", "helper_update_required", "unsupported_agent", "agy_bridge_required"].contains(code) {
             return "Agy conversations require a source build of Herdcats Bridge with Agy support. The published \(pinnedVersion) installer supports Claude and Codex. Install the source bridge manually on this SSH computer, then check again. You can continue in Terminal."
+        }
+        if agent == "cursor",
+           ["helper_missing", "helper_update_required", "unsupported_agent", "cursor_bridge_required"].contains(code) {
+            return "Cursor conversations require a source build of Herdcats Bridge with Cursor support. The published \(pinnedVersion) installer supports Claude and Codex. Install the source bridge manually on this SSH computer, then check again. You can continue in Terminal."
+        }
+        if agent == "cursor", ["session_reference_unavailable", "ambiguous_session", "invalid_session_reference"].contains(code) {
+            return "Herdr hasn't reported which Cursor chat this pane is showing. This happens after resuming a chat with --resume. Start a new Cursor session in this pane to see its messages here, or continue in Terminal."
         }
         let isCodex = agent == "codex"
         let canSupportCodex = supportedAgents.contains("codex")
