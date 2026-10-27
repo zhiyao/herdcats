@@ -32,18 +32,20 @@ struct PhoneAnswersSheet: View {
     @State private var failed = false
 
     private var agent: ApprovalAgent? { ApprovalAgent(rawValue: selection.key.agent) }
-    private var agentTitle: String { agent == .codex ? "Codex" : "Claude" }
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("\(agentTitle) phone answers").font(.jost(.title2, weight: .semibold))
-                    if selection.mode.requiresConfirmation {
-                        Text("This removes the Herdcats hook and deletes recorded requests; your other hooks are untouched.")
-                    } else {
-                        Text("Adds one hook to \(agent == .codex ? "~/.codex/hooks.json" : "~/.claude/settings.json") that records requests so your phone can show them.")
-                        Text("The terminal dialog still decides. Nothing is sent until you tap an option. Backups are kept.")
-                        if agent == .codex { Text("Codex will ask you once, at your desk, to trust the new hook.") }
+                    Text(agent.map { "\($0.displayName) phone answers" } ?? "Phone answers not available for this agent")
+                        .font(.jost(.title2, weight: .semibold))
+                    if let agent {
+                        if selection.mode.requiresConfirmation {
+                            Text("This removes the Herdcats hook and deletes recorded requests; your other hooks are untouched.")
+                        } else {
+                            Text("Adds one hook to \(agent.hookSettingsPath) that records requests so your phone can show them.")
+                            Text("The terminal dialog still decides. Nothing is sent until you tap an option. Backups are kept.")
+                            if agent == .codex { Text("Codex will ask you once, at your desk, to trust the new hook.") }
+                        }
                     }
                     if !isCurrent() { Text("Reconnect to this host to continue.").foregroundStyle(Theme.textMuted) }
                     if let feedback {

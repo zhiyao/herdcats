@@ -111,12 +111,7 @@ struct WorktreePresentationTests {
                 isLinkedWorktree: false
             )
         )
-        let machine = SpaceMachine(
-            scope: ConnectionIdentity(host: "example.test", port: 22, username: "tester"),
-            label: "Test machine",
-            order: 0
-        )
-        let source = Space(workspace: sourceWorkspace, agents: [], machine: machine)
+        let source = Space(workspace: sourceWorkspace, agents: [])
         let returnedWorkspace = Workspace(
             workspaceId: "linked",
             label: "Feature",
@@ -139,7 +134,7 @@ struct WorktreePresentationTests {
             openWorkspaceId: "linked"
         )
         let presented = WorktreePresentation.space(returnedWorkspace, entry: entry, source: source)
-        #expect(presented.machine == machine && presented.workspace.worktree?.repoRoot == "/repo")
+        #expect(presented.workspace.worktree?.repoRoot == "/repo")
         let groups = SpaceGroup.group(SpacePresentationOverlay.visibleSpaces([source], unconfirmed: [presented]))
         #expect(groups.count == 1)
         #expect(groups[0].worktrees.map(\.id) == [presented.id])
@@ -352,6 +347,36 @@ struct OpenSSHKeyParserTests {
         #expect(validForm.keyValidationError == nil)
         #expect(validForm.derivedPublicKey == OpenSSHParserFixture.publicKeyLine)
         #expect(validForm.canConnect)
+    }
+
+    @Test func directPathPromptsOnlyForMissingEncryptedPassphrase() throws {
+        let entry = RecentConnection(host: "fixture.example", port: 22,
+            username: "tester", authMode: "privateKey", remember: true)
+        let keychain = FakeKeychainOperations()
+        try KeychainStore.save(Self.encrypted64, account: entry.secretAccount, using: keychain)
+        let locked = try ConnectionSignIn.load(entry, using: keychain)
+        #expect(!locked.needsSecret)
+        #expect(locked.needsPassphrase)
+        #expect(!locked.isReady)
+        try KeychainStore.save("phrase", account: entry.secretAccount + ".passphrase", using: keychain)
+        #expect(try ConnectionSignIn.load(entry, using: keychain).isReady)
+    }
+
+    @Test func encryptedPassphraseIsSavedOnlyWithExplicitPreference() throws {
+        let suite = "EncryptedSignIn.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let entry = RecentConnection(host: "fixture.example", port: 22,
+            username: "tester", authMode: "privateKey", remember: true)
+        let keychain = FakeKeychainOperations()
+        var value = ConnectionSignIn(entry: entry, secret: Self.encrypted64, passphrase: "phrase")
+        try value.persist(defaults: defaults, using: keychain)
+        #expect(try KeychainStore.load(account: entry.secretAccount + ".passphrase", using: keychain) == nil)
+        value.savePassphrase = true
+        try value.persist(defaults: defaults, using: keychain)
+        #expect(try KeychainStore.load(account: entry.secretAccount + ".passphrase", using: keychain) == "phrase")
+        #expect(try RecentConnectionStore.load(defaults: defaults, using: keychain).map(\.id) == [entry.id])
+        #expect(try RecentConnectionStore.load(defaults: defaults, using: keychain).first?.lastConnectedAt != nil)
     }
 
     @MainActor

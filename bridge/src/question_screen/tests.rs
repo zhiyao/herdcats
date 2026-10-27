@@ -21,6 +21,7 @@ fn claude_questions(transcript: &[Value]) -> Vec<PendingQuestion> {
 
 fn pending(kind: QuestionKind) -> PendingQuestion {
     let source = match kind {
+        QuestionKind::AgyAsk => panic!("Agy fixtures are covered by agy_interactions"),
         QuestionKind::ClaudeAsk => include_str!(
             "../../../compatibility/phase2/fixtures/claude-question-transcript-pending.jsonl"
         ),
@@ -552,7 +553,9 @@ fn every_fixture_survives_hard_wrapping_at_narrow_widths() {
     cases.push(first_notes_capture());
     cases.push((
         pending(QuestionKind::CodexAsync),
-        include_str!("../../../compatibility/phase2/fixtures/codex-async-queued-nocountdown-screen.txt"),
+        include_str!(
+            "../../../compatibility/phase2/fixtures/codex-async-queued-nocountdown-screen.txt"
+        ),
     ));
     for (request, screen) in cases {
         let original = parse(request.kind, screen, &request).unwrap();

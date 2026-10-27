@@ -17,6 +17,15 @@ import Testing
         data.merge(extra) { _, new in new }
         return try AgentBridgeFrame.decode(JSONSerialization.data(withJSONObject: ["event": name, "epoch": "epoch-a", "seq": seq, "data": data]))
     }
+    @Test func agyNavigationOptionsPreservePermissionScopes() throws {
+        let options: [[String: Any]] = ["Yes, run command", "Always allow in this conversation", "Always allow (Persist to settings.json)", "No, cancel"].enumerated().map { ["number": $0.offset + 1, "label_lines": [$0.element], "key": "navigate"] }
+        let data = try #require(event("interaction.pending", seq: 1, agent: "antigravity_cli", extra: ["options": options, "selected": 0]).data)
+        let pending = try AgentPendingApproval.decode(data)
+        #expect(pending.options.count == 4)
+        #expect(pending.options[2].labelLines == ["Always allow (Persist to settings.json)"])
+        let claude = try #require(event("interaction.pending", seq: 1, extra: ["options": options]).data)
+        #expect(throws: (any Error).self) { try AgentPendingApproval.decode(claude) }
+    }
     @Test func pendingAndResolvedPreserveRowsAndScope() throws {
         for agent in ["claude", "codex"] {
             let owner = UUID(), state = AgentTimelineState()

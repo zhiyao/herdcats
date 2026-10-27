@@ -94,25 +94,41 @@ enum PaneLastUpdatedStore {
     /// Legacy unscoped store is preserved for inspection / future explicit import.
     /// It is never auto-merged into a connection scope.
 
-    private static var inMemoryScopedCache: [String: [String: Record]]?
+    private static let cacheLock = NSLock()
+    nonisolated(unsafe) private static var inMemoryScopedCache: [String: [String: Record]]?
 
     static func loadScoped(defaults: UserDefaults = .standard) -> [String: [String: Record]] {
-        if defaults == .standard, let cached = inMemoryScopedCache {
-            return cached
+        if defaults == .standard {
+            cacheLock.lock()
+            if let cached = inMemoryScopedCache {
+                cacheLock.unlock()
+                return cached
+            }
+            cacheLock.unlock()
         }
         guard let data = defaults.data(forKey: scopedStorageKey),
               let decoded = try? JSONDecoder().decode([String: [String: Record]].self, from: data)
         else {
-            if defaults == .standard { inMemoryScopedCache = [:] }
+            if defaults == .standard {
+                cacheLock.lock()
+                inMemoryScopedCache = [:]
+                cacheLock.unlock()
+            }
             return [:]
         }
-        if defaults == .standard { inMemoryScopedCache = decoded }
+        if defaults == .standard {
+            cacheLock.lock()
+            inMemoryScopedCache = decoded
+            cacheLock.unlock()
+        }
         return decoded
     }
 
     static func saveScoped(_ records: [String: [String: Record]], defaults: UserDefaults = .standard) {
         if defaults == .standard {
+            cacheLock.lock()
             inMemoryScopedCache = records
+            cacheLock.unlock()
         }
         guard let data = try? JSONEncoder().encode(records) else { return }
         defaults.set(data, forKey: scopedStorageKey)
@@ -172,6 +188,18 @@ enum PaneUpdatedFormat {
         return format(date, calendar: calendar, locale: locale, template: "yMMMd")
     }
 
+    private struct CacheKey: Hashable {
+        let template: String?
+        let dateStyle: DateFormatter.Style
+        let timeStyle: DateFormatter.Style
+        let localeIdentifier: String
+        let calendarIdentifier: Calendar.Identifier
+        let timeZoneIdentifier: String
+    }
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var formatters: [CacheKey: DateFormatter] = [:]
+
     private static func format(
         _ date: Date,
         calendar: Calendar,
@@ -180,6 +208,19 @@ enum PaneUpdatedFormat {
         timeStyle: DateFormatter.Style = .none,
         template: String? = nil
     ) -> String {
+        let key = CacheKey(
+            template: template,
+            dateStyle: dateStyle,
+            timeStyle: timeStyle,
+            localeIdentifier: locale.identifier,
+            calendarIdentifier: calendar.identifier,
+            timeZoneIdentifier: calendar.timeZone.identifier
+        )
+        lock.lock()
+        defer { lock.unlock() }
+        if let formatter = formatters[key] {
+            return formatter.string(from: date)
+        }
         let formatter = DateFormatter()
         formatter.calendar = calendar
         formatter.timeZone = calendar.timeZone
@@ -190,6 +231,7 @@ enum PaneUpdatedFormat {
             formatter.dateStyle = dateStyle
             formatter.timeStyle = timeStyle
         }
+        formatters[key] = formatter
         return formatter.string(from: date)
     }
 }

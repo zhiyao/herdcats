@@ -141,7 +141,7 @@ struct CodexTimelineGatingTests {
     @Test func supportsCodexAndClaude() {
         #expect(TimelineAgentAvailability.supports(agent: "claude"))
         #expect(TimelineAgentAvailability.supports(agent: "codex"))
-        #expect(!TimelineAgentAvailability.supports(agent: "pi"))
+        #expect(TimelineAgentAvailability.supports(agent: "pi"))
         #expect(!TimelineAgentAvailability.supports(agent: "cursor"))
         #expect(!TimelineAgentAvailability.supports(agent: nil))
     }
@@ -169,66 +169,6 @@ struct CodexTimelineGatingTests {
 
         let probeForCodexOnNew = try HostHelperProbe(output: newHelperReport, agent: "codex")
         #expect(probeForCodexOnNew == .present(version: "0.2.0", managed: true, compatible: true))
-    }
-}
-
-@Suite("Routed host Timeline pane copy and gating")
-@MainActor struct RoutedHostTimelinePaneTests {
-    @Test func routedHostCopyUsesGatewayHostAndMachineLabel() {
-        let full = "This machine is reached through Herdr on studio-mac. Timeline can read sessions only on a computer Herdcats connects to with SSH. To use Timeline here, add Studio Mini as its own connection. You can still send messages below."
-        #expect(AgentTimelineView.routedHostUnavailableTitle == "Timeline isn't available here yet")
-        #expect(AgentTimelineView.routedHostExplanation(gatewayHost: "studio-mac", machineLabel: "Studio Mini") == full)
-        #expect(AgentTimelineView.explanation("routed_host_unsupported", agent: "claude", gatewayHost: "studio-mac", machineLabel: "Studio Mini") == full)
-        #expect(AgentTimelineView.explanation("routed_host_unsupported", agent: "codex", gatewayHost: "studio-mac", machineLabel: "Studio Mini") == full)
-    }
-
-    @Test func routedHostCopyFallsBackWithoutInventingNames() {
-        #expect(AgentTimelineView.routedHostExplanation(gatewayHost: nil, machineLabel: nil)
-            == "This machine is reached through Herdr on your SSH computer. Timeline can read sessions only on a computer Herdcats connects to with SSH. To use Timeline here, add this machine as its own connection. You can still send messages below.")
-        // Missing gateway host keeps the machine label.
-        let noHost = AgentTimelineView.routedHostExplanation(gatewayHost: nil, machineLabel: "Studio Mini")
-        #expect(noHost.contains("through Herdr on your SSH computer."))
-        #expect(noHost.contains("add Studio Mini as its own connection."))
-        // Missing machine label keeps the gateway host.
-        let noLabel = AgentTimelineView.routedHostExplanation(gatewayHost: "studio-mac", machineLabel: nil)
-        #expect(noLabel.contains("through Herdr on studio-mac."))
-        #expect(noLabel.contains("add this machine as its own connection."))
-        // Blank or placeholder hosts never render as names.
-        #expect(!AgentTimelineView.routedHostExplanation(gatewayHost: "  ", machineLabel: "  ").contains("  "))
-        #expect(!AgentTimelineView.routedHostExplanation(gatewayHost: "unknown", machineLabel: nil).contains("on unknown"))
-    }
-
-    @Test func routedHostPaneShowsNoRetrySetupOrDaemonActions() {
-        for agent in ["claude", "codex"] {
-            #expect(AgentTimelineView.unavailableTitle(code: "routed_host_unsupported", agent: agent) == "Timeline isn't available here yet")
-            #expect(!AgentTimelineView.showsPaneCheckAgain(code: "routed_host_unsupported", agent: agent))
-            #expect(!AgentTimelineView.showsInstallOrUpgrade(code: "routed_host_unsupported", agent: agent))
-            #expect(!AgentTimelineView.isNeedsUpgrade(code: "routed_host_unsupported", agent: agent))
-            #expect(AgentTimelineView.codexNoSessionAction(agent: agent, code: "routed_host_unsupported", route: nil, capabilities: AgentBridgeCapabilities(claudeTimeline: true, codexTimeline: true, codexDaemonConfig: true, codexDaemonStop: true, recordContent: true), codexDaemon: "running") == .manualFallback)
-        }
-        // Other unavailable codes keep the pane Check again button.
-        #expect(AgentTimelineView.showsPaneCheckAgain(code: "herdr_unavailable", agent: "claude"))
-    }
-
-    @Test func routedHostPaneReadsGatewayAndMachineFromRoute() {
-        let machine = HerdrMachine(id: "studio-mini", label: "Studio Mini", target: "studio-mini.local", session: "studio-mini", enabled: true)
-        let gatewayIdentity = ConnectionIdentity(host: "gateway.example.com", port: 2222, username: "demo")
-        let routed = HerdrConnection(gateway: HerdrConnection(), machine: machine, generation: ConnectionGeneration(rawValue: 1), identity: gatewayIdentity)
-        let view = AgentTimelineView(
-            paneId: "p-routed",
-            agent: "codex",
-            connection: routed,
-            timeline: AgentTimelineState(),
-            topOverlayInset: 0,
-            bottomOverlayInset: 0,
-            onOutputInteraction: {},
-            setupTarget: gatewayIdentity.scoped(to: machine),
-            onUseTerminal: {},
-            onSetupComplete: {}
-        )
-        #expect(view.title("routed_host_unsupported") == "Timeline isn't available here yet")
-        #expect(view.explanation("routed_host_unsupported")
-            == "This machine is reached through Herdr on gateway.example.com. Timeline can read sessions only on a computer Herdcats connects to with SSH. To use Timeline here, add Studio Mini as its own connection. You can still send messages below.")
     }
 }
 
@@ -684,35 +624,29 @@ struct CodexDaemonConfigTests {
         let stopCaps = AgentBridgeCapabilities(claudeTimeline: true, codexTimeline: true, codexDaemonConfig: true, codexDaemonStop: true, recordContent: true)
         let configOnlyCaps = AgentBridgeCapabilities(claudeTimeline: true, codexTimeline: true, codexDaemonConfig: true, recordContent: true)
         let oldCaps = AgentBridgeCapabilities(claudeTimeline: true, codexTimeline: true, recordContent: true)
-        let gateway = HerdrConnection()
-        let machine = HerdrMachine(id: "child", label: "Child", target: "u@child", session: "default", enabled: true)
-        let route = HerdrMachineRoute(gateway: gateway, machine: machine, generation: ConnectionGeneration(rawValue: 1))
 
         for code in ["session_reference_unavailable", "ambiguous_session", "invalid_session_reference"] {
             // 3A: bridge can stop the server; daemon running or unverifiable -> offer the stop.
-            #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: code, route: nil, capabilities: stopCaps, codexDaemon: "running") == .turnOffServer)
-            #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: code, route: nil, capabilities: stopCaps, codexDaemon: "unknown") == .turnOffServer)
+            #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: code, capabilities: stopCaps, codexDaemon: "running") == .turnOffServer)
+            #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: code, capabilities: stopCaps, codexDaemon: "unknown") == .turnOffServer)
             // Only a missing reference can be resolved by sending the first message.
             let daemonOffAction: AgentTimelineView.CodexNoSessionAction =
                 code == "session_reference_unavailable" ? .waitForSession : .identifySession
-            #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: code, route: nil, capabilities: stopCaps, codexDaemon: "not_running") == daemonOffAction)
-            #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: code, route: nil, capabilities: stopCaps, codexDaemon: nil) == daemonOffAction)
-            #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: code, route: nil, capabilities: stopCaps, codexDaemon: "something_new") == daemonOffAction)
+            #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: code, capabilities: stopCaps, codexDaemon: "not_running") == daemonOffAction)
+            #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: code, capabilities: stopCaps, codexDaemon: nil) == daemonOffAction)
+            #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: code, capabilities: stopCaps, codexDaemon: "something_new") == daemonOffAction)
             // 3B: 0.2.0/0.2.1 bridge can only change config -> upgrade offer, no config-only stop button.
-            #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: code, route: nil, capabilities: configOnlyCaps, codexDaemon: "running") == .upgradeBridge)
-            #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: code, route: nil, capabilities: configOnlyCaps, codexDaemon: nil) == .upgradeBridge)
+            #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: code, capabilities: configOnlyCaps, codexDaemon: "running") == .upgradeBridge)
+            #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: code, capabilities: configOnlyCaps, codexDaemon: nil) == .upgradeBridge)
             // 3C: neither capability -> manual fallback only.
-            #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: code, route: nil, capabilities: oldCaps, codexDaemon: "running") == .manualFallback)
-            #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: code, route: nil, capabilities: nil, codexDaemon: "running") == .manualFallback)
-            // Routed hosts never get any of these actions, whatever the bridge can do.
-            #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: code, route: route, capabilities: stopCaps, codexDaemon: "running") == .manualFallback)
-            #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: code, route: route, capabilities: configOnlyCaps, codexDaemon: "running") == .manualFallback)
+            #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: code, capabilities: oldCaps, codexDaemon: "running") == .manualFallback)
+            #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: code, capabilities: nil, codexDaemon: "running") == .manualFallback)
         }
         // Not a no-session code, or not Codex -> none of the Codex actions apply.
-        #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: "session_cwd_mismatch", route: nil, capabilities: stopCaps, codexDaemon: "running") == .manualFallback)
-        #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: "transcript_root_unavailable", route: nil, capabilities: stopCaps, codexDaemon: "running") == .manualFallback)
-        #expect(AgentTimelineView.codexNoSessionAction(agent: "claude", code: "session_reference_unavailable", route: nil, capabilities: stopCaps, codexDaemon: "running") == .manualFallback)
-        #expect(AgentTimelineView.codexNoSessionAction(agent: nil, code: "session_reference_unavailable", route: nil, capabilities: stopCaps, codexDaemon: "running") == .manualFallback)
+        #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: "session_cwd_mismatch", capabilities: stopCaps, codexDaemon: "running") == .manualFallback)
+        #expect(AgentTimelineView.codexNoSessionAction(agent: "codex", code: "transcript_root_unavailable", capabilities: stopCaps, codexDaemon: "running") == .manualFallback)
+        #expect(AgentTimelineView.codexNoSessionAction(agent: "claude", code: "session_reference_unavailable", capabilities: stopCaps, codexDaemon: "running") == .manualFallback)
+        #expect(AgentTimelineView.codexNoSessionAction(agent: nil, code: "session_reference_unavailable", capabilities: stopCaps, codexDaemon: "running") == .manualFallback)
     }
 
     @Test func invalidOrAmbiguousSessionKeepsRecoveryWhenDaemonIsOff() {
@@ -720,7 +654,7 @@ struct CodexDaemonConfigTests {
         for code in ["ambiguous_session", "invalid_session_reference"] {
             for daemon: String? in ["not_running", nil, "something_new"] {
                 let action = AgentTimelineView.codexNoSessionAction(
-                    agent: "codex", code: code, route: nil, capabilities: capabilities, codexDaemon: daemon)
+                    agent: "codex", code: code, capabilities: capabilities, codexDaemon: daemon)
                 #expect(action != .waitForSession)
                 #expect(AgentTimelineView.codexNoSessionTitle(action) == "Codex session not identified")
                 #expect(AgentTimelineView.codexNoSessionExplanation(action, code: code, agent: "codex")
@@ -943,10 +877,10 @@ struct CodexDaemonConfigTests {
 
         // A running shared server gets the in-app stop; an already-off one does not.
         #expect(AgentTimelineView.codexNoSessionAction(
-            agent: "codex", code: caughtCode ?? "", route: nil, capabilities: recordedCaps, codexDaemon: "running"
+            agent: "codex", code: caughtCode ?? "", capabilities: recordedCaps, codexDaemon: "running"
         ) == .turnOffServer)
         #expect(AgentTimelineView.codexNoSessionAction(
-            agent: "codex", code: caughtCode ?? "", route: nil, capabilities: recordedCaps, codexDaemon: "not_running"
+            agent: "codex", code: caughtCode ?? "", capabilities: recordedCaps, codexDaemon: "not_running"
         ) == .waitForSession)
 
         await connection.closeAllAgentBridges()
@@ -1148,24 +1082,22 @@ struct CodexDaemonConfigTests {
 
         // Live no-session state with the server running or unverifiable ->
         // the stop may run.
-        #expect(AgentTimelineView.canRunCodexDaemonStop(phase: .unavailable(code), agent: "codex", route: nil, capabilities: stopCaps, codexDaemon: "running"))
-        #expect(AgentTimelineView.canRunCodexDaemonStop(phase: .unavailable("ambiguous_session"), agent: "codex", route: nil, capabilities: stopCaps, codexDaemon: "unknown"))
+        #expect(AgentTimelineView.canRunCodexDaemonStop(phase: .unavailable(code), agent: "codex", capabilities: stopCaps, codexDaemon: "running"))
+        #expect(AgentTimelineView.canRunCodexDaemonStop(phase: .unavailable("ambiguous_session"), agent: "codex", capabilities: stopCaps, codexDaemon: "unknown"))
 
         // The session was identified (or the pane reconnected/disconnected)
         // while the sheet was open -> never stop a working server.
-        #expect(!AgentTimelineView.canRunCodexDaemonStop(phase: .ready, agent: "codex", route: nil, capabilities: stopCaps, codexDaemon: nil))
-        #expect(!AgentTimelineView.canRunCodexDaemonStop(phase: .loading, agent: "codex", route: nil, capabilities: stopCaps, codexDaemon: nil))
-        #expect(!AgentTimelineView.canRunCodexDaemonStop(phase: .disconnected, agent: "codex", route: nil, capabilities: stopCaps, codexDaemon: nil))
-        #expect(!AgentTimelineView.canRunCodexDaemonStop(phase: .unavailable("session_cwd_mismatch"), agent: "codex", route: nil, capabilities: stopCaps, codexDaemon: "running"))
+        #expect(!AgentTimelineView.canRunCodexDaemonStop(phase: .ready, agent: "codex", capabilities: stopCaps, codexDaemon: nil))
+        #expect(!AgentTimelineView.canRunCodexDaemonStop(phase: .loading, agent: "codex", capabilities: stopCaps, codexDaemon: nil))
+        #expect(!AgentTimelineView.canRunCodexDaemonStop(phase: .disconnected, agent: "codex", capabilities: stopCaps, codexDaemon: nil))
+        #expect(!AgentTimelineView.canRunCodexDaemonStop(phase: .unavailable("session_cwd_mismatch"), agent: "codex", capabilities: stopCaps, codexDaemon: "running"))
 
         // The server is already off (or unreported) -> no stop.
-        #expect(!AgentTimelineView.canRunCodexDaemonStop(phase: .unavailable(code), agent: "codex", route: nil, capabilities: stopCaps, codexDaemon: "not_running"))
-        #expect(!AgentTimelineView.canRunCodexDaemonStop(phase: .unavailable(code), agent: "codex", route: nil, capabilities: stopCaps, codexDaemon: nil))
+        #expect(!AgentTimelineView.canRunCodexDaemonStop(phase: .unavailable(code), agent: "codex", capabilities: stopCaps, codexDaemon: "not_running"))
+        #expect(!AgentTimelineView.canRunCodexDaemonStop(phase: .unavailable(code), agent: "codex", capabilities: stopCaps, codexDaemon: nil))
 
-        // Older bridge (config-only) or routed host never offered the stop.
-        #expect(!AgentTimelineView.canRunCodexDaemonStop(phase: .unavailable(code), agent: "codex", route: nil, capabilities: AgentBridgeCapabilities(claudeTimeline: true, codexTimeline: true, codexDaemonConfig: true, recordContent: true), codexDaemon: "running"))
-        let route = HerdrMachineRoute(gateway: HerdrConnection(), machine: HerdrMachine(id: "child", label: "Child", target: "u@child", session: "default", enabled: true), generation: ConnectionGeneration(rawValue: 1))
-        #expect(!AgentTimelineView.canRunCodexDaemonStop(phase: .unavailable(code), agent: "codex", route: route, capabilities: stopCaps, codexDaemon: "running"))
+        // Older bridge (config-only) never offered the stop.
+        #expect(!AgentTimelineView.canRunCodexDaemonStop(phase: .unavailable(code), agent: "codex", capabilities: AgentBridgeCapabilities(claudeTimeline: true, codexTimeline: true, codexDaemonConfig: true, recordContent: true), codexDaemon: "running"))
     }
 }
 

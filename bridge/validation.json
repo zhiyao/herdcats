@@ -1,18 +1,22 @@
 {
-  "date": "2026-10-15",
-  "status": "claude_read_only_host_foundation_verified",
+  "date": "2026-10-26",
+  "status": "agy_source_verified_unpublished",
   "tests": {
-    "rust": 47,
+    "rust": 472,
     "rust_result": "passed",
-    "command": "cargo test --manifest-path bridge/Cargo.toml --offline",
+    "command": "cargo test --manifest-path bridge/Cargo.toml",
     "clippy": "all targets with -D warnings passed",
     "phase0_evidence": 10,
     "phase0_result": "passed",
     "installer": 9,
     "installer_result": "passed against debug and release binaries in temporary directories",
-    "release_build": "0.3.0 native CI builds passed (CI39789135682) and 344 rust tests passed",
+    "release_build": "0.4.0 source release build passed locally; no Agy artifact published",
     "setup_distribution_python": 33,
-    "setup_distribution_result": "33 passed, including9 tests executing the actual mobile probe/install shell scripts"
+    "setup_distribution_result": "33 passed on 2026-10-26 against final source release binary; packaging, download/install and mobile launcher fixtures",
+    "ios_unit": 595,
+    "ios_unit_suites": 107,
+    "ios_unit_result": "real ios/Herdcats.xcodeproj HerdcatsTests target passed on iPhone 18 Pro simulator; isolated /private/tmp/hc-agy-pr-real/DerivedData",
+    "ios_unit_log": "/private/tmp/hc-agy-pr-ios-unit-final.log"
   },
   "independent_review": {
     "findings_fixed": [
@@ -54,7 +58,7 @@
     "larger-history performance and release signing"
   ],
   "production_ios_changed": true,
-  "committed_or_pushed": true,
+  "committed_or_pushed": false,
   "setup": {
     "version_probe": "--version-json reports package version, bridge protocol, Herdr protocol and implemented adapter without socket access",
     "installer": "Explicit trusted binary and destination; atomic copy; regular replacement requires --replace; nonregular destinations rejected; bounded timed probe with child reaping",
@@ -123,5 +127,34 @@
     "review": "Independent review found no P0/P1; P2 unfamiliar text shape fixed with regression",
     "validation": "47 Rust tests,33 installer/distribution tests, Clippy and local release build passed",
     "public_installer": "0.1.4 published and verified in an isolated temporary HOME; no user helper changed"
+  },
+  "agy_source_validation": {
+    "date": "2026-10-26",
+    "status": "source implemented; unpublished; published iOS installer pin unchanged",
+    "rust_passed": 472,
+    "rust_command": "cargo test --manifest-path bridge/Cargo.toml",
+    "clippy": "cargo clippy --manifest-path bridge/Cargo.toml --all-targets -- -D warnings passed",
+    "release_build": "cargo build --release --manifest-path bridge/Cargo.toml passed locally after GPT-OSS footer correction; verified binary installed locally with a backup; no artifact published",
+    "python_installer_package_tests": 33,
+    "ios": "595 tests in 107 suites passed from real project unit target, including reconciled AgentBridgeClientTests; 18 focused model state tests previously passed",
+    "ios_full_suite": "HerdcatsTests unit target: 595 tests/107 suites passed; no keychain failures in final real-project run. Full UI suite was not run.",
+    "live_evidence": "Agy 1.4.7 disposable PTY controls; user-reported iOS phone-to-host questions, approvals and model switching; independent read-only live watch/status checks for normalized families, restricted SSH PATH, approval/question detection and clean user bubbles. These read-only checks sent zero inputs; automated tests use synthetic fixtures.",
+    "remaining": [
+      "No published Agy artifact/checksum; release-pin update requires an actual verified release",
+      "Unverified file/URL/MCP/subagent/custom-keybinding/narrow unrecognized cards fall back to Terminal",
+      "Final-build automated iPhone-to-host end-to-end validation is not claimed; user smoke and synthetic/simulator tests are separate evidence"
+    ],
+    "ios_ui": "Focused simulator regressions passed: question field focus/history position (2), shared approval/activity presentation (2), normalized family/model catalog Retry (2). Temporary UI-only scheme used before conflict resolution; app UI unchanged afterward.",
+    "logs": {
+      "rust": "/private/tmp/hc-agy-gptoss-rust-final.log",
+      "clippy": "/private/tmp/hc-agy-gptoss-clippy-final.log",
+      "release": "/private/tmp/hc-agy-gptoss-release-final.log",
+      "python": "/private/tmp/hc-agy-pr-python.log",
+      "ios_unit": "/private/tmp/hc-agy-pr-ios-unit-final.log",
+      "ios_model_ui": "/private/tmp/hc-agy-focus-ui/bridge-model-families-final.log",
+      "ios_question_ui": "/private/tmp/hc-agy-focus-ui/final-test.log",
+      "ios_presentation_ui": "/private/tmp/hc-agy-focus-ui/presentation-final.log"
+    },
+    "conflict_resolution": "Retained current upstream removal of obsolete routed-host API tests and all new Agy tests; no production routing changes"
   }
 }

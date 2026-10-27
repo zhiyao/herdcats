@@ -46,6 +46,13 @@ struct HerdrSetupGuideView: View {
                         .font(.jost(.footnote))
                         .foregroundStyle(.secondary)
 
+                    Text(
+                        "Add each machine as its own connection, then switch from the menu under the Herdcats logo. "
+                        + "Drag to reorder on the connection list."
+                    )
+                        .font(.jost(.subheadline))
+                        .foregroundStyle(.secondary)
+
                     Button(onContinue == nil ? "Back to Connection" : "Enter SSH Details") {
                         onContinue?()
                         dismiss()
@@ -110,7 +117,18 @@ struct HerdrSetupGuideView: View {
 ///       -hc.autoconnect 1 -hc.host 127.0.0.1 -hc.user alice \
 ///       [-hc.password secret | -hc.key /path/to/key]
 enum AutoConnect {
+    /// Release builds never parse launch arguments or environment variables
+    /// for SSH credentials; this hook is only compiled into Debug builds.
     static func configIfRequested() -> ConnectionConfig? {
+        #if DEBUG
+        return debugConfigIfRequested()
+        #else
+        return nil
+        #endif
+    }
+
+    #if DEBUG
+    private static func debugConfigIfRequested() -> ConnectionConfig? {
         let arguments = ProcessInfo.processInfo.arguments
 
         func value(after flag: String) -> String? {
@@ -139,4 +157,5 @@ enum AutoConnect {
         }
         return nil
     }
+    #endif
 }

@@ -312,10 +312,41 @@ enum ANSIText {
             return RGBA(r: mix(r, target.r), g: mix(g, target.g), b: mix(b, target.b))
         }
 
+        private static let readableCacheLock = NSLock()
+        nonisolated(unsafe) private static var readableCache: [UInt64: RGBA] = [:]
+        private static let maxReadableCacheEntries = 1024
+
         /// Keep colors that already pass AA. Otherwise find the smallest blend
         /// toward black/white that passes, preserving the original hue direction.
         /// Backgrounds and source metadata are never changed.
         func readable(on background: RGBA) -> RGBA {
+            let key = (UInt64(clamped(r)) << 40)
+                | (UInt64(clamped(g)) << 32)
+                | (UInt64(clamped(b)) << 24)
+                | (UInt64(clamped(background.r)) << 16)
+                | (UInt64(clamped(background.g)) << 8)
+                | UInt64(clamped(background.b))
+
+            Self.readableCacheLock.lock()
+            if let cached = Self.readableCache[key] {
+                Self.readableCacheLock.unlock()
+                return cached
+            }
+            Self.readableCacheLock.unlock()
+
+            let computed = computeReadable(on: background)
+
+            Self.readableCacheLock.lock()
+            if Self.readableCache.count >= Self.maxReadableCacheEntries {
+                Self.readableCache.removeAll(keepingCapacity: true)
+            }
+            Self.readableCache[key] = computed
+            Self.readableCacheLock.unlock()
+
+            return computed
+        }
+
+        private func computeReadable(on background: RGBA) -> RGBA {
             guard contrast(on: background) < 4.5 else { return self }
             let black = RGBA(r: 0, g: 0, b: 0)
             let white = RGBA(r: 255, g: 255, b: 255)

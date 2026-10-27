@@ -99,7 +99,9 @@ extension HerdrConnection {
         guard let client else { throw HerdrError.notConnected }
         let owned = generation
         let command = Self.quotaAxiRemoteCommand(provider: provider)
+        #if DEBUG
         print("[HC] exec: quota-axi --json")
+        #endif
         do {
             let buffer = try await withTimeout(
                 seconds: timeout,
@@ -205,7 +207,6 @@ extension HerdrConnection {
     ) async throws -> String {
         let owned = expectedGeneration ?? generation
         try requireGeneration(owned)
-        try requireHostServices()
         guard let client else { throw HerdrError.notConnected }
         let command = "exec /bin/sh -c \(Self.shellSafeArgument(script))"
         let buffer = try await withTimeout(

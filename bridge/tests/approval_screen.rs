@@ -9,6 +9,7 @@ fn fixture_command(agent: Agent) -> &'static str {
     match agent {
         Agent::Claude => CLAUDE_COMMAND,
         Agent::Codex => CODEX_COMMAND,
+        Agent::Agy => panic!("Agy fixture is covered by agy_interactions"),
     }
 }
 
@@ -679,7 +680,10 @@ fn claude_live_known_notice_is_retained_in_dialog_identity() {
     assert!(plain.reason_lines.is_empty());
     assert_ne!(dialog.canonical(), plain.canonical());
     assert!(!dialog.same_dialog(&plain));
-    let padded = CLAUDE_LIVE_NOTICE.replace(" This command requires approval", "   This command requires approval   ");
+    let padded = CLAUDE_LIVE_NOTICE.replace(
+        " This command requires approval",
+        "   This command requires approval   ",
+    );
     assert!(dialog.same_dialog(&parse_claude(&padded, CLAUDE_LIVE_COMMAND).unwrap()));
 }
 
@@ -692,7 +696,10 @@ fn claude_live_unknown_notice_is_still_rejected() {
         "This command requires approval\n Unexpected additional row",
     ] {
         let screen = CLAUDE_LIVE_NOTICE.replace("This command requires approval", notice);
-        assert!(parse_claude(&screen, CLAUDE_LIVE_COMMAND).is_none(), "{notice}");
+        assert!(
+            parse_claude(&screen, CLAUDE_LIVE_COMMAND).is_none(),
+            "{notice}"
+        );
     }
 }
 
@@ -761,7 +768,10 @@ const CODEX_LIVE_COMMAND: &str = r#"python3 -c "open('probe2.txt','w').write('tw
 fn codex_live_blank_separators_preserve_metadata_labels_and_shortcuts() {
     let dialog = parse_codex(CODEX_LIVE_BLANKS, CODEX_LIVE_COMMAND).unwrap();
     assert_eq!(dialog.environment.as_deref(), Some("local"));
-    assert_eq!(dialog.reason_lines, ["Allow this command to write probe2.txt with the contents two?"]);
+    assert_eq!(
+        dialog.reason_lines,
+        ["Allow this command to write probe2.txt with the contents two?"]
+    );
     assert_eq!(dialog.detail, [CODEX_LIVE_COMMAND]);
     assert_eq!(dialog.selected, Some(0));
     assert_eq!(dialog.options.len(), 3);
@@ -770,9 +780,16 @@ fn codex_live_blank_separators_preserve_metadata_labels_and_shortcuts() {
         r#"Yes, and don't ask again for commands that start with `python3 -c "open('probe2.txt','w').write('two')"`"#,
         "No, and tell Codex what to do differently",
     ];
-    for (index, (option, key)) in dialog.options.iter().zip([
-        OptionKey::Letter('y'), OptionKey::Letter('p'), OptionKey::Escape,
-    ]).enumerate() {
+    for (index, (option, key)) in dialog
+        .options
+        .iter()
+        .zip([
+            OptionKey::Letter('y'),
+            OptionKey::Letter('p'),
+            OptionKey::Escape,
+        ])
+        .enumerate()
+    {
         assert_eq!(option.number, index as u32 + 1);
         assert_eq!(option.label_lines, [labels[index]]);
         assert_eq!(option.key, key);
@@ -787,7 +804,11 @@ fn codex_trims_only_trailing_blank_command_rows() {
     );
     let dialog = parse_codex(&screen, "echo first\n\necho second").unwrap();
     assert_eq!(dialog.detail, ["echo first", "", "echo second"]);
-    for command in ["echo first\necho second", "echo first echo second", "echo firstecho second"] {
+    for command in [
+        "echo first\necho second",
+        "echo first echo second",
+        "echo firstecho second",
+    ] {
         assert!(parse_codex(&screen, command).is_none(), "{command:?}");
     }
 }
@@ -797,7 +818,10 @@ fn codex_blank_separators_do_not_allow_unknown_nonblank_rows() {
     for screen in [
         CODEX_LIVE_BLANKS.replace("\n\n\n› 1.", "\n Unknown command suffix\n\n› 1."),
         CODEX_LIVE_BLANKS.replace("\n  Environment:", "\n Unknown header\n  Environment:"),
-        CODEX_LIVE_BLANKS.replace("\n  Press enter to confirm", "\n  Unknown footer row\n  Press enter to confirm"),
+        CODEX_LIVE_BLANKS.replace(
+            "\n  Press enter to confirm",
+            "\n  Unknown footer row\n  Press enter to confirm",
+        ),
     ] {
         assert_ne!(screen, CODEX_LIVE_BLANKS);
         assert!(parse_codex(&screen, CODEX_LIVE_COMMAND).is_none());

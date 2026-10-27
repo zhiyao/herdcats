@@ -5,101 +5,193 @@ import SwiftUI
 import Testing
 @testable import Herdcats
 
-@Suite("All machines grouping and routing")
-struct AllMachinesTests {
-    func machine(_ id: String, order: Int) -> SpaceMachine {
-        let gateway = ConnectionIdentity(host: "gateway", port: 22, username: "owner")
-        return SpaceMachine(scope: gateway.scoped(to: HerdrMachine(
-            id: id, label: id, target: id, session: "default", enabled: true
-        )), label: id, order: order)
+@Suite("Saved machine order and names")
+struct SavedMachineOrderTests {
+    private func machine(_ host: String) -> RecentConnection {
+        RecentConnection(host: host, port: 22, username: "u", authMode: "password", remember: true)
     }
 
-    func spaces(on machine: SpaceMachine) throws -> [Space] {
-        let workspaces = try HerdrConnection.decode(workspaceListWithWorktreesJSON, as: WorkspaceListResult.self)
-            .workspaces
-        return Space.join(workspaces: workspaces, agents: []).map {
-            var space = $0
-            space.machine = machine
-            return space
+    private func withDefaults(_ test: (UserDefaults) throws -> Void) throws {
+        let suite = "SavedMachineOrderTests.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        try test(defaults)
+    }
+
+    @Test func recordKeepsPositionAndStampsLastConnected() throws {
+        try withDefaults { defaults in
+            let entries = [machine("a"), machine("b"), machine("c")]
+            let now = Date(timeIntervalSince1970: 1234)
+            let updated = try RecentConnectionStore.record(entries[1], in: entries, defaults: defaults, now: now)
+            #expect(updated.map(\.id) == entries.map(\.id))
+            #expect(updated[1].lastConnectedAt == now)
+            #expect(try RecentConnectionStore.load(defaults: defaults, using: FakeKeychainOperations()) == updated)
         }
     }
 
-    func agent(status: String, sequence: Int) throws -> AgentEntry {
+    @Test func recordAppendsNewMachine() throws {
+        try withDefaults { defaults in
+            let entries = [machine("a"), machine("b"), machine("c")]
+            let added = machine("d")
+            let updated = try RecentConnectionStore.record(added, in: entries, defaults: defaults)
+            #expect(updated.map(\.id) == (entries + [added]).map(\.id))
+        }
+    }
+
+    @Test func movePersistsOrder() throws {
+        try withDefaults { defaults in
+            var entries = [machine("a"), machine("b"), machine("c")]
+            entries[0].lastConnectedAt = Date(timeIntervalSince1970: 100)
+            defaults.set(try JSONEncoder().encode(entries), forKey: RecentConnectionStore.storageKey)
+            defaults.set(LaunchPreference.autoConnect.rawValue, forKey: LaunchPreference.storageKey)
+            let keychain = FakeKeychainOperations()
+            for entry in entries { keychain.items[entry.secretAccount] = Data("pw".utf8) }
+            let moved = try RecentConnectionStore.move(fromOffsets: IndexSet(integer: 2), toOffset: 0,
+                defaults: defaults, using: keychain)
+            #expect(moved == [entries[2], entries[0], entries[1]])
+            #expect(try RecentConnectionStore.load(defaults: defaults, using: keychain) == moved)
+            #expect(LaunchPreference.autoConnectConfig(defaults: defaults, keychain: keychain)?.host == "a")
+        }
+    }
+
+    @Test func autoConnectUsesLastUsedNotFirst() throws {
+        try withDefaults { (defaults: UserDefaults) throws in
+            var a = machine("a")
+            var b = machine("b")
+            a.lastConnectedAt = Date(timeIntervalSince1970: 1)
+            b.lastConnectedAt = Date(timeIntervalSince1970: 2)
+            defaults.set(LaunchPreference.autoConnect.rawValue, forKey: LaunchPreference.storageKey)
+            let keychain = FakeKeychainOperations()
+            for entry in [a, b] { keychain.items[entry.secretAccount] = Data("pw".utf8) }
+            func selected(_ entries: [RecentConnection]) throws -> String? {
+                defaults.set(try JSONEncoder().encode(entries), forKey: RecentConnectionStore.storageKey)
+                return LaunchPreference.autoConnectConfig(defaults: defaults, keychain: keychain)?.host
+            }
+            #expect(try selected([a, b]) == "b")
+            a.lastConnectedAt = nil
+            #expect(try selected([a, b]) == "b")
+            a.lastConnectedAt = b.lastConnectedAt
+            #expect(try selected([a, b]) == "a")
+            a.lastConnectedAt = nil
+            b.lastConnectedAt = nil
+            #expect(try selected([b, a]) == "b")
+            b.remember = false
+            b.lastConnectedAt = Date(timeIntervalSince1970: 3)
+            #expect(try selected([b, a]) == "a")
+        }
+    }
+
+    @Test func decodesLegacyRecentConnectionWithoutNewFields() throws {
         let json = """
-        {"agent":"codex","agent_status":"\(status)","pane_id":"w4:p1","tab_id":"w4:t1","workspace_id":"w4",
-        "focused":false,"state_change_seq":\(sequence)}
+        {"id":"00000000-0000-0000-0000-000000000001","host":"h","port":22,"username":"u","authMode":"password","remember":true}
         """
-        return try JSONDecoder().decode(AgentEntry.self, from: Data(json.utf8))
+        let entry = try JSONDecoder().decode(RecentConnection.self, from: Data(json.utf8))
+        #expect(entry.name == nil)
+        #expect(entry.lastConnectedAt == nil)
     }
 
-    @Test func identicalIDsAndRepoPathsStaySeparateAcrossMachines() throws {
-        let first = try spaces(on: machine("Mac", order: 0))
-        let second = try spaces(on: machine("Mini", order: 1))
-        let groups = SpaceGroup.group(second + first)
-        #expect(groups.count == 8)
-        #expect(Set((first + second).map(\.id)).count == first.count + second.count)
-        #expect(groups.prefix(4).allSatisfy { $0.root.machine?.label == "Mac" })
-        #expect(groups.suffix(4).allSatisfy { $0.root.machine?.label == "Mini" })
-        for group in groups {
-            #expect(group.worktrees.allSatisfy { $0.machine == group.root.machine })
+    @Test func displayNamePrefersNameThenUserHostPort() {
+        var entry = machine("h")
+        entry.name = "  "
+        #expect(entry.displayName == "u@h")
+        entry.port = 2222
+        #expect(entry.displayName == "u@h:2222")
+        entry.name = "  Studio \n"
+        #expect(entry.displayName == "Studio")
+    }
+
+    @Test func shortDisplayNameAbbreviatesDNSHostsOnly() {
+        var entry = machine("kennybots-mac-mini.tail5b5906.ts.net")
+        #expect(entry.shortDisplayName(among: [entry]) == "kennybots-mac-mini")
+        entry.port = 2222
+        #expect(entry.shortDisplayName(among: [entry]) == "kennybots-mac-mini:2222")
+        #expect(machine("149.248.202.63").shortDisplayName(among: []) == "149.248.202.63")
+        #expect(machine("fe80::1").shortDisplayName(among: []) == "fe80::1")
+        entry.name = "Mini"
+        #expect(entry.shortDisplayName(among: [entry]) == "Mini")
+    }
+
+    @Test func shortDisplayNameAddsUserWhenSameHostHasTwoLogins() {
+        let kenny = machine("studio.local")
+        var admin = machine("studio.local")
+        admin.username = "admin"
+        let all = [kenny, admin, machine("mini.local")]
+        #expect(kenny.shortDisplayName(among: all) == "u@studio")
+        #expect(admin.shortDisplayName(among: all) == "admin@studio")
+        #expect(all[2].shortDisplayName(among: all) == "mini")
+    }
+
+    @Test func shortDisplayNameKeepsFullHostWhenAbbreviationsCollide() {
+        let tailnet = machine("mini.tail5b5906.ts.net")
+        let local = machine("mini.local")
+        let other = machine("studio.local")
+        let all = [tailnet, local, other]
+        #expect(tailnet.shortDisplayName(among: all) == "mini.tail5b5906.ts.net")
+        #expect(local.shortDisplayName(among: all) == "mini.local")
+        #expect(other.shortDisplayName(among: all) == "studio")
+    }
+
+    @Test func entryPreservesOrUpdatesName() {
+        var saved = machine("h")
+        saved.name = "Studio"
+        let unchanged = RecentConnectionStore.entry(host: "h", port: 22, username: "u",
+            authMode: "password", remember: true, in: [saved])
+        #expect(unchanged.name == "Studio")
+        let cleared = RecentConnectionStore.entry(host: "h", port: 22, username: "u",
+            authMode: "password", remember: true, name: "", in: [saved])
+        #expect(cleared.displayName == "u@h")
+        #expect(cleared.id == saved.id)
+    }
+}
+
+@Suite("Saved connection configuration")
+struct SavedConnectionConfigTests {
+    @Test func savedConnectionConfigUsesRememberedPassword() throws {
+        let entry = RecentConnection(host: "saved.example", port: 2222, username: "tester",
+            authMode: "password", remember: true)
+        let keychain = FakeKeychainOperations()
+        keychain.items[entry.secretAccount] = Data("pw".utf8)
+        let config = try #require(RecentConnectionStore.config(for: entry, using: keychain))
+        #expect(config.host == entry.host)
+        #expect(config.port == entry.port)
+        #expect(config.username == entry.username)
+        guard case let .password(password) = config.auth else {
+            Issue.record("Expected password authentication")
+            return
         }
-        let roots = groups.filter { $0.root.workspace.workspaceId == "w4" }
-        #expect(roots.count == 2)
-        #expect(roots.allSatisfy { $0.worktrees.count == 2 })
+        #expect(password == "pw")
     }
 
-    @Test func agentNavigationIDsIncludeMachineWhileCLIIDsStayRaw() throws {
-        let first = try #require(spaces(on: machine("Mac", order: 0)).first)
-        let second = try #require(spaces(on: machine("Mini", order: 1)).first)
-        let entry = try agent(status: "working", sequence: 1)
-        let firstItem = AgentListItem(space: first, agent: entry)
-        let secondItem = AgentListItem(space: second, agent: entry)
-        #expect(firstItem.id != secondItem.id)
-        #expect(firstItem.agent.paneId == secondItem.agent.paneId)
-        #expect(first.workspace.workspaceId == second.workspace.workspaceId)
+    @Test func savedConnectionConfigIsNilWithoutRememberedSecret() {
+        var entry = RecentConnection(host: "saved.example", port: 22, username: "tester",
+            authMode: "password", remember: false)
+        let keychain = FakeKeychainOperations()
+        keychain.items[entry.secretAccount] = Data("pw".utf8)
+        #expect(RecentConnectionStore.config(for: entry, using: keychain) == nil)
+        entry.remember = true
+        keychain.items.removeValue(forKey: entry.secretAccount)
+        #expect(RecentConnectionStore.config(for: entry, using: keychain) == nil)
+        keychain.items[entry.secretAccount] = Data(" \n\t".utf8)
+        #expect(RecentConnectionStore.config(for: entry, using: keychain) == nil)
     }
 
-    @Test func prioritySortDoesNotCompareSequenceCountersAcrossMachines() throws {
-        var first = try #require(spaces(on: machine("Mac", order: 0)).first)
-        var second = try #require(spaces(on: machine("Mini", order: 1)).first)
-        first = Space(
-            workspace: first.workspace, agents: [try agent(status: "working", sequence: 1)], machine: first.machine)
-        second = Space(
-            workspace: second.workspace, agents: [try agent(status: "working", sequence: 999)], machine: second.machine)
-        let firstItem = AgentListItem(space: first, agent: first.agents[0])
-        let secondItem = AgentListItem(space: second, agent: second.agents[0])
-        #expect(
-            [secondItem, firstItem].sorted(by: AgentListItem.attentionOrder).map(\.id)
-                == [firstItem.id, secondItem.id]
-        )
-        let firstGroup = SpaceGroup(root: first, worktrees: [])
-        let secondGroup = SpaceGroup(root: second, worktrees: [])
-        #expect(
-            [secondGroup, firstGroup].sorted(by: SpaceGroup.attentionOrder).map(\.id)
-                == [firstGroup.id, secondGroup.id]
-        )
-        let blocked = AgentListItem(space: second, agent: try agent(status: "blocked", sequence: 0))
-        #expect([firstItem, blocked].sorted(by: AgentListItem.attentionOrder).first == blocked)
-        let blockedSpace = Space(workspace: second.workspace, agents: [blocked.agent], machine: second.machine)
-        let blockedGroup = SpaceGroup(root: blockedSpace, worktrees: [])
-        #expect([firstGroup, blockedGroup].sorted(by: SpaceGroup.attentionOrder).first?.id == blockedGroup.id)
-        // Within the same machine, the existing newest-change ordering remains.
-        let newer = AgentListItem(space: first, agent: try agent(status: "working", sequence: 2))
-        #expect(AgentListItem.attentionOrder(newer, firstItem))
-    }
-
-    @MainActor
-    @Test func missingMachineCannotFallBackToGateway() throws {
-        let model = SpacesModel()
-        let gateway = AppModel()
-        let scoped = try #require(spaces(on: machine("removed", order: 1)).first)
-        #expect(model.app(for: scoped, fallback: gateway) == nil)
-        #expect(throws: HerdrError.self) {
-            try model.connection(for: scoped, fallback: gateway.connection)
-        }
-        let local = Space(workspace: scoped.workspace, agents: [])
-        #expect(model.app(for: local, fallback: gateway) === gateway)
-        #expect(try model.connection(for: local, fallback: gateway.connection) === gateway.connection)
+    @Test func savedConnectionConfigIsNilForEncryptedKeyWithoutPassphrase() throws {
+        let pem = """
+        -----BEGIN OPENSSH PRIVATE KEY-----
+        b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABBQsNNQDE
+        3OeNlbiirYuF51AAAAQAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIEHiHx4Brcpqh9OW
+        lY7YKkM3HN1yOFbJNYbUClrT7q+MAAAAoPXvIQDoTJK/XrKBIF2kuCD9KIPYTstdeLIEcI
+        heoaAWhTJoeN0uixLdLK2E0qnaOA4teelJmrqntGC3kaWAOknVv7UPGceybXd82nYykl/s
+        xiPxdhHmIcm/mO6Bw1Cve9cJZF6k2sd0EBzfwnaFImLcSF3oL/T6Cf/JS6vTFOWHjh+anc
+        1Jzhj402WYisxnyveuTPZGidiF24UyVUEMyEs=
+        -----END OPENSSH PRIVATE KEY-----
+        """
+        #expect(try OpenSSHEd25519.isEncrypted(pem: pem))
+        let entry = RecentConnection(host: "saved.example", port: 22, username: "tester",
+            authMode: "privateKey", remember: true)
+        let keychain = FakeKeychainOperations()
+        keychain.items[entry.secretAccount] = Data(pem.utf8)
+        #expect(RecentConnectionStore.config(for: entry, using: keychain) == nil)
     }
 }
 
@@ -335,6 +427,43 @@ struct SSHHostKeyVerificationTests {
         await model.reconnect(automatically: true)
         #expect(model.hostKeyChallenge == challenge)
         #expect(model.hostKeyVerificationBlocked)
+    }
+
+    @Test func replacementAndLoadEnforceThisDeviceOnlyAccessibility() async throws {
+        let service = "com.enchantinglabs.herdrcat.tests.hostkeys.\(UUID().uuidString)"
+        defer { SecItemDelete([kSecClass: kSecClassGenericPassword, kSecAttrService: service] as CFDictionary) }
+        let other = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        let account = SSHHostKeyStore.account(host: "server", port: 22)
+        func accessibility() throws -> String? {
+            var result: AnyObject?
+            let status = SecItemCopyMatching([
+                kSecClass: kSecClassGenericPassword, kSecAttrService: service, kSecAttrAccount: account,
+                kSecReturnAttributes: true, kSecMatchLimit: kSecMatchLimitOne,
+            ] as CFDictionary, &result)
+            try #require(status == errSecSuccess)
+            return (result as? [String: Any])?[kSecAttrAccessible as String] as? String
+        }
+        let weaker = kSecAttrAccessibleAfterFirstUnlock as String
+        let strict = kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String
+
+        // A pin saved by an older build under a weaker class is upgraded on load.
+        let legacyStatus = SecItemAdd([
+            kSecClass: kSecClassGenericPassword, kSecAttrService: service, kSecAttrAccount: account,
+            kSecValueData: Data(key.utf8), kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
+        ] as CFDictionary, nil)
+        try #require(legacyStatus == errSecSuccess)
+        #expect(try accessibility() == weaker)
+        let store = SSHHostKeyStore(service: service)
+        #expect(try await store.load(host: "server", port: 22) == key)
+        #expect(try accessibility() == strict)
+
+        // Replacement keeps (and re-applies) the strict class.
+        let reset = SecItemUpdate(
+            [kSecClass: kSecClassGenericPassword, kSecAttrService: service, kSecAttrAccount: account] as CFDictionary,
+            [kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock] as CFDictionary)
+        try #require(reset == errSecSuccess)
+        try await store.replace(other, replacing: key, host: "server", port: 22)
+        #expect(try accessibility() == strict)
     }
 
     @Test func replacementPersistsAndRejectsStaleOrMissingPins() async throws {

@@ -1,0 +1,110 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, rm, lstat, symlink, mkdir, realpath } from 'node:fs/promises';
+import { join } from 'node:path';
+import { connect } from 'node:net';
+import { createIntegration } from './runtime.mjs';
+// Keep Unix socket paths short and resolve macOS's /tmp symlink before validation.
+const testTmp = await realpath('/tmp');
+const sid = '12345678-1234-4234-8234-123456789abc';
+function fixture() {
+  const hooks = new Map(); const sent = []; let model = {provider:'provider',id:'model',name:'Model'}; let effort='low'; let aborted=0;
+  const original = {};
+  const ui = { getEditorText:()=>'', notify:()=>{}, select:(title,options,opts)=>new Promise(resolve=>{ original.select=resolve; opts?.signal?.addEventListener('abort',()=>resolve(undefined)); }), confirm:(title,message,opts)=>new Promise(resolve=>{original.confirm=resolve; opts?.signal?.addEventListener('abort',()=>resolve(false));}), input:(title,value,opts)=>new Promise(resolve=>{ original.input=resolve; opts?.signal?.addEventListener('abort',()=>resolve(undefined));}), editor:()=>new Promise(resolve=>{original.editor=resolve;}), custom:()=>new Promise(resolve=>{original.custom=resolve;}) };
+  const ctx = {mode:'tui',hasUI:true,ui,sessionManager:{getSessionId:()=>sid,getSessionFile:()=>'/fixture/session.jsonl',getBranch:()=>[]},modelRegistry:{getAvailable:()=>[model,{provider:'other',id:'model',name:'Other'}]},get model(){return model;},isIdle:()=>true,isProjectTrusted:()=>true,hasPendingMessages:()=>false,abort:()=>{aborted++;}};
+  const pi = {on:(event,fn)=>hooks.set(event,fn),sendUserMessage:text=>sent.push(text),getThinkingLevel:()=>effort,setThinkingLevel:value=>{effort=value;},setModel:async value=>{model=value; return true;}};
+  const integration=createIntegration(pi,{getSupportedThinkingLevels:()=>['off','low','high']});
+  return {integration,ctx,pi,hooks,sent,original,get aborted(){return aborted;}};
+}
+async function started(t) { const f=fixture(); const root=await mkdtemp(join(testTmp,'hpi-')); t.after(()=>rm(root,{recursive:true,force:true})); await f.integration.start(f.ctx,{directory:join(root,'control')}); t.after(()=>f.integration.stop()); return f; }
+function expectOf(state){return {session_id:state.session_id,instance_id:state.instance_id,revision:state.revision};}
+test('guards bind controls to live instance and revision and preserve provider identity',async t=>{const f=await started(t); const state=await f.integration.request('state'); assert.equal(state.models[1].id,'other/model'); await assert.rejects(f.integration.request('prompt',{text:'hello',expect:{...expectOf(state),instance_id:'old'}}),/stale/); await f.integration.request('prompt',{text:'hello',expect:expectOf(state)}); assert.deepEqual(f.sent,['hello']); assert.equal((await f.integration.request('state')).status,'working'); await assert.rejects(f.integration.request('prompt',{text:'repeat',expect:expectOf(state)}),/stale/);});
+test('confirm requires exact boolean, preserves original cancellation and rejects stale replies',async t=>{const f=await started(t); const dialog=f.ctx.ui.confirm('Permission','Run once?'); const state=await f.integration.request('state'); assert.equal(state.pending.kind,'confirm'); await assert.rejects(f.integration.request('dialog.respond',{request_id:state.pending.id,value:'true',expect:expectOf(state)}),/invalid_response/); await f.integration.request('dialog.respond',{request_id:state.pending.id,value:false,expect:expectOf(state)}); assert.equal(await dialog,false); await assert.rejects(f.integration.request('dialog.respond',{request_id:state.pending.id,value:true,expect:expectOf(state)}),/stale/);});
+test('terminal resolution wins and timeout/abort do not grant permission',async t=>{const f=await started(t); const controller=new AbortController();const dialog=f.ctx.ui.confirm('Gate','Allow?',{signal:controller.signal}); const state=await f.integration.request('state');controller.abort();assert.equal(await dialog,false); assert.equal((await f.integration.request('state')).pending,null);await assert.rejects(f.integration.request('dialog.respond',{request_id:state.pending.id,value:true,expect:expectOf(state)}),/stale/);});
+test('unknown custom and uncancellable editor remain in Terminal and block prompt',async t=>{const f=await started(t); const dialog=f.ctx.ui.editor('Edit','prefill');const state=await f.integration.request('state');assert.equal(state.pending.kind,'terminal');await assert.rejects(f.integration.request('prompt',{text:'hello',expect:expectOf(state)}),/agent_busy/); f.original.editor('edited');assert.equal(await dialog,'edited');assert.equal((await f.integration.request('state')).pending,null);});
+test('dynamic model and thinking validation applies on same live session',async t=>{const f=await started(t);let state=await f.integration.request('state');await assert.rejects(f.integration.request('model.set',{model:'other/model',effort:'invented',expect:expectOf(state)}),/invalid_effort/);const result=await f.integration.request('model.set',{model:'other/model',effort:'high',expect:expectOf(state)});assert.equal(result.confirmed,true);state=await f.integration.request('state');assert.equal(state.model.id,'other/model');assert.equal(state.model.effort,'high');});
+test('socket is private, bounded and responds without a second process',async t=>{const f=await started(t);const path=f.integration.socketPath;assert.equal((await lstat(path)).mode&0o777,0o600);const response=await new Promise((resolve,reject)=>{const socket=connect(path);let text='';socket.on('error',reject);socket.on('connect',()=>socket.write('{"method":"state"}\n'));socket.on('data',chunk=>text+=chunk);socket.on('end',()=>resolve(JSON.parse(text)));});assert.equal(response.result.session_id,sid);});
+test('rejects symlink endpoint roots',async t=>{const f=fixture();const root=await mkdtemp(join(testTmp,'hpi-'));t.after(()=>rm(root,{recursive:true,force:true}));await mkdir(join(root,'actual'));await symlink(join(root,'actual'),join(root,'link'));await assert.rejects(f.integration.start(f.ctx,{directory:join(root,'link')}),/unsafe_control_directory/);});
+test('duplicate native session refuses control without deleting original endpoint',async t=>{const first=await started(t);const second=fixture();const directory=join(first.integration.socketPath,'..');await assert.rejects(second.integration.start(second.ctx,{directory}),/pi_endpoint_exists/);await second.integration.stop();assert.equal((await lstat(first.integration.socketPath)).isSocket(),true);});
+test('select forwards exact scope labels and input returns literal text',async t=>{const f=await started(t);const options=['Run once','Allow in this conversation','Persist to settings.json','Deny'];const selection=f.ctx.ui.select('Permission scope',options);let state=await f.integration.request('state');assert.deepEqual(state.pending.options,options);await assert.rejects(f.integration.request('dialog.respond',{request_id:state.pending.id,value:'allow',expect:expectOf(state)}),/invalid_response/);await f.integration.request('dialog.respond',{request_id:state.pending.id,value:options[1],expect:expectOf(state)});assert.equal(await selection,options[1]);const input=f.ctx.ui.input('Question','Type your answer');state=await f.integration.request('state');await f.integration.request('dialog.respond',{request_id:state.pending.id,value:'literal\nanswer',expect:expectOf(state)});assert.equal(await input,'literal\nanswer');});
+test('custom dialogs block cancellation and retain original terminal result',async t=>{const f=await started(t);const custom=f.ctx.ui.custom(()=>{});const state=await f.integration.request('state');assert.equal(state.pending.kind,'terminal');await assert.rejects(f.integration.request('cancel',{expect:expectOf(state)}),/terminal_required/);f.original.custom({custom:'answer'});assert.deepEqual(await custom,{custom:'answer'});});
+test('local draft changes invalidate previously captured actions without sending',async t=>{const f=await started(t);const state=await f.integration.request('state');f.ctx.ui.getEditorText=()=> 'unsent local draft';await assert.rejects(f.integration.request('prompt',{text:'phone prompt',expect:expectOf(state)}),/stale/);assert.deepEqual(f.sent,[]);});
+test('live assistant updates appear in state and invalidate old controls',async t=>{const f=await started(t);const state=await f.integration.request('state');const message={role:'assistant',content:[{type:'text',text:'Streaming synthetic text'}]};f.hooks.get('message_update')({message},f.ctx);const updated=await f.integration.request('state');assert.equal(updated.entries.at(-1).message.content[0].text,'Streaming synthetic text');assert.ok(updated.revision>state.revision);await assert.rejects(f.integration.request('prompt',{text:'old',expect:expectOf(state)}),/stale/);f.hooks.get('message_end')({message},f.ctx);assert.equal((await f.integration.request('state')).entries.length,0);});
+test('oversized socket frames are rejected before parsing',async t=>{const f=await started(t);const response=await new Promise((resolve,reject)=>{const socket=connect(f.integration.socketPath);let text='';socket.on('error',reject);socket.on('connect',()=>socket.write('x'.repeat(1024*1024+1)));socket.on('data',chunk=>text+=chunk);socket.on('end',()=>resolve(JSON.parse(text)));});assert.equal(response.error.code,'request_too_large');});
+
+test('project trust stays a Terminal gate',async t=>{const f=await started(t);f.ctx.isProjectTrusted=()=>false;const state=await f.integration.request('state');await assert.rejects(f.integration.request('prompt',{text:'hello',expect:expectOf(state)}),/terminal_required/);assert.deepEqual(f.sent,[]);});
+
+test('effort-only changes return a confirmed model without changing provider identity',async t=>{
+  const f=await started(t);
+  const state=await f.integration.request('state');
+  const result=await f.integration.request('model.set',{effort:'high',expect:expectOf(state)});
+  assert.equal(result.confirmed,true);
+  assert.equal(result.model.id,state.model.id);
+  assert.equal(result.model.effort,'high');
+  const updated=await f.integration.request('state');
+  assert.equal(updated.model.effort,'high');
+});
+
+test('dialog strings use iOS UTF-8 byte limits and omit oversized fields', async t => {
+  const f = await started(t);
+  for (const text of ['a'.repeat(8192), 'é'.repeat(4096), 'a'.repeat(8193), 'é'.repeat(4096)+'a']) {
+    const supported = Buffer.byteLength(text) === 8192;
+    for (const kind of ['confirm','input','select']) {
+      for (const field of ['title','second']) {
+        const title = field === 'title' ? text : 'Title';
+        const second = kind === 'select' ? [field === 'second' ? text : 'Option'] : field === 'second' ? text : 'Message';
+        const dialog = f.ctx.ui[kind](title, second);
+        const {pending} = await f.integration.request('state');
+        assert.equal(pending.kind, supported ? kind : 'terminal');
+        assert.ok(Buffer.byteLength(pending.title) <= 8192);
+        if (!supported) {
+          assert.equal(pending.message, undefined);
+          assert.equal(pending.options, undefined);
+        }
+        f.original[kind](undefined); await dialog;
+      }
+    }
+  }
+});
+
+test('editor and external prompt titles remain bounded for Terminal fallback', async t => {
+  const f = await started(t);
+  const title = '界'.repeat(2731);
+  const dialog = f.ctx.ui.editor(title, 'prefill');
+  assert.equal((await f.integration.request('state')).pending.title, 'Custom dialog — continue in Terminal');
+  f.original.editor('done'); await dialog;
+  f.hooks.get('ui_prompt_start')({title}, f.ctx);
+  const {pending} = await f.integration.request('state');
+  assert.equal(pending.kind, 'terminal');
+  assert.equal(pending.title, 'Continue in Terminal');
+  f.hooks.get('ui_prompt_end')({}, f.ctx);
+});
+
+test('text answers use the iOS 65536-byte limit while prompts retain their limit', async t => {
+  const f = await started(t);
+  const dialog = f.ctx.ui.input('Question', 'Answer');
+  const state = await f.integration.request('state');
+  for (const value of ['a'.repeat(65537), 'é'.repeat(32768)+'a', 'null\0byte']) {
+    await assert.rejects(f.integration.request('dialog.respond',{request_id:state.pending.id,value,expect:expectOf(state)}),/invalid_response/);
+  }
+  const answer = 'é'.repeat(32768);
+  await f.integration.request('dialog.respond',{request_id:state.pending.id,value:answer,expect:expectOf(state)});
+  assert.equal(await dialog, answer);
+  await f.integration.request('prompt',{text:'a'.repeat(65537),expect:expectOf(await f.integration.request('state'))});
+  assert.equal(f.sent[0].length, 65537);
+});
+
+test('ambiguous, null-byte and excessive selection schemas remain Terminal-only', async t => {
+  const f = await started(t);
+  for (const options of [[], ['duplicate','duplicate'], ['null\0byte'], Array.from({length:101},(_,i)=>`${i}`)]) {
+    const dialog = f.ctx.ui.select('Choose', options);
+    const {pending} = await f.integration.request('state');
+    assert.equal(pending.kind, 'terminal');
+    assert.equal(pending.options, undefined);
+    f.original.select(undefined); await dialog;
+  }
+  const options = Array.from({length:100},(_,i)=>`${i}`);
+  const dialog = f.ctx.ui.select('Choose', options);
+  assert.deepEqual((await f.integration.request('state')).pending.options, options);
+  f.original.select(undefined); await dialog;
+});

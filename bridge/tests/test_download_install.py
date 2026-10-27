@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -20,7 +21,10 @@ class DownloadInstallTests(unittest.TestCase):
         self.version = json.loads(subprocess.check_output([str(BINARY), '--version-json']))['version']
         self.bin = self.root / 'home with spaces/.local/bin'
         self.mirror = self.root / 'release'
-        self.mirror.mkdir()
+        subprocess.check_call([sys.executable, str(ROOT / 'scripts/package.py'),
+            '--binary', str(BINARY), '--platform', 'darwin-arm64',
+            '--version', self.version, '--out', str(self.mirror)])
+        self.script = self.mirror / 'install.sh'
         self.asset = self.mirror / 'herdcats-bridge-darwin-arm64'
         shutil.copyfile(BINARY, self.asset)
         self.checksums()
@@ -49,7 +53,7 @@ if os.environ.get('RACE') and 'herdcats-bridge-darwin' in url:
         (self.mirror / 'SHA256SUMS').write_text(digest + '  ' + self.asset.name + '\n')
 
     def run_install(self, *extra):
-        return subprocess.run(['/bin/sh', str(SCRIPT), '--version', self.version, *extra],
+        return subprocess.run(['/bin/sh', str(self.script), '--version', self.version, *extra],
                               env=self.env, text=True, capture_output=True)
 
     def test_download_verify_install_without_compiler_or_python_dependency(self):

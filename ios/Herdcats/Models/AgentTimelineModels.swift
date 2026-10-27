@@ -21,12 +21,10 @@ enum AgentBridgeError: Error, LocalizedError, Equatable, Sendable {
     case closed, timeout
     case unavailable(String)
     case questionFailure(code: String, stepsSent: Int?)
-    case routedHostUnsupported
     var code: String {
         switch self {
         case .unavailable(let code): return code
         case .questionFailure(let code, _): return code
-        case .routedHostUnsupported: return "routed_host_unsupported"
         case .timeout: return "bridge_timeout"
         case .protocolMismatch: return "protocol_mismatch"
         default: return "bridge_unavailable"
@@ -58,9 +56,12 @@ struct AgentTimelineIdentity: Codable, Equatable, Sendable {
     let terminalId: String
     let agent: String
     let nativeSessionId: String
+    var nativeInstanceId: String? = nil
 }
 struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
     let claudeTimeline: Bool
+    var agy: Bool = false
+    var pi: Bool = false
     var codexTimeline: Bool? = false
     var codexDaemonConfig: Bool? = false
     var codexDaemonStop: Bool? = false
@@ -71,6 +72,8 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
 
     init(
         claudeTimeline: Bool,
+        agy: Bool = false,
+        pi: Bool = false,
         codexTimeline: Bool? = false,
         codexDaemonConfig: Bool? = false,
         codexDaemonStop: Bool? = false,
@@ -79,6 +82,8 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
         questions: Bool? = nil,
         modelControl: Bool = false
     ) {
+        self.agy = agy
+        self.pi = pi
         self.claudeTimeline = claudeTimeline
         self.modelControl = modelControl
         self.codexTimeline = codexTimeline
@@ -91,6 +96,8 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.agy = try container.decodeIfPresent(Bool.self, forKey: .agy) ?? false
+        self.pi = try container.decodeIfPresent(Bool.self, forKey: .pi) ?? false
         self.modelControl = try container.decodeIfPresent(Bool.self, forKey: .modelControl) ?? false
         self.claudeTimeline = try container.decode(Bool.self, forKey: .claudeTimeline)
         self.codexTimeline = try container.decodeIfPresent(Bool.self, forKey: .codexTimeline) ?? false
@@ -228,6 +235,9 @@ struct AgentBridgePayload: Codable, Sendable {
     var description: String?
     var justification: String?
     var environment: String?
+    var message: String?
+    var dialogOptions: [String]?
+    var value: String?
     var title: String?
     var options: [AgentApprovalOption]?
     var selected: Int?
@@ -242,8 +252,28 @@ struct AgentBridgePayload: Codable, Sendable {
     var effort: String?
     var models: [AgentModelOption]?
     var efforts: [AgentEffortOption]?
+    var catalog: AgentModelCatalogInfo?
     var applied: AgentModelPair?
     var error: String?
+}
+/// Where a model list came from. Only a fresh, complete list is verified
+/// availability; cached or fallback lists are labelled as such.
+struct AgentModelCatalogInfo: Codable, Equatable, Sendable {
+    var source: String?
+    var fresh: Bool?
+    var complete: Bool?
+    var error: String?
+
+    /// A short note for lists that aren't freshly verified; nil when verified.
+    var note: String? {
+        if complete == true, fresh == true { return nil }
+        switch source {
+        case "cache": return "Showing saved model choices. They may be out of date."
+        case "fallback": return "Showing common model names. Your account may offer different choices."
+        case "unavailable": return "Available models couldn't be checked. Only the current model is shown."
+        default: return "These model choices couldn't be verified."
+        }
+    }
 }
 struct AgentBridgeRemoteError: Codable, Sendable {
     let code: String
@@ -269,21 +299,41 @@ struct AgentBridgeFramer {
     init(limit: Int = 1024 * 1024) { self.limit = limit }
     mutating func append(_ chunk: Data) throws -> [AgentBridgeFrame] {
         var frames: [AgentBridgeFrame] = []
-        // Bound the partial line even when an SSH chunk contains many frames.
-        for byte in chunk {
-            if byte == 10 {
-                do { frames.append(try AgentBridgeFrame.decode(bytes)) } catch {
+        var cursor = chunk.startIndex
+
+        while cursor < chunk.endIndex {
+            if let newlineIndex = chunk[cursor...].firstIndex(of: 0x0A) {
+                let segment = chunk[cursor..<newlineIndex]
+                cursor = chunk.index(after: newlineIndex)
+
+                if bytes.count + segment.count > limit {
+                    throw AgentBridgeError.frameTooLarge
+                }
+
+                bytes.append(segment)
+                do {
+                    frames.append(try AgentBridgeFrame.decode(bytes))
+                } catch {
+                    bytes.removeAll(keepingCapacity: true)
                     throw AgentBridgeError.invalidFrame
                 }
                 bytes.removeAll(keepingCapacity: true)
             } else {
-                guard bytes.count < limit else { throw AgentBridgeError.frameTooLarge }
-                bytes.append(byte)
+                let segment = chunk[cursor...]
+                cursor = chunk.endIndex
+
+                if bytes.count + segment.count > limit {
+                    throw AgentBridgeError.frameTooLarge
+                }
+
+                bytes.append(segment)
             }
         }
         return frames
     }
-    func finish() throws { if !bytes.isEmpty { throw AgentBridgeError.incompleteFrame } }
+    func finish() throws {
+        if !bytes.isEmpty { throw AgentBridgeError.incompleteFrame }
+    }
 }
 
 /// Readiness plus transport identity; "connecting" must not share the stream
@@ -345,7 +395,7 @@ enum HostHelperProbe: Equatable, Sendable {
         let targetAgent = agent ?? "claude"
         let compatible = report.map {
             $0.name == "herdcats-bridge" && $0.protocol == 1 && $0.herdrProtocol == 22
-                && $0.agents.contains(targetAgent) && Self.isAtLeastMinimum($0.version)
+                && $0.agents.contains(where: { TimelineAgentAvailability.canonical($0) == TimelineAgentAvailability.canonical(targetAgent) && TimelineAgentAvailability.canonical(targetAgent) != nil }) && Self.isAtLeastMinimum($0.version)
         } ?? false
         self = .present(version: version, managed: marker == "HC_HELPER_MANAGED", compatible: compatible)
     }
@@ -430,7 +480,25 @@ enum HostHelperSetupError: Error, LocalizedError, Equatable {
 /// Mirrors adapters implemented by the current bridge; agent detection alone
 /// does not imply that native session history is available.
 enum TimelineAgentAvailability {
-    static func supports(agent: String?) -> Bool { agent == "claude" || agent == "codex" }
+    static func displayName(for agent: String) -> String {
+        if let approvalAgent = ApprovalAgent(rawValue: agent) { return approvalAgent.displayName }
+        if agent == "pi" { return "Pi" }
+        return canonical(agent) == "antigravity_cli" ? "Agy" : agent
+    }
+    static func canonical(_ agent: String?) -> String? {
+        switch agent {
+        case "agy", "antigravity_cli": return "antigravity_cli"
+        case "claude", "codex", "pi": return agent
+        default: return nil
+        }
+    }
+    static func supports(agent: String?) -> Bool { canonical(agent) != nil }
+    static func matchesSession(agent: String, referenceAgent: String?, source: String?, identityAgent: String, referenceKind: String = "id") -> Bool {
+        guard let canonical = canonical(identityAgent), Self.canonical(agent) == canonical,
+              Self.canonical(referenceAgent) == canonical else { return false }
+        guard canonical != "antigravity_cli" || referenceKind == "id" else { return false }
+        return source == "herdr:\(canonical)"
+    }
 }
 
 /// Only references into the bridge's bounded, verified source snapshot.
@@ -481,7 +549,7 @@ struct TimelineConversationItem: Identifiable {
 
 enum TimelineActivitySummary {
     static func isCommand(_ entry: AgentTimelineEntry) -> Bool {
-        entry.toolName?.lowercased() == "bash"
+        ["bash", "run_command", "exec_command", "shell_command"].contains(entry.toolName?.lowercased() ?? "")
     }
     static func isRunning(_ entry: AgentTimelineEntry) -> Bool {
         entry.status != "completed" && entry.status != "failed"
@@ -512,6 +580,16 @@ enum TimelineActivitySummary {
            !firstLine.trimmingCharacters(in: .whitespaces).isEmpty {
             return String(firstLine.prefix(180))
         }
+        // Agy 1.4.7 encodes toolSummary as a JSON string inside args.
+        // Decode only this verified field; leave the original details untouched.
+        if entry.toolName?.lowercased() == "run_command",
+           let encoded = input["toolSummary"] as? String,
+           let data = encoded.data(using: .utf8),
+           let summary = try? JSONDecoder().decode(String.self, from: data),
+           let line = summary.split(whereSeparator: \.isNewline).first,
+           !line.trimmingCharacters(in: .whitespaces).isEmpty {
+            return String(line.prefix(180))
+        }
         let path = (input["file_path"] ?? input["path"] ?? input["notebook_path"]) as? String
         let file = path.map { URL(fileURLWithPath: $0).lastPathComponent }
         switch entry.toolName?.lowercased() {
@@ -521,7 +599,8 @@ enum TimelineActivitySummary {
         case "grep", "glob": return "Search project files"
         case "websearch": return "Search the web"
         case "webfetch": return "Read a web page"
-        case "bash": return "Run a shell command"
+        case "bash", "run_command", "exec_command", "shell_command": return "Run a shell command"
+        case "ask_question": return "Ask a question"
         default: return entry.toolName.map { "Use \($0)" } ?? "Use a tool"
         }
     }
@@ -556,102 +635,10 @@ enum TimelineHistoryDiagnostics {
         case .incompleteFrame: return "incomplete_frame"
         case .protocolMismatch: return "protocol_mismatch"
         case .sequenceGap: return "sequence_gap"
-        case .routedHostUnsupported: return "routed_host_unsupported"
         case .unavailable(let code), .questionFailure(let code, _):
             let safe = code.prefix(64).filter { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_") }
             return "remote_\(safe)"
         }
-    }
-}
-
-struct TimelineDiffLine: Identifiable, Sendable {
-    enum Kind: Sendable { case context, added, removed, omitted }
-    let id: Int
-    let kind: Kind
-    let text: String
-}
-
-/// Session edit excerpts, independent of whatever the working file contains now.
-struct TimelineFileChange: Identifiable, Sendable {
-    let id: String
-    let path: String
-    let writtenContent: Bool
-    let previewShortened: Bool
-    let replacesAll: Bool
-    let lines: [TimelineDiffLine]
-    var additions: Int { lines.filter { $0.kind == .added }.count }
-    var deletions: Int { lines.filter { $0.kind == .removed }.count }
-    var displayPath: String { path.split(separator: "/").suffix(2).joined(separator: "/") }
-    var previewLines: [TimelineDiffLine] {
-        if writtenContent { return lines }
-        var result: [TimelineDiffLine] = []
-        var index = 0
-        while index < lines.count {
-            if lines[index].kind != .context { result.append(lines[index]); index += 1; continue }
-            let start = index
-            while index < lines.count && lines[index].kind == .context { index += 1 }
-            if index - start > 6 {
-                result.append(contentsOf: lines[start..<start + 3])
-                result.append(TimelineDiffLine(id: -start - 1, kind: .omitted, text: "\(index - start - 6) unchanged lines"))
-                result.append(contentsOf: lines[index - 3..<index])
-            } else { result.append(contentsOf: lines[start..<index]) }
-        }
-        return result
-    }
-
-    static func from(_ entry: AgentTimelineEntry, inputData: Data? = nil) -> [Self] {
-        guard entry.kind == "tool", entry.status == "completed",
-              let data = inputData ?? entry.details?.data(using: .utf8),
-              let input = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let path = (input["file_path"] ?? input["path"]) as? String, !path.isEmpty else { return [] }
-        let name = entry.toolName?.lowercased()
-        if name == "write", let content = input["content"] as? String {
-            let rows = splitLines(content)
-            return [Self(id: "\(entry.id):diff:0", path: path, writtenContent: true, previewShortened: rows.count > 2048, replacesAll: false,
-                         lines: rows.prefix(2048).enumerated().map { TimelineDiffLine(id: $0.offset, kind: .context, text: $0.element) })]
-        }
-        guard name == "edit" || name == "multiedit" else { return [] }
-        let edits = name == "multiedit" ? (input["edits"] as? [[String: Any]] ?? []) : [input]
-        return edits.enumerated().compactMap { index, edit in
-            guard let old = edit["old_string"] as? String, let new = edit["new_string"] as? String,
-                  old != new else { return nil }
-            let before = splitLines(old), after = splitLines(new)
-            // Bound diff computation even if future helpers send larger inputs.
-            guard before.count <= 2048, after.count <= 2048,
-                  old.utf8.count + new.utf8.count <= 128 * 1024 else { return nil }
-            return Self(id: "\(entry.id):diff:\(index)", path: path, writtenContent: false, previewShortened: false,
-                        replacesAll: edit["replace_all"] as? Bool == true, lines: diff(before: before, after: after))
-        }
-    }
-
-    private static func splitLines(_ text: String) -> [String] {
-        guard !text.isEmpty else { return [] }
-        var rows = text.components(separatedBy: "\n")
-        if rows.last == "" { rows.removeLast() }
-        return rows
-    }
-
-    private static func diff(before: [String], after: [String]) -> [TimelineDiffLine] {
-        var removed: Set<Int> = [], added: Set<Int> = []
-        for change in after.difference(from: before) {
-            switch change {
-            case .remove(let offset, _, _): removed.insert(offset)
-            case .insert(let offset, _, _): added.insert(offset)
-            }
-        }
-        var result: [TimelineDiffLine] = []
-        var old = 0, new = 0
-        func append(_ kind: TimelineDiffLine.Kind, _ text: String) {
-            result.append(TimelineDiffLine(id: result.count, kind: kind, text: text))
-        }
-        while old < before.count || new < after.count {
-            if old < before.count && removed.contains(old) { append(.removed, before[old]); old += 1 }
-            else if new < after.count && added.contains(new) { append(.added, after[new]); new += 1 }
-            else if old < before.count && new < after.count { append(.context, after[new]); old += 1; new += 1 }
-            else if old < before.count { append(.removed, before[old]); old += 1 }
-            else { append(.added, after[new]); new += 1 }
-        }
-        return result
     }
 }
 
@@ -705,10 +692,59 @@ struct AgentModelPair: Codable, Equatable, Sendable {
 struct AgentModelExpectation: Encodable, Sendable {
     let model: String?
     let effort: String?
-    enum CodingKeys: String, CodingKey { case model, effort }
+    var identity: AgentTimelineIdentity? = nil
+    var generation: UInt64? = nil
+    enum CodingKeys: String, CodingKey { case model, effort, identity, generation }
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(model, forKey: .model)
         try c.encode(effort, forKey: .effort)
+        try c.encodeIfPresent(identity, forKey: .identity)
+        try c.encodeIfPresent(generation, forKey: .generation)
+    }
+}
+
+/// Pi forwards the exact extension dialog; boolean confirmation never implies
+/// a permission scope. Custom dialogs remain in Terminal.
+enum AgentPiDialogValue: Encodable, Equatable, Sendable {
+    case boolean(Bool), text(String)
+    func encode(to encoder: Encoder) throws {
+        var value = encoder.singleValueContainer()
+        switch self {
+        case .boolean(let flag): try value.encode(flag)
+        case .text(let text): try value.encode(text)
+        }
+    }
+}
+struct AgentPiDialog: Equatable, Sendable {
+    let identity: AgentTimelineIdentity
+    let generation: UInt64
+    let requestId: String
+    let kind: String
+    let title: String
+    let message: String?
+    let options: [String]
+    let value: String?
+    var isTerminalOnly: Bool { !["confirm", "select", "input"].contains(kind) }
+    func accepts(_ answer: AgentPiDialogValue) -> Bool {
+        switch (kind, answer) {
+        case ("confirm", .boolean): return true
+        case ("select", .text(let text)): return options.contains(text)
+        case ("input", .text(let text)): return text.utf8.count <= 65536
+        default: return false
+        }
+    }
+    static func decode(_ payload: AgentBridgePayload) throws -> Self {
+        guard let identity = payload.identity, identity.agent == "pi", let generation = payload.generation,
+              let requestId = payload.requestId, !requestId.isEmpty, requestId.utf8.count <= 264,
+              let kind = payload.kind, kind.utf8.count <= 64,
+              let title = payload.title, title.utf8.count <= 8192,
+              (payload.message?.utf8.count ?? 0) <= 8192,
+              (payload.value?.utf8.count ?? 0) <= 65536 else { throw AgentBridgeError.invalidFrame }
+        let options = payload.dialogOptions ?? []
+        guard options.count <= 100, options.allSatisfy({ $0.utf8.count <= 8192 }),
+              kind != "select" || (!options.isEmpty && Set(options).count == options.count) else { throw AgentBridgeError.invalidFrame }
+        return Self(identity: identity, generation: generation, requestId: requestId, kind: kind,
+            title: title, message: payload.message, options: options, value: payload.value)
     }
 }

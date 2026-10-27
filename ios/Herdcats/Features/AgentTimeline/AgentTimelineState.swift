@@ -12,6 +12,10 @@ import Observation
     let modelControl = AgentModelControlState()
     private(set) var pendingQuestion: AgentPendingQuestion?
     private(set) var pendingApproval: AgentPendingApproval?
+    private(set) var pendingPiDialog: AgentPiDialog?
+    private var piClient: AgentBridgeClient?
+    private(set) var isPiActionPending = false
+    var piActionError: String?
     private(set) var entries: [AgentTimelineEntry] = []
     private(set) var identity: AgentTimelineIdentity?
     private(set) var phase: Phase = .loading
@@ -33,6 +37,7 @@ import Observation
     private var evictedIds: Set<String> = []
 
     func begin(owner: UUID, paneId: String) {
+        piClient = nil
         modelControl.connect(nil, supported: false)
         self.owner = owner
         self.paneId = paneId
@@ -68,6 +73,7 @@ import Observation
             identity = nextIdentity
             generation = next
             modelControl.bind(identity: nextIdentity, generation: next)
+            if data.model != nil { try modelControl.update(data) }
             entries = rows
             hasMore = data.hasMore ?? false
             before = data.before
@@ -94,10 +100,15 @@ import Observation
                 before = entries.first?.id
                 hasMore = false
             }
+            var entryIndex: [String: Int] = [:]
+            for (index, entry) in entries.enumerated() {
+                entryIndex[entry.id] = index
+            }
             for row in rows where !evictedIds.contains(row.id) {
-                if let index = entries.firstIndex(where: { $0.id == row.id }) {
+                if let index = entryIndex[row.id] {
                     entries[index] = row
                 } else {
+                    entryIndex[row.id] = entries.count
                     entries.append(row)
                 }
             }
@@ -113,6 +124,14 @@ import Observation
             droppedEntries = data.droppedEntries ?? droppedEntries
             delayed = data.delayed ?? delayed
             revision += 1
+        case "pi.dialog":
+            guard phase == .ready, data.identity == identity, data.generation == generation else { throw AgentBridgeError.identityMismatch }
+            pendingPiDialog = try AgentPiDialog.decode(data)
+            piActionError = nil
+            revision += 1
+        case "pi.dialog.cleared":
+            guard phase == .ready, data.identity == identity, data.generation == generation else { throw AgentBridgeError.identityMismatch }
+            if data.requestId == pendingPiDialog?.requestId { pendingPiDialog = nil; revision += 1 }
         case "model.updated":
             guard phase == .ready, data.identity == identity, data.generation == generation else {
                 throw AgentBridgeError.identityMismatch
@@ -165,6 +184,7 @@ import Observation
     }
     func end(owner: UUID, error: AgentBridgeError) {
         guard self.owner == owner else { return }
+        piClient = nil
         modelControl.connect(nil, supported: false)
         self.owner = nil
         clear()
@@ -174,6 +194,9 @@ import Observation
         modelControl.reset()
         pendingQuestion = nil
         pendingApproval = nil
+        pendingPiDialog = nil
+        isPiActionPending = false
+        piActionError = nil
         evictedIds.removeAll()
         entries = []
         identity = nil
@@ -186,6 +209,37 @@ import Observation
         delayed = false
         codexDaemon = nil
         revision += 1
+    }
+
+    func connectPi(_ client: AgentBridgeClient?) { piClient = client }
+    var canSubmitPiPrompt: Bool { identity?.agent == "pi" && phase == .ready && piClient != nil && !isPiActionPending && pendingPiDialog == nil && ["idle", "done"].contains(agentStatus ?? "") }
+    var canCancelPi: Bool { identity?.agent == "pi" && phase == .ready && piClient != nil && !isPiActionPending && agentStatus == "working" && pendingPiDialog == nil }
+    func submitPiPrompt(_ text: String) async throws {
+        guard canSubmitPiPrompt, let client = piClient, let identity, let generation else { throw AgentBridgeError.unavailable("agent_busy") }
+        let reply = try await client.piAction(.piPrompt, identity: identity, generation: generation, text: text)
+        guard reply.confirmed == true else { throw AgentBridgeError.unavailable("delivery_unconfirmed") }
+    }
+    func cancelPi() async { await performPiAction(.piCancel) }
+    func respondPiDialog(_ dialog: AgentPiDialog, value: AgentPiDialogValue) async {
+        guard pendingPiDialog == dialog, dialog.accepts(value) else { return }
+        await performPiAction(.piDialogRespond, dialog: dialog, value: value)
+    }
+    private func performPiAction(_ method: AgentBridgeMethod, dialog: AgentPiDialog? = nil, value: AgentPiDialogValue? = nil) async {
+        guard !isPiActionPending, phase == .ready, let client = piClient, let identity, let generation, let owner else { return }
+        guard method != .piCancel || canCancelPi else { return }
+        isPiActionPending = true
+        piActionError = nil
+        do {
+            let reply = try await client.piAction(method, identity: identity, generation: generation, requestId: dialog?.requestId, value: value)
+            guard self.owner == owner, self.identity == identity, self.generation == generation else { return }
+            guard reply.confirmed == true, dialog == nil || reply.requestId == dialog?.requestId else { throw AgentBridgeError.invalidFrame }
+        } catch {
+            guard self.owner == owner, self.identity == identity, self.generation == generation else { return }
+            piActionError = (error as? AgentBridgeError)?.code == "stale"
+                ? "This Pi session changed. Check the current request and try again."
+                : "Could not confirm delivery. Check Terminal before trying again."
+        }
+        if self.owner == owner, self.identity == identity, self.generation == generation { isPiActionPending = false }
     }
 
     /// Older bridges omit `codex_daemon`; future values the app does not know
@@ -246,6 +300,9 @@ import Observation
     /// (a fresh Claude session can report no model but still offer efforts).
     private var statusEfforts: [AgentEffortOption] = []
     private(set) var isChanging = false
+    private(set) var isLoadingModels = false
+    /// Provenance of `models`, from the same reply and scope as the list.
+    private(set) var catalogInfo: AgentModelCatalogInfo?
     var errorMessage: String?
     private var client: AgentBridgeClient?
     private var identity: AgentTimelineIdentity?
@@ -257,8 +314,9 @@ import Observation
     /// The live model's own label keeps its version ("Opus 5.5"); the catalog
     /// name is used only when the bridge sent a bare id as the label.
     var modelName: String {
-        if let model = pair.model, model.label != model.id { return model.label }
-        return selectedModel?.label ?? pair.model?.label ?? "Model"
+        let model = pair.model.flatMap { $0.label != $0.id ? $0 : nil } ?? selectedModel ?? pair.model
+        guard let model else { return "Model" }
+        return model.label
     }
     var effortText: String? { pair.effort?.lowercased() }
     var label: String { modelName + (effortText.map { " " + $0 } ?? "") }
@@ -272,7 +330,11 @@ import Observation
         models.first(where: { $0.id == pair.model?.id })
             ?? models.first(where: { $0.current == true })
     }
-    var efforts: [AgentEffortOption] { selectedModel?.efforts ?? statusEfforts }
+    var efforts: [AgentEffortOption] {
+        if let selectedModel { return selectedModel.efforts }
+        if let efforts = pair.model?.efforts, !efforts.isEmpty { return efforts }
+        return statusEfforts
+    }
     var effortLabel: String {
         guard let effort = pair.effort else { return "Default" }
         return efforts.first(where: { $0.id == effort })?.label ?? "Unknown"
@@ -291,8 +353,10 @@ import Observation
         pair = AgentModelPair()
         models = []
         statusEfforts = []
+        catalogInfo = nil
         errorMessage = nil
         isChanging = false
+        isLoadingModels = false
     }
     func bind(identity: AgentTimelineIdentity, generation: UInt64) {
         self.identity = identity
@@ -304,6 +368,7 @@ import Observation
             guard let models = payload.models else { throw AgentBridgeError.invalidFrame }
             self.models = models
             statusEfforts = payload.efforts ?? []
+            catalogInfo = payload.catalog
         }
         let model = payload.model.map { incoming in
             if options { return incoming }
@@ -324,11 +389,18 @@ import Observation
         revision += 1
     }
     func refresh() async {
-        guard supported, let client, let identity, let generation else { return }
+        guard supported, let client, let identity, let generation, !isLoadingModels else { return }
         let revision = revision
         let scope = scope
+        isLoadingModels = true
+        errorMessage = nil
+        defer {
+            if self.scope == scope { isLoadingModels = false }
+        }
         do {
             let payload = try await client.modelStatus()
+            guard let catalog = payload.models else { throw AgentBridgeError.invalidFrame }
+            guard !catalog.isEmpty else { throw AgentBridgeError.unavailable("agy_catalog_empty") }
             guard self.scope == scope, self.identity == identity, self.generation == generation else { return }
             if self.revision != revision {
                 // An event already supplied a newer pair; the catalog is still useful.
@@ -336,13 +408,17 @@ import Observation
                     let models = payload.models else { throw AgentBridgeError.identityMismatch }
                 self.models = models
                 statusEfforts = payload.efforts ?? []
+                catalogInfo = payload.catalog
+                errorMessage = nil
                 return
             }
             try update(payload, options: true)
             errorMessage = nil
         } catch {
-            guard self.scope == scope, self.identity == identity, self.generation == generation, self.revision == revision else { return }
-            errorMessage = Self.message(for: (error as? AgentBridgeError)?.code)
+            guard self.scope == scope, self.identity == identity, self.generation == generation else { return }
+            models = []
+            statusEfforts = []
+            errorMessage = Self.catalogMessage(for: (error as? AgentBridgeError)?.code)
         }
     }
     func change(model: String? = nil, effort: String? = nil) async {
@@ -352,7 +428,9 @@ import Observation
         let scope = scope
         do {
             let payload = try await client.setModel(model: model, effort: effort,
-                expect: AgentModelExpectation(model: pair.model?.id, effort: pair.effort))
+                expect: AgentModelExpectation(model: pair.model?.id, effort: pair.effort,
+                    identity: ["antigravity_cli", "pi"].contains(TimelineAgentAvailability.canonical(identity.agent) ?? "") ? identity : nil,
+                    generation: ["antigravity_cli", "pi"].contains(TimelineAgentAvailability.canonical(identity.agent) ?? "") ? generation : nil))
             guard self.scope == scope, self.identity == identity, self.generation == generation else { return }
             try apply(payload)
         } catch {
@@ -379,6 +457,21 @@ import Observation
         revision += 1
         errorMessage = confirmed ? nil : Self.message(for: payload.error)
     }
+    static func catalogMessage(for code: String?) -> String {
+        switch code {
+        case "agy_unavailable": return "Agy wasn't found on this computer. Update Herdcats Bridge or check the Agy installation, then retry."
+        case "agy_timeout", "timeout": return "Loading model choices timed out. Retry or use Terminal."
+        case "agy_unsupported_version": return "This Agy version hasn't been verified for model controls. Use Terminal."
+        case "agy_catalog_invalid": return "Agy returned model choices Herdcats couldn't read. Retry or use Terminal."
+        case "codex_unavailable": return "Codex wasn't found on this computer. Check the Codex installation, then retry."
+        case "codex_catalog_invalid": return "Codex returned model choices Herdcats couldn't read. Retry or use Terminal."
+        case "codex_catalog_missing", "codex_catalog_empty": return "Codex has no model choices yet. Retry or use Terminal."
+        case "agy_catalog_empty": return "No model choices were returned. Retry or use Terminal."
+        case "agent_busy": return "The agent is busy. Retry when it's idle."
+        case "unsupported_capability": return "This bridge doesn't support model choices. Update Herdcats Bridge, then retry."
+        default: return "Couldn't load model choices. Retry or use Terminal."
+        }
+    }
     static func message(for code: String?) -> String {
         switch code {
         case "agent_busy": return "The agent is working — try again when it's idle."
@@ -392,7 +485,26 @@ import Observation
 #if DEBUG && targetEnvironment(simulator)
 extension AgentModelControlState {
     /// Screenshot-only catalog for `-hc.screen timeline-model*`; requires a bound identity.
-    func loadScreenshotFixture(agent: String) {
+    func loadScreenshotFixture(agent: String) async {
+        if TimelineAgentAvailability.canonical(agent) == "antigravity_cli" {
+            guard let identity, let generation else { return }
+            let efforts = ["low", "medium", "high"].map { AgentEffortOption(id: $0, label: $0.capitalized) }
+            let catalog = [("gemini-3.8-flash", "Gemini 3.8 Flash"), ("gemini-4-argon", "Gemini 4 Argon"),
+                ("claude-opus-5-5", "Claude Opus 5.5"), ("claude-sonnet-5-5", "Claude Sonnet 5.5"),
+                ("gpt-oss-120b", "GPT-OSS 120B")].map { id, label in
+                    AgentModelOption(id: id, label: label, efforts: id == "gpt-oss-120b" ? [efforts[1]] : efforts)
+                }
+            pair = AgentModelPair(model: catalog[0], effort: "high")
+            if ScreenshotFixtures.screen == "timeline-model-agy-retry" {
+                let client = await AgentTimelineScreenshotFixture.modelCatalogClient(identity: identity, generation: generation, models: catalog)
+                models = []
+                connect(client, supported: true)
+            } else {
+                models = catalog
+                connect(nil, supported: true)
+            }
+            return
+        }
         let efforts = ["low", "medium", "high", "xhigh", "max"].map {
             AgentEffortOption(id: $0, label: $0 == "xhigh" ? "Extra high" : $0.capitalized)
         }

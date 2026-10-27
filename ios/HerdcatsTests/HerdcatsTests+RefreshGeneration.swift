@@ -38,27 +38,18 @@ struct RefreshGenerationGateTests {
     }
 
     @MainActor
-    @Test(arguments: [false, true])
-    func initialErrorExposesRetryAndSuccessfulRetryClearsIt(allMachines: Bool) async throws {
+    @Test
+    func initialErrorExposesRetryAndSuccessfulRetryClearsIt() async {
         let model = SpacesModel()
         let connection = HerdrConnection()
-        let source: SpacesModel
-        if allMachines {
-            let app = AppModel(autoConnectOnLaunch: false)
-            app.connectionIdentity = ConnectionIdentity(host: "fixture", port: 22, username: "tester")
-            await model.bindMachines(app)
-            source = try #require(model.machineSources.first?.model)
-        } else {
-            source = model
-        }
-        source.agentListFetch = { throw HerdrError.unexpectedResponse("Agent list failed") }
+        model.agentListFetch = { throw HerdrError.unexpectedResponse("Agent list failed") }
         await model.refresh(connection)
         #expect(!model.isLoading)
         #expect(!model.hasLoadedAgentList)
         #expect(model.agentListError?.contains("Agent list failed") == true)
         #expect(!model.showsAgentLoading)
 
-        source.agentListFetch = { ([], []) }
+        model.agentListFetch = { ([], []) }
         await model.refresh(connection)
         #expect(model.hasLoadedAgentList)
         #expect(model.agentListError == nil)

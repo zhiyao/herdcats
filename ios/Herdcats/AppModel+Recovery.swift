@@ -65,10 +65,6 @@ extension AppModel {
     }
 
     func disconnect() async {
-        if let gatewayModel {
-            await gatewayModel.disconnect()
-            return
-        }
         cancelReconnect()
         dismissBannerTask?.cancel()
         connectionBanner = nil
@@ -76,7 +72,6 @@ extension AppModel {
         activeConfig = nil
         hostKeyChallenge = nil
         hostKeyVerificationBlocked = false
-        resetMachines()
         let generation = ownership.disconnect()
         phase = .disconnected
         herdrVersion = nil
@@ -117,7 +112,6 @@ extension AppModel {
     func handleConnectionLost(generation: ConnectionGeneration) {
         // Invalidates the app attempt so delayed serverVersion cannot promote.
         guard ownership.handleLoss(generation: generation) else { return }
-        resetMachines()
         switch phase {
         case let .connected(host, username):
             phase = .offline(host: host, username: username)

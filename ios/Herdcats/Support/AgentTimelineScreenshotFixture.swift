@@ -48,13 +48,14 @@
             return try decoder.decode(AgentBridgePayload.self, from: data)
         }
         static var showsApproval: Bool {
-            ["timeline-approval-codex", "timeline-approval-claude"].contains(ScreenshotFixtures.screen)
+            ["timeline-approval-codex", "timeline-approval-claude", "timeline-approval-agy"].contains(ScreenshotFixtures.screen)
         }
         static var showsQuestion: Bool { ScreenshotFixtures.screen.hasPrefix("timeline-question-") }
         static func questionFrame(paneId: String, kind: AgentQuestionKind? = nil) throws -> AgentBridgeFrame {
-            let kind = kind ?? (ScreenshotFixtures.screen == "timeline-question-codex-plan" ? .codexPlan
+            let kind = kind ?? (ScreenshotFixtures.screen == "timeline-question-agy-focus" ? .agy
+                : ScreenshotFixtures.screen == "timeline-question-codex-plan" ? .codexPlan
                 : ScreenshotFixtures.screen == "timeline-question-codex-async" ? .codexAsync : .claude)
-            let agent = kind == .claude ? "claude" : "codex"
+            let agent = kind == .agy ? "antigravity_cli" : (kind == .claude ? "claude" : "codex")
             func options(_ labels: [String], _ descriptions: [String]) -> [[String: Any]] {
                 labels.enumerated().map { index, label in
                     ["number": index + 1, "label": label, "description": descriptions[index]]
@@ -67,7 +68,7 @@
                 sizeOptions.append(["number": 3, "label": "None of the above"])
                 toppingsOptions.append(["number": 4, "label": "None of the above"])
             }
-            let questions: [[String: Any]] = kind == .codexAsync ? [
+            var questions: [[String: Any]] = kind == .codexAsync ? [
                 ["index": 0, "text": "Which task should I work on next?", "options": options(["Tests", "Documentation"], ["Check the implementation", "Update the guide"]),
                  "multi_select": false, "allows_other": true],
             ] : [
@@ -75,7 +76,20 @@
                 ["index": 1, "header": "Toppings", "text": "Pick toppings", "options": toppingsOptions,
                  "multi_select": kind == .claude, "allows_other": true],
             ]
+            if ScreenshotFixtures.screen == "timeline-question-agy-focus" {
+                questions = [
+                    ["index": 0, "header": "Task", "text": "Which part of the app should we explore before starting the next implementation?", "options": options(
+                        ["Explore the codebase", "Build a feature", "Discuss architecture", "Run the test suite"],
+                        Array(repeating: "Review the current behavior, explain the relevant constraints, and identify the next useful change before continuing.", count: 4)),
+                     "multi_select": false, "allows_other": true],
+                    ["index": 1, "header": "Validation", "text": "How should we validate the result and document the remaining tradeoffs for the next review?", "options": options(
+                        ["Focused checks", "Simulator coverage", "Connection review", "History review", "Accessibility review", "Manual follow-up"],
+                        Array(repeating: "Include the relevant scenarios, capture the expected outcome, and describe what still needs a separate follow-up before release.", count: 6)),
+                     "multi_select": false, "allows_other": true],
+                ]
+            }
             let step: [String: Any] = switch kind {
+            case .agy: ["kind": "agy_question", "index": 0, "total": 2]
             case .claude: ["kind": "claude_question", "index": 0]
             case .codexPlan: ["kind": "codex_question", "index": 0, "total": 2]
             case .codexAsync: ["kind": "async_queued"]
@@ -92,7 +106,13 @@
         }
         static func approvalFrame(paneId: String, agent: String) throws -> AgentBridgeFrame {
             let codex = agent == "codex"
-            let options: [[String: Any]] = codex ? [
+            let agy = agent == "antigravity_cli"
+            let options: [[String: Any]] = agy ? [
+                ["number": 1, "label_lines": ["Yes, run command"], "key": "navigate"],
+                ["number": 2, "label_lines": ["Yes, and always allow in this conversation for commands that start with 'printf'"], "key": "navigate"],
+                ["number": 3, "label_lines": ["Yes, and always allow for commands that start with 'printf' (Persist to settings.json)"], "key": "navigate"],
+                ["number": 4, "label_lines": ["No, cancel"], "key": "navigate"],
+            ] : codex ? [
                 ["number": 1, "label_lines": ["Yes, proceed"], "key": "y"],
                 ["number": 2, "label_lines": ["Yes, and don't ask again for commands that start with", "`touch herdcats-live-4.txt`"], "key": "p"],
                 ["number": 3, "label_lines": ["No, and tell Codex what to do differently"], "key": "esc"],
@@ -104,22 +124,40 @@
             var data: [String: Any] = [
                 "identity": ["pane_id": paneId, "terminal_id": "fixture-terminal", "agent": agent, "native_session_id": "fixture-session"],
                 "generation": 1, "kind": "approval", "request_id": "fixture-approval-\(agent)", "agent": agent,
-                "tool_name": "Bash", "command": "touch herdcats-live-4.txt",
-                "title": codex ? "Would you like to run the following command?" : "Do you want to proceed?",
+                "tool_name": agy ? "run_command" : "Bash", "command": agy ? "printf SAFE" : "touch herdcats-live-4.txt",
+                "title": agy ? "Command" : codex ? "Would you like to run the following command?" : "Do you want to proceed?",
                 "environment": "local", "options": options, "selected": 0,
             ]
-            data[codex ? "justification" : "description"] = codex
+            data[(codex || agy) ? "justification" : "description"] = agy ? "Print a harmless marker."
+                : codex
                 ? "Allow creating herdcats-live-4.txt in this read-only workspace?"
                 : "Create herdcats-live-4.txt in the workspace."
+            if ProcessInfo.processInfo.arguments.contains("-hc.approval-explanation-fallback"), codex {
+                data["justification"] = "  \n "
+                data["description"] = "Allow creating herdcats-live-4.txt in this read-only workspace?"
+            }
             return try AgentBridgeFrame.decode(JSONSerialization.data(withJSONObject: [
                 "event": "interaction.pending", "epoch": "fixture", "seq": 2, "data": data,
             ]))
+        }
+        static func modelCatalogClient(identity: AgentTimelineIdentity, generation: UInt64, models: [AgentModelOption]) async -> AgentBridgeClient {
+            let wire = AgyModelCatalogFixtureWire(identity: identity, generation: generation, models: models)
+            let client = AgentBridgeClient(write: { try await wire.write($0) }, close: {}, onEvent: { _ in })
+            await wire.attach(client)
+            try? await client.performHandshakeAndWatch(paneId: identity.paneId, agent: identity.agent)
+            return client
+        }
+        static func prepareApprovalResponse(_ response: ApprovalResponseState, pending: AgentPendingApproval?) {
+            response.sync(pending)
+            let args = ProcessInfo.processInfo.arguments
+            guard let index = args.firstIndex(of: "-hc.approval-state"), index + 1 < args.count,
+                  let pending, let token = response.begin(pending) else { return }
+            if args[index + 1] == "error" { response.fail(token: token, error: .timeout) }
         }
         static func frame(paneId: String, helperInstalled: Bool = false) throws -> AgentBridgeFrame {
             if ScreenshotFixtures.screen == "timeline-disconnected" { throw AgentBridgeError.closed }
             let unavailableCode: String? = switch ScreenshotFixtures.screen {
             case "timeline-unavailable": "unsupported_agent"
-            case "timeline-routed-host": "routed_host_unsupported"
             case "timeline-codex-no-session": "session_reference_unavailable"
             case "timeline-codex-helper-old" where !helperInstalled: "helper_update_required"
             case "timeline-codex-needs-upgrade" where !helperInstalled: "helper_update_required"
@@ -203,6 +241,13 @@
                     ["id": "message:done", "kind": "message", "role": "assistant", "text": "The changes are ready for review.", "truncated": false]
                 ]
             }
+            if ScreenshotFixtures.screen == "timeline-native-commands" {
+                entries = ["Bash", "run_command", "exec_command", "shell_command", "future_tool"].enumerated().map { index, name in
+                    let details = name == "run_command" ? "{\"CommandLine\":\"\\\"printf SAFE\\\"\",\"toolSummary\":\"\\\"Print a harmless marker\\\"\"}" : "{}"
+                    return ["id": "native-command-\(index)", "kind": "tool", "tool_name": name,
+                        "status": "running", "text": "", "details": details, "truncated": false]
+                }
+            }
             if ScreenshotFixtures.screen == "timeline-tool-activity",
                let index = entries.firstIndex(where: { $0["id"] as? String == "message:summary" }) {
                 entries.insert(contentsOf: [
@@ -244,6 +289,39 @@
                         "unknown_records": ProcessInfo.processInfo.arguments.contains("-hc.timeline-long") ? 2 : 0, "dropped_entries": 0,
                     ],
                 ]))
+        }
+    }
+    /// A read-only synthetic bridge: first discovery fails, Retry succeeds.
+    private actor AgyModelCatalogFixtureWire {
+        let identity: AgentTimelineIdentity
+        let generation: UInt64
+        let models: [AgentModelOption]
+        var client: AgentBridgeClient?
+        var discoveries = 0
+        init(identity: AgentTimelineIdentity, generation: UInt64, models: [AgentModelOption]) {
+            self.identity = identity; self.generation = generation; self.models = models
+        }
+        func attach(_ client: AgentBridgeClient) { self.client = client }
+        func write(_ bytes: Data) async throws {
+            let request = try JSONSerialization.jsonObject(with: bytes) as! [String: Any]
+            let id = request["id"] as! String
+            let result: [String: Any]
+            switch request["method"] as? String {
+            case "initialize": result = ["protocol":1,"epoch":"fixture","capabilities":["claude_timeline":false,"agy":true,"record_content":true,"model_control":true]]
+            case "watch": result = [:]
+            case "model.status":
+                discoveries += 1
+                if discoveries == 1 {
+                    await client?.receive(try JSONSerialization.data(withJSONObject: ["id":id,"error":["code":"agy_unavailable"]]) + Data("\n".utf8))
+                    return
+                }
+                let encoder = JSONEncoder(); encoder.keyEncodingStrategy = .convertToSnakeCase
+                result = ["identity":try JSONSerialization.jsonObject(with: encoder.encode(identity)), "generation":generation,
+                    "model":try JSONSerialization.jsonObject(with: encoder.encode(models[0])), "effort":"high",
+                    "models":try JSONSerialization.jsonObject(with: encoder.encode(models))]
+            default: throw AgentBridgeError.invalidFrame
+            }
+            await client?.receive(try JSONSerialization.data(withJSONObject: ["id":id,"result":result]) + Data("\n".utf8))
         }
     }
 #endif

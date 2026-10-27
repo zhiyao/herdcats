@@ -2,8 +2,32 @@
 import Foundation
 import SwiftUI
 
-/// Read-only fixtures for native screenshots. Never compiled into device builds.
+/// Simulator fixtures for native screenshots and saved-connection UI tests.
 enum ScreenshotFixtures {
+    private struct SavedMachineFixture: Decodable {
+        let id: UUID
+        let host: String
+        let port: Int
+        let username: String
+        let secret: String
+        let authMode: String
+        let name: String
+    }
+
+    static func seedMachinesIfRequested() throws {
+        guard ProcessInfo.processInfo.arguments.contains("-hc.seed-machines"),
+              let json = ProcessInfo.processInfo.environment["HC_SAVED_MACHINES"] else { return }
+        let fixtures = try JSONDecoder().decode([SavedMachineFixture].self, from: Data(json.utf8))
+        var entries: [RecentConnection] = []
+        for fixture in fixtures {
+            let entry = RecentConnection(id: fixture.id, host: fixture.host, port: fixture.port,
+                username: fixture.username, authMode: fixture.authMode, remember: true, name: fixture.name)
+            try KeychainStore.save(fixture.secret, account: entry.secretAccount)
+            entries.append(entry)
+        }
+        UserDefaults.standard.set(try JSONEncoder().encode(entries), forKey: RecentConnectionStore.storageKey)
+    }
+
     static var enabled: Bool { ProcessInfo.processInfo.arguments.contains("-hc.screenshots") }
     static var screen: String {
         let args = ProcessInfo.processInfo.arguments
@@ -49,15 +73,18 @@ enum ScreenshotFixtures {
     }
     static func response(_ args: String) throws -> String {
         if args == "--version" { return "herdr 0.8.0" }
-        if args == "machine list --json" { return "[]" }
         if args.hasPrefix("pane read") { return terminal }
         let result: [String: Any]
         if args == "workspace list" { result = ["workspaces": workspaces] }
         else if args == "agent list" { result = ["agents": panes] }
         else if args.hasPrefix("pane list") {
-            result = ["panes": panes.filter { args.contains($0["workspace_id"] as! String) }]
+            result = ["panes": panes.filter {
+                args.contains(HerdrConnection.shellSafeArgument($0["workspace_id"] as! String))
+            }]
         } else if args.hasPrefix("tab list") {
-            result = ["tabs": projects.indices.filter { args.contains("w\($0)") }.map { index in
+            result = ["tabs": projects.indices.filter {
+                args.contains(HerdrConnection.shellSafeArgument("w\($0)"))
+            }.map { index in
                 ["tab_id": "t\(index)", "workspace_id": "w\(index)", "label": "Agent", "number": 1,
                  "pane_count": 1, "agent_status": statuses[index], "focused": true] as [String: Any]
             }]
@@ -121,26 +148,6 @@ struct ScreenshotRootView: View {
         }
         return app
     }()
-    /// A saved machine reached through Herdr on the SSH-connected gateway, for
-    /// the routed-host Timeline screen.
-    @State private var routedModel: AppModel = {
-        let gateway = ConnectionIdentity(host: "studio-mac", port: 22, username: "demo")
-        let machine = HerdrMachine(
-            id: "studio-mini", label: "Studio Mini", target: "studio-mini.local",
-            session: "studio-mini", enabled: true)
-        let routed = HerdrConnection(
-            gateway: HerdrConnection(), machine: machine,
-            generation: ConnectionGeneration(rawValue: 1), identity: gateway)
-        let app = AppModel(connection: routed, autoConnectOnLaunch: false)
-        app.phase = .connected(host: "Studio Mini", username: "demo")
-        app.hasActiveSession = true
-        app.selectedMachine = machine
-        app.connectionIdentity = gateway.scoped(to: machine)
-        if ProcessInfo.processInfo.arguments.contains("-hc.timeline-intro-reset"), let identity = app.connectionIdentity {
-            UserDefaults.standard.removeObject(forKey: TimelineSetupPreference.key(scope: identity))
-        }
-        return app
-    }()
     var body: some View {
         Group {
             if ScreenshotFixtures.screen == "pane" || ScreenshotFixtures.screen == "agent-pane" || ["keys", "compose", "voice", "turn-interrupted", "optional-upgrade-menu"].contains(ScreenshotFixtures.screen) || ScreenshotFixtures.screen.hasPrefix("timeline") {
@@ -158,7 +165,7 @@ struct ScreenshotRootView: View {
                 MainTabView()
             }
         }
-        .environment(ScreenshotFixtures.screen == "timeline-routed-host" ? routedModel : model)
+        .environment(model)
         .preferredColorScheme(ProcessInfo.processInfo.arguments.contains("-hc.light") ? .light : .dark)
         .tint(Theme.accent)
         .foregroundStyle(Theme.text)
