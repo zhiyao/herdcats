@@ -172,3 +172,55 @@ fn the_session_version_comes_from_the_running_process_not_the_symlink() {
         assert_eq!(session_version([bad]), Err("cursor_version_unverified"), "{bad}");
     }
 }
+
+fn real_labels() -> Vec<String> {
+    ["Auto", "Grok 4.7", "Grok 4.6", "Composer 2.5", "Claude Opus 5.5", "Claude Opus 5", "Claude Opus 4.7", "GPT-5.6 Sol", "GPT-5.5",
+     "Claude Sonnet 4", "Claude Sonnet 4.5", "Gemini 3 Flash", "Kimi K3", "DeepSeek V4.1 Flash 1017"].map(String::from).to_vec()
+}
+
+#[test]
+fn the_users_statusline_footer_matches_exactly_or_not_at_all() {
+    // Captured with the user's real ~/.cursor/statusline.sh (copied, cache path only changed):
+    // `display_name` already holds the parameters and `param_summary` repeats them,
+    // then a context bar, the monthly figure and the directory.
+    let labels = real_labels();
+    let f = |text: &str| parse_footer(text, &labels);
+    let cases: [(&str, &str, Option<&str>); 9] = [
+        ("GPT-5.6 Sol 272K Medium 272K Medium  ░░░░░░░░░░ 5%  73% left", "GPT-5.6 Sol", Some("medium")),
+        ("Grok 4.7 500K Low Fast 500K Low Fast max  ░░░░░░░░░░ 5%  73% left", "Grok 4.7", Some("low")),
+        ("Composer 2.5 Fast Fast  ░░░░░░░░░░ 5%  73% left  herdcats-cursor-probe", "Composer 2.5", None),
+        ("Auto  ░░░░░░░░░░ 5%  73% left  herdcats-cursor-probe", "Auto", None),
+        ("Claude Sonnet 4 No Thinking No Thinking  ░░░░░░░░░░ 5%  73% left", "Claude Sonnet 4", None),
+        ("Claude Opus 4.7 300K Extra High 300K Extra High  ░░░░░░░░░░ 5%  73% left", "Claude Opus 4.7", Some("xhigh")),
+        ("Kimi K3 Max Max  ░░░░░░░░░░ 5%  73% left  herdcats-cursor-probe", "Kimi K3", Some("max")),
+        ("DeepSeek V4.1 Flash 1017 High High  ░░░░░░░░░░ 5%  73% left", "DeepSeek V4.1 Flash 1017", Some("high")),
+        ("Claude Opus 5 300K High 300K High  ░░░░░░░░░░ 5%  73% left", "Claude Opus 5", Some("high")),
+    ];
+    for (line, label, effort) in cases {
+        let footer = f(line).unwrap_or_else(|| panic!("{line}"));
+        assert_eq!((footer.label.as_str(), footer.effort), (label, effort), "{line}");
+    }
+    // The branch segment and unusual spacing do not matter.
+    assert_eq!(f("Grok 4.7 High High  ░░░ 6%  73% left  herdcats · feat/cursor").unwrap().label, "Grok 4.7");
+    // A neighbour never matches by prefix: Opus 5 vs Opus 5.5 in both directions.
+    assert_eq!(f("Claude Opus 5.5 300K Medium 300K Medium  ░░").unwrap().label, "Claude Opus 5.5");
+    assert!(parse_footer("Claude Opus 5.5 300K Medium 300K Medium", &["Claude Opus 5".to_owned()]).is_none());
+    // Names the picker does not list, partial names and a script that prints
+    // something else entirely are refused.
+    for line in ["Claude Opus 300K High 300K High ░░", "Opus 5 300K High ░░", "My Custom Model High ░░", "—  ░░░░░░░░░░ 0%", "$ 12.40 left  herdcats", "░░░░░░░░░░ 5%  Claude Opus 5", ""] {
+        assert!(f(line).is_none(), "{line:?}");
+    }
+    // A differing effort between display_name and param_summary is not guessed.
+    assert_eq!(f("Grok 4.7 500K Low Fast 500K High Fast  ░░").unwrap().effort, None);
+}
+
+#[test]
+fn the_footer_row_is_found_when_the_statusline_wraps_onto_a_second_row() {
+    let wrapped = format!("{COMPOSER}  GPT-5.6 Sol 272K Medium 272K Medium  ░░░░░░░░░░ 5%  73% left\n  herdcats-cursor-probe\n");
+    assert_eq!(footer_text(&wrapped).as_deref(), Some("GPT-5.6 Sol 272K Medium 272K Medium  ░░░░░░░░░░ 5%  73% left"));
+    let one_row = format!("{COMPOSER}  Auto  ░░░░░░░░░░ 5%  73% left  herdcats-cursor-probe\n");
+    assert_eq!(parse_footer(&footer_text(&one_row).unwrap(), &real_labels()).unwrap().label, "Auto");
+    // Mode line first, statusline second.
+    let plan = format!("{COMPOSER}  Plan (shift+tab to cycle)\n  Auto  ░░░ 5%\n  herdcats-cursor-probe\n");
+    assert_eq!(parse_footer(&footer_text(&plan).unwrap(), &real_labels()).unwrap().label, "Auto");
+}

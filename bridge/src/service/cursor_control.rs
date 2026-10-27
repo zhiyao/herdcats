@@ -436,11 +436,18 @@ impl Service {
         })?
         .ok_or("confirm_timeout")?;
         self.cursor_close(identity, None)?;
-        let footer = self.cursor_footer(identity, labels)?;
-        if footer.as_ref().is_some_and(|f| f.label == model && f.effort == Some(target)) {
-            Ok(offered)
-        } else {
-            Err("confirm_timeout")
+        // A custom statusline refreshes about once a second, so the footer can
+        // still show the old effort for a moment after the editor closed.
+        let deadline = Instant::now() + Duration::from_secs(4);
+        loop {
+            let footer = self.cursor_footer(identity, labels)?;
+            if footer.as_ref().is_some_and(|f| f.label == model && f.effort == Some(target)) {
+                return Ok(offered);
+            }
+            if Instant::now() >= deadline {
+                return Err("confirm_timeout");
+            }
+            thread::sleep(Duration::from_millis(100));
         }
     }
 

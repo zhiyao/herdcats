@@ -33,6 +33,12 @@ struct CursorTui {
     /// the current model; keys sent meanwhile are lost (as in the real TUI).
     transient_frames: u8,
     transient: std::cell::Cell<u8>,
+    /// Draw the user's statusline instead of Cursor's own footer.
+    statusline: bool,
+    /// Composer redraws that still show the previous footer after a change.
+    footer_lag: u8,
+    lag: std::cell::Cell<u8>,
+    old_footer: std::cell::RefCell<String>,
 }
 const TUI_TOP: &str = " ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄";
 const TUI_BOTTOM: &str = " ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀";
@@ -57,7 +63,7 @@ impl CursorTui {
         ];
         let effort = models.iter().map(|m| m.efforts.iter().copied().find(|e| *e == "medium").or(m.efforts.first().copied())).collect();
         let order = (0..models.len()).collect();
-        Self { models, order, current: 3, effort, mode: TuiMode::Idle, plan: false, ignore: vec![], picker_enter_lost: false, transient_frames: 0, transient: std::cell::Cell::new(0) }
+        Self { models, order, current: 3, effort, mode: TuiMode::Idle, plan: false, ignore: vec![], picker_enter_lost: false, transient_frames: 0, transient: std::cell::Cell::new(0), statusline: false, footer_lag: 0, lag: std::cell::Cell::new(0), old_footer: std::cell::RefCell::new(String::new()) }
     }
     fn params(&self, model: usize) -> String {
         let m = &self.models[model];
@@ -69,7 +75,28 @@ impl CursorTui {
     }
     fn footer(&self) -> String {
         let p = self.params(self.current);
-        format!("{}{}{} · 8.4%", self.models[self.current].label, if p.is_empty() { "" } else { " " }, p)
+        let label = self.models[self.current].label;
+        if self.statusline {
+            // display_name already holds the parameters and param_summary repeats them.
+            let shown = if p.is_empty() { label.to_owned() } else { format!("{label} {p}") };
+            let summary = if p.is_empty() { String::new() } else { format!(" {p}") };
+            return format!("{shown}{summary}  ░░░░░░░░░░ 5%  73% left\n  herdcats-cursor-probe");
+        }
+        format!("{}{}{} · 8.4%", label, if p.is_empty() { "" } else { " " }, p)
+    }
+    fn shown_footer(&self) -> String {
+        // The statusline refreshes about once a second: keep the old text for a few redraws.
+        if self.lag.get() > 0 {
+            self.lag.set(self.lag.get() - 1);
+            return self.old_footer.borrow().clone();
+        }
+        self.footer()
+    }
+    fn changed(&self, before: String) {
+        if self.footer_lag > 0 {
+            *self.old_footer.borrow_mut() = before;
+            self.lag.set(self.footer_lag);
+        }
     }
     fn filtered(&self, filter: &str) -> Vec<usize> {
         self.order.iter().copied().filter(|i| self.models[*i].label.to_lowercase().contains(&filter.to_lowercase())).collect()
@@ -77,7 +104,9 @@ impl CursorTui {
     fn composer(&self, draft: Option<&str>) -> (String, String) {
         let text = draft.map(|d| format!("  → {d}")).unwrap_or_else(|| "  → Add a follow-up".to_owned());
         let mode = if self.plan { "  Plan (shift+tab to cycle)\n" } else { "" };
-        let plain = format!("\n  PONG\n\n{TUI_TOP}\n{text}\n{TUI_BOTTOM}\n{mode}  {}\n  /private/tmp/herdcats-cursor-probe", self.footer());
+        let footer = if matches!(self.mode, TuiMode::Idle | TuiMode::Draft(_)) { self.shown_footer() } else { self.footer() };
+        let footer_rows = if self.statusline { footer } else { format!("{footer}\n  /private/tmp/herdcats-cursor-probe") };
+        let plain = format!("\n  PONG\n\n{TUI_TOP}\n{text}\n{TUI_BOTTOM}\n{mode}  {footer_rows}");
         let styled = if draft.is_none() {
             let bg = "\u{1b}[48;2;47;50;57m";
             let row = format!(" \u{1b}[0m{bg} \u{1b}[0m\u{1b}[2m{bg}→ \u{1b}[0m\u{1b}[7m{bg}A\u{1b}[0m\u{1b}[2m{bg}dd a follow-up\u{1b}[0m{bg}   \u{1b}[0m");
@@ -181,7 +210,9 @@ impl CursorTui {
             (TuiMode::Draft(_), "ctrl+u") => self.mode = TuiMode::Idle,
             (TuiMode::Picker { filter, cursor, .. }, "enter") if !self.picker_enter_lost => {
                 if let Some(model) = self.filtered(filter).get(*cursor).copied() {
+                    let before = self.footer();
                     self.current = model;
+                    self.changed(before);
                     self.order.retain(|m| *m != model);
                     self.order.insert(0, model);
                     self.mode = TuiMode::Idle;
@@ -222,7 +253,9 @@ impl CursorTui {
             (TuiMode::Editor { model, cursor }, "enter") => {
                 let items = self.editor_items(*model);
                 if let Some((Some("Effort"), text, true, _)) = items.get(*cursor) {
+                    let before = self.footer();
                     self.effort[*model] = crate::cursor_model::effort_id(text);
+                    self.changed(before);
                     if *model == self.current { /* footer follows */ }
                 } else if let Some((None, _, false, on)) = items.get(*cursor) {
                     self.models[*model].fast = Some(!on);
@@ -556,5 +589,55 @@ fn cursor_picker_first_frame_at_the_top_is_not_acted_on() {
     assert_eq!(result["confirmed"], true);
     assert_eq!(result["applied"]["model"]["id"], "claude-opus-5");
     assert_eq!(result["applied"]["effort"], "high");
+    cleanup(&service, root);
+}
+
+#[test]
+fn cursor_model_control_works_with_the_users_statusline_footer() {
+    let (service, root, herdr, _file) = model_fixture();
+    let identity = service.watch.as_ref().unwrap().identity.clone().unwrap();
+    {
+        let mut state = herdr.lock().unwrap();
+        let t = state.tui.as_mut().unwrap();
+        t.statusline = true;
+        // The statusline refreshes late: for a few redraws after any change the old text stays.
+        t.footer_lag = 6;
+    }
+    let status = service.cursor_model_status(&identity).unwrap();
+    closed(&herdr);
+    assert_eq!(status["model"]["id"], "claude-opus-5-5");
+    assert_eq!(status["effort"], "medium");
+    // Effort: the editor applies at once, the footer follows later; that is not a failure.
+    let params = set_params(&service, None, Some("max"), "claude-opus-5-5", Some("medium"));
+    let result = service.cursor_model_set(&identity, &params).unwrap();
+    closed(&herdr);
+    assert_eq!(result["confirmed"], true, "{result}");
+    assert_eq!(result["applied"]["effort"], "max");
+    // Model + effort together.
+    let params = set_params(&service, Some("gpt-5-6-sol"), Some("high"), "claude-opus-5-5", Some("max"));
+    let result = service.cursor_model_set(&identity, &params).unwrap();
+    closed(&herdr);
+    assert_eq!(result["confirmed"], true, "{result}");
+    assert_eq!(result["applied"]["model"]["id"], "gpt-5-6-sol");
+    assert_eq!(result["applied"]["effort"], "high");
+    cleanup(&service, root);
+}
+
+#[test]
+fn cursor_model_control_refuses_when_the_statusline_name_matches_no_picker_row() {
+    let (service, root, herdr, _file) = model_fixture();
+    let identity = service.watch.as_ref().unwrap().identity.clone().unwrap();
+    service.cursor_model_status(&identity).unwrap();
+    let before = input_count(&herdr);
+    {
+        // The statusline prints a name the picker does not list.
+        let mut state = herdr.lock().unwrap();
+        let t = state.tui.as_mut().unwrap();
+        t.statusline = true;
+        t.models[3].label = "Hidden";
+    }
+    let params = set_params(&service, Some("claude-opus-5"), None, "claude-opus-5-5", Some("medium"));
+    assert_eq!(service.cursor_model_set(&identity, &params).unwrap_err(), "footer_unrecognized");
+    assert_eq!(input_count(&herdr), before, "no key was sent while the footer could not be matched");
     cleanup(&service, root);
 }

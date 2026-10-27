@@ -365,6 +365,7 @@ pub fn parse_footer(text: &str, labels: &[String]) -> Option<Footer> {
         }
         i += 1;
     }
+    efforts.sort_unstable();
     efforts.dedup();
     Some(Footer { label: label.clone(), effort: if efforts.len() == 1 { Some(efforts[0]) } else { None } })
 }
