@@ -56,10 +56,12 @@ struct AgentTimelineIdentity: Codable, Equatable, Sendable {
     let terminalId: String
     let agent: String
     let nativeSessionId: String
+    var nativeInstanceId: String? = nil
 }
 struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
     let claudeTimeline: Bool
     var agy: Bool = false
+    var pi: Bool = false
     var codexTimeline: Bool? = false
     var codexDaemonConfig: Bool? = false
     var codexDaemonStop: Bool? = false
@@ -71,6 +73,7 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
     init(
         claudeTimeline: Bool,
         agy: Bool = false,
+        pi: Bool = false,
         codexTimeline: Bool? = false,
         codexDaemonConfig: Bool? = false,
         codexDaemonStop: Bool? = false,
@@ -80,6 +83,7 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
         modelControl: Bool = false
     ) {
         self.agy = agy
+        self.pi = pi
         self.claudeTimeline = claudeTimeline
         self.modelControl = modelControl
         self.codexTimeline = codexTimeline
@@ -93,6 +97,7 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.agy = try container.decodeIfPresent(Bool.self, forKey: .agy) ?? false
+        self.pi = try container.decodeIfPresent(Bool.self, forKey: .pi) ?? false
         self.modelControl = try container.decodeIfPresent(Bool.self, forKey: .modelControl) ?? false
         self.claudeTimeline = try container.decode(Bool.self, forKey: .claudeTimeline)
         self.codexTimeline = try container.decodeIfPresent(Bool.self, forKey: .codexTimeline) ?? false
@@ -230,6 +235,9 @@ struct AgentBridgePayload: Codable, Sendable {
     var description: String?
     var justification: String?
     var environment: String?
+    var message: String?
+    var dialogOptions: [String]?
+    var value: String?
     var title: String?
     var options: [AgentApprovalOption]?
     var selected: Int?
@@ -474,12 +482,13 @@ enum HostHelperSetupError: Error, LocalizedError, Equatable {
 enum TimelineAgentAvailability {
     static func displayName(for agent: String) -> String {
         if let approvalAgent = ApprovalAgent(rawValue: agent) { return approvalAgent.displayName }
+        if agent == "pi" { return "Pi" }
         return canonical(agent) == "antigravity_cli" ? "Agy" : agent
     }
     static func canonical(_ agent: String?) -> String? {
         switch agent {
         case "agy", "antigravity_cli": return "antigravity_cli"
-        case "claude", "codex": return agent
+        case "claude", "codex", "pi": return agent
         default: return nil
         }
     }
@@ -692,5 +701,50 @@ struct AgentModelExpectation: Encodable, Sendable {
         try c.encode(effort, forKey: .effort)
         try c.encodeIfPresent(identity, forKey: .identity)
         try c.encodeIfPresent(generation, forKey: .generation)
+    }
+}
+
+/// Pi forwards the exact extension dialog; boolean confirmation never implies
+/// a permission scope. Custom dialogs remain in Terminal.
+enum AgentPiDialogValue: Encodable, Equatable, Sendable {
+    case boolean(Bool), text(String)
+    func encode(to encoder: Encoder) throws {
+        var value = encoder.singleValueContainer()
+        switch self {
+        case .boolean(let flag): try value.encode(flag)
+        case .text(let text): try value.encode(text)
+        }
+    }
+}
+struct AgentPiDialog: Equatable, Sendable {
+    let identity: AgentTimelineIdentity
+    let generation: UInt64
+    let requestId: String
+    let kind: String
+    let title: String
+    let message: String?
+    let options: [String]
+    let value: String?
+    var isTerminalOnly: Bool { !["confirm", "select", "input"].contains(kind) }
+    func accepts(_ answer: AgentPiDialogValue) -> Bool {
+        switch (kind, answer) {
+        case ("confirm", .boolean): return true
+        case ("select", .text(let text)): return options.contains(text)
+        case ("input", .text(let text)): return text.utf8.count <= 65536
+        default: return false
+        }
+    }
+    static func decode(_ payload: AgentBridgePayload) throws -> Self {
+        guard let identity = payload.identity, identity.agent == "pi", let generation = payload.generation,
+              let requestId = payload.requestId, !requestId.isEmpty, requestId.utf8.count <= 264,
+              let kind = payload.kind, kind.utf8.count <= 64,
+              let title = payload.title, title.utf8.count <= 8192,
+              (payload.message?.utf8.count ?? 0) <= 8192,
+              (payload.value?.utf8.count ?? 0) <= 65536 else { throw AgentBridgeError.invalidFrame }
+        let options = payload.dialogOptions ?? []
+        guard options.count <= 100, options.allSatisfy({ $0.utf8.count <= 8192 }),
+              kind != "select" || (!options.isEmpty && Set(options).count == options.count) else { throw AgentBridgeError.invalidFrame }
+        return Self(identity: identity, generation: generation, requestId: requestId, kind: kind,
+            title: title, message: payload.message, options: options, value: payload.value)
     }
 }

@@ -2,6 +2,7 @@ use crate::{
     Result,
     adapter::Adapter,
     agy::AgyAdapter,
+    pi::PiAdapter,
     approval_match::{self, PendingRequest, Resolution},
     approval_screen::{self, ApprovalDialog, OptionKey},
     claude::{ClaudeAdapter, Entry},
@@ -60,6 +61,8 @@ struct Identity {
     terminal_id: String,
     agent: String,
     native_session_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    native_instance_id: Option<String>,
 }
 struct PendingApproval {
     identity: Identity,
@@ -248,6 +251,8 @@ struct Watch {
     model_stamp: Option<(u64, (i64, i64))>,
     last_model: Option<(String, Option<String>)>,
     model_override: Option<ModelOverride>,
+    pi_state: Option<Value>,
+    pi_dialog: Option<Value>,
 }
 // Last supported-CLI Codex discovery attempt and failure backoff are kept in
 // memory so repeated background status reads never respawn the CLI. Explicit
@@ -300,6 +305,7 @@ pub struct Service {
     // settings.json beside the configured (non-canonicalized) Claude root's
     // parent; `~/.claude/projects` -> `~/.claude/settings.json`.
     claude_settings_path: Option<PathBuf>,
+    pi_agent_dir: Option<PathBuf>,
 }
 pub fn page(entries: &[Entry], before: usize) -> Value {
     let mut start = before.saturating_sub(100);
@@ -354,6 +360,7 @@ impl Service {
             Box::new(ClaudeAdapter::new(resolver.clone())),
             Box::new(CodexAdapter::new(codex_resolver.clone())),
             Box::new(AgyAdapter::new(AgyAdapter::default_root())),
+            Box::new(PiAdapter::new(PiAdapter::default_root())),
         ];
         Self {
             client: Client { socket },
@@ -379,6 +386,7 @@ impl Service {
             spool_dir: spool::resolve_spool_dir(),
             include_model_control: false,
             claude_settings_path: None,
+            pi_agent_dir: crate::pi::default_agent_dir(),
         }
     }
     pub fn invalidate_codex_daemon_cache(&mut self) {
@@ -434,6 +442,7 @@ impl Service {
             Box::new(ClaudeAdapter::new(self.resolver.clone())),
             Box::new(CodexAdapter::new(self.codex_resolver.clone())),
             Box::new(AgyAdapter::new(AgyAdapter::default_root())),
+            Box::new(PiAdapter::new(PiAdapter::default_root())),
         ];
         self
     }
@@ -441,6 +450,17 @@ impl Service {
         self.adapters.retain(|a| a.name() != "antigravity_cli");
         self.adapters.push(Box::new(AgyAdapter::new(Some(root))));
         self
+    }
+    pub fn with_pi_agent_dir(mut self, root: PathBuf) -> Self {
+        self.adapters.retain(|a|a.name()!="pi");
+        self.adapters.push(Box::new(PiAdapter::new(Some(root.join("sessions")))));
+        self.pi_agent_dir=Some(root);
+        self
+    }
+    fn pi_request(&self,session:&str,method:&str,params:Value)->Result<Value>{
+        let dir=self.pi_agent_dir.as_deref().ok_or("pi_extension_unavailable")?;
+        let socket=crate::pi::extension_socket_at(dir,session)?;
+        crate::pi::extension_request_at(&socket,method,params)
     }
     fn adapter_for(&self, agent: &str) -> Option<&dyn Adapter> {
         self.adapters
@@ -481,7 +501,29 @@ impl Service {
         watch.agent = pane.agent.clone();
         let agent = pane.agent.as_deref().ok_or("unsupported_agent")?;
         let adapter = self.adapter_for(agent).ok_or("unsupported_agent")?;
-        let (session, file) = adapter.resolve_and_open(pane)?;
+        let (session, file, pi_state) = if adapter.name() == "pi" {
+            let (session, file, path) = adapter.resolve_pi_live(pane)?;
+            let state = self.pi_request(&session, "state", json!({}))?;
+            if state["version"] != "1.4.0" || state["session_id"].as_str() != Some(session.as_str())
+                || state["instance_id"].as_str().is_none_or(|v| v.is_empty() || v.len() > 128)
+                || !state["entries"].is_array()
+            { return Err("invalid_pi_response"); }
+            if state["session_file"].as_str() != path.to_str() { return Err("session_mismatch"); }
+            // Rewalk after the extension response: reject parent substitutions,
+            // invalid newly persisted files, and any source/session swap.
+            let (current_session, current_file, current_path) = adapter.resolve_pi_live(pane)?;
+            if current_session != session || current_path != path { return Err("session_mismatch"); }
+            if let (Some(before), Some(after)) = (&file, &current_file) {
+                use std::os::unix::fs::MetadataExt;
+                let before = before.metadata().map_err(|_| "transcript_unavailable")?;
+                let after = after.metadata().map_err(|_| "transcript_unavailable")?;
+                if before.dev() != after.dev() || before.ino() != after.ino() { return Err("session_mismatch"); }
+            } else if file.is_some() { return Err("session_mismatch"); }
+            (session, current_file, Some(state))
+        } else {
+            let (session, file) = adapter.resolve_and_open(pane)?;
+            (session, Some(file), None)
+        };
         if pane.terminal_id.is_empty()
             || pane.terminal_id.len() > 256
             || pane.agent_status.len() > 256
@@ -493,6 +535,7 @@ impl Service {
             terminal_id: pane.terminal_id.clone(),
             agent: adapter.name().into(),
             native_session_id: session.clone(),
+            native_instance_id: pi_state.as_ref().and_then(|s|s["instance_id"].as_str().map(str::to_owned)),
         };
         if watch.identity.as_ref() != Some(&identity) {
             watch.follower = adapter.new_follower(self.include_content);
@@ -502,6 +545,7 @@ impl Service {
             watch.model_override = None;
             watch.approval_cache = None;
             watch.question_cache = None;
+            watch.pi_dialog = None;
         }
         if pane.agent_status != "blocked" || identity.agent == "antigravity_cli" {
             watch.approval_cache = None;
@@ -511,19 +555,27 @@ impl Service {
         // Clone only the descriptor. Tail reading happens after timeline work,
         // using the same adapter-verified source and no additional path lookup.
         let approval_file = if identity.agent == "antigravity_cli" || ((self.include_approvals || self.include_questions) && pane.agent_status == "blocked") {
-            file.try_clone().ok()
+            file.as_ref().and_then(|f| f.try_clone().ok())
         } else {
             None
         };
-        let model_file = if self.include_model_control { file.try_clone().ok() } else { None };
-        refresh(&mut watch.follower, file, &session)?;
+        let model_file = if self.include_model_control { file.as_ref().and_then(|f| f.try_clone().ok()) } else { None };
+        if let Some(state) = &pi_state {
+            watch.follower.refresh_pi_entries(state["entries"].as_array().ok_or("invalid_pi_response")?, &session)?;
+            watch.pi_state = Some(state.clone());
+        } else {
+            watch.pi_state = None;
+            refresh(&mut watch.follower, file.ok_or("transcript_unavailable")?, &session)?;
+        }
         let reset = watch.identity.as_ref() != Some(&identity)
             || watch.unavailable.is_some()
             || watch.follower.generation != watch.generation;
         Ok(PollOutcome {
             identity,
             reset,
-            status: pane.agent_status.clone(),
+            status: pi_state.as_ref().map(|s| {
+                if !s["pending"].is_null() { "blocked" } else { s["status"].as_str().unwrap_or("unknown") }
+            }).unwrap_or(&pane.agent_status).to_owned(),
             approval_file,
             model_file,
         })
@@ -634,6 +686,9 @@ impl Service {
                 if reset {
                     watch.approval_cache = None;
                     watch.question_cache = None;
+                    // The snapshot clears iOS's pending dialog. Re-emit even
+                    // when the native dialog itself has not changed.
+                    watch.pi_dialog = None;
                     self.generation += 1;
                 }
                 let status = if identity.agent == "antigravity_cli" {
@@ -699,6 +754,10 @@ impl Service {
                         body["model"] = model_control::agy_model_value(&id, &catalog);
                         body["effort"] = json!(effort);
                     }
+                    if let Some(state)=watch.pi_state.as_ref() {
+                        body["model"] = state["model"].clone();
+                        body["effort"] = state["model"]["effort"].clone();
+                    }
                     self.event(out, "timeline.snapshot", body)?;
                 } else {
                     let changed: Vec<_> = data
@@ -750,19 +809,40 @@ impl Service {
                 watch.unknown_records = data.unknown_records;
                 watch.dropped_entries = data.dropped_entries;
                 watch.previous = data.entries.clone();
-                watch.identity = Some(identity);
+                watch.identity = Some(identity.clone());
                 watch.status = status;
                 watch.unavailable = None;
                 watch.unavailable_agent = None;
                 watch.last_daemon_status = None;
                 watch.generation = watch.follower.generation;
                 if self.include_model_control {
-                    self.update_model(out, &mut watch, model_file)?;
+                    if identity.agent == "pi" { self.update_pi_model(out,&mut watch)?; }
+                    else { self.update_model(out, &mut watch, model_file)?; }
                 }
             }
         }
         if (self.include_approvals || self.include_questions) && !preserve_pending {
             self.update_pending(out, &mut watch, pending)?;
+        }
+        if !preserve_pending && let Some(state) = watch.pi_state.as_ref() {
+            let dialog = state.get("pending").filter(|value| !value.is_null()).cloned();
+            if dialog != watch.pi_dialog {
+                if let Some(dialog) = &dialog {
+                    let mut data = dialog.clone();
+                    data["identity"] = serde_json::to_value(watch.identity.as_ref()).unwrap_or(Value::Null);
+                    data["generation"] = json!(self.generation);
+                    data["request_id"] = data["id"].clone();
+                    if let Some(options)=data.get("options").cloned() {
+                        data["dialog_options"]=options;
+                        data.as_object_mut().map(|object|object.remove("options"));
+                    }
+                    data.as_object_mut().map(|object|object.remove("id"));
+                    self.event(out, "pi.dialog", data)?;
+                } else if let Some(previous) = &watch.pi_dialog {
+                    self.event(out, "pi.dialog.cleared", json!({"identity":watch.identity,"generation":self.generation,"request_id":previous["id"]}))?;
+                }
+                watch.pi_dialog = dialog;
+            }
         }
         self.watch = Some(watch);
         Ok(())
@@ -1009,6 +1089,16 @@ impl Service {
             watch.pending = Some(new);
         }
         Ok(())
+    }
+    fn update_pi_model(&mut self, out: &mut impl Write, watch: &mut Watch) -> io::Result<()> {
+        let (Some(identity),Some(state))=(watch.identity.clone(),watch.pi_state.as_ref()) else {return Ok(());};
+        let Some(id)=state["model"]["id"].as_str() else {return Ok(());};
+        let effort=state["model"]["effort"].as_str().map(str::to_owned);
+        let observed=(id.to_owned(),effort.clone());
+        if watch.last_model.as_ref()==Some(&observed) {return Ok(());}
+        watch.last_model=Some(observed);
+        let model=state["model"].clone();
+        self.event(out,"model.updated",json!({"identity":identity,"generation":self.generation,"model":model,"effort":effort}))
     }
     fn update_model(
         &mut self,
@@ -1540,6 +1630,59 @@ impl Service {
         let mut result = result;
         if agent == "antigravity_cli" && let Some(id) = result["applied"]["model"]["id"].as_str() {
             result["applied"]["model"] = model_control::agy_model_value(id, &self.agy_catalog()?);
+        }
+        Ok(result)
+    }
+    fn pi_action(&self, method: &str, params: &Value) -> Result<Value> {
+        let watch = self.watch.as_ref().ok_or("not_watching")?;
+        let identity = watch.identity.as_ref().filter(|i| i.agent == "pi").ok_or("unsupported_agent")?;
+        if params["pane_id"].as_str() != Some(identity.pane_id.as_str())
+            || params["expect"]["identity"] != serde_json::to_value(identity).map_err(|_|"stale")?
+            || params["expect"]["generation"].as_u64() != Some(self.generation)
+        { return Err("stale"); }
+        let state = watch.pi_state.as_ref().ok_or("pi_extension_unavailable")?;
+        if !matches!(method,"prompt"|"cancel"|"dialog.respond"|"model.set") { return Err("unsupported_capability"); }
+        if method == "model.set"
+            && (params["expect"]["model"] != state["model"]["id"]
+                || params["expect"]["effort"] != state["model"]["effort"])
+        { return Err("stale"); }
+        let snapshot = self.client.snapshot().map_err(|_| "stale")?;
+        let pane = snapshot.panes.iter().find(|p| p.pane_id == identity.pane_id).ok_or("stale")?;
+        if pane.terminal_id != identity.terminal_id || pane.agent.as_deref() != Some("pi") { return Err("stale"); }
+        let adapter = self.adapter_for("pi").ok_or("stale")?;
+        let (session, _, path) = adapter.resolve_pi_live(pane).map_err(|_| "stale")?;
+        if session != identity.native_session_id || state["session_file"].as_str() != path.to_str() { return Err("stale"); }
+        let mut extension_params = params.clone();
+        extension_params.as_object_mut().ok_or("invalid_request")?.remove("pane_id");
+        extension_params.as_object_mut().unwrap().remove("expect");
+        extension_params["expect"] = json!({"session_id":identity.native_session_id,
+            "instance_id":identity.native_instance_id,"revision":state["revision"]});
+        let result = self.pi_request(&identity.native_session_id, method, extension_params)?;
+        // Earlier loaded Pi runtimes acknowledge model.set with applied:true
+        // only, after verifying the native model/thinking pair. Accept that
+        // schema only when it describes the requested result; never resend.
+        let legacy_model_applied = method == "model.set"
+            && result.get("confirmed").is_none()
+            && result["applied"] == true
+            && result["model"]["id"].as_str().is_some()
+            && result["model"]["id"].as_str()
+                == params["model"].as_str().or(state["model"]["id"].as_str())
+            && result["model"]["effort"].is_string()
+            && params["effort"].as_str().is_none_or(|effort|
+                result["model"]["effort"].as_str() == Some(effort));
+        if result["confirmed"] != true && result["accepted"] != true && !legacy_model_applied {
+            return Err("unconfirmed");
+        }
+        let mut result=result;
+        result["confirmed"]=json!(true);
+        if let Some(request_id)=params["request_id"].as_str(){result["request_id"]=json!(request_id);}
+        if method=="model.set" {
+            // Model controls validate the same session envelope as model.status.
+            result["identity"] = serde_json::to_value(identity).map_err(|_| "invalid_pi_response")?;
+            result["generation"] = json!(self.generation);
+            let model=result["model"].clone();
+            let effort=model["effort"].clone();
+            result["applied"]=json!({"model":model,"effort":effort});
         }
         Ok(result)
     }
@@ -2339,7 +2482,7 @@ impl Service {
             let codex_available = self.adapter_for("codex").is_some_and(|a| a.is_available());
             return Self::write(
                 out,
-                &json!({"id":id,"result":{"protocol":1,"bridge_version":env!("CARGO_PKG_VERSION"),"epoch":self.epoch,"capabilities":{"agy":self.adapter_for("agy").is_some_and(|a| a.is_available()),"claude_timeline":claude_available,"record_content":true,"codex_timeline":codex_available,"codex_daemon_config":true,"codex_daemon_stop":true,"git":false,"prompts":false,"approvals":true,"questions":true,"model_control":true,"routed_hosts":false}}}),
+                &json!({"id":id,"result":{"protocol":1,"bridge_version":env!("CARGO_PKG_VERSION"),"epoch":self.epoch,"capabilities":{"agy":self.adapter_for("agy").is_some_and(|a| a.is_available()),"pi":self.adapter_for("pi").is_some_and(|a|a.is_available()),"claude_timeline":claude_available,"record_content":true,"codex_timeline":codex_available,"codex_daemon_config":true,"codex_daemon_stop":true,"git":false,"prompts":false,"approvals":true,"questions":true,"model_control":true,"routed_hosts":false}}}),
             );
         }
         if !self.initialized {
@@ -2360,19 +2503,42 @@ impl Service {
                 *self.agy_catalog_error.borrow_mut() = None;
                 *self.codex_catalog_error.borrow_mut() = None;
                 self.poll_with_refresh(out, refresh)?;
-                match self.model_status() {
+                let result = if self.watch.as_ref().and_then(|w|w.identity.as_ref()).is_some_and(|i|i.agent=="pi") {
+                    self.watch.as_ref().and_then(|w|w.pi_state.as_ref()).map(|s| {
+                        let current=s["model"]["id"].as_str();
+                        let efforts=s["models"].as_array().and_then(|models|models.iter()
+                            .find(|model|model["id"].as_str()==current))
+                            .and_then(|model|model["efforts"].as_array()).cloned().unwrap_or_default();
+                        json!({
+                            "identity":self.watch.as_ref().and_then(|w|w.identity.clone()),"generation":self.generation,"agent":"pi",
+                            "model":s["model"],"effort":s["model"]["effort"],"models":s["models"],
+                            "efforts":efforts,"catalog":{"source":"extension","fresh":true,"complete":true,"cliVersion":"1.4.0"}
+                        })
+                    }).ok_or("pi_extension_unavailable")
+                } else { self.model_status() };
+                match result {
                     Ok(result) => Self::write(out, &json!({"id":id,"result":result})),
                     Err(code) => Self::error(out, id, code),
                 }
             }
             "model.set" => {
                 self.poll_with_refresh(out, refresh)?;
-                match self.model_set(params) {
+                let is_pi=self.watch.as_ref().and_then(|w|w.identity.as_ref()).is_some_and(|i|i.agent=="pi");
+                let result=if is_pi {self.pi_action("model.set",params)} else {self.model_set(params)};
+                match result {
                     Ok(result) => {
                         Self::write(out, &json!({"id":id,"result":result}))?;
                         self.poll(out)
                     }
                     Err(code) => Self::write(out, &json!({"id":id,"error":{"code":code}})),
+                }
+            }
+            "pi.prompt" | "pi.cancel" | "pi.dialog.respond" => {
+                self.poll_with_refresh(out, refresh)?;
+                let method=method.strip_prefix("pi.").unwrap_or(method);
+                match self.pi_action(method,params) {
+                    Ok(result) => { Self::write(out,&json!({"id":id,"result":result}))?; self.poll(out) }
+                    Err(code) => Self::error(out,id,code),
                 }
             }
             "watch" => {
@@ -2408,6 +2574,8 @@ impl Service {
                     model_stamp: None,
                     last_model: None,
                     model_override: None,
+                    pi_state: None,
+                    pi_dialog: None,
                 });
                 Self::write(out, &json!({"id":id,"result":{"watching":pane}}))?;
                 self.poll(out)
@@ -2746,6 +2914,7 @@ mod tests {
     include!("service_question_response_tests.rs");
     include!("service_response_tests.rs");
     include!("service_model_tests.rs");
+    include!("service_pi_tests.rs");
     fn cleanup(service: &Service, root: PathBuf) {
         // Wake and terminate the fixture thread without a valid request.
         drop(std::os::unix::net::UnixStream::connect(&service.client.socket).unwrap());

@@ -60,6 +60,7 @@ pub enum AgentType {
     Claude,
     Codex,
     Agy,
+    Pi,
 }
 
 #[derive(Default)]
@@ -72,6 +73,7 @@ pub struct Follower {
     stamp: Option<Stamp>,
     bytes: Vec<u8>,
     session: String,
+    pi_branch_ids: Vec<String>,
     buf: Vec<u8>,
 }
 impl Follower {
@@ -123,6 +125,29 @@ impl Follower {
         let source = &self.bytes[start..end];
         let next = offset.saturating_add(64 * 1024).min(source.len());
         Ok((source[offset..next].to_vec(), source.len()))
+    }
+    pub fn refresh_pi_entries(&mut self, entries: &[serde_json::Value], session: &str) -> Result<bool> {
+        let mut transcript = Transcript::default();
+        let header = serde_json::json!({"type":"session","id":session});
+        transcript.apply_pi(&header, session)?;
+        for row in entries { transcript.apply_pi(row, session)?; }
+        // Streaming entries are temporary projections, not native branch nodes.
+        let branch_ids: Vec<String> = entries.iter()
+            .filter_map(|row| row["id"].as_str())
+            .filter(|id| !id.starts_with("herdcats-live:"))
+            .map(str::to_owned).collect();
+        let reset = self.session != session || !branch_ids.starts_with(&self.pi_branch_ids);
+        let changed = reset || self.transcript.entries != transcript.entries;
+        if reset {
+            self.generation += 1;
+            self.offset = 0;
+            self.bytes.clear();
+            self.stamp = None;
+        }
+        self.pi_branch_ids = branch_ids;
+        self.transcript = transcript;
+        self.session = session.to_owned();
+        Ok(changed)
     }
     /// Action guard: accepts an append, but rejects rotation or any modification
     /// to the complete prefix that authorized the displayed request/generation.
@@ -218,6 +243,11 @@ impl Follower {
                             transcript.apply_codex(&row, session, offset)
                         }
                     }
+                    AgentType::Pi => {
+                        if part.len() > MAX_RECORD { return Err("record_too_large"); }
+                        let row = serde_json::from_slice(part).map_err(|_| "invalid_transcript")?;
+                        transcript.apply_pi(&row, session)
+                    }
                 };
                 // Valid but unfamiliar message shapes remain inspectable as raw
                 // records. Ownership/security and resource-limit errors still fail.
@@ -233,6 +263,7 @@ impl Follower {
                         AgentType::Codex => {
                             transcript.preserve_codex_record(part, session, offset)?
                         }
+                        AgentType::Pi => transcript.preserve_pi_record(part, session, offset)?,
                     }
                 }
             }

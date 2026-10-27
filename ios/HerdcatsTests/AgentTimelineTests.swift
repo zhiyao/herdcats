@@ -843,3 +843,105 @@ struct ModelCatalogProvenanceTests {
         #expect(payload.catalog == nil)
     }
 }
+
+@Suite("Pi native conversation")
+@MainActor struct PiConversationTests {
+    @Test func missingPiExtensionShowsTargetedSetupGuidance() {
+        let view = AgentTimelineView(
+            paneId: "p-pi",
+            agent: "pi",
+            connection: HerdrConnection(),
+            timeline: AgentTimelineState(),
+            topOverlayInset: 0,
+            bottomOverlayInset: 0,
+            onOutputInteraction: {},
+            setupTarget: ConnectionIdentity(host: "localhost", port: 22, username: "test"),
+            onUseTerminal: {},
+            onSetupComplete: {}
+        )
+        #expect(view.title("pi_extension_unavailable") == "Load Herdcats Pi extension")
+        let guidance = view.explanation("pi_extension_unavailable")
+        #expect(guidance.contains("~/.pi/agent/extensions/herdcats"))
+        #expect(guidance.contains("/reload"))
+        #expect(guidance.contains("Pi 1.4.0"))
+        let invalidResponse = view.explanation("invalid_pi_response")
+        #expect(invalidResponse.contains("unrecognized response"))
+        #expect(!invalidResponse.contains("~/.pi/agent/extensions/herdcats"))
+    }
+
+    @Test func piCapabilityDefaultsOffAndRequiresExplicitSupport() throws {
+        let old = try AgentBridgeFrame.decode(Data(#"{"result":{"capabilities":{"claude_timeline":true,"record_content":true}}}"#.utf8))
+        #expect(old.result?.capabilities?.pi == false)
+        let current = try AgentBridgeFrame.decode(Data(#"{"result":{"capabilities":{"claude_timeline":false,"pi":true,"record_content":true}}}"#.utf8))
+        #expect(current.result?.capabilities?.pi == true)
+        #expect(TimelineAgentAvailability.canonical("pi") == "pi")
+        #expect(TimelineAgentAvailability.displayName(for: "pi") == "Pi")
+        #expect(!AgentTimelineView.canPinnedInstallerSupport(agent: "pi"))
+        #expect(TimelineAgentAvailability.matchesSession(agent: "pi", referenceAgent: "pi", source: "herdr:pi", identityAgent: "pi", referenceKind: "path"))
+    }
+
+    @Test func piInstanceIdentityRoundTripsForGuardedActions() throws {
+        let frame = try AgentBridgeFrame.decode(Data(#"{"result":{"identity":{"pane_id":"p","terminal_id":"t","agent":"pi","native_session_id":"s","native_instance_id":"instance-a"}}}"#.utf8))
+        let identity = try #require(frame.result?.identity)
+        #expect(identity.nativeInstanceId == "instance-a")
+        let encoder = JSONEncoder(); encoder.keyEncodingStrategy = .convertToSnakeCase
+        let object = try #require(JSONSerialization.jsonObject(with: encoder.encode(identity)) as? [String: String])
+        #expect(object["native_instance_id"] == "instance-a")
+    }
+
+    @Test func pendingDialogIsScopedAndRetiredOnReconnect() throws {
+        let state = AgentTimelineState(), owner = UUID()
+        state.begin(owner: owner, paneId: "w1:p1")
+        func frame(_ event: String, seq: Int, generation: Int = 1, extra: [String: Any] = [:]) throws -> AgentBridgeFrame {
+            var data: [String: Any] = ["identity": ["pane_id": "w1:p1", "terminal_id": "t1", "agent": "pi", "native_session_id": "session-a"], "generation": generation]
+            data.merge(extra) { _, new in new }
+            return try AgentBridgeFrame.decode(JSONSerialization.data(withJSONObject: ["event": event, "epoch": "e", "seq": seq, "data": data]))
+        }
+        try state.consume(frame("timeline.snapshot", seq: 1, extra: ["entries": [], "agent_status": "blocked"]), owner: owner)
+        try state.consume(frame("pi.dialog", seq: 2, extra: ["request_id": "dialog-a", "kind": "select", "title": "Permission scope", "dialog_options": ["Run once", "Allow for this session", "Deny"]]), owner: owner)
+        #expect(state.pendingPiDialog?.options == ["Run once", "Allow for this session", "Deny"])
+        #expect(state.pendingPiDialog?.accepts(.text("Allow always")) == false)
+        #expect(state.pendingPiDialog?.accepts(.text("Run once")) == true)
+        #expect(throws: AgentBridgeError.self) {
+            try state.consume(frame("pi.dialog", seq: 3, generation: 2, extra: ["request_id": "stale", "kind": "confirm", "title": "Stale"]), owner: owner)
+        }
+        state.begin(owner: UUID(), paneId: "w1:p1")
+        #expect(state.pendingPiDialog == nil)
+    }
+
+    @Test func dialogByteBoundariesAndTerminalFallbackDecode() throws {
+        let state = AgentTimelineState(), owner = UUID()
+        state.begin(owner: owner, paneId: "w1:p1")
+        func frame(_ event: String, seq: Int, extra: [String: Any]) throws -> AgentBridgeFrame {
+            var data: [String: Any] = ["identity": ["pane_id": "w1:p1", "terminal_id": "t1", "agent": "pi", "native_session_id": "session-a"], "generation": 1]
+            data.merge(extra) { _, new in new }
+            return try AgentBridgeFrame.decode(JSONSerialization.data(withJSONObject: ["event": event, "epoch": "e", "seq": seq, "data": data]))
+        }
+        try state.consume(frame("timeline.snapshot", seq: 1, extra: ["entries": [], "agent_status": "blocked"]), owner: owner)
+        let boundary = String(repeating: "é", count: 4096)
+        try state.consume(frame("pi.dialog", seq: 2, extra: ["request_id": "boundary", "kind": "select", "title": boundary, "message": boundary, "dialog_options": [boundary]]), owner: owner)
+        #expect(state.pendingPiDialog?.accepts(.text(boundary)) == true)
+        for (index, title) in ["Continue in Terminal", "Custom dialog — continue in Terminal"].enumerated() {
+            try state.consume(frame("pi.dialog", seq: index + 3, extra: ["request_id": "fallback", "kind": "terminal", "title": title]), owner: owner)
+            #expect(state.pendingPiDialog?.isTerminalOnly == true)
+            #expect(state.pendingPiDialog?.title == title)
+        }
+        #expect(throws: AgentBridgeError.self) {
+            try state.consume(frame("pi.dialog", seq: 5, extra: ["request_id": "oversized", "kind": "input", "title": boundary + "a"]), owner: owner)
+        }
+    }
+
+    @Test func unknownDialogRemainsTerminalOnlyAndConfirmPreservesBoolean() throws {
+        let identity = AgentTimelineIdentity(paneId: "p", terminalId: "t", agent: "pi", nativeSessionId: "s")
+        let terminal = AgentPiDialog(identity: identity, generation: 1, requestId: "r", kind: "custom", title: "Custom dialog", message: nil, options: [], value: nil)
+        #expect(!terminal.accepts(.boolean(true)))
+        let editor = AgentPiDialog(identity: identity, generation: 1, requestId: "editor", kind: "editor", title: "Edit", message: nil, options: [], value: nil)
+        #expect(editor.isTerminalOnly)
+        #expect(!editor.accepts(.text("edited")))
+        let confirm = AgentPiDialog(identity: identity, generation: 1, requestId: "r", kind: "confirm", title: "Run?", message: nil, options: [], value: nil)
+        #expect(confirm.accepts(.boolean(false)))
+        #expect(!confirm.accepts(.text("false")))
+        let bytes = try JSONEncoder().encode(AgentPiDialogValue.boolean(false))
+        #expect(String(decoding: bytes, as: UTF8.self) == "false")
+    }
+}

@@ -56,6 +56,8 @@ ios/maestro/fixtures/*key*
 !/CODE_OF_CONDUCT.md
 !/RELEASING.md
 !/RELEASE_NOTES.md
+!/ios/docs/pi-conversations.md
+!/bridge/pi-extension/README.md
 !/.github/pull_request_template.md
 
 # Local development and review artifacts

@@ -9,6 +9,7 @@
       "--claude-root": "defaults to HOME/.claude/projects",
       "--codex-root": "defaults to CODEX_HOME/sessions or HOME/.codex/sessions",
       "--poll-ms": "50..5000; default 300",
+      "--pi-agent-dir": "defaults to PI_CODING_AGENT_DIR or HOME/.pi/agent; uses sessions/ and matching herdcats/<session UUID>.sock",
       "--agy-root": "defaults to HOME/.gemini/antigravity-cli/brain; descriptor-pinned root; no symlink traversal"
     }
   },
@@ -24,6 +25,7 @@
     "model_control": true,
     "routed_hosts": false,
     "record_content": "true; rich entries and bounded content retrieval are enabled only when initialize params.record_content is true",
+    "pi": "true when the Pi sessions root is available; exact Herdr source and a verified live Pi 1.4.0 extension are required per pane",
     "agy": "source adapter implemented; exact Herdr agent agy/antigravity_cli and source herdr:antigravity_cli required; delayed transcript creation retried"
   },
   "subcommands": {
@@ -162,7 +164,7 @@
       "result_types": {
         "identity": "object; the watched timeline identity",
         "generation": "u64; current timeline generation",
-        "agent": "claude, codex or antigravity_cli",
+        "agent": "claude, codex, antigravity_cli or pi",
         "model": "{id, label} or null; the model in effect from the transcript (Claude assistant message.model + effort, Codex idle/done catalog-matched live footer, otherwise last turn_context), falling back to Claude settings.json or Codex config.toml when no turns exist yet; Agy exposes the normalized family ID/base label and discovered efforts from its verified live footer (base · effort or an exact native catalog label carrying a recognized effort suffix)",
         "effort": "reasoning effort id (low, medium, high, xhigh, max, ultra, minimal) or null",
         "models": "selectable {id, label, efforts: [{id, label}], current?: bool} models, each with its own effort options (empty when none): Claude tier aliases (fable, opus, sonnet, haiku) plus the live current id when unmapped; Codex catalog slugs from models_cache.json filtered to visibility=list and ordered by priority; exactly one entry carries current=true when a model is known; Agy groups matching terminal -low/-medium/-high IDs and (Low)/(Medium)/(High) labels into base family IDs/labels with discovered efforts. Unknown or ambiguous native rows remain lossless",
@@ -502,5 +504,14 @@
     "model_control": "agy --version and bounded agy models catalog; only tested 1.4.7; idle empty composer; exact slash command; fresh acknowledgement plus footer. /model may persist across sessions. expect.identity and expect.generation required for model.set.",
     "limits": "64 MiB source, 1 MiB record, 1000 retained entries, 8192-byte previews, 64 KiB content chunks. Rewrite/rotation reset generation and invalidate pending actions.",
     "distribution": "source support only; app published installer remains 0.3.0. Publish and verify real artifact/checksum before changing app release pin."
+  },
+  "pi": {
+    "identity": "exact herdr:pi session path/header, pane and terminal; native_instance_id pins the live extension runtime; never cwd/newest discovery",
+    "source": "existing Pi 1.4.0 TUI with the opt-in Herdcats extension; native branch entries and streaming updates over a same-user Unix socket",
+    "model_control": "model.status and model.set use provider/model IDs and thinking levels from the extension catalog; expect.identity, generation, model and effort are required. Confirmed or validated legacy applied replies are projected into the standard model result envelope.",
+    "actions": "pi.prompt (text), pi.cancel, pi.dialog.respond (request_id and value) require pane_id and expect.identity/generation; the bridge binds them to the live instance and revision. Confirmation returns confirmed:true; actions are never automatically resent.",
+    "dialogs": "pi.dialog carries identity, generation, request_id, kind, title, message and dialog_options. confirm returns boolean, select returns the exact option, input returns text; custom/editor dialogs remain terminal-only. pi.dialog.cleared retires the matching request_id.",
+    "limits": "1 MiB extension frames; last 2000 native branch records; 1000 projected entries; 8192-byte previews. Oversized state remains terminal-only.",
+    "distribution": "source bridge and opt-in extension installation; published app installer pin remains unchanged. See ios/docs/pi-conversations.md and bridge/pi-extension/README.md."
   }
 }
