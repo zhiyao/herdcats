@@ -42,14 +42,18 @@ struct AnalyzerDictationTranscriptTests {
 struct DictationLevelMeterTests {
     @Test func mapsSilenceAndFullScale() {
         #expect(DictationLevelMeter.normalizedLevel(rms: 0) == 0)
+        #expect(DictationLevelMeter.normalizedLevel(rms: 0.001) == 0)
         #expect(DictationLevelMeter.normalizedLevel(rms: 1) == 1)
         #expect(DictationLevelMeter.normalizedLevel(rms: 4) == 1)
     }
 
     @Test func speechLevelsLandMidRange() {
-        // -20 dBFS is typical close speech.
-        let level = DictationLevelMeter.normalizedLevel(rms: 0.1)
-        #expect(abs(level - 0.6) < 0.001)
+        // Conversational speech without AGC is roughly -35…-25 dBFS.
+        let quiet = DictationLevelMeter.normalizedLevel(rms: 0.0178)  // ≈ -35 dBFS
+        let normal = DictationLevelMeter.normalizedLevel(rms: 0.0562) // ≈ -25 dBFS
+        #expect(quiet > 0.5 && quiet < 0.65)
+        #expect(normal > 0.8 && normal < 0.9)
+        #expect(DictationLevelMeter.normalizedLevel(rms: 0.1) == 1)
     }
 }
 

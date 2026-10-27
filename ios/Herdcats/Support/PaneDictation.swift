@@ -555,9 +555,15 @@ final class DictationAudioRouter: @unchecked Sendable {
     }
 }
 
-/// Measures tap buffers on the audio thread: RMS mapped from -50…0 dBFS to 0…1,
-/// with a fast attack and slow release, published at most ~30 times a second.
+/// Measures tap buffers on the audio thread: RMS mapped from `floor…ceiling` dBFS
+/// to 0…1, with a fast attack and slow release, published at most ~30 times a second.
 final class DictationLevelMeter: @unchecked Sendable {
+    /// `.measurement` mode disables automatic gain, so conversational speech on the
+    /// built-in mic sits around -35…-25 dBFS and room noise near -60. Full scale
+    /// (0 dBFS) is never reached without shouting; -20 already reads as loud.
+    static let floor: Float = -55
+    static let ceiling: Float = -20
+
     private let lock = NSLock()
     private let publish: @Sendable (Float) -> Void
     private var level: Float = 0
@@ -574,7 +580,7 @@ final class DictationLevelMeter: @unchecked Sendable {
         let target = Self.normalizedLevel(rms: (sum / Float(count)).squareRoot())
         let now = DispatchTime.now().uptimeNanoseconds
         lock.lock()
-        level += (target - level) * (target > level ? 0.5 : 0.12)
+        level += (target - level) * (target > level ? 0.6 : 0.2)
         let value = level
         let due = now &- lastPublish >= Self.interval
         if due { lastPublish = now }
@@ -583,6 +589,7 @@ final class DictationLevelMeter: @unchecked Sendable {
     }
 
     static func normalizedLevel(rms: Float) -> Float {
-        min(max((20 * log10(max(rms, 1e-7)) + 50) / 50, 0), 1)
+        let decibels = 20 * log10(max(rms, 1e-7))
+        return min(max((decibels - floor) / (ceiling - floor), 0), 1)
     }
 }
