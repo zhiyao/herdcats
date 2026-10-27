@@ -604,7 +604,7 @@ struct PaneVoiceComposeBar: View {
                 .disabled(isVoiceDraining)
 
             VoiceWaveform(level: dictation?.audioLevel ?? 0, isActive: isRecordingActive)
-                .frame(height: 28)
+                .frame(height: 36)
                 .accessibilityElement()
                 .accessibilityLabel(recordingAccessibilityLabel)
                 .accessibilityIdentifier("pane-recording-waveform")

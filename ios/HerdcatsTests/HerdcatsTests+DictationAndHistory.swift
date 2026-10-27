@@ -51,8 +51,8 @@ struct DictationLevelMeterTests {
         // Conversational speech without AGC is roughly -35…-25 dBFS.
         let quiet = DictationLevelMeter.normalizedLevel(rms: 0.0178)  // ≈ -35 dBFS
         let normal = DictationLevelMeter.normalizedLevel(rms: 0.0562) // ≈ -25 dBFS
-        #expect(quiet > 0.5 && quiet < 0.65)
-        #expect(normal > 0.8 && normal < 0.9)
+        #expect(quiet > 0.6 && quiet < 0.7)
+        #expect(normal > 0.99)
         #expect(DictationLevelMeter.normalizedLevel(rms: 0.1) == 1)
     }
 }

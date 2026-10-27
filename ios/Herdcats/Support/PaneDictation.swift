@@ -560,9 +560,9 @@ final class DictationAudioRouter: @unchecked Sendable {
 final class DictationLevelMeter: @unchecked Sendable {
     /// `.measurement` mode disables automatic gain, so conversational speech on the
     /// built-in mic sits around -35…-25 dBFS and room noise near -60. Full scale
-    /// (0 dBFS) is never reached without shouting; -20 already reads as loud.
+    /// (0 dBFS) is never reached without shouting; -25 already reads as full.
     static let floor: Float = -55
-    static let ceiling: Float = -20
+    static let ceiling: Float = -25
 
     private let lock = NSLock()
     private let publish: @Sendable (Float) -> Void
