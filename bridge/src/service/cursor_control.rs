@@ -536,7 +536,8 @@ impl Service {
         let deadline = Instant::now() + Duration::from_secs(4);
         loop {
             let footer = self.cursor_footer(identity, labels)?;
-            if footer.as_ref().is_some_and(|f| f.label == model && f.effort == Some(target)) {
+            // A footer without any effort cannot confirm one; the radio above already did.
+            if footer.as_ref().is_some_and(|f| f.label == model && f.effort.is_none_or(|e| e == target)) {
                 return Ok(offered);
             }
             if Instant::now() >= deadline {
@@ -615,6 +616,10 @@ impl Service {
                 Ok(offered) => {
                     self.cursor_remember_efforts(&version, &state.label, &offered);
                     state = self.cursor_footer(identity, &labels)?.ok_or("footer_unrecognized")?;
+                    // The editor radio was verified; report it when the footer has no effort.
+                    if state.effort.is_none() {
+                        state.effort = cm::EFFORTS.iter().map(|(id, _)| *id).find(|id| *id == effort);
+                    }
                 }
                 // The model change already happened; report it with the failure.
                 Err(code) if changes_model && code != "picker_stuck" => error = Some(code),

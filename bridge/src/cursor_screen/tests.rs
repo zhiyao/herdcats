@@ -222,3 +222,11 @@ fn history_that_mentions_a_card_or_form_does_not_block_a_real_idle_composer() {
     let styled = format!("{}\n{tail}", screen.join("\n"));
     assert_eq!(classify_styled(&styled), Screen::Idle { mode: None });
 }
+
+#[test]
+fn recent_history_that_mentions_a_card_or_picker_does_not_block_an_idle_composer() {
+    let screen = ["  Reply: \"Run this command?\", \"Available models\" and Type to filter.".to_owned()];
+    let tail = composer(&[&faint("Add a follow-up")], &FOOTER);
+    let styled = format!("{}\n{tail}", screen.join("\n"));
+    assert_eq!(classify_styled(&styled), Screen::Idle { mode: None });
+}

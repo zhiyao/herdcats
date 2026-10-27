@@ -281,7 +281,10 @@ pub fn classify(screen: &str, styled: &str) -> Screen {
     if has("Tell the agent what to do instead") {
         return Screen::DenyFeedback;
     }
-    if has("Run this command?") || has("Waiting for approval") || has("Run Everything") {
+    // A card or picker is the last thing on screen; with the composer anchored
+    // below the history, text like this is only conversation.
+    let anchored = composer(&rows).is_some();
+    if !anchored && (has("Run this command?") || has("Waiting for approval") || has("Run Everything")) {
         return Screen::UnsupportedCard;
     }
     if bottom.iter().any(|row| row.contains("Question ") && row.contains(" of "))
@@ -289,7 +292,7 @@ pub fn classify(screen: &str, styled: &str) -> Screen {
     {
         return Screen::Question;
     }
-    if has("Type to filter") || has("Edit Parameters") || has("Available models") || has("Models matching") {
+    if !anchored && (has("Type to filter") || has("Edit Parameters") || has("Available models") || has("Models matching")) {
         return Screen::Overlay;
     }
     let Some((text, footer)) = composer(&rows) else {
