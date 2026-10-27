@@ -467,3 +467,16 @@ fn cursor_ready_guard_for_model_changes_also_requires_agent_mode() {
     }
     cleanup(&service, root);
 }
+
+#[test]
+fn cursor_card_with_a_non_empty_allowlist_notice_is_advertised() {
+    let (mut service, root, herdr, _file) = cursor_fixture();
+    let card = cursor_card("printf HERDCATS_CURSOR_PROBE", 0)
+        .replace("Shell allowlist is empty", "Not in allowlist: printf");
+    set_screen(&herdr, "blocked", &card, &card);
+    service.poll(&mut Vec::new()).unwrap();
+    let PendingInteraction::Approval(pending) = service.watch.as_ref().unwrap().pending.as_ref().expect("pending card") else { panic!() };
+    assert_eq!(pending.dialog.reason_lines, ["Not in allowlist: printf"]);
+    assert_eq!(pending.request.tool_input["command"], "printf HERDCATS_CURSOR_PROBE");
+    cleanup(&service, root);
+}

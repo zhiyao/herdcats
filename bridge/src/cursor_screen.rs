@@ -109,10 +109,13 @@ pub fn parse_card(screen: &str) -> Option<(String, ApprovalDialog)> {
         return None;
     }
     let notice = rows[question + 1].trim();
-    // Only the empty-allowlist notice has been observed; others stay in Terminal.
-    if notice != "Shell allowlist is empty" {
-        return None;
-    }
+    // `Shell allowlist is empty`, or `Not in allowlist: a, b` when the user's
+    // allow list is non-empty. Any other wording stays in Terminal.
+    let missing = match notice.strip_prefix("Not in allowlist: ") {
+        Some(names) => Some(prefix_names(names)?),
+        None if notice == "Shell allowlist is empty" => None,
+        None => return None,
+    };
     let rule = (0..question).rev().find(|&i| bar(rows[i], '─'))?;
     let header: Vec<_> = rows[rule + 1..question].iter().filter(|r| !r.trim().is_empty()).collect();
     let [header] = header[..] else { return None };
@@ -159,6 +162,19 @@ pub fn parse_card(screen: &str) -> Option<(String, ApprovalDialog)> {
             key: OptionKey::Navigate(index),
         });
     }
+    // The notice and the allow button describe the same commands: compare as
+    // sets (the notice is sorted, the button follows command order).
+    if let Some(mut missing) = missing {
+        let mut offered = prefix_names(
+            options[1].label_lines[0].strip_prefix("Add ")?.strip_suffix(" to allowlist? (tab)")?
+                .replace("Shell(", "").replace(')', "").as_str(),
+        )?;
+        missing.sort();
+        offered.sort();
+        if missing != offered {
+            return None;
+        }
+    }
     let dialog = ApprovalDialog {
         agent: Agent::Cursor,
         title: "Shell command".into(),
@@ -169,6 +185,15 @@ pub fn parse_card(screen: &str) -> Option<(String, ApprovalDialog)> {
         selected: Some(selected?),
     };
     Some((command.to_owned(), dialog))
+}
+
+/// Command names from `a, b, c`; none may be empty or contain spaces or parentheses.
+fn prefix_names(text: &str) -> Option<Vec<String>> {
+    let names: Vec<String> = text.split(", ").map(str::to_owned).collect();
+    names
+        .iter()
+        .all(|name| !name.is_empty() && !name.contains([' ', '(', ')']))
+        .then_some(names)
 }
 
 /// `styled` is the same screen read with ANSI attributes. Typed text is

@@ -45,8 +45,11 @@ fn idle(text: &str) -> (String, String) {
 fn classify_styled(styled: &str) -> Screen { classify(&plain(styled), styled) }
 
 fn card(command_row: &str, allowlist: &str) -> String {
+    card_with(command_row, " Shell allowlist is empty", allowlist)
+}
+fn card_with(command_row: &str, notice: &str, allowlist: &str) -> String {
     format!(
-        "\n  $ printf X 0ms\n\n{RULE}\n{command_row}\n\n Run this command?\n Shell allowlist is empty\n  → Run (once) (y)\n    {allowlist}\n    Run Everything (shift+tab)\n    Skip & tell the agent what to do instead (esc or n)\n"
+        "\n  $ printf X 0ms\n\n{RULE}\n{command_row}\n\n Run this command?\n{notice}\n  → Run (once) (y)\n    {allowlist}\n    Run Everything (shift+tab)\n    Skip & tell the agent what to do instead (esc or n)\n"
     )
 }
 const OK_CARD_ROW: &str = " $  printf HERDCATS_APPROVAL_PROBE_OK in .";
@@ -116,6 +119,43 @@ fn supported_shell_card_parses_with_exact_options() {
     let tricky = card(" $  echo in the garden in .", "Add Shell(echo) to allowlist? (tab)");
     let Screen::Approval(dialog) = classify(&tricky, &tricky) else { panic!() };
     assert_eq!(dialog.detail, ["echo in the garden"]);
+}
+
+#[test]
+fn non_empty_allowlist_notice_parses_with_the_live_wording() {
+    // Captured from cursor-agent 2026.10.22 with Shell(ls), Shell(cd), Shell(rg), Shell(head) allowed.
+    let one = card_with(" $  printf HERDCATS_ALLOWLIST_PROBE in .", " Not in allowlist: printf", "Add Shell(printf) to allowlist? (tab)");
+    let Screen::Approval(dialog) = classify(&one, &one) else { panic!("expected card") };
+    assert_eq!(dialog.detail, ["printf HERDCATS_ALLOWLIST_PROBE"]);
+    assert_eq!(dialog.reason_lines, ["Not in allowlist: printf"]);
+    assert_eq!(dialog.selected, Some(0));
+    // The notice is sorted; the allow button follows command order.
+    let several = card_with(" $  ls && printf HERDCATS_B && echo second in .", " Not in allowlist: echo, printf", "Add Shell(printf), Shell(echo) to allowlist? (tab)");
+    assert!(matches!(classify(&several, &several), Screen::Approval(_)));
+    // The two notices are different dialogs, so a card cannot change under a response.
+    let empty = card(" $  printf HERDCATS_ALLOWLIST_PROBE in .", "Add Shell(printf) to allowlist? (tab)");
+    let (Screen::Approval(a), Screen::Approval(b)) = (classify(&one, &one), classify(&empty, &empty)) else { panic!() };
+    assert!(!a.same_dialog(&b));
+}
+
+#[test]
+fn allowlist_notices_that_disagree_with_the_card_stay_in_terminal() {
+    let allow = "Add Shell(printf), Shell(echo) to allowlist? (tab)";
+    for notice in [
+        " Not in allowlist: printf",              // button offers more than the notice names
+        " Not in allowlist: echo, printf, rm",    // notice names more than the button offers
+        " Not in allowlist: ",                    // empty
+        " Not in allowlist: echo,printf",         // wrong separator
+        " Not in allowlist: echo, , printf",      // empty item
+        " Not in allowlist: echo, pr intf",       // spaces in a name
+        " Not in allowlist: Shell(echo), printf", // parentheses
+        " Not in allowlist printf",               // missing colon
+        " Allowlist: printf",                     // unknown wording
+        " Command is denied by policy",
+    ] {
+        let screen = card_with(" $  printf a ; echo b in .", notice, allow);
+        assert_eq!(classify(&screen, &screen), Screen::UnsupportedCard, "{notice}");
+    }
 }
 
 #[test]
