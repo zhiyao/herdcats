@@ -452,9 +452,12 @@ impl Service {
         let mut effort = footer.as_ref().and_then(|f| f.effort);
         if let Some(footer) = &footer {
             let known = catalog.models.iter().find(|m| m.label == footer.label).and_then(|m| m.efforts.clone());
-            if known.is_none() {
+            // Cached choices do not say which one is selected; ask the editor when the footer cannot.
+            if known.is_none() || effort.is_none() {
                 let (efforts, from_editor) = self.cursor_efforts_of(identity, &footer.label)?;
-                self.cursor_remember_efforts(&version, &footer.label, &efforts);
+                if known.is_none() {
+                    self.cursor_remember_efforts(&version, &footer.label, &efforts);
+                }
                 effort = effort.or(from_editor);
             }
         }
@@ -627,8 +630,10 @@ impl Service {
             }
         } else if changes_model {
             // Learn the new model's efforts for the next status; best effort.
-            if let Ok((efforts, _)) = self.cursor_efforts_of(identity, &state.label) {
-                self.cursor_remember_efforts(&version, &state.label, &efforts);
+            match self.cursor_efforts_of(identity, &state.label) {
+                Ok((efforts, _)) => self.cursor_remember_efforts(&version, &state.label, &efforts),
+                Err("picker_stuck") => return Err("picker_stuck"),
+                Err(_) => {}
             }
         }
         let fresh = self.cursor_catalog_for(identity, &version)?;
