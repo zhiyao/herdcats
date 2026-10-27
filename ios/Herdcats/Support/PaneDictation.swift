@@ -14,8 +14,6 @@ final class PaneDictation: NSObject, SFSpeechRecognizerDelegate {
     private(set) var audioLevel: Float = 0
     /// The merged text most recently delivered through `onText`, for the recording panel.
     private(set) var liveText = ""
-    /// Trailing, not-yet-final words within `liveText`.
-    private(set) var partialText = ""
     private let engine = AVAudioEngine()
     private let recognizer = SFSpeechRecognizer()
     private var request: SFSpeechAudioBufferRecognitionRequest?
@@ -44,8 +42,6 @@ final class PaneDictation: NSObject, SFSpeechRecognizerDelegate {
         isBusy = true
         isPreparing = false
         liveText = "Let's split the reconnect logic into its own type, then add a test that drops the socket mid-turn"
-        partialText = "and checks the draft survives"
-        liveText += " " + partialText
         screenshotLevel = Task { [weak self] in
             var phase = 0.0
             while !Task.isCancelled {
@@ -86,7 +82,6 @@ final class PaneDictation: NSObject, SFSpeechRecognizerDelegate {
         UIApplication.shared.isIdleTimerDisabled = true
         transcript = DictationTranscript(committed: initialText())
         liveText = transcript.text
-        partialText = ""
         self.onText = onText
         let meter = DictationLevelMeter { [weak self] level in
             Task { @MainActor [weak self] in
@@ -118,7 +113,7 @@ final class PaneDictation: NSObject, SFSpeechRecognizerDelegate {
                     try await modern.prepare(format: format) { [weak self] text, isFinal in
                         guard let self, self.sessionID == id else { return }
                         modernTranscript.receive(text, isFinal: isFinal)
-                        self.deliver(modernTranscript.text, partial: modernTranscript.volatile)
+                        self.deliver(modernTranscript.text)
                     } onError: { [weak self] message in
                         guard let self, self.sessionID == id else { return }
                         self.fail(message)
@@ -164,9 +159,8 @@ final class PaneDictation: NSObject, SFSpeechRecognizerDelegate {
         }
     }
 
-    private func deliver(_ text: String, partial: String) {
+    private func deliver(_ text: String) {
         liveText = text
-        partialText = partial
         onText?(text)
     }
 
@@ -194,7 +188,7 @@ final class PaneDictation: NSObject, SFSpeechRecognizerDelegate {
                       self.segmentID == segmentID else { return }
                 let ended = self.transcript.receive(text, isFinal: isFinal,
                                                     speechDuration: speechDuration)
-                self.deliver(self.transcript.text, partial: self.transcript.partial)
+                self.deliver(self.transcript.text)
                 // On-device recognition can finish an utterance after a pause without
                 // marking the task final. Start a fresh request at that boundary:
                 // otherwise its next hypothesis can replace the preceding sentence.
@@ -295,7 +289,6 @@ final class PaneDictation: NSObject, SFSpeechRecognizerDelegate {
         levelMeter = nil
         audioLevel = 0
         liveText = ""
-        partialText = ""
 #if DEBUG && targetEnvironment(simulator)
         screenshotLevel?.cancel()
         screenshotLevel = nil
@@ -344,7 +337,7 @@ protocol PaneSpeechSession: AnyObject {
 struct AnalyzerDictationTranscript {
     let draft: String
     private var finalized = ""
-    private(set) var volatile = ""
+    private var volatile = ""
 
     init(draft: String = "") { self.draft = draft }
 
@@ -513,7 +506,7 @@ final class AnalyzerAudioInput: @unchecked Sendable {
 /// Partial hypotheses replace only the current segment, never earlier dictation.
 struct DictationTranscript {
     private(set) var committed = ""
-    private(set) var partial = ""
+    private var partial = ""
 
     init(committed: String = "") { self.committed = committed }
 

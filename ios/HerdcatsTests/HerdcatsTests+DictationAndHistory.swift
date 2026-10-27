@@ -51,13 +51,6 @@ struct DictationLevelMeterTests {
         let level = DictationLevelMeter.normalizedLevel(rms: 0.1)
         #expect(abs(level - 0.6) < 0.001)
     }
-
-    @Test func partialSuffixIsExposed() {
-        var transcript = DictationTranscript(committed: "Draft.")
-        _ = transcript.receive("still talking", isFinal: false)
-        #expect(transcript.text.hasSuffix(transcript.partial))
-        #expect(transcript.partial == "still talking")
-    }
 }
 
 @Suite("Pane command history")

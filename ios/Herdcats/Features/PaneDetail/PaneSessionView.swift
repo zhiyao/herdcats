@@ -76,6 +76,8 @@ struct PaneSessionView: View {
     /// async authorization/microphone setup cannot leave a revived engine
     /// recording silently after the surface has moved on.
     @State var voiceSession: UUID?
+    /// The draft as it was when recording began, restored by cancel.
+    @State var draftBeforeVoice: String?
     /// Aggregate local diagnostics. Recording no-ops unless a deliberate
     /// test run enables it from the DEBUG-only navigation button.
     let liveMetrics = PaneLiveInputMetrics.shared
@@ -375,7 +377,9 @@ struct PaneSessionView: View {
             isVoiceDraining: surfaceModel.isDrainingDictation,
             dictationError: $dictationError,
             onStartVoice: startVoice,
-            onFinishVoice: finishVoice,
+            onFinishVoice: { finishVoice() },
+            onSendVoice: { finishVoice(send: true) },
+            onCancelVoice: cancelVoice,
             onOpenCompose: openCompose,
             photoItem: $photoItem,
             isPhotoPickerPresented: $isPhotoPickerPresented,

@@ -148,7 +148,7 @@ struct PaneAttachmentInfo: Identifiable, Sendable {
 
 /// A unified SwiftUI input bar for Herdr terminal panes supporting:
 /// 1. Default Live mode: fixed rail (Esc, Tab, Up, Ctrl, Alt, Keys, Voice, Keyboard).
-/// 2. Recording mode: live transcript over a level visualizer, with exactly one checkmark finish action.
+/// 2. Recording mode: cancel, a scrolling level waveform, Stop (edit in Compose), and Send.
 /// 3. Compose mode: message bubble with editable 1-to-6-row field, external image picker,
 ///    Voice immediately left of Send, and Send hidden for blank/whitespace text.
 struct PaneVoiceComposeBar: View {
@@ -200,6 +200,8 @@ struct PaneVoiceComposeBar: View {
     @Binding var dictationError: String?
     var onStartVoice: () -> Void
     var onFinishVoice: () -> Void
+    var onSendVoice: () -> Void
+    var onCancelVoice: () -> Void
     var onOpenCompose: () -> Void
 
     // Photo & Attachment
@@ -232,6 +234,8 @@ struct PaneVoiceComposeBar: View {
         dictationError: Binding<String?> = .constant(nil),
         onStartVoice: @escaping () -> Void,
         onFinishVoice: @escaping () -> Void,
+        onSendVoice: @escaping () -> Void = {},
+        onCancelVoice: @escaping () -> Void = {},
         onOpenCompose: @escaping () -> Void,
         photoItem: Binding<PhotosPickerItem?>? = nil,
         isPhotoPickerPresented: Binding<Bool>,
@@ -262,6 +266,8 @@ struct PaneVoiceComposeBar: View {
         self._dictationError = dictationError
         self.onStartVoice = onStartVoice
         self.onFinishVoice = onFinishVoice
+        self.onSendVoice = onSendVoice
+        self.onCancelVoice = onCancelVoice
         self.onOpenCompose = onOpenCompose
         self.photoItem = photoItem
         self._isPhotoPickerPresented = isPhotoPickerPresented
@@ -282,9 +288,7 @@ struct PaneVoiceComposeBar: View {
                     .transition(.opacity)
             case .recording:
                 recordingBar
-                    .transition(reduceMotion ? .opacity : .modifier(
-                        active: VoiceRecordingPanelReveal(isCollapsed: true),
-                        identity: VoiceRecordingPanelReveal(isCollapsed: false)))
+                    .transition(.opacity)
             case .compose:
                 composeBar
                     .transition(.opacity)
@@ -590,22 +594,80 @@ struct PaneVoiceComposeBar: View {
 
     // MARK: - 2. Recording Mode Bar
 
-    /// Expanded recording panel with exactly one action: checkmark to finish.
-    /// Does NOT set mode = .compose early; Pi owns dictation finalization and the mode transition.
+    /// One row: cancel, live waveform, Stop, Send. Stop and Send both drain
+    /// final recognition first; Pi owns finalization and the mode transition,
+    /// opening Compose after Stop or sending the transcript after Send.
     private var recordingBar: some View {
-        VoiceRecordingPanel(
-            phase: recordingPhase,
-            level: dictation?.audioLevel ?? 0,
-            text: dictation?.liveText ?? draft,
-            partial: dictation?.partialText ?? "",
-            onFinish: onFinishVoice
-        )
+        HStack(spacing: 10) {
+            recordingCircleButton(systemName: "xmark", label: "Cancel recording",
+                                  identifier: "pane-recording-cancel-button", action: onCancelVoice)
+                .disabled(isVoiceDraining)
+
+            VoiceWaveform(level: dictation?.audioLevel ?? 0, isActive: isRecordingActive)
+                .frame(height: 28)
+                .accessibilityElement()
+                .accessibilityLabel(recordingAccessibilityLabel)
+                .accessibilityIdentifier("pane-recording-waveform")
+
+            if isVoiceDraining {
+                ProgressView()
+                    .frame(width: 34, height: 34)
+                    .accessibilityLabel("Finishing dictation")
+            } else {
+                recordingCircleButton(systemName: "stop.fill", label: "Stop recording",
+                                      identifier: "pane-recording-finish-button", action: onFinishVoice)
+            }
+
+            Button {
+                HapticFeedback.impact(.light)
+                onSendVoice()
+            } label: {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.jost(34))
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 36, height: 36)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(isVoiceDraining)
+            .opacity(isVoiceDraining ? 0.45 : 1)
+            .accessibilityLabel("Send recording")
+            .accessibilityIdentifier("pane-recording-send-button")
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 50)
+        .modifier(PaneInputGlassSurface(cornerRadius: 25))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("pane-recording-bar")
     }
 
-    private var recordingPhase: VoiceRecordingPanel.Phase {
-        if isVoiceDraining { return .finishing }
-        if dictation?.isPreparing == true { return .preparing }
-        return .recording
+    private func recordingCircleButton(systemName: String, label: String, identifier: String,
+                                       action: @escaping () -> Void) -> some View {
+        Button {
+            HapticFeedback.impact(.light)
+            action()
+        } label: {
+            Image(systemName: systemName)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.text)
+                .frame(width: 34, height: 34)
+                .background(Circle().fill(Theme.subtleFill))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(identifier)
+    }
+
+    private var isRecordingActive: Bool {
+        dictation?.isBusy == true && dictation?.isPreparing == false && !isVoiceDraining
+    }
+
+    private var recordingAccessibilityLabel: String {
+        if isVoiceDraining { return "Finishing dictation" }
+        if dictation?.isPreparing == true { return "Starting recording" }
+        let text = dictation?.liveText ?? ""
+        return text.isEmpty ? "Recording, listening" : "Recording, \(text)"
     }
 
     // MARK: - 3. Compose Mode Bar

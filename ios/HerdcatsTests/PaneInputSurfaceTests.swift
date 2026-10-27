@@ -17,6 +17,40 @@ struct PaneInputSurfaceTests {
         #expect(!model.isDrainingDictation)
     }
 
+    @Test func cancelRecordingReturnsToStartingSurface() {
+        let model = PaneInputSurfaceModel()
+        model.requestVoiceRecording()
+        #expect(model.cancelVoiceRecording())
+        #expect(model.isLiveKeyboardSurface)
+        model.requestComposeDraft()
+        model.requestVoiceRecording()
+        #expect(model.cancelVoiceRecording())
+        #expect(model.isComposeSurface)
+        #expect(!model.cancelVoiceRecording())
+        // A late idle callback after cancel must not reopen anything.
+        #expect(!model.noteDictationIdle())
+        #expect(model.isComposeSurface)
+    }
+
+    @Test func sendFromRecordingSendsOnlyAfterSuccessfulDrain() {
+        let model = PaneInputSurfaceModel()
+        model.requestVoiceRecording()
+        #expect(model.requestFinishDictation(sendWhenDone: true))
+        #expect(model.sendsWhenDictationDone)
+        #expect(model.noteDictationIdle())
+        #expect(model.isComposeSurface)
+        #expect(!model.sendsWhenDictationDone)
+
+        model.requestVoiceRecording()
+        model.requestFinishDictation(sendWhenDone: true)
+        #expect(!model.noteDictationIdle(failed: true))
+        #expect(model.isComposeSurface)
+
+        model.requestVoiceRecording()
+        model.requestFinishDictation()
+        #expect(!model.noteDictationIdle())
+    }
+
     @Test func visibleComposeDefaultSurvivesSendAndReset() {
         let model = PaneInputSurfaceModel()
         model.setComposeVisibleByDefault(PaneComposePreference.default)

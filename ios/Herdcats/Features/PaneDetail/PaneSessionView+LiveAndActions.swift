@@ -188,6 +188,7 @@ extension PaneSessionView {
     /// merges into (never replaces) unsent text.
     func startVoice() {
         surfaceModel.requestVoiceRecording()
+        draftBeforeVoice = draft
         liveInputFocused = false
         composeFieldFocused = false
         let id = UUID()
@@ -203,7 +204,7 @@ extension PaneSessionView {
                 // fast enough that the onChange transition can coalesce away;
                 // the error callback opens the preserved Compose draft itself
                 // so the recording surface can never get stuck.
-                completeDictationSurface()
+                completeDictationSurface(failed: true)
             } initialText: { draft }
             guard !Task.isCancelled else { return }
             if voiceSession != id {
@@ -227,10 +228,21 @@ extension PaneSessionView {
     /// transition, the error callback, or the reconciliation above — is the
     /// only path that opens the Compose bubble, so a partial transcript is
     /// never shown or sent.
-    func finishVoice() {
-        guard surfaceModel.requestFinishDictation() else { return }
+    func finishVoice(send: Bool = false) {
+        guard surfaceModel.requestFinishDictation(sendWhenDone: send) else { return }
         voiceSession = nil
         dictation.finish()
+    }
+
+    /// The recording bar's cancel: drop capture and any speech from this
+    /// recording, restore the draft as it was, and return to where Voice began.
+    func cancelVoice() {
+        guard surfaceModel.cancelVoiceRecording() else { return }
+        voiceSession = nil
+        dictation.cancel()
+        if let draftBeforeVoice { draft = draftBeforeVoice }
+        draftBeforeVoice = nil
+        if surfaceModel.isComposeSurface { composeFieldFocused = true }
     }
 
     /// Single idempotent funnel off the recording surface onto the Compose
@@ -239,10 +251,14 @@ extension PaneSessionView {
     /// precedes `isBusy` clearing on the main actor, so the bubble opens
     /// with a complete transcript — on success, error, timeout, or
     /// interruption alike, preserving the captured draft.
-    func completeDictationSurface() {
+    func completeDictationSurface(failed: Bool = false) {
         let wasRecording = surfaceModel.surface == .voiceRecording
-        surfaceModel.noteDictationIdle()
-        if wasRecording, surfaceModel.isComposeSurface {
+        let sends = surfaceModel.noteDictationIdle(failed: failed)
+        guard wasRecording else { return }
+        draftBeforeVoice = nil
+        if sends, canSend {
+            Task { await send() }
+        } else if surfaceModel.isComposeSurface {
             composeFieldFocused = true
         }
     }

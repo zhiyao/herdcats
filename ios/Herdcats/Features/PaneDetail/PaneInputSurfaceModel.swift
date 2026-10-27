@@ -56,6 +56,10 @@ final class PaneInputSurfaceModel {
     /// recording surface must stay mounted and inert during the drain so an
     /// incomplete transcript is never shown or sent.
     private(set) var isDrainingDictation = false
+    /// Set by the recording bar's Send action: the drained transcript is sent
+    /// instead of opening the Compose bubble for editing.
+    private(set) var sendsWhenDictationDone = false
+    private var surfaceBeforeVoice: Surface = .liveToolbar
 
     var isLiveKeyboardSurface: Bool { surface == .liveToolbar }
     var isComposeSurface: Bool { surface == .composeDraft }
@@ -80,11 +84,25 @@ final class PaneInputSurfaceModel {
     /// merge itself is `PaneDictation`'s `initialText` behavior).
     func requestVoiceRecording() {
         guard surface != .voiceRecording else { return }
+        surfaceBeforeVoice = surface
         surface = .voiceRecording
         isDrainingDictation = false
+        sendsWhenDictationDone = false
     }
 
-    /// The recording bar's single action: stop capture. Returns false (and
+    /// The recording bar's cancel action: return to the surface Voice started
+    /// from. The caller restores the pre-recording draft. Returns false
+    /// outside the recording surface.
+    @discardableResult
+    func cancelVoiceRecording() -> Bool {
+        guard surface == .voiceRecording else { return false }
+        surface = surfaceBeforeVoice
+        isDrainingDictation = false
+        sendsWhenDictationDone = false
+        return true
+    }
+
+    /// The recording bar's Stop (or Send) action: stop capture. Returns false (and
     /// does nothing) for repeat taps or taps outside the recording surface.
     /// The surface stays `.voiceRecording` (draining) until dictation reports
     /// idle; `PaneDictation` delivers its final `onText` (full merged
@@ -92,9 +110,10 @@ final class PaneInputSurfaceModel {
     /// clears, so opening the Compose bubble on idle can never surface a
     /// partial transcript.
     @discardableResult
-    func requestFinishDictation() -> Bool {
+    func requestFinishDictation(sendWhenDone: Bool = false) -> Bool {
         guard surface == .voiceRecording, !isDrainingDictation else { return false }
         isDrainingDictation = true
+        sendsWhenDictationDone = sendWhenDone
         return true
     }
 
@@ -102,10 +121,16 @@ final class PaneInputSurfaceModel {
     /// interruption alike. Opening the bubble on error and timeout too is
     /// deliberate: the captured draft stays visible, editable, and unsent,
     /// and the existing dictation error alert reports what went wrong.
-    func noteDictationIdle() {
-        guard surface == .voiceRecording else { return }
+    /// Returns true when the caller should send the drained draft now —
+    /// only after Send, and never after a failure.
+    @discardableResult
+    func noteDictationIdle(failed: Bool = false) -> Bool {
+        guard surface == .voiceRecording else { return false }
+        let send = sendsWhenDictationDone && !failed
         isDrainingDictation = false
+        sendsWhenDictationDone = false
         surface = .composeDraft
+        return send
     }
 
     /// Send success returns to the preferred idle surface. Failures never call this,
@@ -127,6 +152,7 @@ final class PaneInputSurfaceModel {
     func resetToDefaultSurface() {
         surface = composeVisibleByDefault ? .composeDraft : .liveToolbar
         isDrainingDictation = false
+        sendsWhenDictationDone = false
     }
 }
 

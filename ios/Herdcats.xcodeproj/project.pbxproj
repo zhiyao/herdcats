@@ -36,7 +36,6 @@
 		228CA92864B4D7666F38530B /* HerdcatsTests+ConnectionOwnership.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD0542ABC20C507904C8BCD5 /* HerdcatsTests+ConnectionOwnership.swift */; };
 		2368457265E142AA65446CD5 /* PaneLiveInputTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AFE5DFC694EBCD2A7C697D9 /* PaneLiveInputTests.swift */; };
 		2467A07AC426720BEE06D546 /* PaneInputSurfaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D59976F22DF54B5D3736EEF2 /* PaneInputSurfaceTests.swift */; };
-		263D97696741AFF54B673F35 /* FluidAudioVisualizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9991D74C463D79575EAA7DBE /* FluidAudioVisualizer.swift */; };
 		2674C405332F876201ECC16A /* SettingsScreen+Sections.swift in Sources */ = {isa = PBXBuildFile; fileRef = 895293DDBB9E064DE802A838 /* SettingsScreen+Sections.swift */; };
 		2992F1D4BDCFFE34E33D9061 /* ConnectionTimeout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B2050D63FBE492E4583C383 /* ConnectionTimeout.swift */; };
 		2B05910FF68468E1AA32059A /* SettingsScreen+Replay.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECD89630A95BF90AE6214C1A /* SettingsScreen+Replay.swift */; };
@@ -56,7 +55,6 @@
 		50A0DEA7145EF0ED649928E9 /* AppModel+Connection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F08939634B4BDB715233641 /* AppModel+Connection.swift */; };
 		526E87D46A23D96312753E5D /* ActiveMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = D44C971EA70DF347A115BE73 /* ActiveMachine.swift */; };
 		5465CDF25126AD63373F6C5B /* SpacesModel+UsageAndRefresh.swift in Sources */ = {isa = PBXBuildFile; fileRef = E348D6EA1DECCC4C70AAD35E /* SpacesModel+UsageAndRefresh.swift */; };
-		58EC7037F9FF4121BCFAE9BD /* VoiceRecordingPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6351C8F02BE8E12687FBC109 /* VoiceRecordingPanel.swift */; };
 		5C9D102CC251986AED9D5DB6 /* HerdcatsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D6AD0D245B62B4BA7FEEFA2 /* HerdcatsUITests.swift */; };
 		6198DBFF79330F4B794A210B /* PaneLiveModifierComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0B75ADD32735D5BC85B14E /* PaneLiveModifierComposer.swift */; };
 		6388979D21882DA2F23F0EE9 /* Silkscreen-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 14D439FDB83BE3A5C49A7E07 /* Silkscreen-Bold.ttf */; };
@@ -117,6 +115,7 @@
 		CEC27F8163C92B00CD38EE22 /* SpaceDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 795CA6C4625F7448B13868B0 /* SpaceDetailView.swift */; };
 		D1A9C334FA2B179A16BC74A7 /* HerdrConnection+Remote.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1137CF91FF8580175F53E3 /* HerdrConnection+Remote.swift */; };
 		D1EF0D278EE3D5017C400DEA /* SpacesScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0B450F19759740A5C938D45 /* SpacesScreen.swift */; };
+		D207CAF048B6C930676C5ADC /* VoiceWaveform.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F47756B075A75A4323C2A2D /* VoiceWaveform.swift */; };
 		D42BA0884EABA9E4B3C98943 /* HerdrModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85BDAAC12F57BDD3F41B090C /* HerdrModels.swift */; };
 		D82A1C06AA4BDA852E848F59 /* PaneLiveModifierComposerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 217943F1848BADFC038A2932 /* PaneLiveModifierComposerTests.swift */; };
 		D88366995735A638B5816998 /* TimelineEntryViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 420F85D2A36D8492474B19DF /* TimelineEntryViews.swift */; };
@@ -210,7 +209,6 @@
 		59460EB647F68FC33C825D67 /* HerdrConnection+Queries.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdrConnection+Queries.swift"; sourceTree = "<group>"; };
 		5E030A59A32EEE2D37BBF028 /* Herdcats.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Herdcats.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6349F51A9FF576CFF9455B92 /* ConnectionSettingsView+Card.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionSettingsView+Card.swift"; sourceTree = "<group>"; };
-		6351C8F02BE8E12687FBC109 /* VoiceRecordingPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRecordingPanel.swift; sourceTree = "<group>"; };
 		690A325C18C2D89D90900F04 /* QuestionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionCard.swift; sourceTree = "<group>"; };
 		693BA4491F3178B3C64D8348 /* QuotaUnavailable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaUnavailable.swift; sourceTree = "<group>"; };
 		6C7B6E6D948BEF8026CA725D /* PhoneAnswersViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneAnswersViews.swift; sourceTree = "<group>"; };
@@ -240,6 +238,7 @@
 		8AA651ECCA572E1B7EA98DD4 /* QuestionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionTests.swift; sourceTree = "<group>"; };
 		8BC70F0B4AB3ADF429A92F00 /* QuotaModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaModels.swift; sourceTree = "<group>"; };
 		8D67B69724707A16FD4618DF /* LicensesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicensesView.swift; sourceTree = "<group>"; };
+		8F47756B075A75A4323C2A2D /* VoiceWaveform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceWaveform.swift; sourceTree = "<group>"; };
 		902C762017C8EEFB00E85C2F /* ConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectView.swift; sourceTree = "<group>"; };
 		92640BC7EDFFEEFCA4FB2AB6 /* AgentBridgeClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentBridgeClientTests.swift; sourceTree = "<group>"; };
 		945BC05E891ACD9EC97F059A /* HapticFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticFeedback.swift; sourceTree = "<group>"; };
@@ -247,7 +246,6 @@
 		96136F1C1C246A3CD0F8CB15 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		9618C0BCA3AD31945C7F960D /* SpaceRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceRows.swift; sourceTree = "<group>"; };
 		97046A3F25D35B65A7CA7425 /* test_attachment_storage.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = test_attachment_storage.py; sourceTree = "<group>"; };
-		9991D74C463D79575EAA7DBE /* FluidAudioVisualizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FluidAudioVisualizer.swift; sourceTree = "<group>"; };
 		9CC8A4387368F9C508CA1733 /* PhoneAnswersState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneAnswersState.swift; sourceTree = "<group>"; };
 		9F498D4E1BC8C714630308B5 /* TimelineDiffParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineDiffParser.swift; sourceTree = "<group>"; };
 		A0B450F19759740A5C938D45 /* SpacesScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpacesScreen.swift; sourceTree = "<group>"; };
@@ -388,7 +386,6 @@
 				6349F51A9FF576CFF9455B92 /* ConnectionSettingsView+Card.swift */,
 				902C762017C8EEFB00E85C2F /* ConnectView.swift */,
 				96136F1C1C246A3CD0F8CB15 /* DesignSystem.swift */,
-				9991D74C463D79575EAA7DBE /* FluidAudioVisualizer.swift */,
 				EE90364BE3B58ED4C550DFBE /* HerdrSetupGuideView.swift */,
 				8D67B69724707A16FD4618DF /* LicensesView.swift */,
 				CA0FBE0ECE4574DC348D9B4A /* MainTabView.swift */,
@@ -401,7 +398,7 @@
 				895293DDBB9E064DE802A838 /* SettingsScreen+Sections.swift */,
 				795CA6C4625F7448B13868B0 /* SpaceDetailView.swift */,
 				A0B450F19759740A5C938D45 /* SpacesScreen.swift */,
-				6351C8F02BE8E12687FBC109 /* VoiceRecordingPanel.swift */,
+				8F47756B075A75A4323C2A2D /* VoiceWaveform.swift */,
 				602E9D77F8554C6A6CA0EF28 /* AgentTimeline */,
 				095C3A4CD43BD2710C85B22F /* PaneDetail */,
 				9DB04F84E3CA017A7BC569AA /* Shared */,
@@ -758,7 +755,6 @@
 				2992F1D4BDCFFE34E33D9061 /* ConnectionTimeout.swift in Sources */,
 				BF1AC4668038148764ABB3D8 /* DesignSystem+Styles.swift in Sources */,
 				223452D8ED2A5586F8D78C88 /* DesignSystem.swift in Sources */,
-				263D97696741AFF54B673F35 /* FluidAudioVisualizer.swift in Sources */,
 				776F879809FF4E220D02A5B1 /* HapticFeedback.swift in Sources */,
 				EC283D30EDC057075B9C6946 /* HerdcatsApp.swift in Sources */,
 				388443991E3C846836009F4C /* HerdrConnection+AgyAndPanes.swift in Sources */,
@@ -817,7 +813,7 @@
 				A85C0F18679FF1BA73DAC863 /* TimelineDiffParser.swift in Sources */,
 				D88366995735A638B5816998 /* TimelineEntryViews.swift in Sources */,
 				6FCE23D3A5BDBCE65BAE1B67 /* UserPreferences.swift in Sources */,
-				58EC7037F9FF4121BCFAE9BD /* VoiceRecordingPanel.swift in Sources */,
+				D207CAF048B6C930676C5ADC /* VoiceWaveform.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
