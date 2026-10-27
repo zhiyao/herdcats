@@ -164,6 +164,47 @@ struct AgentBridgeClientTests {
         #expect(await client.capabilities?.questions == true)
         await client.close()
     }
+    @Test func cursorHandshakeRequiresItsOwnCapability() async throws {
+        for capabilities in [#"{"claude_timeline":true,"record_content":true}"#, #"{"claude_timeline":true,"agy":true,"record_content":true}"#] {
+            let wire = BridgeTestWire()
+            let client = AgentBridgeClient(write: { await wire.write($0) }, close: { await wire.close() }, onEvent: { _ in })
+            let task = Task { try await client.performHandshakeAndWatch(paneId: "p1", agent: "cursor") }
+            try await wait(wire)
+            let id = try await wire.requestId()
+            await client.receive(Data("{\"id\":\"\(id)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":\(capabilities)}}\n".utf8))
+            do { try await task.value; Issue.record("Cursor accepted a bridge without Cursor support") }
+            catch { #expect((error as? AgentBridgeError)?.code == "cursor_bridge_required") }
+            #expect(await wire.commands.count == 1)
+            await client.close()
+        }
+    }
+    @Test func cursorHandshakeWatchesWithCapabilityAndStillRequiresRecordContent() async throws {
+        let wire = BridgeTestWire()
+        let client = AgentBridgeClient(write: { await wire.write($0) }, close: { await wire.close() }, onEvent: { _ in })
+        let handshake = Task { try await client.performHandshakeAndWatch(paneId: "p", agent: "cursor") }
+        try await wait(wire)
+        let initializeId = try await wire.requestId()
+        await client.receive(Data("{\"id\":\"\(initializeId)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":{\"claude_timeline\":false,\"cursor\":true,\"record_content\":true}}}\n".utf8))
+        for _ in 0..<500 {
+            if await wire.commands.count == 2 { break }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        #expect(await wire.commands.count == 2)
+        let watchId = try await wire.requestId()
+        await client.receive(Data("{\"id\":\"\(watchId)\",\"result\":{}}\n".utf8))
+        try await handshake.value
+        // Cursor has no navigate-style approvals in this version.
+        let response = Task { try await client.respond(requestId: "r", option: 1, labelLines: ["Yes"]) }
+        for _ in 0..<500 {
+            if await wire.commands.count == 3 { break }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        let responseId = try await wire.requestId()
+        await client.receive(Data("{\"id\":\"\(responseId)\",\"result\":{\"request_id\":\"r\",\"sent\":\"navigate\",\"confirmed\":true}}\n".utf8))
+        do { _ = try await response.value; Issue.record("Accepted navigation from a Cursor-only bridge") }
+        catch { #expect(error as? AgentBridgeError == .invalidFrame) }
+        await client.close()
+    }
     @Test func agyWatchAndNavigationReplyRequireExplicitCapability() async throws {
         let wire = BridgeTestWire()
         let client = AgentBridgeClient(write: { await wire.write($0) }, close: { await wire.close() }, onEvent: { _ in })
@@ -932,6 +973,29 @@ extension AgentBridgeClientTests {
         }
         #expect(await wire.closes == 0)
         await client.close()
+    }
+}
+
+@Suite("Cursor source bridge setup")
+struct CursorBridgeSetupTests {
+    @Test func publishedInstallerCannotClaimCursorSupport() throws {
+        #expect(HostHelperSetupPlan.version == "0.3.0")
+        #expect(!HostHelperSetupPlan.agents.contains("cursor"))
+        #expect(HostHelperSetupPlan.decision(probe: .missing, replace: true, checkOnly: false, agent: "cursor") == .unsupportedByPinnedInstaller("cursor"))
+        let report = "HC_HELPER_MANAGED\n" + #"{"name":"herdcats-bridge","version":"0.4.0","protocol":1,"herdr_protocol":22,"agents":["claude","codex","antigravity_cli","cursor"]}"#
+        let probe = try HostHelperProbe(output: report, agent: "cursor")
+        #expect(HostHelperSetupPlan.decision(probe: probe, replace: false, checkOnly: true, agent: "cursor") == .ready)
+        let older = "HC_HELPER_MANAGED\n" + #"{"name":"herdcats-bridge","version":"0.4.0","protocol":1,"herdr_protocol":22,"agents":["claude","codex","antigravity_cli"]}"#
+        let missingCursor = try HostHelperProbe(output: older, agent: "cursor")
+        #expect(HostHelperSetupPlan.decision(probe: missingCursor, replace: false, checkOnly: true, agent: "cursor") != .ready)
+    }
+    @Test func cursorMessagesNeverOfferTheUnsupportedInstaller() {
+        for code in ["helper_missing", "helper_update_required", "unsupported_agent", "cursor_bridge_required"] {
+            #expect(!AgentTimelineView.showsInstallOrUpgrade(code: code, agent: "cursor"))
+            #expect(AgentTimelineView.explanation(code, agent: "cursor").contains("source build of Herdcats Bridge with Cursor support"))
+        }
+        #expect(AgentTimelineView.unavailableTitle(code: "session_reference_unavailable", agent: "cursor") == "Cursor chat not identified")
+        #expect(AgentTimelineView.explanation("session_reference_unavailable", agent: "cursor").contains("--resume"))
     }
 }
 

@@ -62,6 +62,7 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
     let claudeTimeline: Bool
     var agy: Bool = false
     var pi: Bool = false
+    var cursor: Bool = false
     var codexTimeline: Bool? = false
     var codexDaemonConfig: Bool? = false
     var codexDaemonStop: Bool? = false
@@ -74,6 +75,7 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
         claudeTimeline: Bool,
         agy: Bool = false,
         pi: Bool = false,
+        cursor: Bool = false,
         codexTimeline: Bool? = false,
         codexDaemonConfig: Bool? = false,
         codexDaemonStop: Bool? = false,
@@ -84,6 +86,7 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
     ) {
         self.agy = agy
         self.pi = pi
+        self.cursor = cursor
         self.claudeTimeline = claudeTimeline
         self.modelControl = modelControl
         self.codexTimeline = codexTimeline
@@ -98,6 +101,7 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.agy = try container.decodeIfPresent(Bool.self, forKey: .agy) ?? false
         self.pi = try container.decodeIfPresent(Bool.self, forKey: .pi) ?? false
+        self.cursor = try container.decodeIfPresent(Bool.self, forKey: .cursor) ?? false
         self.modelControl = try container.decodeIfPresent(Bool.self, forKey: .modelControl) ?? false
         self.claudeTimeline = try container.decode(Bool.self, forKey: .claudeTimeline)
         self.codexTimeline = try container.decodeIfPresent(Bool.self, forKey: .codexTimeline) ?? false
@@ -483,12 +487,16 @@ enum TimelineAgentAvailability {
     static func displayName(for agent: String) -> String {
         if let approvalAgent = ApprovalAgent(rawValue: agent) { return approvalAgent.displayName }
         if agent == "pi" { return "Pi" }
-        return canonical(agent) == "antigravity_cli" ? "Agy" : agent
+        switch canonical(agent) {
+        case "antigravity_cli": return "Agy"
+        case "cursor": return "Cursor"
+        default: return agent
+        }
     }
     static func canonical(_ agent: String?) -> String? {
         switch agent {
         case "agy", "antigravity_cli": return "antigravity_cli"
-        case "claude", "codex", "pi": return agent
+        case "claude", "codex", "pi", "cursor": return agent
         default: return nil
         }
     }
@@ -496,7 +504,8 @@ enum TimelineAgentAvailability {
     static func matchesSession(agent: String, referenceAgent: String?, source: String?, identityAgent: String, referenceKind: String = "id") -> Bool {
         guard let canonical = canonical(identityAgent), Self.canonical(agent) == canonical,
               Self.canonical(referenceAgent) == canonical else { return false }
-        guard canonical != "antigravity_cli" || referenceKind == "id" else { return false }
+        // Agy and Cursor identify a chat by ID only; a path reference is never a chat.
+        guard !["antigravity_cli", "cursor"].contains(canonical) || referenceKind == "id" else { return false }
         return source == "herdr:\(canonical)"
     }
 }
@@ -549,7 +558,7 @@ struct TimelineConversationItem: Identifiable {
 
 enum TimelineActivitySummary {
     static func isCommand(_ entry: AgentTimelineEntry) -> Bool {
-        ["bash", "run_command", "exec_command", "shell_command"].contains(entry.toolName?.lowercased() ?? "")
+        ["bash", "run_command", "exec_command", "shell_command", "shell"].contains(entry.toolName?.lowercased() ?? "")
     }
     static func isRunning(_ entry: AgentTimelineEntry) -> Bool {
         entry.status != "completed" && entry.status != "failed"
@@ -599,8 +608,8 @@ enum TimelineActivitySummary {
         case "grep", "glob": return "Search project files"
         case "websearch": return "Search the web"
         case "webfetch": return "Read a web page"
-        case "bash", "run_command", "exec_command", "shell_command": return "Run a shell command"
-        case "ask_question": return "Ask a question"
+        case "bash", "run_command", "exec_command", "shell_command", "shell": return "Run a shell command"
+        case "ask_question", "askquestion": return "Ask a question"
         default: return entry.toolName.map { "Use \($0)" } ?? "Use a tool"
         }
     }

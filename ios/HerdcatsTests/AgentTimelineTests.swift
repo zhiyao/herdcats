@@ -163,6 +163,35 @@ struct AgentBridgeFramingTests {
 
 @Suite("Timeline agent availability")
 struct TimelineAgentAvailabilityTests {
+    @Test func cursorRequiresItsOwnCapabilityAndExactIDSessionSource() throws {
+        #expect(TimelineAgentAvailability.supports(agent: "cursor"))
+        #expect(TimelineAgentAvailability.canonical("cursor") == "cursor")
+        #expect(TimelineAgentAvailability.displayName(for: "cursor") == "Cursor")
+        let old = try AgentBridgeFrame.decode(Data(#"{"result":{"capabilities":{"claude_timeline":true,"agy":true,"record_content":true}}}"#.utf8))
+        #expect(old.result?.capabilities?.cursor == false)
+        let current = try AgentBridgeFrame.decode(Data(#"{"result":{"capabilities":{"claude_timeline":false,"cursor":true}}}"#.utf8))
+        #expect(current.result?.capabilities?.cursor == true)
+        #expect(TimelineAgentAvailability.matchesSession(agent: "cursor", referenceAgent: "cursor", source: "herdr:cursor", identityAgent: "cursor"))
+        // Source, kind, and every agent field must match exactly; other agents' sources never pass.
+        #expect(!TimelineAgentAvailability.matchesSession(agent: "cursor", referenceAgent: "cursor", source: "herdr:agy", identityAgent: "cursor"))
+        #expect(!TimelineAgentAvailability.matchesSession(agent: "cursor", referenceAgent: "cursor", source: "herdr:antigravity_cli", identityAgent: "cursor"))
+        #expect(!TimelineAgentAvailability.matchesSession(agent: "cursor", referenceAgent: "cursor", source: "herdr:cursor", identityAgent: "cursor", referenceKind: "path"))
+        #expect(!TimelineAgentAvailability.matchesSession(agent: "claude", referenceAgent: "cursor", source: "herdr:cursor", identityAgent: "cursor"))
+        #expect(!TimelineAgentAvailability.matchesSession(agent: "cursor", referenceAgent: "claude", source: "herdr:cursor", identityAgent: "cursor"))
+        #expect(!TimelineAgentAvailability.matchesSession(agent: "cursor", referenceAgent: "cursor", source: "herdr:cursor", identityAgent: "codex"))
+        #expect(!TimelineAgentAvailability.matchesSession(agent: "cursor", referenceAgent: nil, source: nil, identityAgent: "cursor"))
+    }
+    @Test func cursorShellAndQuestionToolsGetPlainLanguage() {
+        func entry(_ name: String, _ details: String) -> AgentTimelineEntry {
+            AgentTimelineEntry(id: "cursor:0:tool:0", kind: "tool", text: name, role: nil, toolName: name, status: "completed", details: details, truncated: false)
+        }
+        let shell = entry("Shell", #"{"command":"printf X","description":"Print the marker"}"#)
+        #expect(TimelineActivitySummary.isCommand(shell))
+        #expect(TimelineActivitySummary.purpose(shell) == "Print the marker")
+        #expect(TimelineActivitySummary.purpose(entry("Shell", #"{"command":"printf X"}"#)) == "Run a shell command")
+        #expect(TimelineActivitySummary.purpose(entry("AskQuestion", "{}")) == "Ask a question")
+        #expect(!TimelineActivitySummary.isRunning(shell))
+    }
     @Test func agyRequiresItsOwnCapabilityAndExplicitSessionSource() throws {
         #expect(TimelineAgentAvailability.supports(agent: "agy"))
         #expect(TimelineAgentAvailability.supports(agent: "antigravity_cli"))
@@ -177,7 +206,7 @@ struct TimelineAgentAvailabilityTests {
     @Test func onlyImplementedAdaptersExposeTimeline() {
         #expect(TimelineAgentAvailability.supports(agent: "claude"))
         #expect(TimelineAgentAvailability.supports(agent: "codex"))
-        for agent in [nil, "", "chatgpt", "cursor", "unknown"] as [String?] {
+        for agent in [nil, "", "chatgpt", "Cursor", "unknown"] as [String?] {
             #expect(!TimelineAgentAvailability.supports(agent: agent))
         }
     }

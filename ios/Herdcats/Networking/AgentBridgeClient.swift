@@ -89,6 +89,10 @@ actor AgentBridgeClient {
             guard handshake.capabilities?.agy == true else {
                 throw AgentBridgeError.unavailable("agy_bridge_required")
             }
+        } else if agent == "cursor" {
+            guard handshake.capabilities?.cursor == true else {
+                throw AgentBridgeError.unavailable("cursor_bridge_required")
+            }
         } else {
             guard agent == nil || agent == "claude" else { throw AgentBridgeError.unavailable("unsupported_agent") }
             guard handshake.capabilities?.claudeTimeline == true else {
