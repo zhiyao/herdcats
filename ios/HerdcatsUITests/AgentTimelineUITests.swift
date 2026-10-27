@@ -279,7 +279,8 @@ final class AgentTimelineUITests: XCTestCase {
     }
 
     func testUnsupportedAgentsStayInTerminalWithoutTimelineSetup() {
-        for agent in ["cursor", "unknown"] {
+        // Cursor now has a Timeline adapter; these agents still do not.
+        for agent in ["gemini", "unknown"] {
             let app = XCUIApplication()
             app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-helper-missing", "-hc.agent", agent, "-hc.light", "-paneShowComposeByDefault", "YES"]
             launch(app)
@@ -290,6 +291,37 @@ final class AgentTimelineUITests: XCTestCase {
             XCTAssertTrue(app.descendants(matching: .any)["pane-compose-field"].firstMatch.exists)
             app.terminate()
         }
+    }
+
+    /// The pinned 0.3.0 installer cannot install Cursor support, so a Cursor pane whose
+    /// bridge is missing explains the source build instead of offering the installer.
+    func testCursorWithMissingHelperExplainsTheSourceBuildAndOffersNoInstaller() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-helper-missing", "-hc.agent", "cursor", "-hc.light", "-paneShowComposeByDefault", "YES"]
+        launch(app)
+        let explanation = app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] %@", "source build of Herdcats Bridge with Cursor support")).firstMatch
+        if !explanation.waitForExistence(timeout: 5) {
+            // The pane may open on its terminal view first.
+            let open = app.buttons["terminal-open-timeline"]
+            if open.waitForExistence(timeout: 3) { open.tap() }
+        }
+        XCTAssertTrue(explanation.waitForExistence(timeout: 5), "the source-build message is shown")
+        XCTAssertTrue(explanation.label.contains("Install the source bridge manually"))
+        XCTAssertTrue(explanation.label.contains("Terminal"))
+        // No installer or first-use drawer for an agent the pinned installer cannot support.
+        for identifier in ["timeline-helper-setup", "timeline-helper-install", "timeline-helper-check-again", "timeline-helper-copy-command"] {
+            XCTAssertFalse(app.buttons[identifier].exists, identifier)
+        }
+        for title in ["Install Herdcats Bridge", "Upgrade Herdcats Bridge", "Set up Timeline"] {
+            XCTAssertFalse(app.buttons[title].exists, title)
+        }
+        XCTAssertFalse(app.staticTexts["A clearer view of your agent"].exists)
+        XCTAssertFalse(app.scrollViews["timeline-setup-scroll"].exists)
+        let preview = XCTAttachment(screenshot: app.screenshot())
+        preview.name = "Cursor timeline with no bridge"
+        preview.lifetime = .keepAlways
+        add(preview)
+        app.terminate()
     }
 
     func testCodexHelperUpdateShowsUpdateHelperLabel() {
