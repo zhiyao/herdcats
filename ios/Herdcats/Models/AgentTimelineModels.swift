@@ -62,6 +62,8 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
     let claudeTimeline: Bool
     var agy: Bool = false
     var pi: Bool = false
+    var cursor: Bool = false
+    var cursorPrompts: Bool = false
     var codexTimeline: Bool? = false
     var codexDaemonConfig: Bool? = false
     var codexDaemonStop: Bool? = false
@@ -74,6 +76,8 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
         claudeTimeline: Bool,
         agy: Bool = false,
         pi: Bool = false,
+        cursor: Bool = false,
+        cursorPrompts: Bool = false,
         codexTimeline: Bool? = false,
         codexDaemonConfig: Bool? = false,
         codexDaemonStop: Bool? = false,
@@ -84,6 +88,8 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
     ) {
         self.agy = agy
         self.pi = pi
+        self.cursor = cursor
+        self.cursorPrompts = cursorPrompts
         self.claudeTimeline = claudeTimeline
         self.modelControl = modelControl
         self.codexTimeline = codexTimeline
@@ -98,6 +104,8 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.agy = try container.decodeIfPresent(Bool.self, forKey: .agy) ?? false
         self.pi = try container.decodeIfPresent(Bool.self, forKey: .pi) ?? false
+        self.cursor = try container.decodeIfPresent(Bool.self, forKey: .cursor) ?? false
+        self.cursorPrompts = try container.decodeIfPresent(Bool.self, forKey: .cursorPrompts) ?? false
         self.modelControl = try container.decodeIfPresent(Bool.self, forKey: .modelControl) ?? false
         self.claudeTimeline = try container.decode(Bool.self, forKey: .claudeTimeline)
         self.codexTimeline = try container.decodeIfPresent(Bool.self, forKey: .codexTimeline) ?? false
@@ -360,8 +368,38 @@ enum TimelineComposePolicy {
     static func canSend(identity: AgentTimelineIdentity?, paneId: String, status: String?, connected: Bool)
         -> Bool
     {
-        connected && identity?.paneId == paneId && TimelineAgentAvailability.supports(agent: identity?.agent)
-            && ["idle", "done", "working"].contains(status ?? "")
+        // Cursor is never typed into mid-turn: the bridge checks the screen for an
+        // idle, empty composer, so a working pane cannot queue a message.
+        let allowed = identity?.agent == "cursor" ? ["idle", "done"] : ["idle", "done", "working"]
+        return connected && identity?.paneId == paneId && TimelineAgentAvailability.supports(agent: identity?.agent)
+            && allowed.contains(status ?? "")
+    }
+}
+
+/// Phone prompts to Cursor go through the bridge, which reads the terminal first.
+enum CursorPromptPolicy {
+    /// Cursor runs a message that starts with "/" as one of its own commands
+    /// (/quit, /model, /new ...) instead of sending it to the model. The phone
+    /// refuses such a message rather than risk running one by accident.
+    static func refusesSlashCommand(agent: String?, text: String) -> Bool {
+        agent == "cursor" && text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/")
+    }
+    static let slashMessage = "Cursor treats a message that starts with “/” as a command, so Herdcats won't send it. Rephrase the message, or use Terminal."
+    static let bridgeMessage = "Herdcats can only send Cursor messages through its conversation view, and it isn't connected to this Cursor chat right now. Check the connection or the message above the chat, or use Terminal."
+    static func message(forCode code: String?) -> String {
+        switch code {
+        case "approval_pending": return "Cursor is waiting for a permission decision. Answer it first, or use Terminal."
+        case "question_pending": return "Cursor is waiting for an answer to its question. Answer it first, or use Terminal."
+        case "composer_not_empty": return "Clear Cursor's input box at the desk first, or use Terminal."
+        case "agent_busy": return "Cursor is busy. Wait for it to finish, or use Terminal."
+        case "picker_open": return "A Cursor menu is open at the desk. Close it first, or use Terminal."
+        case "screen_unrecognized", "screen_unavailable": return "Herdcats can't tell what Cursor is showing. Use Terminal."
+        case "slash_command_refused": return slashMessage
+        case "stale": return "Cursor changed since this screen loaded. Check the conversation and try again."
+        case "prompt_unconfirmed": return "Couldn't confirm the message was delivered. Check Cursor before sending it again."
+        case "unsupported_capability", "unsupported_agent": return "This Herdcats Bridge can't send Cursor messages. Use Terminal."
+        default: return "Couldn't send the message to Cursor. Use Terminal."
+        }
     }
 }
 
@@ -483,12 +521,16 @@ enum TimelineAgentAvailability {
     static func displayName(for agent: String) -> String {
         if let approvalAgent = ApprovalAgent(rawValue: agent) { return approvalAgent.displayName }
         if agent == "pi" { return "Pi" }
-        return canonical(agent) == "antigravity_cli" ? "Agy" : agent
+        switch canonical(agent) {
+        case "antigravity_cli": return "Agy"
+        case "cursor": return "Cursor"
+        default: return agent
+        }
     }
     static func canonical(_ agent: String?) -> String? {
         switch agent {
         case "agy", "antigravity_cli": return "antigravity_cli"
-        case "claude", "codex", "pi": return agent
+        case "claude", "codex", "pi", "cursor": return agent
         default: return nil
         }
     }
@@ -496,7 +538,8 @@ enum TimelineAgentAvailability {
     static func matchesSession(agent: String, referenceAgent: String?, source: String?, identityAgent: String, referenceKind: String = "id") -> Bool {
         guard let canonical = canonical(identityAgent), Self.canonical(agent) == canonical,
               Self.canonical(referenceAgent) == canonical else { return false }
-        guard canonical != "antigravity_cli" || referenceKind == "id" else { return false }
+        // Agy and Cursor identify a chat by ID only; a path reference is never a chat.
+        guard !["antigravity_cli", "cursor"].contains(canonical) || referenceKind == "id" else { return false }
         return source == "herdr:\(canonical)"
     }
 }
@@ -549,7 +592,7 @@ struct TimelineConversationItem: Identifiable {
 
 enum TimelineActivitySummary {
     static func isCommand(_ entry: AgentTimelineEntry) -> Bool {
-        ["bash", "run_command", "exec_command", "shell_command"].contains(entry.toolName?.lowercased() ?? "")
+        ["bash", "run_command", "exec_command", "shell_command", "shell"].contains(entry.toolName?.lowercased() ?? "")
     }
     static func isRunning(_ entry: AgentTimelineEntry) -> Bool {
         entry.status != "completed" && entry.status != "failed"
@@ -599,8 +642,8 @@ enum TimelineActivitySummary {
         case "grep", "glob": return "Search project files"
         case "websearch": return "Search the web"
         case "webfetch": return "Read a web page"
-        case "bash", "run_command", "exec_command", "shell_command": return "Run a shell command"
-        case "ask_question": return "Ask a question"
+        case "bash", "run_command", "exec_command", "shell_command", "shell": return "Run a shell command"
+        case "ask_question", "askquestion": return "Ask a question"
         default: return entry.toolName.map { "Use \($0)" } ?? "Use a tool"
         }
     }

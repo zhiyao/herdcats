@@ -10,6 +10,27 @@ import Observation
         case disconnected
     }
     let modelControl = AgentModelControlState()
+    /// The live bridge channel that submits Cursor prompts, or nil.
+    private var promptClient: AgentBridgeClient?
+    func connectPrompts(_ client: AgentBridgeClient?) { promptClient = client }
+    /// A new Cursor chat has no transcript until its first prompt, so the view is
+    /// waiting ("Send a message to start") and there is no identity to bind.
+    var canSendFirstCursorPrompt: Bool { promptClient != nil && identity == nil && generation != nil && phase == .unavailable("transcript_unavailable") }
+    /// Sends that first message through the bridge's screen guard, by pane and generation.
+    func submitFirstCursorPrompt(_ text: String, paneId: String) async throws {
+        guard let client = promptClient, canSendFirstCursorPrompt, let generation, paneId == self.paneId else {
+            throw AgentBridgeError.unavailable("unsupported_capability")
+        }
+        try await client.submitFirstPrompt(text: text, paneId: paneId, generation: generation)
+    }
+    /// Sends one Cursor prompt through the bridge's screen guard. Throws the
+    /// bridge's refusal code (approval_pending, composer_not_empty, ...).
+    func submitCursorPrompt(_ text: String) async throws {
+        guard let client = promptClient, let identity, let generation, identity.agent == "cursor" else {
+            throw AgentBridgeError.unavailable("unsupported_capability")
+        }
+        try await client.submitPrompt(text: text, identity: identity, generation: generation)
+    }
     private(set) var pendingQuestion: AgentPendingQuestion?
     private(set) var pendingApproval: AgentPendingApproval?
     private(set) var pendingPiDialog: AgentPiDialog?
@@ -39,6 +60,7 @@ import Observation
     func begin(owner: UUID, paneId: String) {
         piClient = nil
         modelControl.connect(nil, supported: false)
+        promptClient = nil
         self.owner = owner
         self.paneId = paneId
         epoch = nil
@@ -186,6 +208,7 @@ import Observation
         guard self.owner == owner else { return }
         piClient = nil
         modelControl.connect(nil, supported: false)
+        promptClient = nil
         self.owner = nil
         clear()
         phase = error == .closed ? .disconnected : .unavailable(error.code)
@@ -311,6 +334,8 @@ import Observation
     private var scope = UUID()
 
     var isVisible: Bool { supported && identity != nil }
+    /// Cursor writes the choice to its own config, so it also becomes the default for new sessions.
+    var persistsAcrossSessions: Bool { identity?.agent == "cursor" }
     /// The live model's own label keeps its version ("Opus 5.5"); the catalog
     /// name is used only when the bridge sent a bare id as the label.
     var modelName: String {
@@ -429,8 +454,8 @@ import Observation
         do {
             let payload = try await client.setModel(model: model, effort: effort,
                 expect: AgentModelExpectation(model: pair.model?.id, effort: pair.effort,
-                    identity: ["antigravity_cli", "pi"].contains(TimelineAgentAvailability.canonical(identity.agent) ?? "") ? identity : nil,
-                    generation: ["antigravity_cli", "pi"].contains(TimelineAgentAvailability.canonical(identity.agent) ?? "") ? generation : nil))
+                    identity: ["antigravity_cli", "pi", "cursor"].contains(TimelineAgentAvailability.canonical(identity.agent) ?? "") ? identity : nil,
+                    generation: ["antigravity_cli", "pi", "cursor"].contains(TimelineAgentAvailability.canonical(identity.agent) ?? "") ? generation : nil))
             guard self.scope == scope, self.identity == identity, self.generation == generation else { return }
             try apply(payload)
         } catch {
@@ -469,7 +494,8 @@ import Observation
         case "agy_catalog_empty": return "No model choices were returned. Retry or use Terminal."
         case "agent_busy": return "The agent is busy. Retry when it's idle."
         case "unsupported_capability": return "This bridge doesn't support model choices. Update Herdcats Bridge, then retry."
-        default: return "Couldn't load model choices. Retry or use Terminal."
+        default: if let cursor = cursorMessage(for: code) { return cursor }
+            return "Couldn't load model choices. Retry or use Terminal."
         }
     }
     static func message(for code: String?) -> String {
@@ -477,7 +503,28 @@ import Observation
         case "agent_busy": return "The agent is working — try again when it's idle."
         case "stale": return "Something changed at the desk. Check the current model and try again."
         case "composer_not_empty": return "Clear the agent's input box at the desk first."
-        default: return "Couldn't change the model. Try again."
+        default: if let cursor = cursorMessage(for: code) { return cursor }
+            return "Couldn't change the model. Try again."
+        }
+    }
+    /// Cursor's guarded model menu refuses rather than guesses; each refusal says what to do.
+    static func cursorMessage(for code: String?) -> String? {
+        switch code {
+        case "cursor_unsupported_version": return "This Cursor version hasn't been verified for model controls. Use Terminal."
+        case "cursor_version_unverified": return "Herdcats can't tell which Cursor version is running. Use Terminal."
+        case "mode_not_agent": return "Switch Cursor back to Agent mode at the desk, then retry."
+        case "composer_not_empty": return "Clear Cursor's input box at the desk first, or use Terminal."
+        case "approval_pending": return "Cursor is waiting for a permission decision. Answer it first, or use Terminal."
+        case "question_pending": return "Cursor is waiting for an answer to its question. Answer it first, or use Terminal."
+        case "picker_open": return "A Cursor menu is open at the desk. Close it first, or use Terminal."
+        case "footer_unrecognized": return "Herdcats can't read which model Cursor is using (a custom status line?). Use Terminal."
+        case "unknown_model": return "Cursor doesn't list that model. Refresh the choices, or use Terminal."
+        case "invalid_effort": return "That model doesn't offer that effort. Use Terminal."
+        case "picker_stuck": return "Cursor's model menu may still be open. Close it in Terminal."
+        case "picker_mismatch", "picker_unavailable", "catalog_incomplete", "catalog_ambiguous", "screen_unrecognized", "screen_unavailable":
+            return "Cursor's model menu didn't look as expected, so nothing was changed. Use Terminal."
+        case "confirm_timeout": return "Couldn't confirm the change in Cursor. Check the model at the desk."
+        default: return nil
         }
     }
 }

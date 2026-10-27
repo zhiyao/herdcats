@@ -6,6 +6,7 @@ fn fixture(kind: QuestionKind, screen: &str) -> (PendingQuestion, QuestionScreen
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../compatibility/phase2/fixtures");
     let source = match kind {
         QuestionKind::AgyAsk => panic!("Agy fixtures are covered by agy_interactions"),
+        QuestionKind::CursorAsk => panic!("Cursor forms are covered by the cursor_form tests"),
         QuestionKind::ClaudeAsk => "claude-question-transcript",
         QuestionKind::CodexPlan => "codex-sync-rollout",
         QuestionKind::CodexAsync => "codex-async-rollout",

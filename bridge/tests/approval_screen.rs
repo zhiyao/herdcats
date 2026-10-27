@@ -10,6 +10,7 @@ fn fixture_command(agent: Agent) -> &'static str {
         Agent::Claude => CLAUDE_COMMAND,
         Agent::Codex => CODEX_COMMAND,
         Agent::Agy => panic!("Agy fixture is covered by agy_interactions"),
+        Agent::Cursor => panic!("Cursor cards are covered by the cursor_screen unit tests"),
     }
 }
 

@@ -91,6 +91,8 @@
       "antigravity_cli"
     ],
     "agy": "Build this checkout and explicitly install the local binary. Published 0.3.0 installer and its checksum remain unchanged; they do not support Agy. After a real Agy-enabled artifact is published and verified, update the iOS version/checksum/supported-agent pin together.",
-    "docs": "ios/docs/agy-conversations.md"
+    "docs": "ios/docs/agy-conversations.md",
+    "cursor": "Build this checkout and explicitly install the local binary; the published 0.3.0 installer does not support Cursor. Model control is verified on Cursor build 2026.10.22-27dcf5f only. Update the iOS version/checksum/supported-agent pin together once a real Cursor-enabled artifact is published and verified.",
+    "docs_cursor": "ios/docs/cursor-conversations.md"
   }
 }

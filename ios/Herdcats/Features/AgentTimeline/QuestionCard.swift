@@ -33,6 +33,11 @@ struct QuestionCard: View {
                 Spacer(minLength: 8)
                 if response.phase == .sending { ProgressView().accessibilityLabel("Sending answer") }
             }
+            if case .cursorQuestion(let index, let total) = pending.step, total > 1 {
+                // Cursor shows one question of its form at a time.
+                Text("Question \(index + 1) of \(total)").font(.jost(.caption)).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("question-position")
+            }
             ForEach(pending.questions, id: \.index) { question in
                 questionControls(question)
             }
