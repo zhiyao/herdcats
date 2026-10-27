@@ -157,7 +157,8 @@ struct PaneDetailView: View {
                 StatusNavigationTitle(
                     title: selectedPane.displayTitle,
                     status: selectedPane.status,
-                    subtitle: selectedPane.shortCwd.isEmpty ? nil : selectedPane.shortCwd
+                    subtitle: selectedPane.shortCwd.isEmpty ? nil : selectedPane.shortCwd,
+                    agent: selectedPane.agent
                 )
             }
             if TimelineAgentAvailability.supports(agent: selectedPane.agent) {

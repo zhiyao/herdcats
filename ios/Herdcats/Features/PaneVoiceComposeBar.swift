@@ -38,7 +38,7 @@ private struct PaneInputGlassSurface: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
     let cornerRadius: CGFloat
     var backgroundOpacity: Double = 1
-    var usesGlassBorder = false
+    var usesGlassBorder = true
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle.continuous(cornerRadius)
@@ -696,7 +696,7 @@ struct PaneVoiceComposeBar: View {
         .modifier(PaneInputGlassSurface(
             cornerRadius: modelControl != nil ? 24 : DesignSystem.CornerRadius.lg,
             backgroundOpacity: modelControl != nil ? 0.98 : 1,
-            usesGlassBorder: modelControl != nil
+            usesGlassBorder: true
         ))
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
@@ -722,7 +722,7 @@ struct PaneVoiceComposeBar: View {
             } label: {
                 Image(systemName: "photo")
                     .font(.jost(20))
-                    .foregroundStyle(Theme.accent)
+                    .foregroundStyle(Color.secondary)
                     .frame(width: 38, height: 38)
                     .contentShape(Rectangle())
             }
@@ -787,7 +787,7 @@ struct PaneVoiceComposeBar: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .font(.jost(.subheadline))
-                .foregroundStyle(Theme.accent)
+                .foregroundStyle(Color.secondary)
                 // Hug the text: the mic glyph sits ~10pt inside its 32pt frame and
                 // Send's circle ~4pt inside its 34pt frame, so 3pt here makes the
                 // label-to-mic gap match the mic-to-Send gap (measured ~18pt each).
