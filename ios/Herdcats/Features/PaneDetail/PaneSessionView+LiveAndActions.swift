@@ -390,6 +390,11 @@ extension PaneSessionView {
         } ?? trimmedDraft
         guard !text.isEmpty else { return }
 
+        // Cursor runs a leading "/" as its own command; refuse before anything is sent.
+        if CursorPromptPolicy.refusesSlashCommand(agent: pane.agent, text: trimmedDraft) {
+            sessionError = CursorPromptPolicy.slashMessage
+            return
+        }
         let sendRevision = persistenceRevision
         let sentDraft = trimmedDraft
         let originalDraft = draft
@@ -400,9 +405,18 @@ extension PaneSessionView {
                 defer {isTimelineSending=false}
                 if identity.agent == "pi" {
                     try await timeline.submitPiPrompt(text)
+                } else if identity.agent == "cursor" {
+                    do { try await timeline.submitCursorPrompt(text) }
+                    catch { throw HerdrError.invalidConfiguration(CursorPromptPolicy.message(forCode: (error as? AgentBridgeError)?.code)) }
                 } else {
                     try await appModel.connection.submitTimelinePrompt(text:text,identity:identity,owned:owned)
                 }
+            } else if pane.agent == "cursor", showsTimeline, timeline.canSendFirstCursorPrompt {
+                // A brand-new chat: no transcript, so no identity yet. Same bridge guard.
+                isTimelineSending=true
+                defer {isTimelineSending=false}
+                do { try await timeline.submitFirstCursorPrompt(text, paneId: pane.paneId) }
+                catch { throw HerdrError.invalidConfiguration(CursorPromptPolicy.message(forCode: (error as? AgentBridgeError)?.code)) }
             } else {
                 try await session.send(text:text,connection:appModel.connection)
             }

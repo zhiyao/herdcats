@@ -72,6 +72,20 @@ impl Client {
         frame["result"]["read"]["text"].as_str()
             .map(str::to_owned).ok_or("invalid_herdr_response")
     }
+    /// Command lines of the pane's foreground processes, bounded in count and
+    /// length. Used to read a running agent's own version.
+    pub fn process_command_lines(&self, pane_id: &str) -> Result<Vec<String>> {
+        let frame = self.request(
+            "pane.process_info", "pane.process_info", json!({"pane_id":pane_id}),
+            "invalid_herdr_response",
+        )?;
+        let processes = frame["result"]["process_info"]["foreground_processes"]
+            .as_array().ok_or("invalid_herdr_response")?;
+        Ok(processes.iter().take(64)
+            .filter_map(|p| p["cmdline"].as_str())
+            .map(|line| line.chars().take(4096).collect())
+            .collect())
+    }
     pub fn send_text(&self, pane_id: &str, text: &str) -> Result<()> {
         self.request("pane.send_text", "pane.send_text", json!({"pane_id":pane_id,"text":text}),
             "invalid_herdr_response")?;

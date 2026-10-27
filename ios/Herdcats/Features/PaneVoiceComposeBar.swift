@@ -918,6 +918,12 @@ private struct AgentModelConfigurationSheet: View {
                 .listRowBackground(Theme.cardBackground)
                 .disabled(state.isChanging)
                 catalogStatus
+                if state.persistsAcrossSessions {
+                    Section {} footer: {
+                        Text("Cursor saves this choice to its own settings, so it also applies to new Cursor sessions on this computer.")
+                            .accessibilityIdentifier("model-persists-note")
+                    }
+                }
             }
             .scrollContentBackground(.hidden)
             .contentMargins(.top, 8, for: .scrollContent)

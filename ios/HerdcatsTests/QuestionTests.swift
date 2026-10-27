@@ -5,14 +5,14 @@ import Testing
 @Suite("Question protocol and answers")
 @MainActor struct QuestionTests {
     func frame(kind: String = "claude", seq: Int = 1, event: String = "interaction.pending", extra: [String: Any] = [:]) throws -> AgentBridgeFrame {
-        let agent = kind == "claude" ? "claude" : kind == "agy" ? "antigravity_cli" : "codex"
+        let agent = kind == "claude" ? "claude" : kind == "agy" ? "antigravity_cli" : kind == "cursor" ? "cursor" : "codex"
         var data: [String: Any] = [
             "identity": ["pane_id": "w1:p1", "terminal_id": "t1", "agent": agent, "native_session_id": "session-a"],
             "generation": 1, "request_id": "ask-prompt-123", "kind": "question", "agent": agent,
             "question_kind": kind, "fresh": true, "entries": [],
             "questions": [["index": 0, "header": "Size", "text": "Which size?", "multi_select": false, "allows_other": true,
                 "options": [["number": 1, "label": "Small", "description": "A small pizza"], ["number": 2, "label": "None of the above"]]]],
-            "step": kind == "agy" ? ["kind": "agy_question", "index": 0, "total": 1] : kind == "claude" ? ["kind": "claude_question", "index": 0] : kind == "codex_plan"
+            "step": kind == "cursor" ? ["kind": "cursor_question", "index": 0, "total": 2] : kind == "agy" ? ["kind": "agy_question", "index": 0, "total": 1] : kind == "claude" ? ["kind": "claude_question", "index": 0] : kind == "codex_plan"
                 ? ["kind": "codex_question", "index": 0, "total": 1] : ["kind": "async_queued"],
             "countdown": kind == "codex_async" ? "18s" as Any : NSNull(),
         ]
@@ -23,7 +23,7 @@ import Testing
         try AgentPendingQuestion.decode(#require(frame(kind: kind, extra: extra).data))
     }
     @Test func decodesKindsAndSteps() throws {
-        for kind in ["claude", "codex_plan", "codex_async", "agy"] {
+        for kind in ["claude", "codex_plan", "codex_async", "agy", "cursor"] {
             let p = try pending(kind)
             #expect(p.questionKind.rawValue == kind)
             #expect(p.questions[0].options[0].description == "A small pizza")
@@ -31,6 +31,54 @@ import Testing
         #expect(try pending("codex_async").countdown == "18s")
         #expect(try pending(extra: ["step": ["kind": "claude_review"]]).step == .claudeReview)
         #expect(try pending("codex_async", extra: ["step": ["kind": "async_picker", "index": 0]]).step == .asyncPicker(index: 0))
+    }
+    @Test func cursorShowsOneFormQuestionAtATimeWithItsPosition() throws {
+        let p = try pending("cursor")
+        #expect(p.agent == "cursor")
+        #expect(p.step == .cursorQuestion(index: 0, total: 2))
+        #expect(p.questions.count == 1)
+        // Later questions arrive as new requests, so the position is the only link.
+        for step: [String: Any] in [
+            ["kind": "cursor_question", "index": 1, "total": 2],
+            ["kind": "cursor_question", "index": 7, "total": 8],
+            ["kind": "cursor_question", "index": 0, "total": 1],
+        ] { #expect(try pending("cursor", extra: ["step": step]).questionKind == .cursor) }
+        for step: [String: Any] in [
+            ["kind": "cursor_question", "index": 2, "total": 2],   // position past the form
+            ["kind": "cursor_question", "index": 0, "total": 9],   // more questions than the client allows
+            ["kind": "cursor_question", "index": 0, "total": 0],
+            ["kind": "cursor_question", "index": -1, "total": 2],
+            ["kind": "agy_question", "index": 0, "total": 1],      // another agent's step
+            ["kind": "claude_question", "index": 0],
+        ] { #expect(throws: (any Error).self) { try pending("cursor", extra: ["step": step]) }
+        }
+        // The form is never decoded as another agent's question, or the reverse.
+        #expect(throws: (any Error).self) { try pending("cursor", extra: ["agent": "antigravity_cli", "identity": ["pane_id": "w1:p1", "terminal_id": "t1", "agent": "antigravity_cli", "native_session_id": "session-a"]]) }
+        #expect(throws: (any Error).self) { try pending("agy", extra: ["step": ["kind": "cursor_question", "index": 0, "total": 1]]) }
+        // Exactly one question per request.
+        let two = try #require(frame(kind: "cursor").data?.questions?.first)
+        var data = try #require(frame(kind: "cursor").data)
+        data.questions = [two, AgentQuestion(index: 1, text: "Second?", options: [AgentQuestionOption(number: 1, label: "A")], multiSelect: false, allowsOther: true)]
+        #expect(throws: (any Error).self) { try AgentPendingQuestion.decode(data) }
+    }
+    @Test func cursorMultiSelectWriteInAndSelectionsFollowTheRadioRules() throws {
+        var data = try #require(frame(kind: "cursor").data)
+        data.questions = [AgentQuestion(index: 0, text: "Features?", options: [AgentQuestionOption(number: 1, label: "One"), AgentQuestionOption(number: 2, label: "Two")], multiSelect: true, allowsOther: true)]
+        let state = QuestionAnswerState()
+        state.sync(try AgentPendingQuestion.decode(data))
+        state.select(question: 0, option: 2)
+        state.select(question: 0, option: 1)
+        state.setText("Anchovies", question: 0)
+        #expect(state.answers == [AgentQuestionAnswer(index: 0, options: [1, 2], text: "Anchovies")])
+        // Single-select is a radio, and a write-in replaces the option.
+        let single = QuestionAnswerState()
+        single.sync(try pending("cursor"))
+        single.select(question: 0, option: 1)
+        single.setText("Medium", question: 0)
+        #expect(single.answers == [AgentQuestionAnswer(index: 0, options: [], text: "Medium")])
+        // Skipping would discard the whole form at the desk, so it is Terminal-only.
+        #expect(single.begin(skip: true) == nil)
+        #expect(single.phase == .idle)
     }
     @Test func agyMultiSelectAndWriteInPreserveDraftsAndRejectWrongSteps() throws {
         var data = try #require(frame(kind: "agy").data)

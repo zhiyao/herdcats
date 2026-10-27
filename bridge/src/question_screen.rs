@@ -16,6 +16,11 @@ pub enum QuestionStep {
         index: usize,
         total: usize,
     },
+    /// The visible question of a Cursor form; each is its own request.
+    CursorQuestion {
+        index: usize,
+        total: usize,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -74,6 +79,8 @@ impl QuestionScreen {
                     total == pending.questions.len()
                         && self.cursor == Some(QuestionCursor::Option(1))
                 }
+                // Fresh means nothing chosen or typed yet and the cursor on the first row.
+                QuestionStep::CursorQuestion { .. } => self.cursor == Some(QuestionCursor::Option(1)),
                 QuestionStep::AsyncQueued => true,
                 QuestionStep::AsyncPicker(0) => {
                     self.cursor == Some(QuestionCursor::Option(1)) && pending.questions.len() == 1
@@ -943,13 +950,16 @@ pub fn parse(
     if kind == QuestionKind::AgyAsk {
         return parse_agy(screen, pending);
     }
+    if kind == QuestionKind::CursorAsk {
+        return crate::cursor_form::parse(screen, pending);
+    }
     let raw: Vec<_> = screen.lines().collect();
     let (logical, spans) = anchor_rows(screen, pending);
     let rows: Vec<_> = logical.iter().map(String::as_str).collect();
     let mut chosen = None;
     for start in 0..rows.len() {
         let candidate = match kind {
-            QuestionKind::AgyAsk => false,
+            QuestionKind::AgyAsk | QuestionKind::CursorAsk => false,
             QuestionKind::ClaudeAsk => {
                 let row = rows[start].trim();
                 (indent(raw[spans[start].0]) == 0 && row.starts_with("← "))
@@ -982,7 +992,7 @@ pub fn parse(
             // End candidates are whole controls at their terminal columns, never
             // substrings inside a selected option, notes, or typed continuations.
             match kind {
-                QuestionKind::AgyAsk => false,
+                QuestionKind::AgyAsk | QuestionKind::CursorAsk => false,
                 QuestionKind::ClaudeAsk => {
                     (column == 0
                         && original.starts_with("Enter ")
@@ -1017,7 +1027,7 @@ pub fn parse(
             }
             let slice = rows.get(start..=end)?;
             let dialog = match kind {
-                QuestionKind::AgyAsk => None,
+                QuestionKind::AgyAsk | QuestionKind::CursorAsk => None,
                 QuestionKind::ClaudeAsk => claude(slice, pending),
                 QuestionKind::CodexPlan => sync(slice, pending),
                 QuestionKind::CodexAsync => asynchronous(slice, pending),
