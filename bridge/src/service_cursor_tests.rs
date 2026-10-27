@@ -688,3 +688,110 @@ fn cursor_question_card_does_not_collide_with_an_approval_card() {
     assert!(matches!(service.watch.as_ref().unwrap().pending, Some(PendingInteraction::Approval(_))));
     cleanup(&service, root);
 }
+
+/// Cursor's composer in a brand-new chat: a faint "Plan, search, build anything".
+fn cursor_new_chat() -> (String, String) {
+    let plain = format!("\n  Cursor Agent\n  v2026.10.22-27dcf5f\n\n{CURSOR_TOP}\n  → Plan, search, build anything\n{CURSOR_BOTTOM}\n{CURSOR_FOOTER}");
+    let bg = "\u{1b}[48;2;47;50;57m";
+    let row = format!(" \u{1b}[0m{bg} \u{1b}[0m\u{1b}[2m{bg}→ \u{1b}[0m\u{1b}[7m{bg}P\u{1b}[0m\u{1b}[2m{bg}lan, search, build anything\u{1b}[0m{bg}   \u{1b}[0m");
+    let styled = plain.replace("  → Plan, search, build anything", &row);
+    (plain, styled)
+}
+/// A pane whose chat Herdr reports but whose transcript Cursor has not created yet.
+fn cursor_fresh_fixture() -> (Service, PathBuf, SharedHerdr, PathBuf) {
+    let (mut service, root, herdr, file) = cursor_fixture();
+    fs::remove_file(&file).unwrap();
+    let (plain, styled) = cursor_new_chat();
+    set_screen(&herdr, "idle", &plain, &styled);
+    service.poll(&mut Vec::new()).unwrap();
+    assert_eq!(service.watch.as_ref().unwrap().unavailable, Some("transcript_unavailable"));
+    (service, root, herdr, file)
+}
+fn fresh_params(service: &Service, text: &str) -> Value {
+    json!({"text":text,"pane_id":"w1:p1","generation":service.generation})
+}
+
+#[test]
+fn cursor_first_message_of_a_new_chat_is_sent_by_pane_before_any_transcript_exists() {
+    let (mut service, root, herdr, _file) = cursor_fresh_fixture();
+    let params = fresh_params(&service, "hello from the phone");
+    assert_eq!(service.prompt_submit(&params).unwrap()["submitted"], true);
+    assert_eq!(prompts(&herdr), 1);
+    let sent = herdr.lock().unwrap().inputs.iter().find(|i| i["method"] == "agent.prompt").cloned().unwrap();
+    assert_eq!(sent["params"]["text"], "hello from the phone");
+    assert_eq!(sent["params"]["target"], "w1:p1");
+    cleanup(&service, root);
+}
+
+#[test]
+fn cursor_first_message_keeps_every_screen_guard() {
+    let (mut service, root, herdr, _file) = cursor_fresh_fixture();
+    let params = fresh_params(&service, "hi");
+    let card = cursor_card("printf X", 0);
+    let (new_plain, new_styled) = cursor_new_chat();
+    let draft = new_plain.replace("→ Plan, search, build anything", "→ half typed");
+    for (status, plain, styled, code) in [
+        ("done", card.as_str(), card.as_str(), "approval_pending"),
+        ("done", CURSOR_QUESTION, CURSOR_QUESTION, "question_pending"),
+        ("idle", draft.as_str(), draft.as_str(), "composer_not_empty"),
+        // Typed text that spells the placeholder is still a draft: no faint styling.
+        ("idle", new_plain.as_str(), new_plain.as_str(), "composer_not_empty"),
+        ("working", new_plain.as_str(), new_styled.as_str(), "agent_busy"),
+        ("idle", "$ ls", "$ ls", "screen_unrecognized"),
+    ] {
+        set_screen(&herdr, status, plain, styled);
+        assert_eq!(service.prompt_submit(&params).unwrap_err(), code);
+    }
+    assert_eq!(prompts(&herdr), 0, "nothing is typed into a pane that is not ready");
+    cleanup(&service, root);
+}
+
+#[test]
+fn cursor_first_message_refuses_slash_commands_and_stale_requests_without_touching_the_pane() {
+    let (mut service, root, herdr, _file) = cursor_fresh_fixture();
+    for text in ["/model x", "  /quit"] {
+        assert_eq!(service.prompt_submit(&fresh_params(&service, text)).unwrap_err(), "slash_command_refused");
+    }
+    for text in ["", "   ", "a\0b"] {
+        assert_eq!(service.prompt_submit(&fresh_params(&service, text)).unwrap_err(), "invalid_request");
+    }
+    let mut wrong_pane = fresh_params(&service, "hi");
+    wrong_pane["pane_id"] = json!("w9:p9");
+    assert_eq!(service.prompt_submit(&wrong_pane).unwrap_err(), "stale");
+    let mut wrong_generation = fresh_params(&service, "hi");
+    wrong_generation["generation"] = json!(service.generation + 1);
+    assert_eq!(service.prompt_submit(&wrong_generation).unwrap_err(), "stale");
+    let mut no_pane = fresh_params(&service, "hi");
+    no_pane.as_object_mut().unwrap().remove("pane_id");
+    assert_eq!(service.prompt_submit(&no_pane).unwrap_err(), "stale");
+    assert_eq!(prompts(&herdr), 0);
+    cleanup(&service, root);
+}
+
+#[test]
+fn cursor_pane_scoped_prompt_is_only_for_the_exact_missing_transcript_state() {
+    // Once the transcript exists the chat has an identity: a pane-scoped request is stale.
+    let (mut service, root, herdr, file) = cursor_fresh_fixture();
+    fs::create_dir_all(file.parent().unwrap()).unwrap();
+    fs::write(&file, "{\"role\":\"user\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"hi\"}]}}\n").unwrap();
+    service.poll(&mut Vec::new()).unwrap();
+    assert!(service.watch.as_ref().unwrap().identity.is_some());
+    assert_eq!(service.prompt_submit(&fresh_params(&service, "hi")).unwrap_err(), "stale");
+    assert_eq!(prompts(&herdr), 0);
+    cleanup(&service, root);
+
+    // Other unavailable states (two chats with this ID, a root problem) never take this path.
+    let (mut service, root, herdr, file) = cursor_fresh_fixture();
+    let projects = file.ancestors().nth(4).unwrap().to_path_buf();
+    let id = file.file_stem().unwrap().to_str().unwrap().to_owned();
+    for project in ["one", "two"] {
+        let dir = projects.join(project).join("agent-transcripts").join(&id);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(format!("{id}.jsonl")), "{}\n").unwrap();
+    }
+    service.poll(&mut Vec::new()).unwrap();
+    assert_eq!(service.watch.as_ref().unwrap().unavailable, Some("ambiguous_session"));
+    assert_eq!(service.prompt_submit(&fresh_params(&service, "hi")).unwrap_err(), "timeline_unavailable");
+    assert_eq!(prompts(&herdr), 0);
+    cleanup(&service, root);
+}

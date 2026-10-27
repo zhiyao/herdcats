@@ -411,6 +411,12 @@ extension PaneSessionView {
                 } else {
                     try await appModel.connection.submitTimelinePrompt(text:text,identity:identity,owned:owned)
                 }
+            } else if pane.agent == "cursor", showsTimeline, timeline.canSendFirstCursorPrompt {
+                // A brand-new chat: no transcript, so no identity yet. Same bridge guard.
+                isTimelineSending=true
+                defer {isTimelineSending=false}
+                do { try await timeline.submitFirstCursorPrompt(text, paneId: pane.paneId) }
+                catch { throw HerdrError.invalidConfiguration(CursorPromptPolicy.message(forCode: (error as? AgentBridgeError)?.code)) }
             } else {
                 try await session.send(text:text,connection:appModel.connection)
             }

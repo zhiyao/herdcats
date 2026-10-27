@@ -2444,8 +2444,30 @@ impl Service {
     /// Herdr can report `done` for a live question form, and Cursor writes no
     /// pending card to its transcript, so neither status nor transcript counts.
     fn cursor_ready(&self, identity: &Identity, require_agent_mode: bool) -> Result<()> {
+        self.cursor_ready_with(identity, require_agent_mode, true)
+    }
+    /// The occupant of a pane that has no transcript yet: same pane and terminal,
+    /// a Cursor agent, and Herdr's own `herdr:cursor` id reference for this chat.
+    fn cursor_pane_without_transcript(&self, identity: &Identity) -> Result<Pane> {
+        let snapshot = self.client.snapshot().map_err(|_| "stale")?;
+        let pane = snapshot.panes.iter().find(|p| p.pane_id == identity.pane_id).ok_or("stale")?.clone();
+        let reference = pane.agent_session.as_ref().ok_or("stale")?;
+        if pane.terminal_id != identity.terminal_id || pane.agent.as_deref() != Some("cursor")
+            || reference.agent != "cursor" || reference.source != "herdr:cursor" || reference.kind != "id"
+            || reference.value != identity.native_session_id
+        {
+            return Err("stale");
+        }
+        Ok(pane)
+    }
+    /// `transcript` is false only for a brand-new chat, whose file Cursor creates
+    /// on the first prompt; the screen guard is the same either way.
+    fn cursor_ready_with(&self, identity: &Identity, require_agent_mode: bool, transcript: bool) -> Result<()> {
         let idle = |pane: &Pane| matches!(pane.agent_status.as_str(), "idle" | "done");
-        let (pane, _) = self.model_pane_file(identity)?;
+        let occupant = |this: &Self| -> Result<Pane> {
+            if transcript { Ok(this.model_pane_file(identity)?.0) } else { this.cursor_pane_without_transcript(identity) }
+        };
+        let pane = occupant(self)?;
         if !idle(&pane) { return Err("agent_busy"); }
         let plain = self.client.read_visible(&identity.pane_id).map_err(|_| "screen_unavailable")?;
         let styled = self.client.read_visible_ansi(&identity.pane_id).map_err(|_| "screen_unavailable")?;
@@ -2461,7 +2483,7 @@ impl Service {
             cursor_screen::Screen::Unknown => return Err("screen_unrecognized"),
         }
         // Re-verify the occupant last, immediately before the caller types.
-        let (pane, _) = self.model_pane_file(identity)?;
+        let pane = occupant(self)?;
         if !idle(&pane) { return Err("agent_busy"); }
         Ok(())
     }
@@ -2469,13 +2491,6 @@ impl Service {
     /// one bridge call, so no phone round trip separates check from send.
     fn prompt_submit(&mut self, params: &Value) -> Result<Value> {
         let watch = self.watch.as_ref().ok_or("not_watching")?;
-        let identity = watch.identity.clone().filter(|_| watch.unavailable.is_none())
-            .ok_or("timeline_unavailable")?;
-        if identity.agent != "cursor" { return Err("unsupported_agent"); }
-        if params["expect"]["identity"] != serde_json::to_value(&identity).map_err(|_| "stale")?
-            || params["expect"]["generation"].as_u64() != Some(self.generation) {
-            return Err("stale");
-        }
         let text = params["text"].as_str().ok_or("invalid_request")?;
         if text.trim().is_empty() || text.len() > 65_536 || text.chars().any(|c| c == '\0') {
             return Err("invalid_request");
@@ -2483,6 +2498,36 @@ impl Service {
         // A leading slash would run a Cursor command (/quit, /model ...) instead
         // of reaching the model; the phone never sends one.
         if text.trim_start().starts_with('/') { return Err("slash_command_refused"); }
+        // A brand-new chat has no transcript until its first prompt, so there is
+        // no native identity to bind yet. Only that exact state is accepted, by
+        // pane and generation, with the chat taken from Herdr's own reference.
+        if watch.identity.is_none() && watch.unavailable == Some("transcript_unavailable") {
+            if params["pane_id"].as_str() != Some(watch.pane_id.as_str())
+                || params["generation"].as_u64() != Some(self.generation) {
+                return Err("stale");
+            }
+            let pane_id = watch.pane_id.clone();
+            let snapshot = self.client.snapshot().map_err(|_| "stale")?;
+            let pane = snapshot.panes.iter().find(|p| p.pane_id == pane_id).ok_or("stale")?;
+            let reference = pane.agent_session.as_ref().ok_or("session_reference_unavailable")?;
+            if pane.agent.as_deref() != Some("cursor") || !crate::resolver::session_id(&reference.value) {
+                return Err("unsupported_agent");
+            }
+            let identity = Identity {
+                pane_id, terminal_id: pane.terminal_id.clone(), agent: "cursor".into(),
+                native_session_id: reference.value.clone(), native_instance_id: None,
+            };
+            self.cursor_ready_with(&identity, false, false)?;
+            self.client.agent_prompt(&identity.pane_id, text).map_err(|_| "prompt_unconfirmed")?;
+            return Ok(json!({"submitted":true}));
+        }
+        let identity = watch.identity.clone().filter(|_| watch.unavailable.is_none())
+            .ok_or("timeline_unavailable")?;
+        if identity.agent != "cursor" { return Err("unsupported_agent"); }
+        if params["expect"]["identity"] != serde_json::to_value(&identity).map_err(|_| "stale")?
+            || params["expect"]["generation"].as_u64() != Some(self.generation) {
+            return Err("stale");
+        }
         self.cursor_ready(&identity, false)?;
         // No retry: a failed transport call may still have delivered the prompt.
         self.client.agent_prompt(&identity.pane_id, text).map_err(|_| "prompt_unconfirmed")?;

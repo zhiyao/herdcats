@@ -134,6 +134,14 @@ actor AgentBridgeClient {
             expect: AgentModelExpectation(model: nil, effort: nil, identity: identity, generation: generation), text: text), timeout: 20)
     }
 
+    /// The first message of a brand-new chat: Cursor creates its transcript only now, so
+    /// there is no chat identity yet. The bridge takes the chat from Herdr's own reference
+    /// and applies the same screen guard; the request is bound to the watched pane and generation.
+    func submitFirstPrompt(text: String, paneId: String, generation: UInt64) async throws {
+        guard capabilities?.cursorPrompts == true else { throw AgentBridgeError.unavailable("unsupported_capability") }
+        _ = try await request(.promptSubmit, params: AgentBridgeParams(paneId: paneId, generation: generation, text: text), timeout: 20)
+    }
+
     func respond(requestId: String, option: UInt32, labelLines: [String]) async throws -> AgentApprovalResponse {
         let reply = try await request(.respond, params: AgentBridgeParams(requestId: requestId, option: option, labelLines: labelLines))
         guard reply.requestId == requestId, let sent = reply.sent, (AgentApprovalOption.validKey(sent) || (sent == "navigate" && (capabilities?.agy == true || capabilities?.cursor == true))),

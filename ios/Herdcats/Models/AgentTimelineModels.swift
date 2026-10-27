@@ -385,7 +385,7 @@ enum CursorPromptPolicy {
         agent == "cursor" && text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/")
     }
     static let slashMessage = "Cursor treats a message that starts with “/” as a command, so Herdcats won't send it. Rephrase the message, or use Terminal."
-    static let bridgeMessage = "Cursor messages are sent from the conversation view once it is connected. Check the connection, or use Terminal."
+    static let bridgeMessage = "Herdcats can only send Cursor messages through its conversation view, and it isn't connected to this Cursor chat right now. Check the connection or the message above the chat, or use Terminal."
     static func message(forCode code: String?) -> String {
         switch code {
         case "approval_pending": return "Cursor is waiting for a permission decision. Answer it first, or use Terminal."

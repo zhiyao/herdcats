@@ -178,6 +178,62 @@ struct AgentBridgeClientTests {
             await client.close()
         }
     }
+    @MainActor @Test func theFirstMessageOfANewCursorChatGoesByPaneAndGenerationBeforeAnyIdentityExists() async throws {
+        let wire = BridgeTestWire()
+        let client = try await cursorClient(capabilities: #"{"claude_timeline":false,"cursor":true,"cursor_prompts":true,"record_content":true}"#, wire)
+        let state = AgentTimelineState(), owner = UUID()
+        state.begin(owner: owner, paneId: "p")
+        state.connectPrompts(client)
+        // Nothing is known yet: not waiting for a transcript, so no first-message path.
+        #expect(!state.canSendFirstCursorPrompt)
+        func unavailable(_ code: String, seq: Int) throws -> AgentBridgeFrame {
+            try AgentBridgeFrame.decode(JSONSerialization.data(withJSONObject: ["event": "timeline.unavailable", "epoch": "e", "seq": seq, "data": ["pane_id": "p", "generation": 4, "code": code]]))
+        }
+        try state.consume(unavailable("transcript_unavailable", seq: 1), owner: owner)
+        #expect(state.canSendFirstCursorPrompt)
+        let send = Task { try await state.submitFirstCursorPrompt("hello", paneId: "p") }
+        for _ in 0..<500 {
+            if await wire.commands.count == 3 { break }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        let request = try #require(JSONSerialization.jsonObject(with: await wire.commands[2]) as? [String: Any])
+        #expect(request["method"] as? String == "prompt.submit")
+        let params = try #require(request["params"] as? [String: Any])
+        #expect(params["text"] as? String == "hello" && params["pane_id"] as? String == "p" && params["generation"] as? Int == 4)
+        #expect(params["expect"] == nil, "there is no chat identity to scope it to yet")
+        await client.receive(Data("{\"id\":\"\(try await wire.requestId())\",\"result\":{\"submitted\":true}}\n".utf8))
+        try await send.value
+        // Another pane is never accepted, and no request is sent for it.
+        do { try await state.submitFirstCursorPrompt("x", paneId: "other"); Issue.record("sent to another pane") }
+        catch { #expect((error as? AgentBridgeError)?.code == "unsupported_capability") }
+        #expect(await wire.commands.count == 3)
+        // Any other unavailable state is not the first-message case.
+        try state.consume(unavailable("ambiguous_session", seq: 2), owner: owner)
+        #expect(!state.canSendFirstCursorPrompt)
+        try state.consume(unavailable("session_reference_unavailable", seq: 3), owner: owner)
+        #expect(!state.canSendFirstCursorPrompt)
+        await client.close()
+    }
+    @Test func theFirstCursorMessageNeedsThePromptCapabilityAndNeverRetries() async throws {
+        let wire = BridgeTestWire()
+        let missing = try await cursorClient(capabilities: #"{"claude_timeline":false,"cursor":true,"record_content":true}"#, wire)
+        do { try await missing.submitFirstPrompt(text: "hi", paneId: "p", generation: 1); Issue.record("sent without capability") }
+        catch { #expect((error as? AgentBridgeError)?.code == "unsupported_capability") }
+        #expect(await wire.commands.count == 2)
+        await missing.close()
+        let wire2 = BridgeTestWire()
+        let client = try await cursorClient(capabilities: #"{"claude_timeline":false,"cursor":true,"cursor_prompts":true,"record_content":true}"#, wire2)
+        let send = Task { try await client.submitFirstPrompt(text: "hi", paneId: "p", generation: 1) }
+        for _ in 0..<500 {
+            if await wire2.commands.count == 3 { break }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        await client.receive(Data("{\"id\":\"\(try await wire2.requestId())\",\"error\":{\"code\":\"composer_not_empty\"}}\n".utf8))
+        do { try await send.value; Issue.record("accepted") }
+        catch { #expect((error as? AgentBridgeError)?.code == "composer_not_empty") }
+        #expect(await wire2.commands.count == 3)
+        await client.close()
+    }
     @MainActor @Test func cursorModelChangeSendsTheCapturedSessionScopeAndTheNativeIdentifiers() async throws {
         let wire = BridgeTestWire()
         let client = try await cursorClient(capabilities: #"{"claude_timeline":false,"cursor":true,"cursor_prompts":true,"model_control":true,"record_content":true}"#, wire)

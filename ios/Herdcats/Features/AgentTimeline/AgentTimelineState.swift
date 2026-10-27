@@ -13,6 +13,16 @@ import Observation
     /// The live bridge channel that submits Cursor prompts, or nil.
     private var promptClient: AgentBridgeClient?
     func connectPrompts(_ client: AgentBridgeClient?) { promptClient = client }
+    /// A new Cursor chat has no transcript until its first prompt, so the view is
+    /// waiting ("Send a message to start") and there is no identity to bind.
+    var canSendFirstCursorPrompt: Bool { promptClient != nil && identity == nil && generation != nil && phase == .unavailable("transcript_unavailable") }
+    /// Sends that first message through the bridge's screen guard, by pane and generation.
+    func submitFirstCursorPrompt(_ text: String, paneId: String) async throws {
+        guard let client = promptClient, canSendFirstCursorPrompt, let generation, paneId == self.paneId else {
+            throw AgentBridgeError.unavailable("unsupported_capability")
+        }
+        try await client.submitFirstPrompt(text: text, paneId: paneId, generation: generation)
+    }
     /// Sends one Cursor prompt through the bridge's screen guard. Throws the
     /// bridge's refusal code (approval_pending, composer_not_empty, ...).
     func submitCursorPrompt(_ text: String) async throws {
