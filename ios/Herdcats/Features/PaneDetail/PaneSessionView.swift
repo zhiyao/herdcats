@@ -458,20 +458,19 @@ struct PaneSessionView: View {
                 voiceComposeBar
                     .environment(\.colorScheme, showsTimeline ? colorScheme : .dark)
             }
-            .background {
-                GeometryReader { geometry in
-                    Color.clear.preference(
-                        key: PaneBottomDockHeightPreferenceKey.self, value: geometry.size.height)
-                }
+            // Track the rendered dock directly, including multiline drafts,
+            // attachments and keyboard-driven layout changes. Scroll controls
+            // and transcript padding must use the same current height.
+            .onGeometryChange(for: CGFloat.self) { geometry in
+                geometry.size.height
+            } action: { height in
+                if height > 0 { bottomDockHeight = height }
             }
         }
         .onChange(of: showsTimeline) { _, _ in
             dismissLiveKeyboard(); composeFieldFocused = false; dictation.cancel()
             surfaceModel.resetToDefaultSurface()
             updateSessionParsedOutput()
-        }
-        .onPreferenceChange(PaneBottomDockHeightPreferenceKey.self) { height in
-            if height > 0 { bottomDockHeight = height }
         }
     }
 

@@ -30,16 +30,18 @@ enum PaneLiveModifier: String, CaseIterable, Identifiable, Hashable, Sendable {
     }
 }
 
-/// One solid surface for a whole pane input group. The controls inside keep
+/// One surface for a whole pane input group. The controls inside keep
 /// their plain style so the Live row does not turn into separate pills.
-/// Moonlit uses no glass or blur: `--surface` with a `--border` outline.
+/// Uses the theme surface and border, with optional translucency for Compose.
 private struct PaneInputGlassSurface: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let cornerRadius: CGFloat
+    var backgroundOpacity: Double = 1
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle.continuous(cornerRadius)
         content
-            .background(Theme.cardBackground, in: shape)
+            .background(Theme.cardBackground.opacity(reduceTransparency ? 1 : backgroundOpacity), in: shape)
             .overlay(shape.strokeBorder(Theme.hairline, lineWidth: 1))
     }
 }
@@ -643,7 +645,10 @@ struct PaneVoiceComposeBar: View {
                 .padding(.vertical, 4)
             }
         }
-        .modifier(PaneInputGlassSurface(cornerRadius: DesignSystem.CornerRadius.lg))
+        .modifier(PaneInputGlassSurface(
+            cornerRadius: DesignSystem.CornerRadius.lg,
+            backgroundOpacity: modelControl != nil ? 0.82 : 1
+        ))
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
                 .onEnded { value in

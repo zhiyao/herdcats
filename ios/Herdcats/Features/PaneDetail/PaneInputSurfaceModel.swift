@@ -3,16 +3,6 @@ import Observation
 import SwiftUI
 import UIKit
 
-// MARK: - Pane bottom dock height preference key
-
-struct PaneBottomDockHeightPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
 // MARK: - Pending pane attachment
 
 struct PendingPaneAttachment: Identifiable {
