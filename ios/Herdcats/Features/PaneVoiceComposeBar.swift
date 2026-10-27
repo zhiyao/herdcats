@@ -647,7 +647,7 @@ struct PaneVoiceComposeBar: View {
         }
         .modifier(PaneInputGlassSurface(
             cornerRadius: DesignSystem.CornerRadius.lg,
-            backgroundOpacity: modelControl != nil ? 0.82 : 1
+            backgroundOpacity: modelControl != nil ? 0.94 : 1
         ))
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
