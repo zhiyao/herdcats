@@ -4,6 +4,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { TriangleAlert } from 'lucide-react';
 import { SiteHeader } from '@/components/SiteHeader';
 import { SiteFooter } from '@/components/SitePage';
+import { AppScreenshot } from '@/components/AppScreenshot';
+import './support.css';
 
 const supportSections = [
   {
@@ -88,7 +90,7 @@ const supportSections = [
   },
   {
     "id": "using-app-when-should-i-use-live-compose-or-voice",
-    "label": "Live, Compose, Voice",
+    "label": "Views and Compose",
     "depth": 1
   },
   {
@@ -96,6 +98,10 @@ const supportSections = [
     "label": "Herdcats Bridge",
     "depth": 1
   },
+  { "id": "using-app-pi", "label": "Pi setup", "depth": 1 },
+  { "id": "using-app-cursor", "label": "Cursor Agent", "depth": 1 },
+  { "id": "using-app-phone-answers", "label": "Phone answers", "depth": 1 },
+  { "id": "using-app-model-controls", "label": "Models and effort", "depth": 1 },
   {
     "id": "using-app-codex-shared-background-server",
     "label": "Codex background server",
@@ -369,7 +375,7 @@ export default function SupportPage() {
         <div className="faq-list">
         <div className="faq-item">
         <h4 id="faq-what-is-herdcats" className="faq-question">What is Herdcats?</h4>
-        <p>Herdcats lets you use Herdr from your iPhone: browse your spaces and agents, read terminal output, and send messages, keystrokes, dictation, and photos. Connect to one Herdr session to switch between that computer and other machines connected through Herdr. It requires iOS 17 or later.</p>
+        <p>Herdcats lets you use Herdr from your iPhone: browse your spaces and agents, read terminal output, and send messages, keystrokes, dictation, and photos. Save a separate SSH connection for each computer and switch between them in the machine selector. It requires iOS 17 or later.</p>
         </div>
         <div className="faq-item">
         <h4 id="faq-what-is-herdr-and-how-is-it-different-from-herdcats" className="faq-question">What is Herdr, and how is it different from Herdcats?</h4>
@@ -384,7 +390,7 @@ export default function SupportPage() {
         <li>A network connection that lets your iPhone reach the computer.</li>
         <li>The computer&#x27;s hostname or IP address, SSH port, account username, and   password or a supported SSH private key.</li>
         </ul>
-        <p>Use the computer account that runs Herdr when signing in from Herdcats. If that Herdr session already has other machines configured, you can access them through the same connection from your phone.</p>
+        <p>Use the computer account that runs Herdr when signing in from Herdcats. Add another computer as its own saved SSH connection in Herdcats; the app connects directly to the selected computer.</p>
         <p>Follow <a href="#connect">How to connect</a> to enable SSH on your computer.</p>
         </div>
         <div className="faq-item">
@@ -398,7 +404,7 @@ export default function SupportPage() {
         </div>
         <div className="faq-item">
         <h4 id="faq-do-i-need-any-other-software-on-my-computer" className="faq-question">Do I need any other software on my computer?</h4>
-        <p>Herdr and SSH are required. Terminal, Compose, voice, and photos need nothing else. The optional Timeline view does: Herdcats Bridge (<code>herdcats-bridge</code>) on the computer you connect to directly. A terminal pane is a scrolling log; Herdcats Bridge reads your Claude and Codex sessions&#x27; structured transcripts so Herdcats can show them as readable messages, tool activity, and images instead. It is installed only when you tap Install, runs only while Timeline is open, and everything else works without it. The optional <code>quota-axi</code> tool adds provider quota information.</p>
+        <p>Herdr and SSH are required. Terminal, Compose, voice, and photos need nothing else. The optional Timeline view does: Herdcats Bridge (<code>herdcats-bridge</code>) on the computer you connect to directly. A terminal pane is a scrolling log; Herdcats Bridge reads supported Claude, Codex, Agy, Pi, and Cursor Agent sessions&#x27; structured transcripts so Herdcats can show them as readable messages, tool activity, and images instead. It is installed only when you tap Install, runs only while Timeline is open, and everything else works without it. The optional <code>quota-axi</code> tool adds provider quota information.</p>
         </div>
         </div>
         <h3 id="privacy" className="faq-category">Signing in and privacy</h3>
@@ -436,17 +442,58 @@ export default function SupportPage() {
         <p>These are the items in your Herdr session. Spaces organize your work; tabs contain terminal panes; agents run in those panes. Herdcats lets you navigate that work from your phone.</p>
         </div>
         <div className="faq-item">
-        <h4 id="using-app-when-should-i-use-live-compose-or-voice" className="faq-question">When should I use Live, Compose, or Voice?</h4>
+        <h4 id="using-app-when-should-i-use-live-compose-or-voice" className="faq-question">How do Timeline, Terminal, and Compose fit together?</h4>
+        <p>Timeline and Terminal are two ways to read the same agent session. Compose is where you draft a message, and works with either view.</p>
         <ul>
-        <li><strong>Live:</strong> interact with the terminal, including special keys in the toolbar.</li>
-        <li><strong>Compose:</strong> write and review a message before sending it.</li>
-        <li><strong>Voice:</strong> dictate a message, review the text, then send it.</li>
+        <li><strong>Timeline:</strong> read messages and tool activity in a conversation layout that follows your app theme. For supported agents, use the terminal or speech-bubble button at the top to switch views.</li>
+        <li><strong>Terminal:</strong> see the agent&rsquo;s own terminal UI. Tap its output to type directly, or use the toolbar for special keys.</li>
+        <li><strong>Compose:</strong> write and review a message before tapping Send. Tap the compose button in the toolbar to open it. Add photos with the attachment button.</li>
+        <li><strong>Voice:</strong> tap the microphone to dictate, then the checkmark to finish recording. The transcript opens in Compose for you to edit and send.</li>
         </ul>
+        <p><strong>Show Compose by Default</strong> keeps the message field visible. It is on by default; change it in Settings or the pane&rsquo;s menu. Turning it off gives you the compact toolbar when you are not editing a draft.</p>
+        <div className="app-screenshots">
+          <AppScreenshot screen="timeline-light" alt="Timeline in light mode with readable conversation messages, tool activity, and the composer" caption="Timeline follows your app&rsquo;s light or dark theme." />
+          <AppScreenshot screen="terminal-compose" alt="Timeline conversation with an editable Compose draft at the bottom" caption="Compose lets you review a draft before sending." />
+          <AppScreenshot screen="voice" alt="Herdcats recording bar with a checkmark to finish dictation" caption="Finish recording, review the transcript, then send." />
+        </div>
+        <p className="capture-note">Screenshots use demonstration sessions captured on 27–28 October 2026. Tap an image to open it at a larger size.</p>
         </div>
         <div className="faq-item">
         <h4 id="using-app-what-is-the-timeline-helper-and-why-does-timeline-need-it" className="faq-question">What is Herdcats Bridge, and why does Timeline need it?</h4>
         <p>Timeline turns an agent session into a phone-friendly conversation: readable messages, tool activity, and images. A terminal pane can&#x27;t provide that — its output is a scrolling log. Herdcats Bridge (<code>herdcats-bridge</code>) is a small program on your SSH computer that reads the session&#x27;s structured transcript and sends it to your phone over the same SSH connection, only while Timeline is open.</p>
-        <p>It is optional. Terminal, Compose, voice, and photos never need it, and Timeline asks before installing anything: no sudo, no background service, no agent hooks. Timeline currently supports Claude and Codex; other agents keep using Terminal and Compose. Delete <code>~/.local/bin/herdcats-bridge</code> to remove it.</p>
+        <p>It is optional. Terminal, Compose, voice, and photos never need it, and Timeline asks before installing anything. Reading history requires no sudo, background service, or agent hooks. The current app installs Herdcats Bridge 0.5.0, supporting Claude, Codex, Agy (Antigravity CLI), Pi, and Cursor Agent (the Cursor CLI). Pi also requires a separately enabled Herdcats extension. Other agents keep using Terminal and Compose.</p>
+        <p>On each SSH computer, tap <strong>Install</strong> in the Bridge setup sheet. Confirm the displayed host, account, port, and installation path. If you prefer, run the manual command shown in that sheet on the same computer, then tap <strong>Check again</strong>. To defer setup, choose <strong>Use Terminal for now</strong>.</p>
+        <p>The current app requires Bridge 0.5.0 or later. For an older installation, choose <strong>Upgrade Herdcats Bridge</strong> when offered in the setup sheet or pane menu. Upgrades require an explicit action; manual replacements use <code>--replace</code>. Downloads are checksum-verified. See <a href="#troubleshooting-timeline-helper-missing-or-install-failed">Bridge troubleshooting</a> if setup fails.</p>
+        <div className="app-screenshots app-screenshots-pair">
+          <AppScreenshot screen="bridge-setup" alt="Herdcats Bridge setup sheet explaining Timeline with Install Herdcats Bridge and Use Terminal for now buttons" caption="Install Bridge only on the computer shown in the setup sheet." />
+          <AppScreenshot screen="timeline-dark" alt="Herdcats Timeline showing the same conversation in dark mode" caption="Bridge sends the session history over your existing SSH connection." />
+        </div>
+        <p>If you enabled phone answers, remove them from the pane&rsquo;s phone-answer settings before deleting <code>~/.local/bin/herdcats-bridge</code>. Otherwise, deleting that binary removes Bridge. Phone-answer setup is a separate opt-in, explained below.</p>
+        </div>
+        <div className="faq-item">
+        <h4 id="using-app-pi" className="faq-question">How do I use Pi with Herdcats Bridge?</h4>
+        <p>Install or upgrade to Bridge 0.5.0 on your SSH computer, then enable the Herdcats Pi extension in the Pi session you want to use. The integration supports Pi 1.4.0. Installing the Bridge binary does not install or enable the extension.</p>
+        <p>Download <code>herdcats-pi-extension.tar.gz</code> and <code>SHA256SUMS</code> from the <a href="https://github.com/zhiyao/herdcats/releases/tag/herdcats-bridge-v0.5.0" target="_blank" rel="noopener noreferrer">Bridge 0.5.0 release</a>. Verify the archive against the checksums with <code>sha256sum</code> or <code>shasum -a 256</code>, then extract it. Keep <code>herdcats/index.ts</code> and <code>herdcats/runtime.mjs</code> together. Start Pi with <code>pi -e /absolute/path/to/herdcats/index.ts</code>, using your extracted path. For an existing session, place both files in <code>~/.pi/agent/extensions/herdcats/</code> (or <code>$PI_CODING_AGENT_DIR/extensions/herdcats/</code>), then use <code>/reload</code> in that Pi session. Return to Herdcats and tap <strong>Check again</strong>.</p>
+        <p>Pi supports conversation history, streaming, plain messages, cancellation, model and thinking controls, and supported extension confirmation, selection, and text-input dialogs. Custom and editor dialogs, slash commands, authentication, and unsupported prompts stay in Terminal. Grant project trust at your computer before using phone controls.</p>
+        </div>
+        <div className="faq-item">
+        <h4 id="using-app-cursor" className="faq-question">Does Herdcats support Cursor Agent?</h4>
+        <p>Yes. Bridge 0.5.0 supports Cursor Agent, the Cursor CLI, in a Herdr pane. Open that pane in Herdcats to read its conversation and send plain messages when the agent is idle and its composer is empty. This integration controls the CLI session running on your computer.</p>
+        <p>Supported shell approvals offer <strong>Run once</strong> and <strong>Skip</strong>. Question forms are answered one question at a time. Model and effort controls are verified on Cursor build <code>2026.10.22-27dcf5f</code>; changes also become Cursor&rsquo;s defaults for new sessions. Slash commands and unsupported controls stay in Terminal.</p>
+        </div>
+        <div className="faq-item">
+        <h4 id="using-app-phone-answers" className="faq-question">How do I answer approvals and questions from my phone?</h4>
+        <p>With a compatible Bridge, Timeline can show supported approval and question cards. Read the request, choose an option or enter an answer, then submit it. Available actions depend on the agent and the request. If a prompt cannot be verified or is unsupported, answer it in Terminal.</p>
+        <p>Claude approvals and questions, and Codex approvals, require the optional phone-answer recording hook. When Timeline offers <strong>Set up phone answers</strong>, review the setup sheet and confirm. It adds a hook to that agent&rsquo;s settings on the connected computer and keeps a backup. Codex also asks you once at your desk to trust the new hook. Codex question cards do not require this hook. Agy and Cursor use supported native dialogs; Pi uses its separately enabled extension. They do not use the Claude/Codex recording hook.</p>
+        <p>The hook records requests locally so your phone can display them; it does not approve them. Use <strong>Repair phone answers</strong> if offered for an outdated setup, or <strong>Remove phone answers</strong> to remove the Herdcats hook and delete its recorded requests. Other hooks are left in place.</p>
+        <div className="app-screenshots app-screenshots-single">
+          <AppScreenshot screen="approval" alt="A supported approval request in Timeline with response options" caption="Check the request before choosing an answer." />
+        </div>
+        </div>
+        <div className="faq-item">
+        <h4 id="using-app-model-controls" className="faq-question">Can I change the model or reasoning effort?</h4>
+        <p>Bridge 0.5.0 includes model and reasoning-effort controls for supported Claude, Codex, Agy, and Cursor sessions, plus model and thinking controls for Pi with its extension enabled. Availability depends on the agent version and the controls reported by the connected Bridge.</p>
+        <p>When available, choose from the models and effort levels reported by your agent. Changes require the agent to be idle with an empty input box. If the control is unavailable, wait for the current turn to finish or use Terminal. Codex changes apply to the current session; Claude and Cursor changes can become defaults for new sessions, Agy model choices may persist across sessions, and Pi changes apply to the connected native session.</p>
         </div>
         <div className="faq-item">
         <h4 id="using-app-codex-shared-background-server" className="faq-question">Why does Codex Timeline ask me to turn off Codex&#x27;s shared background server?</h4>
@@ -484,15 +531,14 @@ export default function SupportPage() {
         <p>Not currently. Herdcats uses Herdr&#x27;s default session, which must be running and accessible to the account you sign in with.</p>
         </div>
         <div className="faq-item">
-        <h4 id="using-app-can-i-switch-between-computers-without-signing-in-to-each-one-on-my-phone" className="faq-question">Can I switch between computers without signing in to each one on my phone?</h4>
-        <p>Yes. Connect Herdcats to one computer running Herdr. If Herdr on that computer has other machines connected, use the machine selector in Herdcats to switch between them and access their spaces, agents, and panes. You do not need to enter a separate SSH login in Herdcats for each of those machines.</p>
-        <p>For example, connect your iPhone to Herdr on your Mac. If that Herdr session has a work server connected, you can switch between the Mac and work server from Herdcats. The Mac handles the onward connection, so it must remain running and able to reach the work server.</p>
-        <p>Photos and quota information are available only for the computer your phone connected to directly.</p>
+        <h4 id="using-app-can-i-switch-between-computers-without-signing-in-to-each-one-on-my-phone" className="faq-question">How do I switch between computers?</h4>
+        <p>Save an SSH connection for each computer in Herdcats, then choose one from the machine selector. Each connection has its own host, port, account, and credentials; the app connects directly to the selected computer. You can give saved connections names and arrange their order. Auto-connect uses the last-used computer.</p>
+        <p>Install Herdr and enable SSH on each computer. Bridge, phone-answer setup, photo uploads, and quota information belong to the computer you are connected to.</p>
         </div>
         <div className="faq-item">
         <h4 id="using-app-how-do-i-add-another-machine" className="faq-question">How do I add another machine?</h4>
-        <p>Set it up in Herdr on the computer you connect your phone to. In a terminal on that computer, run <code>herdr machine add workbox</code>, replacing <code>workbox</code> with the other computer&#x27;s SSH target, and follow the setup prompts. Herdr can offer to install Herdr on that machine if it is missing.</p>
-        <p>Once configured, use Herdcats&#x27; machine selector to choose it. See <a href="https://herdr.dev/docs/connecting-machines/">Herdr&#x27;s connecting-machines guide</a> for setup and connection help.</p>
+        <p>Add a saved connection in Herdcats with that computer&rsquo;s SSH hostname or IP address, port, username, and password or supported private key. Give it a name if you want an easier way to recognize it, then connect and verify its host key.</p>
+        <p>Follow <a href="#connect">How to connect</a> for each computer. Herdr&rsquo;s own connected-machine list is separate from Herdcats&rsquo; saved SSH connections.</p>
         </div>
         </div>
         </section>
@@ -506,7 +552,7 @@ export default function SupportPage() {
         <li>In Herdcats, enter the hostname or IP address, SSH port, username, and password or supported private key.</li>
         <li>Compare the server fingerprint with one obtained directly from your computer or its administrator, then approve it only if they match.</li>
         </ol>
-        <p className="connection-note">Already have other machines connected through Herdr? Sign in once, then use the machine selector in Herdcats to switch between them.</p>
+        <p className="connection-note">Using more than one computer? Save a separate SSH connection for each, then switch with the machine selector.</p>
         </section>
         {/* TAB 1: macOS */}
         <section className="tab-pane" id="macos-setup">
@@ -825,379 +871,7 @@ Set-Service -Name sshd -StartupType 'Automatic'`}</code></pre>
       <SiteFooter />
 
       {/* Styles */}
-      <style jsx>{`
-        .support-wrapper {
-          min-height: 100dvh;
-          height: 100dvh;
-          background: var(--bg);
-          --content-width: 1160px;
-          color: var(--text);
-          font-family: var(--font-sans), Futura, "Century Gothic", system-ui, sans-serif;
-          overflow-y: auto;
-          -webkit-overflow-scrolling: touch;
-          display: flex;
-          flex-direction: column;
-        }
 
-
-
-
-
-
-        .support-main {
-          flex: 1;
-          max-width: 1200px;
-          display: grid;
-          grid-template-columns: 220px minmax(0, 1fr);
-          align-items: start;
-          gap: 40px;
-          width: 100%;
-          margin: 0 auto;
-          padding: 36px 20px 60px;
-        }
-
-        .hero-section {
-          margin-bottom: 32px;
-        }
-
-
-
-        .security-banner {
-          display: flex;
-          align-items: center;
-          border-left: 3px solid var(--accent);
-          padding-left: 12px;
-          font-size: 13px;
-          color: var(--text);
-        }
-
-        .ts-tag {
-          display: inline-block;
-          margin-left: 10px;
-          background: var(--sign-bg);
-          color: var(--warm);
-          border: 2px solid var(--warm);
-          font-family: var(--font-pixel), monospace;
-          font-size: 10px;
-          letter-spacing: 0.05em;
-          text-transform: uppercase;
-          padding: 2px 6px;
-          border-radius: 4px;
-        }
-
-        /* Tabs Bar */
-        .tabs-bar {
-          display: flex;
-          gap: 8px;
-          overflow-x: auto;
-          padding-bottom: 4px;
-          margin-bottom: 24px;
-          border-bottom: 1px solid var(--border);
-        }
-
-        .tab-btn {
-          background: transparent;
-          border: none;
-          color: var(--text-muted);
-          font-size: 14px;
-          font-weight: 600;
-          padding: 10px 16px;
-          border-radius: 8px 8px 0 0;
-          cursor: pointer;
-          white-space: nowrap;
-          transition: all 0.15s ease;
-          border-bottom: 2px solid transparent;
-        }
-
-        .tab-btn:hover {
-          color: var(--text);
-        }
-
-        .tab-btn.active {
-          color: var(--text);
-          border-bottom: 2px solid var(--accent);
-          background: var(--raised);
-        }
-
-        /* Guide sections */
-        .guide-card {
-        }
-
-        .guide-card h2 {
-          font-size: 22px;
-          font-weight: 700;
-          color: var(--text);
-          margin-bottom: 6px;
-        }
-
-        .card-desc {
-          font-size: 14px;
-          color: var(--text-muted);
-          margin-bottom: 24px;
-        }
-
-        .prereq-text {
-          font-size: 13px;
-          color: var(--text);
-          margin: -12px 0 24px;
-        }
-
-        .prereq-text a {
-          color: var(--accent);
-        }
-
-        /* Steps */
-        .step-list {
-          list-style: none;
-          display: flex;
-          flex-direction: column;
-          gap: 24px;
-        }
-
-        .step-item {
-          display: flex;
-          gap: 16px;
-        }
-
-        .step-num {
-          width: 32px;
-          height: 32px;
-          border-radius: 4px;
-          background: var(--raised);
-          color: var(--accent);
-          font-family: var(--font-pixel), monospace;
-          font-size: 14px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-          margin-top: 2px;
-        }
-
-        .step-body {
-          flex: 1;
-        }
-
-        .step-body h3 {
-          font-size: 16px;
-          font-weight: 600;
-          color: var(--text);
-          margin-bottom: 6px;
-        }
-
-        .step-body p {
-          font-size: 14px;
-          color: var(--text);
-          line-height: 1.5;
-          margin-bottom: 8px;
-        }
-
-        .path-text {
-          font-size: 13px;
-          color: var(--accent) !important;
-        }
-
-        .tip-text {
-          font-size: 12px !important;
-          color: var(--text-muted) !important;
-          margin-top: 4px;
-        }
-
-        /* Code box */
-        .code-box {
-          position: relative;
-          margin: 8px 0;
-          overflow-x: auto;
-          padding: 12px 76px 12px 14px;
-          background: var(--bg-deep);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-        }
-
-        .code-box pre {
-          margin: 0;
-          font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
-          font-size: 12px;
-          color: var(--accent);
-          line-height: 1.5;
-          white-space: pre-wrap;
-          word-break: break-all;
-        }
-
-        .copy-btn {
-          position: absolute;
-          top: 10px;
-          right: 10px;
-          background: var(--raised);
-          color: var(--text);
-          font-family: inherit;
-          border: none;
-          font-size: 11px;
-          font-weight: 600;
-          padding: 4px 10px;
-          border-radius: 6px;
-          cursor: pointer;
-          transition: background 0.15s ease;
-        }
-
-        .copy-btn:hover {
-          background: var(--accent-fill);
-          color: var(--on-accent);
-        }
-
-        .sub-options {
-          display: grid;
-          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-          gap: 12px;
-          margin-top: 8px;
-        }
-
-        .sub-option {
-        }
-
-        .sub-option strong {
-          display: block;
-          font-size: 13px;
-          color: var(--accent);
-          margin-bottom: 4px;
-        }
-
-        .sub-option p {
-          font-size: 12px;
-          color: var(--text-muted);
-          margin: 0;
-        }
-
-        .info-bullets {
-          list-style: none;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          margin-top: 8px;
-        }
-
-        .info-bullets li {
-          font-size: 13px;
-          color: var(--text);
-        }
-
-        /* Feature grid */
-        .feature-grid {
-          display: grid;
-          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-          gap: 16px;
-        }
-
-        .feature-cell {
-        }
-
-        .feature-cell h3 {
-          font-size: 15px;
-          font-weight: 700;
-          color: var(--accent);
-          margin-bottom: 6px;
-        }
-
-        .feature-cell p {
-          font-size: 13px;
-          color: var(--text-muted);
-          line-height: 1.5;
-        }
-
-
-        .connection-guide, .faq-section { margin-bottom: 48px; }
-        .faq-section { margin-top: 24px; }
-        .connection-steps { padding-left: 22px; color: var(--text); font-size: 14px; line-height: 1.6; }
-        .connection-steps li { margin-bottom: 12px; }
-        .connection-note { margin-top: 16px; color: var(--text-muted); font-size: 14px; line-height: 1.6; }
-        .connection-guide a, .faq-item a { color: var(--accent); text-decoration: underline; }
-        .faq-category { margin: 24px 0 12px; font-size: 17px; color: var(--text); }
-        .faq-question { font-size: 15px; font-weight: 600; line-height: 1.5; color: var(--text); margin-bottom: 12px; }
-        .faq-item ol { padding-left: 18px; font-size: 13px; color: var(--text); line-height: 1.6; }
-        .faq-item li { margin-bottom: 6px; }
-        .faq-item { min-width: 0; overflow-wrap: anywhere; }
-        .step-body { min-width: 0; }
-
-        .support-sections { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; }
-        .support-sections a { color: var(--accent); text-decoration: underline; }
-
-
-        .support-wrapper { scroll-behavior: smooth; }
-        .support-content { min-width: 0; }
-        .support-content section, .support-content h3, .support-content h4 { scroll-margin-top: 40px; }
-        .support-sidebar { position: sticky; top: 32px; max-height: calc(100dvh - 130px); overflow-y: auto; }
-        .sidebar-title { color: var(--accent); font-family: var(--font-pixel), monospace; font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; margin: 0 0 16px 12px; }
-        .section-link { display: block; padding: 10px 12px; border-left: 2px solid var(--border); color: var(--text-muted); font-size: 14px; text-decoration: none; }
-        .subsection-link { padding: 8px 12px 8px 24px; font-size: 12px; line-height: 1.5; }
-        .section-link:hover { color: var(--text); }
-        .section-link.active { color: var(--text); border-left-color: var(--accent); background: var(--raised); }
-        .section-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-        .tab-pane { margin-bottom: 48px; }
-        @media (max-width: 800px) {
-          .support-main { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-top: 16px; }
-          .support-sidebar { top: 0; z-index: 30; max-height: none; background: var(--bg); padding: 8px 0; border-bottom: 1px solid var(--border); }
-          .support-sidebar nav { display: flex; overflow-x: auto; }
-          .sidebar-title { display: none; }
-          .section-link { flex-shrink: 0; border-left: 0; border-bottom: 2px solid transparent; }
-          .section-link.active { border-bottom-color: var(--accent); }
-          .support-content section, .support-content h3, .support-content h4 { scroll-margin-top: 90px; }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .support-wrapper { scroll-behavior: auto; }
-        }
-
-        /* FAQ */
-        .faq-list {
-          display: flex;
-          flex-direction: column;
-          gap: 28px;
-        }
-
-        .faq-item {
-        }
-
-        .faq-item h3 {
-          display: flex;
-          align-items: flex-start;
-          gap: 8px;
-          font-size: 15px;
-          font-weight: 600;
-          color: var(--text);
-          margin-bottom: 8px;
-        }
-
-        .faq-item p {
-          font-size: 13px;
-          color: var(--text-muted);
-          line-height: 1.5;
-          margin-bottom: 8px;
-        }
-
-        .faq-item ul {
-          padding-left: 18px;
-          font-size: 13px;
-          color: var(--text);
-          line-height: 1.6;
-        }
-
-        .faq-item :global(.warn-icon) {
-          flex-shrink: 0;
-          margin-top: 2px;
-          color: var(--accent);
-        }
-
-        /* Footer */
-
-
-
-
-
-        @media (max-width: 640px) {
-          .sub-options, .feature-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-      `}</style>
     </div>
   );
 }

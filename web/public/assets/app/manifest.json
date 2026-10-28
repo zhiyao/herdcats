@@ -1,0 +1,205 @@
+[
+  {
+    "file": "approval.webp",
+    "fixture": "timeline-approval-claude",
+    "light": true,
+    "compose_default": "YES",
+    "launch_arguments": [
+      "-hc.screenshots",
+      "-hc.screen",
+      "timeline-approval-claude",
+      "-paneShowComposeByDefault",
+      "YES",
+      "-timeline-setup-deferred.u=demo|h=studio-mac|p=22",
+      "NO",
+      "-AppleLanguages",
+      "(en)",
+      "-AppleLocale",
+      "en_US",
+      "-hc.light"
+    ],
+    "original_size": [
+      1206,
+      2622
+    ],
+    "web_size": [
+      600,
+      1304
+    ],
+    "sha256": "9e73f2acd539174a174d2feb4ecf8e8e011fec4502aeaa4bb0a90bf2cda040ae",
+    "source_revision": "fdd9433844ae8bf13507d1ca8147c8eacbc767c8",
+    "app_version": "0.5.0",
+    "app_build": "108",
+    "captured_at_utc": "2026-10-27T01:11:35.433112+00:00",
+    "original_sha256": "80e9c0704cca7aa34826240249a12f1b9436a5ddfadcad0449bc1ba9910214e4"
+  },
+  {
+    "file": "bridge-setup.webp",
+    "fixture": "timeline-helper-missing",
+    "light": true,
+    "compose_default": "YES",
+    "launch_arguments": [
+      "-hc.screenshots",
+      "-hc.screen",
+      "timeline-helper-missing",
+      "-paneShowComposeByDefault",
+      "YES",
+      "-timeline-setup-deferred.u=demo|h=studio-mac|p=22",
+      "NO",
+      "-AppleLanguages",
+      "(en)",
+      "-AppleLocale",
+      "en_US",
+      "-hc.light"
+    ],
+    "original_size": [
+      1206,
+      2622
+    ],
+    "web_size": [
+      600,
+      1304
+    ],
+    "sha256": "2929b92d0ab4323a73995042c27055ca99652923f90b18b1f19521227b78fb2f",
+    "source_revision": "fdd9433844ae8bf13507d1ca8147c8eacbc767c8",
+    "app_version": "0.5.0",
+    "app_build": "108",
+    "captured_at_utc": "2026-10-27T01:11:28.239354+00:00",
+    "original_sha256": "ecf806df659bcebd3b8dfa65cec7db4464604780c9568673ff2553396a8ff495"
+  },
+  {
+    "file": "terminal-compose.webp",
+    "fixture": "compose",
+    "light": true,
+    "captured_at_utc": "2026-10-27T01:13:08.830207+00:00",
+    "source_revision": "fdd9433844ae8bf13507d1ca8147c8eacbc767c8",
+    "app_version": "0.5.0",
+    "app_build": "108",
+    "compose_default": "NO",
+    "launch_arguments": [
+      "-hc.screenshots",
+      "-hc.screen",
+      "compose",
+      "-paneShowComposeByDefault",
+      "NO",
+      "-timeline-setup-deferred.u=demo|h=studio-mac|p=22",
+      "YES",
+      "-AppleLanguages",
+      "(en)",
+      "-AppleLocale",
+      "en_US",
+      "-hc.light"
+    ],
+    "original_size": [
+      1206,
+      2622
+    ],
+    "web_size": [
+      600,
+      1304
+    ],
+    "sha256": "a43c322fa072bfabf9b024d5378f4e759e7eb63586654806fa4c4e1d73b4bf7c",
+    "original_sha256": "ef6da95ea54d2ad09460f4aec9c48ee72ff6b3cb76af5afb999d64fe451b4b6a"
+  },
+  {
+    "file": "timeline-dark.webp",
+    "fixture": "compose",
+    "light": false,
+    "captured_at_utc": "2026-10-27T01:13:03.858699+00:00",
+    "source_revision": "fdd9433844ae8bf13507d1ca8147c8eacbc767c8",
+    "app_version": "0.5.0",
+    "app_build": "108",
+    "compose_default": "NO",
+    "launch_arguments": [
+      "-hc.screenshots",
+      "-hc.screen",
+      "compose",
+      "-paneShowComposeByDefault",
+      "NO",
+      "-timeline-setup-deferred.u=demo|h=studio-mac|p=22",
+      "NO",
+      "-AppleLanguages",
+      "(en)",
+      "-AppleLocale",
+      "en_US"
+    ],
+    "original_size": [
+      1206,
+      2622
+    ],
+    "web_size": [
+      600,
+      1304
+    ],
+    "sha256": "3cb66e85d59c8a3ca60ac62d5a6971f05251d8a04cb028f224f205fdedc90c4b",
+    "original_sha256": "e4a822691a61ae47ca0808226f41ee0cc2c050d73eb7abf80617f87f61841487"
+  },
+  {
+    "file": "timeline-light.webp",
+    "fixture": "compose",
+    "light": true,
+    "captured_at_utc": "2026-10-27T01:15:15.936295+00:00",
+    "source_revision": "fdd9433844ae8bf13507d1ca8147c8eacbc767c8",
+    "app_version": "0.5.0",
+    "app_build": "108",
+    "compose_default": "NO",
+    "launch_arguments": [
+      "-hc.screenshots",
+      "-hc.screen",
+      "compose",
+      "-paneShowComposeByDefault",
+      "NO",
+      "-timeline-setup-deferred.u=demo|h=studio-mac|p=22",
+      "NO",
+      "-AppleLanguages",
+      "(en)",
+      "-AppleLocale",
+      "en_US",
+      "-hc.light"
+    ],
+    "original_size": [
+      1206,
+      2622
+    ],
+    "web_size": [
+      600,
+      1304
+    ],
+    "sha256": "9ca381083797c7e4bbfdc2afa7a172d80b20ee976fe6d2b960b5fd7f4e5f82d7",
+    "original_sha256": "04cb5fd2680c397de6e2fe77479d63392c5834f60468d2c0d92656f2dc45117a"
+  },
+  {
+    "file": "voice.webp",
+    "fixture": "voice",
+    "light": true,
+    "compose_default": "NO",
+    "launch_arguments": [
+      "-hc.screenshots",
+      "-hc.screen",
+      "voice",
+      "-paneShowComposeByDefault",
+      "NO",
+      "-timeline-setup-deferred.u=demo|h=studio-mac|p=22",
+      "YES",
+      "-AppleLanguages",
+      "(en)",
+      "-AppleLocale",
+      "en_US",
+      "-hc.light"
+    ],
+    "original_size": [
+      1206,
+      2622
+    ],
+    "web_size": [
+      600,
+      1304
+    ],
+    "sha256": "9d5e9f2cf48cbac71c166dbb7dbf63b25798d25c6cd5df31949c6fc5756a267f",
+    "source_revision": "fdd9433844ae8bf13507d1ca8147c8eacbc767c8",
+    "app_version": "0.5.0",
+    "app_build": "108",
+    "captured_at_utc": "2026-10-27T01:11:23.075571+00:00",
+    "original_sha256": "003611a25be85eb5a96ec01cc5121f9b4f8fdc08f3cfd90a95e208ef58ed71c5"
+  }
+]

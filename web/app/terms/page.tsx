@@ -10,7 +10,7 @@ export default function TermsPage() {
     <SitePage current="terms" title="Terms of Service">
       <section className={styles.section}>
         <p>
-          <strong>Last updated:</strong> 19 October 2026
+          <strong>Last updated:</strong> 28 October 2026
         </p>
         <p>
           These Terms of Service (&ldquo;Terms&rdquo;) govern your access to and use of the Herdcats
@@ -81,6 +81,15 @@ export default function TermsPage() {
           software (<code>herdcats-bridge</code>) on your remote host from our GitHub releases. Downloads are verified by
           checksum but are not independently code-signed; you are responsible for reviewing and
           authorizing installations on machines you control.
+        </p>
+        <p>
+          If you confirm phone-answer setup, Herdcats Bridge adds a recording hook to the selected
+          agent&rsquo;s settings and keeps a backup. That hook can record requests on the host while
+          the agent runs, including when your phone is disconnected. You choose any response;
+          unsupported requests remain in Terminal. Removing phone answers removes the Herdcats hook
+          and deletes recorded requests. Bridge 0.5.0 model, effort, and thinking controls can also change
+          agent preferences: Codex and Pi changes apply to the connected session, while Claude and Cursor defaults
+          and Agy model choices may persist across sessions. Pi requires its separately enabled Herdcats extension.
         </p>
         <p>
           Only when you tap &ldquo;Turn off Codex&rsquo;s shared daemon&rdquo; and confirm,

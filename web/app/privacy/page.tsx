@@ -11,7 +11,7 @@ export default function PrivacyPage() {
     <SitePage current="privacy" title="Privacy Policy">
       <section className={styles.section}>
         <p>
-          <strong>Last updated:</strong> 19 October 2026
+          <strong>Last updated:</strong> 28 October 2026
         </p>
         <p>
           This Privacy Policy explains how the publisher of Herdcats (&ldquo;we,&rdquo; &ldquo;us,&rdquo; or
@@ -114,10 +114,31 @@ export default function PrivacyPage() {
           Herdcats Bridge (<code>herdcats-bridge</code>) from our GitHub releases and install it on the direct
           SSH host (at <code>~/.local/bin/herdcats-bridge</code>) after you tap Install. GitHub serves
           that download and may log the request under its own privacy policy. Herdcats Bridge reads the
-          agent session transcript on that machine (Claude and Codex) and sends it to your phone
+          agent session transcript on that machine (Claude, Codex, Agy, Pi, and Cursor Agent with Bridge 0.5.0; Pi also requires its opt-in extension) and sends it to your phone
           over the same SSH connection. It runs only while Timeline is open; there is no background
           service. Downloads are checksum-verified but not code-signed or notarized. Delete the
-          file to uninstall it.
+          file to uninstall it after removing phone answers if you enabled that optional feature.
+        </p>
+        <p>
+          Optional phone answers are a separate setup. Only after you confirm, Herdcats Bridge adds
+          a recording hook to Claude or Codex settings on the connected computer, keeping a backup.
+          It records approval requests and, for Claude, questions in a local Herdcats Bridge request
+          directory so they can be shown on your phone over SSH. The hook may run when the agent
+          requests input even while your phone is disconnected; it does not decide or approve requests.
+          Codex also requires you to trust the hook at your desk. Removing phone answers in the app
+          removes the Herdcats hook and deletes its recorded requests, leaving other hooks in place.
+        </p>
+        <p>
+          Bridge 0.5.0 can also change a supported agent&rsquo;s model and reasoning effort or thinking level when you
+          choose those controls. Codex changes are session-only; Claude choices can become defaults
+          for new sessions, Cursor choices also become defaults, and Agy model choices may persist.
+          Pi controls use the separately enabled Herdcats Pi extension in the connected session.
+        </p>
+        <p>
+          Pi&rsquo;s optional extension runs inside your Pi session and sends supported conversation content
+          and extension dialogs to Herdcats Bridge over a local socket, then to your phone over SSH.
+          It must be installed and enabled separately; it does not change Pi permission policies or grant project trust.
+          Cursor and Agy controls use supported native dialogs without the Claude/Codex recording hook.
         </p>
         <p>
           If you tap &ldquo;Turn off Codex&rsquo;s shared daemon&rdquo; and confirm, Herdcats Bridge
