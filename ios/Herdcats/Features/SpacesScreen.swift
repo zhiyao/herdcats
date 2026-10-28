@@ -340,9 +340,9 @@ struct SpacesScreen: View {
                    !HerdrConnection.isDisconnectionOrTransitionMessage(error) {
                     VStack {
                         Spacer()
-                        ErrorBanner(message: error) {
+                        ErrorBanner(message: error, retry: {
                             Task { await model.refresh(appModel.connection) }
-                        }
+                        })
                         .padding(.horizontal, 16)
                         .padding(.bottom, 8)
                     }

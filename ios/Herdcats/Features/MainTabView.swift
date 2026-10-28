@@ -256,9 +256,9 @@ struct AgentsScreen: View {
                    case .connected = appModel.phase {
                     VStack {
                         Spacer()
-                        ErrorBanner(message: error) {
+                        ErrorBanner(message: error, retry: {
                             Task { await model.refresh(appModel.connection) }
-                        }
+                        })
                         .padding(.horizontal, 16)
                         .padding(.bottom, 8)
                     }

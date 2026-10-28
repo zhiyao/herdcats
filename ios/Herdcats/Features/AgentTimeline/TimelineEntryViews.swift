@@ -181,7 +181,7 @@ struct AgentTimelineEntryView: View {
             try Task.checkCancellation()
             switch decoded {
             case .image(let preview, let original, let suffix):
-                originalURL = try files.file(data: original, key: "\(scope):\(reference):image", name: "Session image.\(suffix)")
+                originalURL = try await files.file(data: original, key: "\(scope):\(reference):image", name: "Session image.\(suffix)")
                 thumbnail = UIImage(data: preview)
                 if thumbnail == nil { throw AgentBridgeError.invalidFrame }
             case .link(let url): imageLink = url
@@ -224,27 +224,59 @@ struct TimelineAtBottomPreferenceKey: PreferenceKey {
 
 @MainActor final class TimelineContentFiles {
     private let cache = NSCache<NSString, NSData>()
-    private let directory = FileManager.default.temporaryDirectory.appendingPathComponent("timeline-" + UUID().uuidString)
+    private let ioQueue = DispatchQueue(label: "com.enchantinglabs.herdcats.timeline-files", qos: .userInitiated)
+    private var directory = FileManager.default.temporaryDirectory.appendingPathComponent("timeline-" + UUID().uuidString)
     private var files: [String: URL] = [:]
     init() { cache.totalCostLimit = 32 * 1024 * 1024 }
     func data(key: String, load: @MainActor () async throws -> Data) async throws -> Data {
+        try Task.checkCancellation()
         if let bytes = cache.object(forKey: key as NSString) { return bytes as Data }
+        let directory = directory
         let bytes = try await load()
         try Task.checkCancellation()
+        guard self.directory == directory else { throw CancellationError() }
         cache.setObject(bytes as NSData, forKey: key as NSString, cost: bytes.count)
         return bytes
     }
-    func file(data: Data, key: String, name: String) throws -> URL {
-        if let file = files[key], FileManager.default.fileExists(atPath: file.path) { return file }
-        let folder = directory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let url = folder.appendingPathComponent(name)
-        try data.write(to: url, options: [.atomic, .completeFileProtection])
+    func file(data: Data, key: String, name: String) async throws -> URL {
+        try Task.checkCancellation()
+        let directory = directory
+        let cachedFile = files[key]
+        let url: URL = try await withCheckedThrowingContinuation { continuation in
+            ioQueue.async {
+                if let cachedFile, FileManager.default.fileExists(atPath: cachedFile.path) {
+                    continuation.resume(returning: cachedFile)
+                    return
+                }
+                let folder = directory.appendingPathComponent(UUID().uuidString)
+                do {
+                    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+                    let url = folder.appendingPathComponent(name)
+                    try data.write(to: url, options: [.atomic, .completeFileProtection])
+                    continuation.resume(returning: url)
+                } catch {
+                    try? FileManager.default.removeItem(at: folder)
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+        try Task.checkCancellation()
+        guard self.directory == directory else { throw CancellationError() }
         files[key] = url
         return url
     }
-    func reset() { cache.removeAllObjects(); files.removeAll(); try? FileManager.default.removeItem(at: directory) }
-    deinit { try? FileManager.default.removeItem(at: directory) }
+    func reset() {
+        cache.removeAllObjects()
+        files.removeAll()
+        let retiredDirectory = directory
+        directory = FileManager.default.temporaryDirectory.appendingPathComponent("timeline-" + UUID().uuidString)
+        // Serialize cleanup after pending writes; a new session has its own directory.
+        ioQueue.async { try? FileManager.default.removeItem(at: retiredDirectory) }
+    }
+    deinit {
+        let directory = directory
+        ioQueue.async { try? FileManager.default.removeItem(at: directory) }
+    }
 }
 
 // MARK: - Timeline image payload

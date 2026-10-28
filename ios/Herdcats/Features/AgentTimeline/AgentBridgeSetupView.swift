@@ -32,7 +32,9 @@ struct AgentBridgeSetupView: View {
                     if reason == .updateRequired {
                         Image(systemName: "arrow.up.circle")
                             .font(.system(size: 36)).foregroundStyle(Theme.text)
-                        Text("A newer Herdcats Bridge is available")
+                        Text(HostHelperProbe.isAtLeastMinimum(installedVersion)
+                             ? "A newer Herdcats Bridge is available"
+                             : "Upgrade Herdcats Bridge to continue")
                             .font(.jost(.title, weight: .semibold))
                             .accessibilityAddTraits(.isHeader)
                         Text(AgentTimelineView.upgradePitch(agent: agent, installedVersion: installedVersion, pinnedVersion: pinnedVersion))
@@ -94,6 +96,12 @@ struct AgentBridgeSetupView: View {
                         .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 18))
                         Text("Tapping Install downloads the pinned Herdcats Bridge release and verifies its checksum before running the installer. No sudo, background service, or agent hooks are required.")
                             .font(.jost(.subheadline)).foregroundStyle(Theme.textMuted)
+                        if agent == "pi" {
+                            Text("Pi also requires the Herdcats Pi extension in this pane’s Pi 1.4.0 TUI. The bridge installer does not install or enable the extension.")
+                                .font(.jost(.subheadline)).foregroundStyle(Theme.textMuted)
+                            Link("Pi extension setup", destination: URL(string: "https://github.com/zhiyao/herdcats/releases/tag/herdcats-bridge-v\(pinnedVersion)")!)
+                                .font(.jost(.subheadline))
+                        }
                     }
 
                     DisclosureGroup("Manual setup") {

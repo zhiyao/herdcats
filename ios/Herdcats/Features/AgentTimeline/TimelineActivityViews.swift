@@ -67,7 +67,9 @@ struct TimelineActivityView: View {
             previewLoading = true
             defer { if !Task.isCancelled { previewLoading = false } }
             for entry in snapshot where entry.status == "completed" && ["edit", "multiedit", "write"].contains(entry.toolName?.lowercased() ?? "") {
+                guard !Task.isCancelled else { return }
                 let preview = await Task.detached(priority: .userInitiated) { TimelineFileChange.from(entry) }.value
+                guard !Task.isCancelled else { return }
                 if !preview.isEmpty { changes += preview; continue }
                 guard entry.truncated else { continue }
                 guard let reference = entry.contentRef, let length = TimelineContentReference.length(reference), length <= 512 * 1024 else {
@@ -78,6 +80,7 @@ struct TimelineActivityView: View {
                     let input = try await loadContent(reference)
                     try Task.checkCancellation()
                     let complete = await Task.detached(priority: .userInitiated) { TimelineFileChange.from(entry, inputData: input) }.value
+                    try Task.checkCancellation()
                     changes += complete
                     if complete.isEmpty { failed = true }
                 } catch {

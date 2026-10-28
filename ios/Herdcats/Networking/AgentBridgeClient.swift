@@ -79,6 +79,9 @@ actor AgentBridgeClient {
         self.capabilities = handshake.capabilities
         let version = handshake.bridgeVersion ?? handshake.version
         await onHandshake?(handshake.capabilities, version)
+        guard HostHelperProbe.isAtLeastMinimum(version) else {
+            throw AgentBridgeError.unavailable("helper_update_required")
+        }
         if agent == "codex" {
             guard handshake.capabilities?.codexTimeline == true else {
                 throw AgentBridgeError.unavailable(Self.unavailableCodeForCodex(handshake: handshake))
@@ -502,12 +505,12 @@ extension AgentBridgeClient {
 
 /// Immutable release selected by this app build, not a host-supplied URL.
 enum HostHelperSetupPlan {
-    static let version = "0.3.0"
+    static let version = "0.5.0"
     /// The oldest bridge this app works with; bump only when the app needs a newer bridge feature.
-    static let minimumVersion = "0.2.0"
-    static let installerSHA256 = "abc709fd23eed7e8ba395f21aec7a31415c8d79d8e32655748d14514f3322025"
+    static let minimumVersion = "0.5.0"
+    static let installerSHA256 = "64d19e790f6256db5c4fc3b28240bbe9462b32268c3afd541befe7505ea6397a"
     /// Supported agents bundled in this pinned release. Must be updated when bumping version / installerSHA256.
-    static let agents: [String] = ["claude", "codex"]
+    static let agents: [String] = ["claude", "codex", "antigravity_cli", "pi", "cursor"]
     static func manualInstallCommand(reason: HostHelperSetupReason, pinnedVersion: String = version) -> String {
         "curl -fsSL https://github.com/zhiyao/herdcats/releases/download/herdcats-bridge-v\(pinnedVersion)/install.sh | sh -s -- --version \(pinnedVersion)" + (reason == .updateRequired ? " --replace" : "")
     }
@@ -546,7 +549,7 @@ extension HostHelperSetupPlan {
         agent: String? = nil,
         reason: HostHelperSetupReason = .missing
     ) -> HostHelperSetupDecision {
-        if let agent, !agents.contains(agent) {
+        if let agent, !agents.contains(TimelineAgentAvailability.canonical(agent) ?? agent) {
             if case .present(_, _, true) = probe { return .ready }
             return .unsupportedByPinnedInstaller(agent)
         }

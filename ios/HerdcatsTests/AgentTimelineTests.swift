@@ -3,6 +3,53 @@ import Testing
 
 @testable import Herdcats
 
+@Suite("Timeline content cache lifecycle")
+@MainActor struct TimelineContentFilesTests {
+    @Test func filesRoundTripReuseAndResetWithoutDeletingNewSessionFiles() async throws {
+        let files = TimelineContentFiles()
+        defer { files.reset() }
+        let bytes = Data("original image bytes".utf8)
+        let first = try await files.file(data: bytes, key: "image", name: "Session image.png")
+        #expect(try Data(contentsOf: first) == bytes)
+        let reused = try await files.file(data: bytes, key: "image", name: "Session image.png")
+        #expect(first == reused)
+
+        files.reset()
+        let fresh = try await files.file(data: bytes, key: "image", name: "Session image.png")
+        #expect(first != fresh)
+        #expect(!FileManager.default.fileExists(atPath: first.path))
+        #expect(try Data(contentsOf: fresh) == bytes)
+    }
+
+    @Test func resetRejectsAnInFlightLoad() async throws {
+        let files = TimelineContentFiles()
+        let started = AsyncStream<Void>.makeStream()
+        var resume: CheckedContinuation<Data, Never>?
+        let pending = Task {
+            try await files.data(key: "old-session") {
+                await withCheckedContinuation { continuation in
+                    resume = continuation
+                    started.continuation.yield(())
+                }
+            }
+        }
+        var iterator = started.stream.makeAsyncIterator()
+        await iterator.next()
+        files.reset()
+        resume?.resume(returning: Data("old content".utf8))
+        do {
+            _ = try await pending.value
+            Issue.record("A load from a reset cache must be rejected")
+        } catch is CancellationError {
+            // The old session must not repopulate the cache after reset.
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+        let fresh = try await files.data(key: "old-session") { Data("fresh content".utf8) }
+        #expect(fresh == Data("fresh content".utf8))
+    }
+}
+
 @Suite("Agent bridge byte framing")
 struct AgentBridgeFramingTests {
     @Test func splitUnicodeAndMultipleFramesDecodeExactlyOnce() throws {
@@ -457,11 +504,11 @@ struct TimelineEntryInterruptionTests {
         #expect(upgrade.bridgeVersion == "0.2.0")
         AgentTimelineView.publishBridgeVersion("0.2.2", to: upgrade, owner: owner, activeOwner: nil)
         #expect(upgrade.bridgeVersion == "0.2.0")
-        // With 0.3.0 pinned, 0.2.0/0.2.1/0.2.2 hosts see the optional upgrade item;
+        // With 0.5.0 pinned, 0.2.0/0.2.1/0.2.2 hosts see the optional upgrade item;
         // the pinned version and anything newer never do.
         #expect(HostHelperProbe.isOlderThanPinned("0.2.1"))
         #expect(HostHelperProbe.isOlderThanPinned("0.2.2"))
-        #expect(!HostHelperProbe.isOlderThanPinned("0.3.0"))
+        #expect(!HostHelperProbe.isOlderThanPinned("0.5.0"))
     }
 }
 
@@ -767,7 +814,7 @@ private actor ModelCatalogTestWire {
         let client = AgentBridgeClient(write: { await wire.write($0) }, close: {}, onEvent: { _ in })
         let handshake = Task { try await client.performHandshakeAndWatch(paneId: "p", agent: "antigravity_cli") }
         try await wait(wire, count: 1)
-        await client.receive(Data("{\"id\":\"\(try await wire.lastID())\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":{\"claude_timeline\":false,\"agy\":true,\"record_content\":true,\"model_control\":true}}}\n".utf8))
+        await client.receive(Data("{\"id\":\"\(try await wire.lastID())\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"bridge_version\":\"0.5.0\",\"capabilities\":{\"claude_timeline\":false,\"agy\":true,\"record_content\":true,\"model_control\":true}}}\n".utf8))
         try await wait(wire, count: 2)
         await client.receive(Data("{\"id\":\"\(try await wire.lastID())\",\"result\":{}}\n".utf8))
         try await handshake.value
@@ -887,7 +934,7 @@ private actor ModelCatalogTestWire {
         let client = AgentBridgeClient(write: { await wire.write($0) }, close: {}, onEvent: { _ in })
         let handshake = Task { try await client.performHandshakeAndWatch(paneId: "p", agent: "agy") }
         try await wait(wire, count: 1)
-        await client.receive(Data("{\"id\":\"\(try await wire.lastID())\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":{\"claude_timeline\":false,\"agy\":true,\"record_content\":true,\"model_control\":true}}}\n".utf8))
+        await client.receive(Data("{\"id\":\"\(try await wire.lastID())\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"bridge_version\":\"0.5.0\",\"capabilities\":{\"claude_timeline\":false,\"agy\":true,\"record_content\":true,\"model_control\":true}}}\n".utf8))
         try await wait(wire, count: 2)
         await client.receive(Data("{\"id\":\"\(try await wire.lastID())\",\"result\":{}}\n".utf8)); try await handshake.value
         state.connect(client, supported: true)
@@ -975,7 +1022,7 @@ struct ModelCatalogProvenanceTests {
         #expect(current.result?.capabilities?.pi == true)
         #expect(TimelineAgentAvailability.canonical("pi") == "pi")
         #expect(TimelineAgentAvailability.displayName(for: "pi") == "Pi")
-        #expect(!AgentTimelineView.canPinnedInstallerSupport(agent: "pi"))
+        #expect(AgentTimelineView.canPinnedInstallerSupport(agent: "pi"))
         #expect(TimelineAgentAvailability.matchesSession(agent: "pi", referenceAgent: "pi", source: "herdr:pi", identityAgent: "pi", referenceKind: "path"))
     }
 
