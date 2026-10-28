@@ -7,7 +7,7 @@ on:
       version:
         description: Bridge package version (X.Y.Z)
         required: true
-        default: '0.4.0'
+        default: '0.5.0'
 permissions:
   contents: read
 concurrency:
@@ -61,6 +61,11 @@ jobs:
           with open(os.environ['GITHUB_ENV'], 'a') as output:
               output.write('BRIDGE_VERSION=' + version + '\n')
           PY
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.0.1
+        with:
+          node-version: '22'
+      - name: Test Pi extension
+        run: node --test bridge/pi-extension/runtime.test.mjs
       - name: Test and build
         run: |
           cargo test --manifest-path bridge/Cargo.toml --locked
@@ -116,7 +121,7 @@ jobs:
       - name: Prepare checksums and installer
         run: |
           cat release/SHA256SUMS-* | sort -k2 > release/SHA256SUMS
-          test "$(wc -l < release/SHA256SUMS)" -eq 4
+          test "$(wc -l < release/SHA256SUMS)" -eq 5
           cd release
           sha256sum --check SHA256SUMS
           python3 - <<'PY'
@@ -127,6 +132,6 @@ jobs:
       - name: Create draft only
         run: |
           gh release create "herdcats-bridge-v$BRIDGE_VERSION" \
-            release/herdcats-bridge-* release/SHA256SUMS release/install.sh \
+            release/herdcats-bridge-* release/herdcats-pi-extension.tar.gz release/SHA256SUMS release/install.sh \
             --draft --verify-tag --target "$GITHUB_SHA" --title "Herdcats bridge $BRIDGE_VERSION" \
             --notes-file release/notes.txt

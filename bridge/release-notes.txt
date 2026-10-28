@@ -1,11 +1,14 @@
-SOURCE CHANGE — not a published Agy or Cursor release. The app installer remains pinned to 0.3.0 until an actual artifact and checksum are verified.
+Herdcats Bridge __BRIDGE_VERSION__ — Pi and Cursor Agent
 
-Herdcats Bridge (`herdcats-bridge`) is the optional companion on your computer that powers native Claude, Codex, Agy and Cursor Timelines in Herdcats.
+The iOS one-click installer remains pinned to 0.3.0 until the new published assets and installer checksum are verified. Install this release manually to enable the new agents.
 
-Changes in this source version:
+Herdcats Bridge (`herdcats-bridge`) is the optional companion on your computer that powers native Claude, Codex, Agy, Pi and Cursor Agent Timelines in Herdcats.
+
+Changes since the published 0.3.0 release:
+- Pi 1.4.0 conversations: exact native session history, streaming, plain prompts, cancellation, model/thinking controls, and extension confirm/select/input dialogs. Requires the opt-in Pi extension; custom/editor dialogs, slash commands and authentication stay in Terminal. Stale actions and unverified sessions are refused.
 - Cursor conversations: the Cursor CLI history follows the exact chat Herdr reports (never the working directory), prompts are sent only when the screen shows an idle empty composer, shell approvals offer Run once and Skip, AskQuestion forms are answered one question at a time, and model and effort changes use the live /model picker on the verified Cursor build 2026.10.22-27dcf5f. Cursor saves a model or effort change to its own settings, so it also becomes the default for new Cursor sessions. The bridge keeps the model list it read from the picker for 24 hours (in ~/.cache/herdcats), so Configure opens quickly after the first visit. Messages that start with / are not sent from the phone. Everything else stays in Terminal.
 - GPT-OSS 120B model observation and switching accept its exact catalog-label idle footer (GPT-OSS 120B (Medium)), alongside the existing model · effort footer. Empty-composer checks share catalog verification and retain draft, border, source and stale-session guards.
-- Agy model families and discovered per-family efforts are normalized by the bridge across status, snapshots, events and set results. Native IDs remain internal for guarded submission and confirmation; legacy exact native target IDs remain accepted. Family switches preserve effort when available, otherwise prefer Medium, Low, then High. Rebuild the app and source bridge; the installer pin is unchanged.
+- Agy model families and discovered per-family efforts are normalized by the bridge across status, snapshots, events and set results. Native IDs remain internal for guarded submission and confirmation; legacy exact native target IDs remain accepted. Family switches preserve effort when available, otherwise prefer Medium, Low, then High. Use a compatible app and the new bridge; the one-click installer pin is unchanged.
 - Agy user bubbles unwrap only the recognized outer USER_REQUEST/ADDITIONAL_METADATA envelope (optional USER_SETTINGS_CHANGE), including single/double LF or CRLF separators. Literal user text and raw inspectable records remain intact.
 - Agy questions and command approvals now use verified native records plus live dialogs when Herdr mislabels the pane idle/done/working. Effective blocked status disables composition; uncertain pending state and model/composer guards fail closed. Claude/Codex status gates and caching are unchanged.
 - Agy history follows the exact Herdr native conversation with bounded, pinned-root transcript reads. Verified 1.4.7 command approvals, single/multiple questions, write-in and multi-select answers use guarded terminal controls; unverified cards stay in Terminal. Model controls use the installed CLI catalog and idle empty composer checks; /model may persist across sessions.
@@ -17,8 +20,11 @@ Install on the computer Herdcats connects to with SSH, the one that runs Herdr a
 
 curl -fsSL https://github.com/zhiyao/herdcats/releases/download/herdcats-bridge-v__BRIDGE_VERSION__/install.sh | sh -s -- --version __BRIDGE_VERSION__
 
-Requires macOS 13+ or Linux with glibc 2.35+ (Ubuntu 22.04+), curl and SHA-256 tooling. Apple Silicon, Intel Mac, Linux arm64 and x86_64 binaries are included. Herdr protocol 22 and an exact Claude or Codex session reference are required. No root access, Rust, Python or persistent service required. Phone answers for Claude, and for Codex approvals, use an optional recording hook that Herdcats installs only after you confirm. Existing installation upgrades require --replace.
+Requires macOS 13+ or Linux with glibc 2.35+ (Ubuntu 22.04+), curl and SHA-256 tooling. Apple Silicon, Intel Mac, Linux arm64 and x86_64 binaries are included. Herdr protocol 22 and an exact native session reference are required. Pi support is gated to Pi 1.4.0; Cursor model controls are verified on build 2026.10.22-27dcf5f. No root access, Rust, Python or persistent service required. Phone answers for Claude, and for Codex approvals, use an optional recording hook that Herdcats installs only after you confirm. Existing installation upgrades require --replace.
 
 Checksums detect damaged downloads; they are provided through the same HTTPS release channel. These binaries are not Developer ID signed/notarized. Saved-machine routing remains unavailable.
 
 After installing, return to Herdcats and tap Check again.
+
+Pi extension setup (on the SSH computer, separately from the binary installer):
+Download herdcats-pi-extension.tar.gz and SHA256SUMS from this release. Verify the archive with sha256sum or shasum -a 256 against SHA256SUMS, then extract it into a directory you choose. Keep herdcats/index.ts and herdcats/runtime.mjs together and run pi -e /absolute/path/to/herdcats/index.ts. The archive includes the full setup and limitations in herdcats/README.md. It does not enable itself or change Pi permissions.

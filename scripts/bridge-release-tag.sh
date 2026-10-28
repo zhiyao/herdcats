@@ -50,11 +50,19 @@ gh run watch -R "$REPO" "$RUN" --exit-status
 
 echo "== Checking the draft release"
 gh release view "$TAG" -R "$REPO" --json isDraft,assets --jq '"draft: \(.isDraft)", (.assets[].name)'
-for a in herdcats-bridge-darwin-arm64 herdcats-bridge-darwin-x86_64 herdcats-bridge-linux-arm64 herdcats-bridge-linux-x86_64 install.sh SHA256SUMS; do
+for a in herdcats-bridge-darwin-arm64 herdcats-bridge-darwin-x86_64 herdcats-bridge-linux-arm64 herdcats-bridge-linux-x86_64 herdcats-pi-extension.tar.gz install.sh SHA256SUMS; do
   gh release view "$TAG" -R "$REPO" --json assets --jq '.assets[].name' | grep -qx "$a" || { echo "Missing asset: $a"; exit 1; }
 done
 REL=$(gh release download "$TAG" -R "$REPO" -p install.sh -O - | shasum -a 256 | cut -d' ' -f1)
-SRC=$(git show "$SHA:bridge/scripts/install.sh" | shasum -a 256 | cut -d' ' -f1)
+# package.py renders the binary's agent contract into the historical template.
+# Keep that template intact so the iOS 0.3.0 pin remains reproducible.
+SRC=$(git show "$SHA:bridge/scripts/install.sh" | python3 -c '
+import json, subprocess, sys
+source = sys.stdin.read()
+setup = json.loads(subprocess.check_output(["git", "show", sys.argv[1] + ":bridge/setup.json"]))
+agents = json.dumps(setup["source_support"]["agents"], separators=(",", ":"))
+sys.stdout.write(source.replace("\"agents\":[\"claude\",\"codex\"]", "\"agents\":" + agents))
+' "$SHA" | shasum -a 256 | cut -d' ' -f1)
 [[ "$REL" == "$SRC" ]] || { echo "Released install.sh ($REL) differs from the repo ($SRC)"; exit 1; }
 echo "install.sh sha256: $REL (matches the repo)"
 

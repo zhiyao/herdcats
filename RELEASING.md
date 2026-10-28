@@ -75,3 +75,39 @@ an API key, fastlane falls back to Apple session authentication.
 `./ios/bin/deploy` only prepares a release PR and does not need Apple credentials.
 After the PR is merged and CI passes, use `./ios/bin/beta` separately for an
 authorized TestFlight upload.
+
+## Bridge releases
+
+Bridge versions are independent of the iOS app. Version 0.5.0 prepares Pi and
+Cursor Agent support; 0.4.0 already has a tag and draft, so do not move or reuse
+that tag. The 0.3.0 published release and iOS installer pin remain valid until
+new published assets are verified.
+
+1. Prepare a PR updating `bridge/Cargo.toml`, `bridge/Cargo.lock`, the default
+   version in `bridge/scripts/install.sh`, agent list in setup metadata, workflow dispatch
+   default, setup metadata, and `bridge/release-notes.txt`.
+2. Run locked Rust tests, Clippy, a release build, the Pi extension Node suite,
+   and the Python bridge installer/distribution tests. Review Pi and Cursor
+   compatibility limits in their conversation docs. Automated fixtures do not
+   establish compatibility with additional CLI versions.
+3. Merge through passing Bridge, iOS and Web CI. From a checkout with the merged
+   source, run `scripts/bridge-release-tag.sh 0.5.0`. It checks `origin/main` and
+   CI, then asks before tagging and again before publishing. Never tag this
+   unmerged preparation branch.
+4. Review the workflow's draft: four native binaries, `install.sh`,
+   `herdcats-pi-extension.tar.gz`, and `SHA256SUMS`. Check all five checksummed
+   assets, the installer's rendered-template digest, and the binary's version/protocol/agent
+   report. Smoke-test installation in a temporary directory on the target host.
+   The Pi archive is platform-independent and comes from the arm64 Mac job;
+   verify its checksum, extract it into a chosen directory, and explicitly enable
+   its `herdcats/index.ts` inside Pi 1.4.0. The binary installer does not enable it.
+5. After publication and verification, prepare a separate iOS pin update with the
+   actual released installer SHA-256, version and supported-agent list together.
+   Record platform/checksum/CI evidence under `compatibility/release/`; do not
+   manufacture published-release evidence from a local build.
+
+The release workflow builds macOS arm64/x86_64 and Linux arm64/x86_64 natively.
+macOS binaries are unsigned/unnotarized; Linux requires glibc 2.35 or later.
+Cursor model controls are verified only on build `2026.10.22-27dcf5f`; Pi native
+controls require the opt-in extension and verified Pi `1.4.0`. Terminal fallback
+and each integration's existing guards still apply.
