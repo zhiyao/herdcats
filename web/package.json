@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "preview": "wrangler pages dev out",
-    "deploy": "next build && wrangler pages deploy out"
+    "deploy": "npm run build && wrangler pages deploy out",
+    "prebuild": "node scripts/sync-screenshots.mjs"
   },
   "keywords": [
     "pixel-art",

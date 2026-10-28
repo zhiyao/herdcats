@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { ThemeToggle } from './ThemeToggle';
 
-export type SitePageKey = 'support' | 'about' | 'privacy' | 'terms' | 'licenses';
+export type SitePageKey = 'screenshots' | 'support' | 'about' | 'privacy' | 'terms' | 'licenses';
 
 const LINKS: { key: SitePageKey; href: string; label: string }[] = [
+  { key: 'screenshots', href: '/screenshots', label: 'Screenshots' },
   { key: 'support', href: '/support', label: 'Support' },
   { key: 'about', href: '/about', label: 'About' },
   { key: 'privacy', href: '/privacy', label: 'Privacy' },

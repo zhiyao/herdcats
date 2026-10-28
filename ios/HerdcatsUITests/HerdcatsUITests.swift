@@ -71,6 +71,38 @@ final class HerdcatsUITests: XCTestCase {
         return environment["TEST_RUNNER_HC_\(name)"] ?? environment["HC_\(name)"]
     }
 
+    func testOnboardingScreenshotReplaysWithoutRemovingSavedMachines() throws {
+        let app = XCUIApplication()
+        let machineID = "00000000-0000-0000-0000-000000000099"
+        let machines: [[String: Any]] = [[
+            "id": machineID, "host": "screenshot-test.invalid", "port": 22,
+            "username": "demo", "secret": "screenshot-test-password",
+            "authMode": "password", "name": "Screenshot regression machine"
+        ]]
+        app.launchEnvironment["HC_SAVED_MACHINES"] = String(
+            decoding: try JSONSerialization.data(withJSONObject: machines), as: UTF8.self)
+        app.launchArguments = ["-hc.seed-machines", "-launchPreference", "connectionSelection",
+                               "-hc.onboardingIntroSeen", "YES"]
+        app.launch()
+        let savedMachine = app.buttons["connect-machine-" + machineID]
+        XCTAssertTrue(savedMachine.waitForExistence(timeout: 10))
+        app.terminate()
+
+        app.launchEnvironment.removeValue(forKey: "HC_SAVED_MACHINES")
+        app.launchArguments = ["-hc.screenshots", "-hc.capture-surface", "-hc.screen", "onboarding",
+                               "-hc.onboardingIntroSeen", "YES"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Tame your autonomous agents from your pocket."].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Continue"].exists)
+        app.terminate()
+
+        app.launchArguments = ["-launchPreference", "connectionSelection"]
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(savedMachine.waitForExistence(timeout: 10),
+                      "Capturing onboarding must preserve the existing saved machine")
+    }
+
     func testFirstUseIntroductionExplainsHerdrBeforeConnection() {
         let app = XCUIApplication()
         app.launchArguments = [

@@ -1,0 +1,97 @@
+{
+  "status": "complete",
+  "createdAt": "2026-10-28T11:32:28.142Z",
+  "locale": "en-US",
+  "slides": [
+    {
+      "id": "01-spaces",
+      "source": "03_spaces.png",
+      "headline": "Orchestrate spaces,",
+      "accent": "all from your pocket.",
+      "layout": "device"
+    },
+    {
+      "id": "02-agents",
+      "source": "06_agents.png",
+      "headline": "Tame autonomous agents.",
+      "accent": "Blocked, done, or working.",
+      "layout": "device"
+    },
+    {
+      "id": "03-pane",
+      "source": "04_workspace_pane.png",
+      "headline": "Real ANSI terminal,",
+      "accent": "live in your hands.",
+      "layout": "device"
+    },
+    {
+      "id": "04-keys",
+      "source": "05_pane_keys.png",
+      "headline": "Terminal keyboard.",
+      "accent": "Arrows, F1–F12 & modifiers.",
+      "layout": "device"
+    },
+    {
+      "id": "05-agent-pane",
+      "source": "07_agent_pane.png",
+      "headline": "Direct agent control,",
+      "accent": "one thumb away.",
+      "layout": "device"
+    },
+    {
+      "id": "06-quota",
+      "source": "08_quota.png",
+      "headline": "Track model quotas.",
+      "accent": "Live pace-colored rings.",
+      "layout": "device"
+    },
+    {
+      "id": "07-connect",
+      "source": "02_connect_form.png",
+      "headline": "Pure SSH & Tailscale.",
+      "accent": "No middleman daemons.",
+      "layout": "device"
+    },
+    {
+      "id": "08-settings",
+      "source": "09_settings.png",
+      "headline": "Privacy-first client.",
+      "accent": "Drafts and keys stay local.",
+      "layout": "device"
+    },
+    {
+      "id": "09-compose",
+      "source": "10_compose.png",
+      "headline": "Live or Compose.",
+      "accent": "Your agent, your way.",
+      "layout": "device"
+    },
+    {
+      "id": "10-voice",
+      "source": "11_voice.png",
+      "headline": "Speak to your agent.",
+      "accent": "Dictate, review, then send.",
+      "layout": "device"
+    }
+  ],
+  "targets": [
+    {
+      "target": "iphone-6.3",
+      "width": 1206,
+      "height": 2622,
+      "manifest": "iphone-6.3/manifest.json"
+    },
+    {
+      "target": "iphone-6.5",
+      "width": 1284,
+      "height": 2778,
+      "manifest": "iphone-6.5/manifest.json"
+    },
+    {
+      "target": "iphone-6.9",
+      "width": 1320,
+      "height": 2868,
+      "manifest": "iphone-6.9/manifest.json"
+    }
+  ]
+}

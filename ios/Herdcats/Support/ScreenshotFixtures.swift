@@ -143,6 +143,11 @@ struct ScreenshotRootView: View {
         app.phase = .connected(host: "studio-mac", username: "demo")
         app.hasActiveSession = true
         app.connectionIdentity = ConnectionIdentity(host: "studio-mac", port: 22, username: "demo")
+        // Keep each capture independent of previous timeline/terminal navigation.
+        if ProcessInfo.processInfo.arguments.contains("-hc.capture-surface"), let identity = app.connectionIdentity {
+            let terminal = ["pane", "agent-pane", "keys"].contains(ScreenshotFixtures.screen)
+            UserDefaults.standard.set(terminal, forKey: TimelineSetupPreference.key(scope: identity))
+        }
         if ProcessInfo.processInfo.arguments.contains("-hc.timeline-intro-reset"), let identity = app.connectionIdentity {
             UserDefaults.standard.removeObject(forKey: TimelineSetupPreference.key(scope: identity))
         }
@@ -150,7 +155,10 @@ struct ScreenshotRootView: View {
     }()
     var body: some View {
         Group {
-            if ScreenshotFixtures.screen == "pane" || ScreenshotFixtures.screen == "agent-pane" || ["keys", "compose", "voice", "turn-interrupted", "optional-upgrade-menu"].contains(ScreenshotFixtures.screen) || ScreenshotFixtures.screen.hasPrefix("timeline") {
+            if ScreenshotFixtures.screen == "onboarding" {
+                ConnectView(replay: true)
+                    .background(Theme.backgroundGradient)
+            } else if ScreenshotFixtures.screen == "pane" || ScreenshotFixtures.screen == "agent-pane" || ["keys", "compose", "voice", "turn-interrupted", "optional-upgrade-menu"].contains(ScreenshotFixtures.screen) || ScreenshotFixtures.screen.hasPrefix("timeline") {
                 NavigationStack {
                     if let pane = try? JSONDecoder().decode(PaneEntry.self, from: Data(ScreenshotFixtures.json(ScreenshotFixtures.panes[0]).utf8)) {
                         PaneDetailView(pane: pane)

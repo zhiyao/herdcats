@@ -34,23 +34,44 @@ This is an early release. See the limitations below before using it.
 
 ## Screenshots
 
-iPhone screenshots with sample data. Click an image to view it larger.
+Current iPhone screenshots with sample data, captured from main in dark and light mode.
+Click an image to view it larger. The website’s `/screenshots` gallery shows the
+same images and follows its light/dark switch.
 
 <p align="center">
   <a href="assets/screenshots/01-spaces.png"><img src="assets/screenshots/01-spaces.png" width="160" alt="Spaces tab listing three spaces: Herdcats (blocked), Checkout redesign (working), and API performance (done)."></a>
   <a href="assets/screenshots/02-agents.png"><img src="assets/screenshots/02-agents.png" width="160" alt="Agents tab listing a blocked Claude agent, a finished Cursor agent, and a working Codex agent, each with its project path."></a>
   <a href="assets/screenshots/03-pane.png"><img src="assets/screenshots/03-pane.png" width="160" alt="Live terminal pane showing a Claude Code session waiting for input, with an Esc, Tab, Ctrl, Alt and Keys toolbar."></a>
   <a href="assets/screenshots/04-keys.png"><img src="assets/screenshots/04-keys.png" width="160" alt="Terminal pane with the Keys panel open: arrow keys, Home, End, Page Up and Down, Del, Ins, Backspace, Shift, and F1 to F7."></a>
-  <a href="assets/screenshots/05-agent-pane.png"><img src="assets/screenshots/05-agent-pane.png" width="160" alt="Agent pane for a blocked Claude session, with other panes in a strip above the terminal output."></a>
+  <a href="assets/screenshots/05-agent-pane.png"><img src="assets/screenshots/05-agent-pane.png" width="160" alt="Agent pane for a blocked Claude session, with a pane card above the terminal output."></a>
 </p>
 
 <p align="center">
   <a href="assets/screenshots/06-quota.png"><img src="assets/screenshots/06-quota.png" width="160" alt="Quota tab with usage rings for ZAI, Agy, Codex, Cursor and Claude, colored by pace with time left on each window."></a>
-  <a href="assets/screenshots/07-connect.png"><img src="assets/screenshots/07-connect.png" width="160" alt="Connection Settings form with host, port, username, password or private key, and a Remember on This Device toggle."></a>
+  <a href="assets/screenshots/07-connect.png"><img src="assets/screenshots/07-connect.png" width="160" alt="Connection Settings form with host, port, username, password or private key, and a Save credentials on this iPhone toggle."></a>
   <a href="assets/screenshots/08-settings.png"><img src="assets/screenshots/08-settings.png" width="160" alt="Settings screen with auto-refresh, a toggle to keep drafts and command history on the iPhone, appearance, and pane options."></a>
-  <a href="assets/screenshots/09-compose.png"><img src="assets/screenshots/09-compose.png" width="160" alt="Compose box below the terminal with a drafted reply, an attach-photo button, a microphone button and a send button."></a>
-  <a href="assets/screenshots/10-voice.png"><img src="assets/screenshots/10-voice.png" width="160" alt="Voice recording bar below the terminal reading Recording message, with a confirm button."></a>
+  <a href="assets/screenshots/09-compose.png"><img src="assets/screenshots/09-compose.png" width="160" alt="Compose box below the native timeline with a drafted reply, an attach-photo button, a microphone button and a send button."></a>
+  <a href="assets/screenshots/10-voice.png"><img src="assets/screenshots/10-voice.png" width="160" alt="Native timeline with a voice recording waveform, cancel, stop, and send controls."></a>
 </p>
+
+<details>
+<summary>Light-mode screenshots</summary>
+
+<p align="center">
+  <a href="assets/screenshots/light/01-spaces.png"><img src="assets/screenshots/light/01-spaces.png" width="160" alt="Light mode: Spaces tab listing three spaces: Herdcats (blocked), Checkout redesign (working), and API performance (done)."></a>
+  <a href="assets/screenshots/light/02-agents.png"><img src="assets/screenshots/light/02-agents.png" width="160" alt="Light mode: Agents tab listing a blocked Claude agent, a finished Cursor agent, and a working Codex agent, each with its project path."></a>
+  <a href="assets/screenshots/light/03-pane.png"><img src="assets/screenshots/light/03-pane.png" width="160" alt="Light mode: Live terminal pane showing a Claude Code session waiting for input, with an Esc, Tab, Ctrl, Alt and Keys toolbar."></a>
+  <a href="assets/screenshots/light/04-keys.png"><img src="assets/screenshots/light/04-keys.png" width="160" alt="Light mode: Terminal pane with the Keys panel open: arrow keys, Home, End, Page Up and Down, Del, Ins, Backspace, Shift, and F1 to F7."></a>
+  <a href="assets/screenshots/light/05-agent-pane.png"><img src="assets/screenshots/light/05-agent-pane.png" width="160" alt="Light mode: Agent pane for a blocked Claude session, with a pane card above the terminal output."></a>
+</p>
+<p align="center">
+  <a href="assets/screenshots/light/06-quota.png"><img src="assets/screenshots/light/06-quota.png" width="160" alt="Light mode: Quota tab with usage rings for ZAI, Agy, Codex, Cursor and Claude, colored by pace with time left on each window."></a>
+  <a href="assets/screenshots/light/07-connect.png"><img src="assets/screenshots/light/07-connect.png" width="160" alt="Light mode: Connection Settings form with host, port, username, password or private key, and a Save credentials on this iPhone toggle."></a>
+  <a href="assets/screenshots/light/08-settings.png"><img src="assets/screenshots/light/08-settings.png" width="160" alt="Light mode: Settings screen with auto-refresh, a toggle to keep drafts and command history on the iPhone, appearance, and pane options."></a>
+  <a href="assets/screenshots/light/09-compose.png"><img src="assets/screenshots/light/09-compose.png" width="160" alt="Light mode: Compose box below the native timeline with a drafted reply, an attach-photo button, a microphone button and a send button."></a>
+  <a href="assets/screenshots/light/10-voice.png"><img src="assets/screenshots/light/10-voice.png" width="160" alt="Light mode: Native timeline with a voice recording waveform, cancel, stop, and send controls."></a>
+</p>
+</details>
 
 ## Build the iPhone app
 
@@ -159,15 +180,23 @@ outside Git. Configure `TEST_RUNNER_HC_USER`, `TEST_RUNNER_HC_PORT`, and
 
 ## iPhone screenshots with mock data
 
-Capture the real SwiftUI screens with read-only sample workspaces, agents,
+Rendered App Store artwork is included in `assets/app-store/screenshots/dark`
+and `assets/app-store/screenshots/light`, with ten slides at each of the three
+configured iPhone sizes. Each folder includes a local HTML preview and manifests.
+
+Capture all 12 native screens: onboarding replay, connection settings, spaces,
+terminal, terminal keys, agents, agent pane, quotas, settings, Compose, voice,
+and the native timeline. Connected screens use read-only sample workspaces, agents,
 terminal output, quotas, a Compose draft, and voice recording. The recording
 fixture displays the native dictation UI without opening the microphone.
 No SSH server or credentials are needed:
 
 ```sh
 ios/bin/screenshots-mock
+ios/bin/screenshots-mock --appearance=light
 npm ci --prefix ios/app-store-images
 ios/bin/screenshots-app-store --iphone-input=ios/maestro/screenshots-output/mock-iPhone
+ios/bin/screenshots-app-store --iphone-input=ios/maestro/screenshots-output/mock-iPhone-light --output=ios/maestro/app-store-output/light
 ```
 
 The capture command builds a Debug app and defaults to an available iPhone 17
@@ -175,9 +204,22 @@ Pro Max simulator. Use `--device=<name-or-UDID>` to select another iPhone, or
 `--app=<path-to-Debug-simulator-app>` to reuse a build. Raw captures go to
 `ios/maestro/screenshots-output/mock-iPhone`; artwork exports go to a fresh
 folder under `ios/maestro/app-store-output`, with a preview and manifests.
+Light captures use `--appearance=light` and default to the separate
+`ios/maestro/screenshots-output/mock-iPhone-light` folder. The native terminal
+keeps its dark palette in both appearances.
+Onboarding uses a read-only replay so saved machines and onboarding preferences
+are preserved, even when capturing on a simulator you already use.
 The screenshot fixture mode is compiled only into Debug simulator builds.
+The capture manifest records the source commit, built app hash, simulator,
+capture time, and PNG hashes. Each screen selects its intended terminal or
+timeline surface independently of earlier captures.
 
 ## Website
+
+The home page, shared navigation, and footer link to `/screenshots`. Before each
+production build, `web/scripts/sync-screenshots.mjs` copies the canonical images
+from `assets/screenshots` into the website’s public assets. Run it manually
+before local development when screenshots change.
 
 The `web/` directory contains the Next.js landing page. Use Node.js 22 or later:
 

@@ -1,0 +1,175 @@
+{
+  "status": "complete",
+  "createdAt": "2026-10-28T11:34:33.448Z",
+  "target": "iphone-6.5",
+  "family": "iphone",
+  "width": 1284,
+  "height": 2778,
+  "description": "iPhone 6.5-inch",
+  "locale": "en-US",
+  "remotionVersion": "4.0.523",
+  "captureDevice": null,
+  "input": "/Users/zhiyaochan/.herdr/worktrees/herdcats/refresh-app-screenshots/ios/maestro/screenshots-output/mock-iPhone-light",
+  "images": [
+    {
+      "file": "01-spaces.png",
+      "slide": {
+        "id": "01-spaces",
+        "source": "03_spaces.png",
+        "headline": "Orchestrate spaces,",
+        "accent": "all from your pocket.",
+        "layout": "device"
+      },
+      "source": {
+        "file": "/Users/zhiyaochan/.herdr/worktrees/herdcats/refresh-app-screenshots/ios/maestro/screenshots-output/mock-iPhone-light/03_spaces.png",
+        "width": 1320,
+        "height": 2868,
+        "sha256": "d2b694b7a1a23d972b5bed0fdb63364a45db38948549b792bea1c9fdf1c1177a"
+      }
+    },
+    {
+      "file": "02-agents.png",
+      "slide": {
+        "id": "02-agents",
+        "source": "06_agents.png",
+        "headline": "Tame autonomous agents.",
+        "accent": "Blocked, done, or working.",
+        "layout": "device"
+      },
+      "source": {
+        "file": "/Users/zhiyaochan/.herdr/worktrees/herdcats/refresh-app-screenshots/ios/maestro/screenshots-output/mock-iPhone-light/06_agents.png",
+        "width": 1320,
+        "height": 2868,
+        "sha256": "9365912278c8cff459048109f189c8b6c453cb423db0982355b3be36cc5dbf6a"
+      }
+    },
+    {
+      "file": "03-pane.png",
+      "slide": {
+        "id": "03-pane",
+        "source": "04_workspace_pane.png",
+        "headline": "Real ANSI terminal,",
+        "accent": "live in your hands.",
+        "layout": "device"
+      },
+      "source": {
+        "file": "/Users/zhiyaochan/.herdr/worktrees/herdcats/refresh-app-screenshots/ios/maestro/screenshots-output/mock-iPhone-light/04_workspace_pane.png",
+        "width": 1320,
+        "height": 2868,
+        "sha256": "d46d244ed0a196f53916ac1fe72ed45599c17769dceeb12e3d72fe7e8b989107"
+      }
+    },
+    {
+      "file": "04-keys.png",
+      "slide": {
+        "id": "04-keys",
+        "source": "05_pane_keys.png",
+        "headline": "Terminal keyboard.",
+        "accent": "Arrows, F1–F12 & modifiers.",
+        "layout": "device"
+      },
+      "source": {
+        "file": "/Users/zhiyaochan/.herdr/worktrees/herdcats/refresh-app-screenshots/ios/maestro/screenshots-output/mock-iPhone-light/05_pane_keys.png",
+        "width": 1320,
+        "height": 2868,
+        "sha256": "17a3137b06f1e879ae3aa2f8962a0cb6fb38dbf38e86c4e82fda73f76e81ec01"
+      }
+    },
+    {
+      "file": "05-agent-pane.png",
+      "slide": {
+        "id": "05-agent-pane",
+        "source": "07_agent_pane.png",
+        "headline": "Direct agent control,",
+        "accent": "one thumb away.",
+        "layout": "device"
+      },
+      "source": {
+        "file": "/Users/zhiyaochan/.herdr/worktrees/herdcats/refresh-app-screenshots/ios/maestro/screenshots-output/mock-iPhone-light/07_agent_pane.png",
+        "width": 1320,
+        "height": 2868,
+        "sha256": "d46d244ed0a196f53916ac1fe72ed45599c17769dceeb12e3d72fe7e8b989107"
+      }
+    },
+    {
+      "file": "06-quota.png",
+      "slide": {
+        "id": "06-quota",
+        "source": "08_quota.png",
+        "headline": "Track model quotas.",
+        "accent": "Live pace-colored rings.",
+        "layout": "device"
+      },
+      "source": {
+        "file": "/Users/zhiyaochan/.herdr/worktrees/herdcats/refresh-app-screenshots/ios/maestro/screenshots-output/mock-iPhone-light/08_quota.png",
+        "width": 1320,
+        "height": 2868,
+        "sha256": "6c081cd5dfc14385956b38485fd8bfda48a7859a71f32c37b6856498fbfc0340"
+      }
+    },
+    {
+      "file": "07-connect.png",
+      "slide": {
+        "id": "07-connect",
+        "source": "02_connect_form.png",
+        "headline": "Pure SSH & Tailscale.",
+        "accent": "No middleman daemons.",
+        "layout": "device"
+      },
+      "source": {
+        "file": "/Users/zhiyaochan/.herdr/worktrees/herdcats/refresh-app-screenshots/ios/maestro/screenshots-output/mock-iPhone-light/02_connect_form.png",
+        "width": 1320,
+        "height": 2868,
+        "sha256": "d2384e09ce7b51acc5cd3383ce79b22383bd210ed516da5bea9dda58b9507967"
+      }
+    },
+    {
+      "file": "08-settings.png",
+      "slide": {
+        "id": "08-settings",
+        "source": "09_settings.png",
+        "headline": "Privacy-first client.",
+        "accent": "Drafts and keys stay local.",
+        "layout": "device"
+      },
+      "source": {
+        "file": "/Users/zhiyaochan/.herdr/worktrees/herdcats/refresh-app-screenshots/ios/maestro/screenshots-output/mock-iPhone-light/09_settings.png",
+        "width": 1320,
+        "height": 2868,
+        "sha256": "bed6671779e3f1d6f8e2500971731391dda9e2e7438fb1a7c39a25e1da56df49"
+      }
+    },
+    {
+      "file": "09-compose.png",
+      "slide": {
+        "id": "09-compose",
+        "source": "10_compose.png",
+        "headline": "Live or Compose.",
+        "accent": "Your agent, your way.",
+        "layout": "device"
+      },
+      "source": {
+        "file": "/Users/zhiyaochan/.herdr/worktrees/herdcats/refresh-app-screenshots/ios/maestro/screenshots-output/mock-iPhone-light/10_compose.png",
+        "width": 1320,
+        "height": 2868,
+        "sha256": "1ad06eaa03570a9affa17be8bbb60c3af04f8eaf5ebcdb1d56a375ea6b4c7463"
+      }
+    },
+    {
+      "file": "10-voice.png",
+      "slide": {
+        "id": "10-voice",
+        "source": "11_voice.png",
+        "headline": "Speak to your agent.",
+        "accent": "Dictate, review, then send.",
+        "layout": "device"
+      },
+      "source": {
+        "file": "/Users/zhiyaochan/.herdr/worktrees/herdcats/refresh-app-screenshots/ios/maestro/screenshots-output/mock-iPhone-light/11_voice.png",
+        "width": 1320,
+        "height": 2868,
+        "sha256": "c3b17fcc201340dae188bca2ce5d226052e97a122d20cbf5e907c1ff5883d164"
+      }
+    }
+  ]
+}
