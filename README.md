@@ -184,7 +184,7 @@ Rendered App Store artwork is included in `assets/app-store/screenshots/dark`
 and `assets/app-store/screenshots/light`, with ten slides at each of the three
 configured iPhone sizes. Each folder includes a local HTML preview and manifests.
 
-Capture all 12 native screens: first-use onboarding, connection settings, spaces,
+Capture all 12 native screens: onboarding replay, connection settings, spaces,
 terminal, terminal keys, agents, agent pane, quotas, settings, Compose, voice,
 and the native timeline. Connected screens use read-only sample workspaces, agents,
 terminal output, quotas, a Compose draft, and voice recording. The recording
@@ -207,6 +207,8 @@ folder under `ios/maestro/app-store-output`, with a preview and manifests.
 Light captures use `--appearance=light` and default to the separate
 `ios/maestro/screenshots-output/mock-iPhone-light` folder. The native terminal
 keeps its dark palette in both appearances.
+Onboarding uses a read-only replay so saved machines and onboarding preferences
+are preserved, even when capturing on a simulator you already use.
 The screenshot fixture mode is compiled only into Debug simulator builds.
 The capture manifest records the source commit, built app hash, simulator,
 capture time, and PNG hashes. Each screen selects its intended terminal or

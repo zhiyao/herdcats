@@ -65,20 +65,17 @@ def main():
         for frame, screen in frames.items():
             (options.output / f'{frame}.png').unlink(missing_ok=True)
             subprocess.run(['xcrun', 'simctl', 'terminate', udid, BUNDLE], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            if screen == 'onboarding':
-                launch = ['-launchPreference', 'connectionSelection',
-                          '-hc.onboardingIntroSeen', 'NO', '-appearancePreference', options.appearance]
-            else:
-                launch = ['-hc.screenshots', '-hc.capture-surface', '-hc.screen', screen,
-                          '-hc.tab', screen, '-paneShowComposeByDefault', 'NO',
-                          '-appearancePreference', options.appearance]
-                if options.appearance == 'light':
-                    launch.append('-hc.light')
+            # Onboarding uses the read-only replay route, even with saved machines.
+            launch = ['-hc.screenshots', '-hc.capture-surface', '-hc.screen', screen,
+                      '-hc.tab', screen, '-paneShowComposeByDefault', 'NO',
+                      '-appearancePreference', options.appearance]
+            if options.appearance == 'light':
+                launch.append('-hc.light')
             run('xcrun', 'simctl', 'launch', udid, BUNDLE, *launch)
             time.sleep(10)
             run('xcrun', 'simctl', 'io', udid, 'screenshot', str(options.output / f'{frame}.png'))
         record = {
-            'mode': 'simulator fixtures (onboarding uses real first launch)',
+            'mode': 'simulator fixtures (onboarding uses read-only replay)',
             'createdAt': datetime.now(timezone.utc).isoformat(),
             'commit': subprocess.check_output(
                 ['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], text=True).strip(),
