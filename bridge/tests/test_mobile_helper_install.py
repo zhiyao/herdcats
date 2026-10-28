@@ -31,7 +31,7 @@ class MobileHelperInstallationTests(unittest.TestCase):
         self.fake.mkdir()
         source = SOURCE.read_text()
         version = re.search(r'static let version = "([^"]+)"', source)[1]
-        agents = ['claude', 'codex'] if version != '0.1.4' else ['claude']
+        agents = re.findall(r'"([^"\n]+)"', re.search(r'static let agents: \[String\] = \[(.*?)\]', source)[1])
         self.report = {'agents': agents, 'herdr_protocol': 22, 'name': 'herdcats-bridge', 'protocol': 1, 'version': version}
         self.binary = self.root / 'binary'
         self.binary.write_text('#!/bin/sh\nprintf \'%s\\n\' \'' + json.dumps(self.report, separators=(',', ':')) + "'\n")
@@ -58,6 +58,10 @@ out.write_bytes(data)
         digest = re.search(r'static let installerSHA256 = "([^"]+)"', source)[1]
         if hashlib.sha256(installer_path.read_bytes()).hexdigest() != digest:
             text = re.sub(r'^HB_VERSION=.*$', f'HB_VERSION={version}', installer_path.read_text(), flags=re.M)
+            # Match package.py's published agent-contract rendering.
+            if tuple(map(int, version.split('.'))) >= (0, 4, 0):
+                text = text.replace('"agents":["claude","codex"]',
+                                    '"agents":' + json.dumps(agents, separators=(',', ':')))
             if version.startswith('0.1.'):
                 text = re.sub(
                     r'case "\$HB_VERSION" in\n  0\.1\.\*\) HB_CONTRACT=.*?\n  \*\) HB_CONTRACT=.*?\nesac',

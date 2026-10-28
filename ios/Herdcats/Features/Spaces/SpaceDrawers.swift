@@ -235,9 +235,9 @@ struct OpenWorktreeDrawer: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage {
                 VStack(spacing: 14) {
-                    ErrorBanner(message: errorMessage) {
+                    ErrorBanner(message: errorMessage, retry: {
                         Task { await loadWorktrees() }
-                    }
+                    })
                     customInputSection
                     Spacer()
                 }

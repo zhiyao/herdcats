@@ -109,7 +109,7 @@ struct CodexTimelineDecodingTests {
         #expect(payload014.capabilities?.codexTimeline == false)
         #expect(AgentBridgeClient.unavailableCodeForCodex(handshake: payload014) == "helper_update_required")
 
-        // Real initialize frame from 0.2.0 with codex_timeline false -> transcript_root_unavailable
+        // A former minimum release now requires an upgrade, even when decoding succeeds.
         let json020 = """
         {
           "id": "init-2",
@@ -132,7 +132,7 @@ struct CodexTimelineDecodingTests {
         }
         #expect(payload020.bridgeVersion == "0.2.0")
         #expect(payload020.capabilities?.codexTimeline == false)
-        #expect(AgentBridgeClient.unavailableCodeForCodex(handshake: payload020) == "transcript_root_unavailable")
+        #expect(AgentBridgeClient.unavailableCodeForCodex(handshake: payload020) == "helper_update_required")
     }
 }
 
@@ -148,12 +148,12 @@ struct CodexTimelineGatingTests {
     }
 
     @Test func helperProbeGatingForCodexAndClaude() throws {
-        func report(agents: [String], version: String = "0.2.0") -> String {
+        func report(agents: [String], version: String = "0.5.0") -> String {
             let agentsJSON = agents.map { "\"\($0)\"" }.joined(separator: ",")
             return "HC_HELPER_MANAGED\n{\"name\":\"herdcats-bridge\",\"version\":\"\(version)\",\"protocol\":1,\"herdr_protocol\":22,\"agents\":[\(agentsJSON)]}"
         }
 
-        // Old helper (0.1.4) only has claude and is older than pinned 0.2.0
+        // Old helper (0.1.4) only has Claude and is below the minimum.
         let oldHelperReport = report(agents: ["claude"], version: "0.1.4")
         let probeForClaudeOnOld = try HostHelperProbe(output: oldHelperReport, agent: "claude")
         #expect(probeForClaudeOnOld == .present(version: "0.1.4", managed: true, compatible: false))
@@ -163,13 +163,13 @@ struct CodexTimelineGatingTests {
         #expect(HostHelperSetupPlan.decision(probe: probeForCodexOnOld, replace: false, checkOnly: false, agent: "codex") == .replacementRequired(probeForCodexOnOld))
         #expect(HostHelperSetupPlan.decision(probe: probeForCodexOnOld, replace: true, checkOnly: false, agent: "codex") == .install(replace: true))
 
-        // New helper (0.2.0) has both claude and codex
-        let newHelperReport = report(agents: ["claude", "codex"], version: "0.2.0")
+        // New helper (0.5.0) has both claude and codex
+        let newHelperReport = report(agents: ["claude", "codex"], version: "0.5.0")
         let probeForClaudeOnNew = try HostHelperProbe(output: newHelperReport, agent: "claude")
-        #expect(probeForClaudeOnNew == .present(version: "0.2.0", managed: true, compatible: true))
+        #expect(probeForClaudeOnNew == .present(version: "0.5.0", managed: true, compatible: true))
 
         let probeForCodexOnNew = try HostHelperProbe(output: newHelperReport, agent: "codex")
-        #expect(probeForCodexOnNew == .present(version: "0.2.0", managed: true, compatible: true))
+        #expect(probeForCodexOnNew == .present(version: "0.5.0", managed: true, compatible: true))
     }
 }
 
@@ -327,9 +327,9 @@ struct CodexTimelineGatingTests {
             onUseTerminal: {},
             onSetupComplete: {}
         )
-        // When Codex is supported by pinned installer (0.3.0 pinned release with HostHelperSetupPlan.agents == ["claude", "codex"])
+        // The pinned 0.5.0 installer supports Codex.
         // Without an installedVersion recorded yet:
-        #expect(view.explanation("helper_update_required") == "The Herdcats Bridge on this computer can't show Codex conversations. Upgrade to 0.3.0.")
+        #expect(view.explanation("helper_update_required") == "The Herdcats Bridge on this computer needs an upgrade. This app requires version 0.5.0 or later. Upgrade to 0.5.0.")
         #expect(view.explanation("unsupported_agent") == "Timeline isn't available for this agent yet.")
         #expect(view.explanation("helper_missing") == "Install Herdcats Bridge to see this session as native messages.")
 
@@ -342,15 +342,15 @@ struct CodexTimelineGatingTests {
 
         // 2. With Codex in supportedAgents
         let supportedWithCodex: Set<String> = ["claude", "codex"]
-        #expect(AgentTimelineView.explanation("helper_update_required", agent: "codex", installedVersion: "0.1.4", supportedAgents: supportedWithCodex) == "Herdcats Bridge 0.1.4 on this computer can't show Codex conversations. Upgrade to 0.3.0.")
-        #expect(AgentTimelineView.explanation("helper_update_required", agent: "codex", installedVersion: nil, supportedAgents: supportedWithCodex) == "The Herdcats Bridge on this computer can't show Codex conversations. Upgrade to 0.3.0.")
-        #expect(AgentTimelineView.explanation("unsupported_agent", agent: "codex", installedVersion: "0.1.4", supportedAgents: supportedWithCodex) == "Herdcats Bridge 0.1.4 on this computer can't show Codex conversations. Upgrade to 0.3.0.")
+        #expect(AgentTimelineView.explanation("helper_update_required", agent: "codex", installedVersion: "0.1.4", supportedAgents: supportedWithCodex) == "Herdcats Bridge 0.1.4 on this computer needs an upgrade. This app requires version 0.5.0 or later. Upgrade to 0.5.0.")
+        #expect(AgentTimelineView.explanation("helper_update_required", agent: "codex", installedVersion: nil, supportedAgents: supportedWithCodex) == "The Herdcats Bridge on this computer needs an upgrade. This app requires version 0.5.0 or later. Upgrade to 0.5.0.")
+        #expect(AgentTimelineView.explanation("unsupported_agent", agent: "codex", installedVersion: "0.1.4", supportedAgents: supportedWithCodex) == "Herdcats Bridge 0.1.4 on this computer can't show Codex conversations. Upgrade to 0.5.0.")
         #expect(AgentTimelineView.explanation("unsupported_agent", agent: "codex", installedVersion: nil, supportedAgents: supportedWithCodex) == "Timeline isn't available for this agent yet.")
         #expect(AgentTimelineView.explanation("helper_missing", agent: "codex", supportedAgents: supportedWithCodex) == "Install Herdcats Bridge to see this session as native messages.")
 
         // 3. Claude with and without installedVersion
-        #expect(AgentTimelineView.explanation("helper_update_required", agent: "claude", installedVersion: "0.1.4", supportedAgents: unsupportedAgents) == "Herdcats Bridge 0.1.4 on this computer can't show session images. Upgrade to 0.3.0.")
-        #expect(AgentTimelineView.explanation("helper_update_required", agent: "claude", installedVersion: nil, supportedAgents: unsupportedAgents) == "The Herdcats Bridge on this computer can't show session images. Upgrade to 0.3.0.")
+        #expect(AgentTimelineView.explanation("helper_update_required", agent: "claude", installedVersion: "0.1.4", supportedAgents: unsupportedAgents) == "Herdcats Bridge 0.1.4 on this computer needs an upgrade. This app requires version 0.5.0 or later. Upgrade to 0.5.0.")
+        #expect(AgentTimelineView.explanation("helper_update_required", agent: "claude", installedVersion: nil, supportedAgents: unsupportedAgents) == "The Herdcats Bridge on this computer needs an upgrade. This app requires version 0.5.0 or later. Upgrade to 0.5.0.")
         #expect(AgentTimelineView.explanation("unsupported_agent", agent: "claude", supportedAgents: unsupportedAgents) == "Timeline isn't available for this agent yet.")
         #expect(AgentTimelineView.explanation("helper_missing", agent: "claude", supportedAgents: unsupportedAgents) == "Install Herdcats Bridge to see this session as native messages.")
 
@@ -369,7 +369,7 @@ struct CodexTimelineGatingTests {
     }
 
     @Test func upgradeRequiresKnownOlderBridge() {
-        let cases: [(String?, Bool)] = [("0.1.4", true), ("0.2.0", false), (nil, false), ("invalid", false), ("0.2.1", false), ("0.2.2", false)]
+        let cases: [(String?, Bool)] = [("0.1.4", true), ("0.2.0", true), (nil, false), ("invalid", false), ("0.2.1", true), ("0.2.2", true), ("0.4.9", true), ("0.5.0", false), ("0.5.1", false)]
         for (version, needsUpgrade) in cases {
             for code in ["unsupported_agent", "record_too_large"] {
                 #expect(AgentTimelineView.isNeedsUpgrade(code: code, agent: "codex", bridgeVersion: version) == needsUpgrade)
@@ -386,7 +386,7 @@ struct CodexTimelineGatingTests {
     }
 
     @Test func manualInstallCommandReplacesOnlyForUpgrade() {
-        let install = "curl -fsSL https://github.com/zhiyao/herdcats/releases/download/herdcats-bridge-v0.3.0/install.sh | sh -s -- --version 0.3.0"
+        let install = "curl -fsSL https://github.com/zhiyao/herdcats/releases/download/herdcats-bridge-v0.5.0/install.sh | sh -s -- --version 0.5.0"
         #expect(HostHelperSetupPlan.manualInstallCommand(reason: .missing) == install)
         #expect(HostHelperSetupPlan.manualInstallCommand(reason: .updateRequired) == install + " --replace")
     }
@@ -395,25 +395,25 @@ struct CodexTimelineGatingTests {
         // Installed below minimum (e.g. 0.1.4 or nil)
         #expect(
             AgentTimelineView.upgradePitch(agent: "codex", installedVersion: "0.1.4")
-            == "Version 0.3.0 adds Codex conversations. Your agent keeps running while you upgrade."
+            == "This app requires Herdcats Bridge 0.5.0 or later. Your agent keeps running while you upgrade."
         )
         #expect(
             AgentTimelineView.upgradePitch(agent: "codex", installedVersion: nil)
-            == "Version 0.3.0 adds Codex conversations. Your agent keeps running while you upgrade."
+            == "This app requires Herdcats Bridge 0.5.0 or later. Your agent keeps running while you upgrade."
         )
         #expect(
             AgentTimelineView.upgradePitch(agent: "claude", installedVersion: "0.1.4")
-            == "Version 0.3.0 adds session images. Your agent keeps running while you upgrade."
+            == "This app requires Herdcats Bridge 0.5.0 or later. Your agent keeps running while you upgrade."
         )
 
-        // Installed at or above minimum (e.g. 0.2.0)
+        // Installed at or above minimum (0.5.0)
         #expect(
-            AgentTimelineView.upgradePitch(agent: "codex", installedVersion: "0.2.0")
-            == "Version 0.3.0 includes fixes for Codex conversations. Your agent keeps running while you upgrade."
+            AgentTimelineView.upgradePitch(agent: "codex", installedVersion: "0.5.0")
+            == "Version 0.5.0 includes fixes for Codex conversations. Your agent keeps running while you upgrade."
         )
         #expect(
-            AgentTimelineView.upgradePitch(agent: "claude", installedVersion: "0.2.0")
-            == "Version 0.3.0 includes fixes for session history. Your agent keeps running while you upgrade."
+            AgentTimelineView.upgradePitch(agent: "claude", installedVersion: "0.5.0")
+            == "Version 0.5.0 includes fixes for session history. Your agent keeps running while you upgrade."
         )
     }
 
@@ -474,14 +474,14 @@ struct CodexTimelineGatingTests {
     }
 
     @Test func helperSetupViewLabelAndFeedbackLogic() {
-        // update reason idle -> "Upgrade to 0.3.0"
+        // update reason idle -> "Upgrade to 0.5.0"
         #expect(
             AgentTimelineView.installLabel(stage: .idle, reason: .updateRequired)
-            == "Upgrade to 0.3.0"
+            == "Upgrade to 0.5.0"
         )
         #expect(
-            AgentTimelineView.installLabel(stage: .idle, reason: .updateRequired, pinnedVersion: "0.3.0")
-            == "Upgrade to 0.3.0"
+            AgentTimelineView.installLabel(stage: .idle, reason: .updateRequired, pinnedVersion: "0.5.0")
+            == "Upgrade to 0.5.0"
         )
 
         // busy labels
@@ -512,11 +512,11 @@ struct CodexTimelineGatingTests {
             == "Install Herdcats Bridge"
         )
 
-        // managed 0.1.4 replacementRequired -> "Replace Herdcats Bridge with 0.3.0" + found-version feedback
+        // managed 0.1.4 replacementRequired -> "Replace Herdcats Bridge with 0.5.0" + found-version feedback
         let managed014 = HostHelperProbe.present(version: "0.1.4", managed: true, compatible: false)
         #expect(
             AgentTimelineView.installLabel(stage: .replacementRequired(managed014))
-            == "Replace Herdcats Bridge with 0.3.0"
+            == "Replace Herdcats Bridge with 0.5.0"
         )
         #expect(
             AgentTimelineView.replacementFeedback(probe: managed014)
@@ -849,7 +849,7 @@ struct CodexDaemonConfigTests {
         }
         let initId = try await wire.requestId()
         let handshakeJSON = """
-        {"id":"\(initId)","result":{"protocol":1,"epoch":"e1","bridge_version":"0.2.2","capabilities":{"claude_timeline":true,"codex_timeline":true,"record_content":true,"codex_daemon_config":true,"codex_daemon_stop":true}}}
+        {"id":"\(initId)","result":{"protocol":1,"epoch":"e1","bridge_version":"0.5.0","capabilities":{"claude_timeline":true,"codex_timeline":true,"record_content":true,"codex_daemon_config":true,"codex_daemon_stop":true}}}
         """
         await client.receive(Data((handshakeJSON + "\n").utf8))
 
@@ -874,7 +874,7 @@ struct CodexDaemonConfigTests {
         let recordedCaps = await connection.bridgeCapabilities(for: generation)
         #expect(recordedCaps?.codexDaemonStop == true)
         let recordedVersion = await connection.bridgeVersion(for: generation)
-        #expect(recordedVersion == "0.2.2")
+        #expect(recordedVersion == "0.5.0")
 
         // A running shared server gets the in-app stop; an already-off one does not.
         #expect(AgentTimelineView.codexNoSessionAction(

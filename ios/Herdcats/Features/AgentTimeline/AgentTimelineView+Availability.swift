@@ -146,8 +146,9 @@ extension AgentTimelineView {
     ) -> Bool {
         let isSupported = canPinnedInstallerSupport(agent: agent, supportedAgents: supportedAgents)
         guard isSupported else { return false }
-        let isCodex = agent == "codex"
-        return code == "helper_update_required" || (HostHelperProbe.isOlderThanMinimum(bridgeVersion) && (code == "record_too_large" || (isCodex && code == "unsupported_agent")))
+        return code == "helper_update_required"
+            || (HostHelperProbe.isOlderThanMinimum(bridgeVersion)
+                && ["record_too_large", "unsupported_agent", "pi_bridge_required", "agy_bridge_required", "cursor_bridge_required"].contains(code))
     }
 
     static func upgradePitch(
@@ -158,8 +159,7 @@ extension AgentTimelineView {
         let isCodex = agent == "codex"
         let installedBelowMinimum = !HostHelperProbe.isAtLeastMinimum(installedVersion)
         if installedBelowMinimum {
-            let feature = isCodex ? "Codex conversations" : "session images"
-            return "Version \(pinnedVersion) adds \(feature). Your agent keeps running while you upgrade."
+            return "This app requires Herdcats Bridge \(HostHelperSetupPlan.minimumVersion) or later. Your agent keeps running while you upgrade."
         } else {
             let feature = isCodex ? "fixes for Codex conversations" : "fixes for session history"
             return "Version \(pinnedVersion) includes \(feature). Your agent keeps running while you upgrade."
@@ -422,8 +422,20 @@ extension AgentTimelineView {
         pinnedVersion: String = HostHelperSetupPlan.version,
         supportedAgents: Set<String> = Set(HostHelperSetupPlan.agents)
     ) -> String {
+        let capabilityErrors = ["pi": "pi_bridge_required", "antigravity_cli": "agy_bridge_required", "cursor": "cursor_bridge_required"]
+        if let canonical = TimelineAgentAvailability.canonical(agent), capabilityErrors[canonical] == code,
+           HostHelperProbe.isAtLeastMinimum(installedVersion) {
+            if canonical == "pi" {
+                return "Herdcats Bridge could not open this host’s Pi session directory. Check its permissions, start Pi 1.4.0 and load the Herdcats Pi extension in this pane, then check again. You can continue in Terminal."
+            }
+            let name = TimelineAgentAvailability.displayName(for: canonical)
+            return "Herdcats Bridge could not open this host’s \(name) session directory. Start \(name) on this SSH computer and check the directory permissions, then check again. You can continue in Terminal."
+        }
         if agent == "pi" {
             if ["helper_missing", "helper_update_required", "unsupported_agent", "pi_bridge_required"].contains(code) {
+                if canPinnedInstallerSupport(agent: agent, supportedAgents: supportedAgents) {
+                    return "Install or upgrade Herdcats Bridge to \(pinnedVersion), then load the Herdcats Pi extension in this pane’s Pi 1.4.0 TUI and check again. The bridge installer does not install the Pi extension. You can continue in Terminal."
+                }
                 return "Pi conversations require a source build of Herdcats Bridge and the Herdcats Pi extension. The published \(pinnedVersion) installer supports Claude and Codex. Set up Pi on this SSH computer, then check again. You can continue in Terminal."
             }
             if code == "session_reference_unavailable" || code == "unsupported_session_source" {
@@ -444,10 +456,16 @@ extension AgentTimelineView {
         }
         if TimelineAgentAvailability.canonical(agent) == "antigravity_cli",
            ["helper_missing", "helper_update_required", "unsupported_agent", "agy_bridge_required"].contains(code) {
+            if canPinnedInstallerSupport(agent: agent, supportedAgents: supportedAgents) {
+                return "Install or upgrade Herdcats Bridge to \(pinnedVersion) on this SSH computer, then check again. You can continue in Terminal."
+            }
             return "Agy conversations require a source build of Herdcats Bridge with Agy support. The published \(pinnedVersion) installer supports Claude and Codex. Install the source bridge manually on this SSH computer, then check again. You can continue in Terminal."
         }
         if agent == "cursor",
            ["helper_missing", "helper_update_required", "unsupported_agent", "cursor_bridge_required"].contains(code) {
+            if canPinnedInstallerSupport(agent: agent, supportedAgents: supportedAgents) {
+                return "Install or upgrade Herdcats Bridge to \(pinnedVersion) on this SSH computer, then check again. You can continue in Terminal."
+            }
             return "Cursor conversations require a source build of Herdcats Bridge with Cursor support. The published \(pinnedVersion) installer supports Claude and Codex. Install the source bridge manually on this SSH computer, then check again. You can continue in Terminal."
         }
         if agent == "cursor", ["session_reference_unavailable", "ambiguous_session", "invalid_session_reference"].contains(code) {
@@ -464,14 +482,13 @@ extension AgentTimelineView {
             }
             return "Install Herdcats Bridge to see this session as native messages."
         case "helper_update_required":
-            if let agent, !supportedAgents.contains(agent) {
+            if let agent, !canPinnedInstallerSupport(agent: agent, supportedAgents: supportedAgents) {
                 return "This version of Herdcats can't install a version of Herdcats Bridge that supports \(agent.capitalized) yet."
             }
-            let feature = isCodex ? "Codex conversations" : "session images"
             if let installed = installedVersion, !installed.isEmpty {
-                return "Herdcats Bridge \(installed) on this computer can't show \(feature). Upgrade to \(pinnedVersion)."
+                return "Herdcats Bridge \(installed) on this computer needs an upgrade. This app requires version \(HostHelperSetupPlan.minimumVersion) or later. Upgrade to \(pinnedVersion)."
             } else {
-                return "The Herdcats Bridge on this computer can't show \(feature). Upgrade to \(pinnedVersion)."
+                return "The Herdcats Bridge on this computer needs an upgrade. This app requires version \(HostHelperSetupPlan.minimumVersion) or later. Upgrade to \(pinnedVersion)."
             }
         case "unsupported_agent":
             if isCodex {
