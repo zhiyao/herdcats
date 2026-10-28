@@ -178,7 +178,6 @@ struct ConnectionInputSurface: ViewModifier {
         let shape = RoundedRectangle.continuous(DesignSystem.CornerRadius.md)
         content
             .background(shape.fill(Theme.cardBackground))
-            .overlay(shape.strokeBorder(Theme.hairline, lineWidth: 1).allowsHitTesting(false))
     }
 }
 

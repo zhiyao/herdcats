@@ -278,7 +278,7 @@ struct ConnectView: View {
                             }
                             .frame(maxWidth: .infinity, minHeight: 126, alignment: .leading)
                             .padding(16)
-                            .herdrCard()
+                            .herdrCard(showsBorder: false)
                         }
                         .buttonStyle(.herdrCard)
                         .accessibilityIdentifier("connect-machine-\(connection.id.uuidString)")
