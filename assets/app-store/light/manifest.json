@@ -1,0 +1,17 @@
+{
+  "appearance": "light",
+  "sources": {
+    "03_spaces.png": "d2b694b7a1a23d972b5bed0fdb63364a45db38948549b792bea1c9fdf1c1177a",
+    "06_agents.png": "9365912278c8cff459048109f189c8b6c453cb423db0982355b3be36cc5dbf6a"
+  },
+  "images": [
+    {
+      "file": "product-page-header.png",
+      "sha256": "c609d290f83500af31a24fb1f254c39d3dd642992b20bf429bdfcb44e70445f4"
+    },
+    {
+      "file": "search-results.png",
+      "sha256": "920b3f4166721116d066e15830bf4710a768b142dc93d4b3a2e0bee4361e5f0b"
+    }
+  ]
+}

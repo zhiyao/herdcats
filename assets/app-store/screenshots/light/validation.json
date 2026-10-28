@@ -1,0 +1,247 @@
+{
+  "rawCount": 12,
+  "appStoreCount": 30,
+  "validation": "All PNG hashes, fresh source references, target counts, dimensions, RGB opacity passed.",
+  "exports": [
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.3/01-spaces.png",
+      "dimensions": [
+        1206,
+        2622
+      ],
+      "sha256": "95d9cb4ee9f4bdc68b3147f8600b65a927f40d6cda83a0703c84e295d5fb5d79"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.3/02-agents.png",
+      "dimensions": [
+        1206,
+        2622
+      ],
+      "sha256": "df67e0149cd6855a8167341aa8711fe97e2b22d5372db44eeddf08598f98bddf"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.3/03-pane.png",
+      "dimensions": [
+        1206,
+        2622
+      ],
+      "sha256": "c1e00d4780414a3e0f5e26a6aca47cdd80b71111adc99b7fb4d286091a6a23a7"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.3/04-keys.png",
+      "dimensions": [
+        1206,
+        2622
+      ],
+      "sha256": "cde5d35cac22279eec83022beeab4f4e990baa950e5fc54b0100e959af339112"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.3/05-agent-pane.png",
+      "dimensions": [
+        1206,
+        2622
+      ],
+      "sha256": "39d354d5580549ddddc7e4e083b9b40b67e0dd98c45cd556cf6b3278406efc54"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.3/06-quota.png",
+      "dimensions": [
+        1206,
+        2622
+      ],
+      "sha256": "d6e61b178303d66a94f847598619cc4caa44481a92f037b1735b0389f69fcff4"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.3/07-connect.png",
+      "dimensions": [
+        1206,
+        2622
+      ],
+      "sha256": "0ac3ed42abcff1836c0f7f4438e474df2fd0134e1ea08b1e1f0340d96840e2da"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.3/08-settings.png",
+      "dimensions": [
+        1206,
+        2622
+      ],
+      "sha256": "fcb874cf3a56c16878a87524f72c6aa2525f746ebe77dda7f83dc5319a2c611a"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.3/09-compose.png",
+      "dimensions": [
+        1206,
+        2622
+      ],
+      "sha256": "dd619a18728470c43ea039cfddb32c0605c9cfbd4aeebd5db9336c03c8a695ae"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.3/10-voice.png",
+      "dimensions": [
+        1206,
+        2622
+      ],
+      "sha256": "10db3262d61ed815947c5cede72cd5abed2d297b3637d2316bb17ae362c31ad1"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.5/01-spaces.png",
+      "dimensions": [
+        1284,
+        2778
+      ],
+      "sha256": "fb9054840378b15f4d7f919bf6f1ce9f57cb629c09751bed91bca9d683d5e1da"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.5/02-agents.png",
+      "dimensions": [
+        1284,
+        2778
+      ],
+      "sha256": "cc0b4b254e1ab8f2acdb775d4d6c45b6e39b85d976597ead23afe456db248255"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.5/03-pane.png",
+      "dimensions": [
+        1284,
+        2778
+      ],
+      "sha256": "217a45d5f996e0b2c1a443613df35aa29655f7bcbb0373c3cbcb8f941cd394b9"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.5/04-keys.png",
+      "dimensions": [
+        1284,
+        2778
+      ],
+      "sha256": "8179fb5fa4766754b248eb998f69b0862d28fdedfc9fb7d010b81bee8cedeaf0"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.5/05-agent-pane.png",
+      "dimensions": [
+        1284,
+        2778
+      ],
+      "sha256": "5309dd2d988b20c59289e95209c4d0fcdeac58608b5a37b1e0491ce89a155cc4"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.5/06-quota.png",
+      "dimensions": [
+        1284,
+        2778
+      ],
+      "sha256": "661800e79e9e9b3315da5a436f0c53754ca976006489918867d2a098a2ba8b96"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.5/07-connect.png",
+      "dimensions": [
+        1284,
+        2778
+      ],
+      "sha256": "39d339cb59ad308918c82de4a5eae3b811c9553cd08af82f18dd32c2725ab773"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.5/08-settings.png",
+      "dimensions": [
+        1284,
+        2778
+      ],
+      "sha256": "59853bdabfc0a4932fd87aa789ae42a6df02a790e58e12c7d969fe20f6e70d18"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.5/09-compose.png",
+      "dimensions": [
+        1284,
+        2778
+      ],
+      "sha256": "98ee39696781edaf87e5bfd012434e88ecc421bf955bc8b3622189a12971496a"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.5/10-voice.png",
+      "dimensions": [
+        1284,
+        2778
+      ],
+      "sha256": "d7e1e17057e8191170669924e9a875bb7fdf8b486c16c1364e8e0802c6c5b38d"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.9/01-spaces.png",
+      "dimensions": [
+        1320,
+        2868
+      ],
+      "sha256": "4a26af3766231eda6b3d1952e2645e7466db05a03c60c1a1f52d60c8cca640de"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.9/02-agents.png",
+      "dimensions": [
+        1320,
+        2868
+      ],
+      "sha256": "83c6de958cb37ed88527d5ccbe92b3190099acf12760a1ed9003d9a048be76da"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.9/03-pane.png",
+      "dimensions": [
+        1320,
+        2868
+      ],
+      "sha256": "256b0946d1e161b99355f97970ea93ae47eb5048f10a903281fb2010cbfcf540"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.9/04-keys.png",
+      "dimensions": [
+        1320,
+        2868
+      ],
+      "sha256": "c41735fa772176968ea533b43a95eb04cc0489a98a1b898d891722dfd7396127"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.9/05-agent-pane.png",
+      "dimensions": [
+        1320,
+        2868
+      ],
+      "sha256": "51a370ee80d290fe9e99efafe7c0877452b2a37077fbaa021d1aaf397afe4288"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.9/06-quota.png",
+      "dimensions": [
+        1320,
+        2868
+      ],
+      "sha256": "53e99baabb47b3abf83d16ec16290ce9fb7f273950a9cafa7e9de0bd1b112183"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.9/07-connect.png",
+      "dimensions": [
+        1320,
+        2868
+      ],
+      "sha256": "1b75d816de1cb083081c84c94c073d0c35b368e7edef03a61b3c3bbda612b23d"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.9/08-settings.png",
+      "dimensions": [
+        1320,
+        2868
+      ],
+      "sha256": "3214835ebbc82489ac531c9f9f71eaa6432d1b9ce957df2e956f71b2bdb64696"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.9/09-compose.png",
+      "dimensions": [
+        1320,
+        2868
+      ],
+      "sha256": "51d1e5d81a2b49d7c0c0bbbed2584aa1b3049247bc0c606c5d2ecb2ee6e2fc68"
+    },
+    {
+      "file": "ios/maestro/app-store-output/rebased-light/2026-10-28T11-34-19-921Z-1JLbin/iphone-6.9/10-voice.png",
+      "dimensions": [
+        1320,
+        2868
+      ],
+      "sha256": "bed9077e27d2b0e8278a98237c4ba4ca95dd60bb865a943c890551f32862e8ad"
+    }
+  ]
+}

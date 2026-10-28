@@ -143,6 +143,11 @@ struct ScreenshotRootView: View {
         app.phase = .connected(host: "studio-mac", username: "demo")
         app.hasActiveSession = true
         app.connectionIdentity = ConnectionIdentity(host: "studio-mac", port: 22, username: "demo")
+        // Keep each capture independent of previous timeline/terminal navigation.
+        if ProcessInfo.processInfo.arguments.contains("-hc.capture-surface"), let identity = app.connectionIdentity {
+            let terminal = ["pane", "agent-pane", "keys"].contains(ScreenshotFixtures.screen)
+            UserDefaults.standard.set(terminal, forKey: TimelineSetupPreference.key(scope: identity))
+        }
         if ProcessInfo.processInfo.arguments.contains("-hc.timeline-intro-reset"), let identity = app.connectionIdentity {
             UserDefaults.standard.removeObject(forKey: TimelineSetupPreference.key(scope: identity))
         }
