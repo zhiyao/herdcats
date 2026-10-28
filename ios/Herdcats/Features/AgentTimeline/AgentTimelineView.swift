@@ -129,7 +129,7 @@ struct AgentTimelineView: View {
         Self.canPinnedInstallerSupport(agent: agent)
     }
     static func canPinnedInstallerSupport(agent: String?, supportedAgents: Set<String> = Set(HostHelperSetupPlan.agents)) -> Bool {
-        agent.map { supportedAgents.contains($0) } ?? true
+        agent.map { supportedAgents.contains(TimelineAgentAvailability.canonical($0) ?? $0) } ?? true
     }
     static func installLabel(
         stage: HostHelperSetupStage,

@@ -191,9 +191,9 @@ struct WorkspacePaneView: View {
                         CircularArcSpinner("Loading panes…")
                     } else if let errorMessage,
                               !HerdrConnection.isDisconnectionOrTransitionMessage(errorMessage) {
-                        ErrorBanner(message: errorMessage) {
+                        ErrorBanner(message: errorMessage, retry: {
                             Task { await loadPanes() }
-                        }
+                        })
                     } else {
                         ContentUnavailableView(
                             initialPaneID == nil ? "No panes available" : "Pane unavailable",

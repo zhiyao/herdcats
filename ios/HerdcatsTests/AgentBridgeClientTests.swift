@@ -15,6 +15,58 @@ private actor BridgeTestWire {
 }
 @Suite("Agent bridge request lifecycle")
 struct AgentBridgeClientTests {
+    @Test func allAgentsRejectOldMissingAndMalformedVersionsBeforeWatching() async throws {
+        let versions: [String?] = [nil, "invalid", "0.3.0", "0.4.9"]
+        for agent in ["claude", "codex", "agy", "antigravity_cli", "pi", "cursor"] {
+            for version in versions {
+                let wire = BridgeTestWire()
+                let client = AgentBridgeClient(write: { await wire.write($0) }, close: { await wire.close() }, onEvent: { _ in })
+                let handshake = Task { try await client.performHandshakeAndWatch(paneId: "p", agent: agent) }
+                try await wait(wire)
+                var result: [String: Any] = [
+                    "protocol": 1, "epoch": "e",
+                    "capabilities": ["claude_timeline": true, "codex_timeline": true, "agy": true, "pi": true, "cursor": true, "record_content": true]
+                ]
+                if let version { result["bridge_version"] = version }
+                var bytes = try JSONSerialization.data(withJSONObject: ["id": try await wire.requestId(), "result": result])
+                bytes.append(10)
+                await client.receive(bytes)
+                do {
+                    try await handshake.value
+                    Issue.record("An unsupported bridge version was accepted for \(agent)")
+                } catch {
+                    #expect((error as? AgentBridgeError)?.code == "helper_update_required")
+                }
+                #expect(await wire.commands.count == 1)
+                await client.close()
+            }
+        }
+    }
+
+    @Test func minimumAndNewerVersionsCanWatchAllAgents() async throws {
+        for agent in ["claude", "codex", "agy", "antigravity_cli", "pi", "cursor"] {
+            for version in ["0.5.0", "0.5.1"] {
+                let wire = BridgeTestWire()
+                let client = AgentBridgeClient(write: { await wire.write($0) }, close: { await wire.close() }, onEvent: { _ in })
+                let handshake = Task { try await client.performHandshakeAndWatch(paneId: "p", agent: agent) }
+                try await wait(wire)
+                let result: [String: Any] = [
+                    "protocol": 1, "epoch": "e", "bridge_version": version,
+                    "capabilities": ["claude_timeline": true, "codex_timeline": true, "agy": true, "pi": true, "cursor": true, "record_content": true]
+                ]
+                var bytes = try JSONSerialization.data(withJSONObject: ["id": try await wire.requestId(), "result": result])
+                bytes.append(10)
+                await client.receive(bytes)
+                try await wait(wire, count: 2)
+                let id = try await wire.requestId()
+                await client.receive(Data("{\"id\":\"\(id)\",\"result\":{}}\n".utf8))
+                try await handshake.value
+                #expect(await wire.commands.count == 2)
+                await client.close()
+            }
+        }
+    }
+
     @Test func repliesInterleaveEventsWithoutConsumingTheWrongRequest() async throws {
         let wire = BridgeTestWire()
         let events = BridgeTestWire()
@@ -135,7 +187,7 @@ struct AgentBridgeClientTests {
             let task = Task { try await client.performHandshakeAndWatch(paneId: "p1", agent: agent) }
             try await wait(wire)
             let id = try await wire.requestId()
-            await client.receive(Data("{\"id\":\"\(id)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":{\"claude_timeline\":true,\"record_content\":true}}}\n".utf8))
+            await client.receive(Data("{\"id\":\"\(id)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"bridge_version\":\"0.5.0\",\"capabilities\":{\"claude_timeline\":true,\"record_content\":true}}}\n".utf8))
             do { try await task.value; Issue.record("Agy accepted a Claude-only bridge") }
             catch { #expect((error as? AgentBridgeError)?.code == "agy_bridge_required") }
             #expect(await wire.commands.count == 1)
@@ -151,7 +203,7 @@ struct AgentBridgeClientTests {
         let request = try #require(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
         #expect(request["params"] as? NSDictionary == ["protocol": 1, "record_content": true, "approvals": true, "questions": true, "model_control": true] as NSDictionary)
         let id = try await wire.requestId()
-        await client.receive(Data("{\"id\":\"\(id)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":{\"claude_timeline\":true,\"record_content\":true,\"approvals\":true,\"questions\":true}}}\n".utf8))
+        await client.receive(Data("{\"id\":\"\(id)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"bridge_version\":\"0.5.0\",\"capabilities\":{\"claude_timeline\":true,\"record_content\":true,\"approvals\":true,\"questions\":true}}}\n".utf8))
         for _ in 0..<500 {
             if await wire.commands.count == 2 { break }
             try await Task.sleep(for: .milliseconds(2))
@@ -171,7 +223,7 @@ struct AgentBridgeClientTests {
             let task = Task { try await client.performHandshakeAndWatch(paneId: "p1", agent: "cursor") }
             try await wait(wire)
             let id = try await wire.requestId()
-            await client.receive(Data("{\"id\":\"\(id)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":\(capabilities)}}\n".utf8))
+            await client.receive(Data("{\"id\":\"\(id)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"bridge_version\":\"0.5.0\",\"capabilities\":\(capabilities)}}\n".utf8))
             do { try await task.value; Issue.record("Cursor accepted a bridge without Cursor support") }
             catch { #expect((error as? AgentBridgeError)?.code == "cursor_bridge_required") }
             #expect(await wire.commands.count == 1)
@@ -264,7 +316,7 @@ struct AgentBridgeClientTests {
         let handshake = Task { try await client.performHandshakeAndWatch(paneId: "p", agent: "cursor") }
         try await wait(wire)
         let initializeId = try await wire.requestId()
-        await client.receive(Data("{\"id\":\"\(initializeId)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":{\"claude_timeline\":false,\"cursor\":true,\"record_content\":true}}}\n".utf8))
+        await client.receive(Data("{\"id\":\"\(initializeId)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"bridge_version\":\"0.5.0\",\"capabilities\":{\"claude_timeline\":false,\"cursor\":true,\"record_content\":true}}}\n".utf8))
         for _ in 0..<500 {
             if await wire.commands.count == 2 { break }
             try await Task.sleep(for: .milliseconds(2))
@@ -302,7 +354,7 @@ struct AgentBridgeClientTests {
         let handshake = Task { try await client.performHandshakeAndWatch(paneId: "p", agent: agent) }
         try await wait(wire)
         let initializeId = try await wire.requestId()
-        await client.receive(Data("{\"id\":\"\(initializeId)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":\(capabilities)}}\n".utf8))
+        await client.receive(Data("{\"id\":\"\(initializeId)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"bridge_version\":\"0.5.0\",\"capabilities\":\(capabilities)}}\n".utf8))
         for _ in 0..<500 {
             if await wire.commands.count == 2 { break }
             try await Task.sleep(for: .milliseconds(2))
@@ -365,7 +417,7 @@ struct AgentBridgeClientTests {
         let handshake = Task { try await client.performHandshakeAndWatch(paneId: "p", agent: "agy") }
         try await wait(wire)
         let initializeId = try await wire.requestId()
-        await client.receive(Data("{\"id\":\"\(initializeId)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":{\"claude_timeline\":false,\"agy\":true,\"record_content\":true}}}\n".utf8))
+        await client.receive(Data("{\"id\":\"\(initializeId)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"bridge_version\":\"0.5.0\",\"capabilities\":{\"claude_timeline\":false,\"agy\":true,\"record_content\":true}}}\n".utf8))
         for _ in 0..<500 {
             if await wire.commands.count == 2 { break }
             try await Task.sleep(for: .milliseconds(2))
@@ -390,7 +442,7 @@ struct AgentBridgeClientTests {
         let handshake = Task { try await client.performHandshakeAndWatch(paneId: "p", agent: "agy") }
         try await wait(wire)
         let initializeId = try await wire.requestId()
-        await client.receive(Data("{\"id\":\"\(initializeId)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":{\"claude_timeline\":false,\"agy\":true,\"model_control\":true,\"record_content\":true}}}\n".utf8))
+        await client.receive(Data("{\"id\":\"\(initializeId)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"bridge_version\":\"0.5.0\",\"capabilities\":{\"claude_timeline\":false,\"agy\":true,\"model_control\":true,\"record_content\":true}}}\n".utf8))
         for _ in 0..<500 {
             if await wire.commands.count == 2 { break }
             try await Task.sleep(for: .milliseconds(2))
@@ -426,7 +478,7 @@ struct AgentBridgeClientTests {
         let handshake = Task { try await client.performHandshakeAndWatch(paneId: "p", agent: "pi") }
         try await wait(wire)
         let initializeId = try await wire.requestId()
-        await client.receive(Data("{\"id\":\"\(initializeId)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":{\"claude_timeline\":false,\"pi\":true,\"record_content\":true}}}\n".utf8))
+        await client.receive(Data("{\"id\":\"\(initializeId)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"bridge_version\":\"0.5.0\",\"capabilities\":{\"claude_timeline\":false,\"pi\":true,\"record_content\":true}}}\n".utf8))
         for _ in 0..<500 {
             if await wire.commands.count == 2 { break }
             try await Task.sleep(for: .milliseconds(2))
@@ -460,7 +512,7 @@ struct AgentBridgeClientTests {
         let handshake = Task { try await client.performHandshakeAndWatch(paneId: "p", agent: "pi") }
         try await wait(wire)
         let initializeId = try await wire.requestId()
-        await client.receive(Data("{\"id\":\"\(initializeId)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":{\"claude_timeline\":false,\"pi\":true,\"model_control\":true,\"record_content\":true}}}\n".utf8))
+        await client.receive(Data("{\"id\":\"\(initializeId)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"bridge_version\":\"0.5.0\",\"capabilities\":{\"claude_timeline\":false,\"pi\":true,\"model_control\":true,\"record_content\":true}}}\n".utf8))
         for _ in 0..<500 {
             if await wire.commands.count == 2 { break }
             try await Task.sleep(for: .milliseconds(2))
@@ -533,9 +585,9 @@ struct AgentBridgeClientTests {
             await client.close()
         }
     }
-    private func wait(_ wire: BridgeTestWire) async throws {
+    private func wait(_ wire: BridgeTestWire, count: Int = 1) async throws {
         for _ in 0..<500 {
-            if await !wire.commands.isEmpty { return }
+            if await wire.commands.count >= count { return }
             try await Task.sleep(for: .milliseconds(2))
         }
         throw AgentBridgeError.timeout
@@ -544,16 +596,16 @@ struct AgentBridgeClientTests {
 
 @Suite("Host helper explicit setup policy")
 struct HostHelperSetupPolicyTests {
-    private func report(_ version: String = "0.2.0", protocolNumber: Int = 1) -> String {
+    private func report(_ version: String = "0.5.0", protocolNumber: Int = 1) -> String {
         "HC_HELPER_MANAGED\n{\"name\":\"herdcats-bridge\",\"version\":\"\(version)\",\"protocol\":\(protocolNumber),\"herdr_protocol\":22,\"agents\":[\"claude\",\"codex\"]}"
     }
     @Test func currentInstallationNeedsNoDownloadOrReplacement() throws {
         let probe = try HostHelperProbe(output: report())
-        #expect(probe == .present(version: "0.2.0", managed: true, compatible: true))
+        #expect(probe == .present(version: "0.5.0", managed: true, compatible: true))
         #expect(HostHelperSetupPlan.decision(probe: probe, replace: true, checkOnly: false) == .ready)
     }
     @Test func unknownAndOldManagedFilesRequireExplicitReplacement() throws {
-        for output in [report("0.1.4"), report("0.1.0"), "HC_HELPER_MANAGED\nnot a version report"] {
+        for output in [report("0.4.9"), report("0.3.0"), report("0.1.4"), report("0.1.0"), "HC_HELPER_MANAGED\nnot a version report"] {
             let probe = try HostHelperProbe(output: output)
             #expect(HostHelperSetupPlan.decision(probe: probe, replace: false, checkOnly: false) == .replacementRequired(probe))
             #expect(HostHelperSetupPlan.decision(probe: probe, replace: true, checkOnly: false) == .install(replace: true))
@@ -568,22 +620,22 @@ struct HostHelperSetupPolicyTests {
     @Test func externalHelperIsNotOverwrittenAndNewerCompatibleHelperIsNotDowngraded() throws {
         let external = try HostHelperProbe(output: report("0.1.4").replacingOccurrences(of: "MANAGED", with: "EXTERNAL"))
         #expect(HostHelperSetupPlan.decision(probe: external, replace: true, checkOnly: false) == .install(replace: false))
-        let newer = try HostHelperProbe(output: report("0.3.1"))
+        let newer = try HostHelperProbe(output: report("0.5.1"))
         #expect(HostHelperSetupPlan.decision(probe: newer, replace: true, checkOnly: false) == .ready)
     }
     @Test func incompatibleProtocolDoesNotCountAsInstalledAndUnsafeTargetFailsClosed() throws {
         let probe = try HostHelperProbe(output: report(protocolNumber: 2))
-        #expect(probe == .present(version: "0.2.0", managed: true, compatible: false))
+        #expect(probe == .present(version: "0.5.0", managed: true, compatible: false))
         #expect(throws: HostHelperSetupError.unsafeDestination) { try HostHelperProbe(output: "HC_HELPER_BLOCKED\n") }
     }
     @Test func unsupportedAgentInPinnedInstallerRefusesInstallOrReplace() throws {
-        let missing = try HostHelperProbe(output: "HC_HELPER_MISSING\n", agent: "cursor")
-        #expect(HostHelperSetupPlan.decision(probe: missing, replace: true, checkOnly: false, agent: "cursor") == .unsupportedByPinnedInstaller("cursor"))
-        #expect(HostHelperSetupPlan.decision(probe: missing, replace: false, checkOnly: true, agent: "cursor") == .unsupportedByPinnedInstaller("cursor"))
+        let missing = try HostHelperProbe(output: "HC_HELPER_MISSING\n", agent: "future_agent")
+        #expect(HostHelperSetupPlan.decision(probe: missing, replace: true, checkOnly: false, agent: "future_agent") == .unsupportedByPinnedInstaller("future_agent"))
+        #expect(HostHelperSetupPlan.decision(probe: missing, replace: false, checkOnly: true, agent: "future_agent") == .unsupportedByPinnedInstaller("future_agent"))
 
-        let oldHelperForCursor = try HostHelperProbe(output: report("0.1.4"), agent: "cursor")
-        #expect(HostHelperSetupPlan.decision(probe: oldHelperForCursor, replace: true, checkOnly: false, agent: "cursor") == .unsupportedByPinnedInstaller("cursor"))
-        #expect(HostHelperSetupPlan.decision(probe: oldHelperForCursor, replace: false, checkOnly: false, agent: "cursor") == .unsupportedByPinnedInstaller("cursor"))
+        let oldHelperForUnknownAgent = try HostHelperProbe(output: report("0.1.4"), agent: "future_agent")
+        #expect(HostHelperSetupPlan.decision(probe: oldHelperForUnknownAgent, replace: true, checkOnly: false, agent: "future_agent") == .unsupportedByPinnedInstaller("future_agent"))
+        #expect(HostHelperSetupPlan.decision(probe: oldHelperForUnknownAgent, replace: false, checkOnly: false, agent: "future_agent") == .unsupportedByPinnedInstaller("future_agent"))
     }
     @Test func codexAndClaudeSetupDecisions() throws {
         // Codex pane with no helper offers install
@@ -607,41 +659,41 @@ struct HostHelperSetupPolicyTests {
         #expect(HostHelperSetupPlan.decision(probe: missingClaude, replace: false, checkOnly: false, agent: "claude") == .install(replace: false))
         #expect(HostHelperSetupPlan.decision(probe: missingClaude, replace: true, checkOnly: false, agent: "claude") == .install(replace: false))
 
-        // A 0.2.0 helper compatible with both claude and codex
-        let report020 = "HC_HELPER_MANAGED\n{\"name\":\"herdcats-bridge\",\"version\":\"0.2.0\",\"protocol\":1,\"herdr_protocol\":22,\"agents\":[\"claude\",\"codex\"]}"
-        let compatibleCodex = try HostHelperProbe(output: report020, agent: "codex")
-        #expect(compatibleCodex == .present(version: "0.2.0", managed: true, compatible: true))
+        // A current helper compatible with both Claude and Codex
+        let report050 = "HC_HELPER_MANAGED\n{\"name\":\"herdcats-bridge\",\"version\":\"0.5.0\",\"protocol\":1,\"herdr_protocol\":22,\"agents\":[\"claude\",\"codex\"]}"
+        let compatibleCodex = try HostHelperProbe(output: report050, agent: "codex")
+        #expect(compatibleCodex == .present(version: "0.5.0", managed: true, compatible: true))
         #expect(HostHelperSetupPlan.decision(probe: compatibleCodex, replace: false, checkOnly: false, agent: "codex") == .ready)
 
-        let compatibleClaude = try HostHelperProbe(output: report020, agent: "claude")
-        #expect(compatibleClaude == .present(version: "0.2.0", managed: true, compatible: true))
+        let compatibleClaude = try HostHelperProbe(output: report050, agent: "claude")
+        #expect(compatibleClaude == .present(version: "0.5.0", managed: true, compatible: true))
         #expect(HostHelperSetupPlan.decision(probe: compatibleClaude, replace: false, checkOnly: false, agent: "claude") == .ready)
     }
 
-    @Test func pinnedReleaseIs030WithVerifiedInstallerChecksum() {
-        #expect(HostHelperSetupPlan.version == "0.3.0")
-        #expect(HostHelperSetupPlan.minimumVersion == "0.2.0")
-        #expect(HostHelperSetupPlan.installerSHA256 == "abc709fd23eed7e8ba395f21aec7a31415c8d79d8e32655748d14514f3322025")
-        #expect(HostHelperSetupPlan.agents == ["claude", "codex"])
+    @Test func pinnedReleaseIs050WithVerifiedInstallerChecksum() {
+        #expect(HostHelperSetupPlan.version == "0.5.0")
+        #expect(HostHelperSetupPlan.minimumVersion == "0.5.0")
+        #expect(HostHelperSetupPlan.installerSHA256 == "64d19e790f6256db5c4fc3b28240bbe9462b32268c3afd541befe7505ea6397a")
+        #expect(HostHelperSetupPlan.agents == ["claude", "codex", "antigravity_cli", "pi", "cursor"])
         let install = HostHelperSetupPlan.installationScript(replace: false)
-        #expect(install.contains("herdcats-bridge-v0.3.0/install.sh"))
+        #expect(install.contains("herdcats-bridge-v0.5.0/install.sh"))
         #expect(install.contains(HostHelperSetupPlan.installerSHA256))
         #expect(!install.contains("--replace"))
         #expect(HostHelperSetupPlan.installationScript(replace: true).contains("--replace"))
         #expect(HostHelperSetupPlan.manualInstallCommand(reason: .missing)
-            == "curl -fsSL https://github.com/zhiyao/herdcats/releases/download/herdcats-bridge-v0.3.0/install.sh | sh -s -- --version 0.3.0")
+            == "curl -fsSL https://github.com/zhiyao/herdcats/releases/download/herdcats-bridge-v0.5.0/install.sh | sh -s -- --version 0.5.0")
         #expect(HostHelperSetupPlan.manualInstallCommand(reason: .updateRequired).hasSuffix(" --replace"))
     }
 
     @Test func helperSetupLabelAndFeedbackLogic() throws {
-        // update reason idle -> "Upgrade to 0.3.0"
+        // update reason idle -> "Upgrade to 0.5.0"
         #expect(
             HostHelperSetupPlan.installLabel(stage: .idle, reason: .updateRequired)
-            == "Upgrade to 0.3.0"
+            == "Upgrade to 0.5.0"
         )
         #expect(
-            HostHelperSetupPlan.installLabel(stage: .idle, reason: .updateRequired, pinnedVersion: "0.3.0")
-            == "Upgrade to 0.3.0"
+            HostHelperSetupPlan.installLabel(stage: .idle, reason: .updateRequired, pinnedVersion: "0.5.0")
+            == "Upgrade to 0.5.0"
         )
 
         // busy labels
@@ -672,15 +724,15 @@ struct HostHelperSetupPolicyTests {
             == "Install Herdcats Bridge"
         )
 
-        // managed 0.1.4 replacementRequired -> "Replace Herdcats Bridge with 0.3.0" + found-version feedback
+        // managed 0.1.4 replacementRequired -> "Replace Herdcats Bridge with 0.5.0" + found-version feedback
         let managed014 = HostHelperProbe.present(version: "0.1.4", managed: true, compatible: false)
         #expect(
-            HostHelperSetupPlan.installLabel(stage: .replacementRequired(managed014), pinnedVersion: "0.3.0")
-            == "Replace Herdcats Bridge with 0.3.0"
+            HostHelperSetupPlan.installLabel(stage: .replacementRequired(managed014), pinnedVersion: "0.5.0")
+            == "Replace Herdcats Bridge with 0.5.0"
         )
         #expect(
             HostHelperSetupPlan.installLabel(stage: .replacementRequired(managed014))
-            == "Replace Herdcats Bridge with 0.3.0"
+            == "Replace Herdcats Bridge with 0.5.0"
         )
         #expect(
             HostHelperSetupPlan.replacementFeedback(probe: managed014)
@@ -715,14 +767,14 @@ struct HostHelperSetupPolicyTests {
 
     @Test func oneTapUpgradeDecisionPath() {
         let managed014 = HostHelperProbe.present(version: "0.1.4", managed: true, compatible: false)
-        let managed020 = HostHelperProbe.present(version: "0.2.0", managed: true, compatible: true)
-        let managed021 = HostHelperProbe.present(version: "0.2.1", managed: true, compatible: true)
-        let managed022 = HostHelperProbe.present(version: "0.2.2", managed: true, compatible: true)
-        let managed030Compatible = HostHelperProbe.present(version: "0.3.0", managed: true, compatible: true)
-        let managed030Incompatible = HostHelperProbe.present(version: "0.3.0", managed: true, compatible: false)
+        let managed020 = HostHelperProbe.present(version: "0.2.0", managed: true, compatible: false)
+        let managed021 = HostHelperProbe.present(version: "0.2.1", managed: true, compatible: false)
+        let managed022 = HostHelperProbe.present(version: "0.2.2", managed: true, compatible: false)
+        let managed050Compatible = HostHelperProbe.present(version: "0.5.0", managed: true, compatible: true)
+        let managed050Incompatible = HostHelperProbe.present(version: "0.5.0", managed: true, compatible: false)
         let managedUnknown = HostHelperProbe.present(version: nil, managed: true, compatible: false)
         let external014 = HostHelperProbe.present(version: "0.1.4", managed: false, compatible: false)
-        let external020 = HostHelperProbe.present(version: "0.2.0", managed: false, compatible: true)
+        let external020 = HostHelperProbe.present(version: "0.2.0", managed: false, compatible: false)
 
         // 1. managed 0.1.4 + updateRequired -> install(replace: true)
         #expect(
@@ -734,18 +786,18 @@ struct HostHelperSetupPolicyTests {
             == .install(replace: true)
         )
 
-        // 1b. managed 0.2.0 + updateRequired -> install(replace: true) (one-tap upgrade to 0.3.0)
+        // 1b. managed 0.2.0 + updateRequired -> install(replace: true) (one-tap upgrade to 0.5.0)
         #expect(
             HostHelperSetupPlan.decision(probe: managed020, replace: false, checkOnly: false, agent: "codex", reason: .updateRequired)
             == .install(replace: true)
         )
-        // managed 0.2.0 + missing -> ready (compatible with minimumVersion, no drawer)
+        // A missing/setup flow cannot accept a helper below the new minimum.
         #expect(
             HostHelperSetupPlan.decision(probe: managed020, replace: false, checkOnly: false, agent: "codex", reason: .missing)
-            == .ready
+            == .replacementRequired(managed020)
         )
 
-        // 1c. managed 0.2.1 + updateRequired -> install(replace: true) (one-tap upgrade to pinned 0.3.0)
+        // 1c. managed 0.2.1 + updateRequired -> install(replace: true) (one-tap upgrade to pinned 0.5.0)
         #expect(
             HostHelperSetupPlan.decision(probe: managed021, replace: false, checkOnly: false, agent: "codex", reason: .updateRequired)
             == .install(replace: true)
@@ -757,15 +809,15 @@ struct HostHelperSetupPolicyTests {
             == .install(replace: true)
         )
 
-        // 2. managed pinned 0.3.0 compatible -> ready
+        // 2. managed pinned 0.5.0 compatible -> ready
         #expect(
-            HostHelperSetupPlan.decision(probe: managed030Compatible, replace: false, checkOnly: false, agent: "codex", reason: .updateRequired)
+            HostHelperSetupPlan.decision(probe: managed050Compatible, replace: false, checkOnly: false, agent: "codex", reason: .updateRequired)
             == .ready
         )
-        // managed 0.3.0 incompatible + updateRequired -> replacementRequired (explicit replace required)
+        // managed 0.5.0 incompatible + updateRequired -> replacementRequired (explicit replace required)
         #expect(
-            HostHelperSetupPlan.decision(probe: managed030Incompatible, replace: false, checkOnly: false, agent: "codex", reason: .updateRequired)
-            == .replacementRequired(managed030Incompatible)
+            HostHelperSetupPlan.decision(probe: managed050Incompatible, replace: false, checkOnly: false, agent: "codex", reason: .updateRequired)
+            == .replacementRequired(managed050Incompatible)
         )
 
         // 3. managed unknown version + updateRequired -> replacementRequired
@@ -812,27 +864,31 @@ struct HostHelperSetupPolicyTests {
         #expect(HostHelperProbe.isOlderThanPinned("0.2.0"))
         #expect(HostHelperProbe.isOlderThanPinned("0.2.1"))
         #expect(HostHelperProbe.isOlderThanPinned("0.2.2"))
-        #expect(!HostHelperProbe.isOlderThanPinned("0.3.0"))
+        #expect(!HostHelperProbe.isOlderThanPinned("0.5.0"))
         #expect(!HostHelperProbe.isOlderThanPinned(nil))
         #expect(!HostHelperProbe.isOlderThanPinned("invalid"))
 
         #expect(!HostHelperProbe.isAtLeastPinned("0.2.2"))
-        #expect(HostHelperProbe.isAtLeastPinned("0.3.0"))
+        #expect(HostHelperProbe.isAtLeastPinned("0.5.0"))
         #expect(!HostHelperProbe.isAtLeastPinned("0.2.1"))
         #expect(!HostHelperProbe.isAtLeastPinned("0.2.0"))
         #expect(!HostHelperProbe.isAtLeastPinned("0.1.4"))
         #expect(!HostHelperProbe.isAtLeastPinned(nil))
 
-        #expect(HostHelperProbe.isAtLeastMinimum("0.2.0"))
-        #expect(HostHelperProbe.isAtLeastMinimum("0.2.1"))
-        #expect(HostHelperProbe.isAtLeastMinimum("0.3.0"))
+        #expect(!HostHelperProbe.isAtLeastMinimum("0.2.0"))
+        #expect(!HostHelperProbe.isAtLeastMinimum("0.2.1"))
+        #expect(!HostHelperProbe.isAtLeastMinimum("0.4.9"))
+        #expect(HostHelperProbe.isAtLeastMinimum("0.5.0"))
+        #expect(HostHelperProbe.isAtLeastMinimum("0.5.1"))
         #expect(!HostHelperProbe.isAtLeastMinimum("0.1.4"))
         #expect(!HostHelperProbe.isAtLeastMinimum(nil))
 
         #expect(HostHelperProbe.isOlderThanMinimum("0.1.4"))
-        #expect(!HostHelperProbe.isOlderThanMinimum("0.2.0"))
-        #expect(!HostHelperProbe.isOlderThanMinimum("0.2.1"))
-        #expect(!HostHelperProbe.isOlderThanMinimum("0.3.0"))
+        #expect(HostHelperProbe.isOlderThanMinimum("0.2.0"))
+        #expect(HostHelperProbe.isOlderThanMinimum("0.2.1"))
+        #expect(HostHelperProbe.isOlderThanMinimum("0.4.9"))
+        #expect(!HostHelperProbe.isOlderThanMinimum("0.5.0"))
+        #expect(!HostHelperProbe.isOlderThanMinimum("0.5.1"))
         #expect(!HostHelperProbe.isOlderThanMinimum(nil))
     }
 }
@@ -921,8 +977,8 @@ struct HostHelperSetupGuardTests {
             try HostHelperSetupPlan.verifyInstallation("HC_HELPER_INSTALLED\n{\"name\":\"herdcats-bridge\",\"version\":\"0.1.4\",\"protocol\":1,\"herdr_protocol\":22,\"agents\":[\"claude\"]}")
         }
     }
-    @Test func verifyInstallationAccepts020ReportWithClaudeAndCodex() throws {
-        let output = "HC_HELPER_INSTALLED\n{\"name\":\"herdcats-bridge\",\"version\":\"0.2.0\",\"protocol\":1,\"herdr_protocol\":22,\"agents\":[\"claude\",\"codex\"]}\n"
+    @Test func verifyInstallationAccepts050ReportWithClaudeAndCodex() throws {
+        let output = "HC_HELPER_INSTALLED\n{\"name\":\"herdcats-bridge\",\"version\":\"0.5.0\",\"protocol\":1,\"herdr_protocol\":22,\"agents\":[\"claude\",\"codex\"]}\n"
         try HostHelperSetupPlan.verifyInstallation(output)
         try HostHelperSetupPlan.verifyInstallation(output, agent: "claude")
         try HostHelperSetupPlan.verifyInstallation(output, agent: "codex")
@@ -1092,7 +1148,7 @@ extension AgentBridgeClientTests {
         let handshake = Task { try await client.performHandshakeAndWatch(paneId: "p1") }
         try await wait(wire)
         var id = try await wire.requestId()
-        await client.receive(Data("{\"id\":\"\(id)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":{\"claude_timeline\":true,\"record_content\":true,\"model_control\":true}}}\n".utf8))
+        await client.receive(Data("{\"id\":\"\(id)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"bridge_version\":\"0.5.0\",\"capabilities\":{\"claude_timeline\":true,\"record_content\":true,\"model_control\":true}}}\n".utf8))
         for _ in 0..<500 {
             if await wire.commands.count == 2 { break }
             try await Task.sleep(for: .milliseconds(2))
@@ -1130,38 +1186,55 @@ extension AgentBridgeClientTests {
     }
 }
 
-@Suite("Cursor source bridge setup")
-struct CursorBridgeSetupTests {
-    @Test func publishedInstallerCannotClaimCursorSupport() throws {
-        #expect(HostHelperSetupPlan.version == "0.3.0")
-        #expect(!HostHelperSetupPlan.agents.contains("cursor"))
-        #expect(HostHelperSetupPlan.decision(probe: .missing, replace: true, checkOnly: false, agent: "cursor") == .unsupportedByPinnedInstaller("cursor"))
-        let report = "HC_HELPER_MANAGED\n" + #"{"name":"herdcats-bridge","version":"0.4.0","protocol":1,"herdr_protocol":22,"agents":["claude","codex","antigravity_cli","cursor"]}"#
-        let probe = try HostHelperProbe(output: report, agent: "cursor")
-        #expect(HostHelperSetupPlan.decision(probe: probe, replace: false, checkOnly: true, agent: "cursor") == .ready)
-        let older = "HC_HELPER_MANAGED\n" + #"{"name":"herdcats-bridge","version":"0.4.0","protocol":1,"herdr_protocol":22,"agents":["claude","codex","antigravity_cli"]}"#
-        let missingCursor = try HostHelperProbe(output: older, agent: "cursor")
-        #expect(HostHelperSetupPlan.decision(probe: missingCursor, replace: false, checkOnly: true, agent: "cursor") != .ready)
+@Suite("Published multi-agent bridge setup")
+struct PublishedAgentBridgeSetupTests {
+    @Test func publishedInstallerSupportsAllBundledAgentsAndAgyAlias() throws {
+        for agent in ["claude", "codex", "agy", "antigravity_cli", "pi", "cursor"] {
+            #expect(AgentTimelineView.canPinnedInstallerSupport(agent: agent))
+            #expect(HostHelperSetupPlan.decision(probe: .missing, replace: false, checkOnly: false, agent: agent) == .install(replace: false))
+            let report = "HC_HELPER_MANAGED\n" + #"{"name":"herdcats-bridge","version":"0.5.0","protocol":1,"herdr_protocol":22,"agents":["claude","codex","antigravity_cli","pi","cursor"]}"#
+            let probe = try HostHelperProbe(output: report, agent: agent)
+            #expect(probe == .present(version: "0.5.0", managed: true, compatible: true))
+            #expect(HostHelperSetupPlan.decision(probe: probe, replace: false, checkOnly: true, agent: agent) == .ready)
+        }
     }
-    @Test func cursorMessagesNeverOfferTheUnsupportedInstaller() {
-        for code in ["helper_missing", "helper_update_required", "unsupported_agent", "cursor_bridge_required"] {
-            #expect(!AgentTimelineView.showsInstallOrUpgrade(code: code, agent: "cursor"))
-            #expect(AgentTimelineView.explanation(code, agent: "cursor").contains("source build of Herdcats Bridge with Cursor support"))
+    @Test func sourceBuildFallbackOnlyAppliesToInstallersWithoutAgentSupport() {
+        for agent in ["cursor", "agy", "pi"] {
+            for code in ["helper_missing", "helper_update_required", "unsupported_agent"] {
+                #expect(AgentTimelineView.showsInstallOrUpgrade(code: code, agent: agent) == (code != "unsupported_agent"))
+                let explanation = AgentTimelineView.explanation(code, agent: agent)
+                #expect(!explanation.contains("source build"))
+                #expect(explanation.contains("0.5.0"))
+                #expect(AgentTimelineView.explanation(code, agent: agent, supportedAgents: ["claude", "codex"]).contains("source build"))
+            }
         }
         #expect(AgentTimelineView.unavailableTitle(code: "session_reference_unavailable", agent: "cursor") == "Cursor chat not identified")
         #expect(AgentTimelineView.explanation("session_reference_unavailable", agent: "cursor").contains("--resume"))
     }
-}
-
-@Suite("Agy source bridge setup")
-struct AgyBridgeSetupTests {
-    @Test func publishedInstallerCannotClaimAgySupport() throws {
-        #expect(HostHelperSetupPlan.version == "0.3.0")
-        #expect(!HostHelperSetupPlan.agents.contains("antigravity_cli"))
-        #expect(HostHelperSetupPlan.decision(probe: .missing, replace: true, checkOnly: false, agent: "agy") == .unsupportedByPinnedInstaller("agy"))
-        let report = "HC_HELPER_MANAGED\n" + #"{"name":"herdcats-bridge","version":"0.3.0","protocol":1,"herdr_protocol":22,"agents":["claude","codex","antigravity_cli"]}"#
-        let probe = try HostHelperProbe(output: report, agent: "agy")
-        #expect(HostHelperSetupPlan.decision(probe: probe, replace: false, checkOnly: true, agent: "agy") == .ready)
+    @Test func piSetupExplainsThatExtensionIsSeparateFromBridgeInstaller() {
+        let explanation = AgentTimelineView.explanation("pi_bridge_required", agent: "pi")
+        #expect(explanation.contains("0.5.0"))
+        #expect(explanation.contains("Pi 1.4.0"))
+        #expect(explanation.contains("does not install the Pi extension"))
+    }
+    @Test func currentBridgeWithUnavailableAgentDataOffersRetryInsteadOfUpgrade() {
+        for (agent, code) in [("pi", "pi_bridge_required"), ("agy", "agy_bridge_required"), ("cursor", "cursor_bridge_required")] {
+            #expect(!AgentTimelineView.isNeedsUpgrade(code: code, agent: agent, bridgeVersion: "0.5.0"))
+            #expect(AgentTimelineView.showsPaneCheckAgain(code: code, agent: agent, bridgeVersion: "0.5.0"))
+            let explanation = AgentTimelineView.explanation(code, agent: agent, installedVersion: "0.5.0")
+            #expect(explanation.contains("session directory"))
+            #expect(!explanation.contains("Install or upgrade"))
+        }
+    }
+    @Test func oldReleaseCannotPassProbeEvenWhenAgentIsAdvertised() throws {
+        for version in ["0.2.0", "0.3.0", "0.4.9"] {
+            let report = "HC_HELPER_MANAGED\n{\"name\":\"herdcats-bridge\",\"version\":\"\(version)\",\"protocol\":1,\"herdr_protocol\":22,\"agents\":[\"claude\",\"codex\",\"antigravity_cli\",\"pi\",\"cursor\"]}"
+            for agent in ["claude", "codex", "agy", "pi", "cursor"] {
+                let probe = try HostHelperProbe(output: report, agent: agent)
+                #expect(probe == .present(version: version, managed: true, compatible: false))
+                #expect(HostHelperSetupPlan.decision(probe: probe, replace: false, checkOnly: true, agent: agent) == .replacementRequired(probe))
+            }
+        }
     }
 }
 
@@ -1173,7 +1246,7 @@ struct PiBridgeClientTests {
         let handshake = Task { try await client.performHandshakeAndWatch(paneId: "p", agent: "pi") }
         while await wire.commands.isEmpty { await Task.yield() }
         let id = try await wire.requestId()
-        await client.receive(Data("{\"id\":\"\(id)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"capabilities\":{\"claude_timeline\":true,\"record_content\":true}}}\n".utf8))
+        await client.receive(Data("{\"id\":\"\(id)\",\"result\":{\"protocol\":1,\"epoch\":\"e\",\"bridge_version\":\"0.5.0\",\"capabilities\":{\"claude_timeline\":true,\"record_content\":true}}}\n".utf8))
         do { try await handshake.value; Issue.record("Pi accepted a bridge without Pi capability") }
         catch { #expect((error as? AgentBridgeError)?.code == "pi_bridge_required") }
         #expect(await wire.commands.count == 1)
