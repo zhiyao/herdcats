@@ -163,6 +163,105 @@ struct AgentBridgeFramingTests {
 
 @Suite("Timeline agent availability")
 struct TimelineAgentAvailabilityTests {
+    @Test func cursorRequiresItsOwnCapabilityAndExactIDSessionSource() throws {
+        #expect(TimelineAgentAvailability.supports(agent: "cursor"))
+        #expect(TimelineAgentAvailability.canonical("cursor") == "cursor")
+        #expect(TimelineAgentAvailability.displayName(for: "cursor") == "Cursor")
+        let old = try AgentBridgeFrame.decode(Data(#"{"result":{"capabilities":{"claude_timeline":true,"agy":true,"record_content":true}}}"#.utf8))
+        #expect(old.result?.capabilities?.cursor == false)
+        let current = try AgentBridgeFrame.decode(Data(#"{"result":{"capabilities":{"claude_timeline":false,"cursor":true}}}"#.utf8))
+        #expect(current.result?.capabilities?.cursor == true)
+        #expect(TimelineAgentAvailability.matchesSession(agent: "cursor", referenceAgent: "cursor", source: "herdr:cursor", identityAgent: "cursor"))
+        // Source, kind, and every agent field must match exactly; other agents' sources never pass.
+        #expect(!TimelineAgentAvailability.matchesSession(agent: "cursor", referenceAgent: "cursor", source: "herdr:agy", identityAgent: "cursor"))
+        #expect(!TimelineAgentAvailability.matchesSession(agent: "cursor", referenceAgent: "cursor", source: "herdr:antigravity_cli", identityAgent: "cursor"))
+        #expect(!TimelineAgentAvailability.matchesSession(agent: "cursor", referenceAgent: "cursor", source: "herdr:cursor", identityAgent: "cursor", referenceKind: "path"))
+        #expect(!TimelineAgentAvailability.matchesSession(agent: "claude", referenceAgent: "cursor", source: "herdr:cursor", identityAgent: "cursor"))
+        #expect(!TimelineAgentAvailability.matchesSession(agent: "cursor", referenceAgent: "claude", source: "herdr:cursor", identityAgent: "cursor"))
+        #expect(!TimelineAgentAvailability.matchesSession(agent: "cursor", referenceAgent: "cursor", source: "herdr:cursor", identityAgent: "codex"))
+        #expect(!TimelineAgentAvailability.matchesSession(agent: "cursor", referenceAgent: nil, source: nil, identityAgent: "cursor"))
+    }
+    @MainActor @Test func cursorModelChoicesUseNativeIdentifiersAndShowTheirOwnEfforts() throws {
+        let identity = AgentTimelineIdentity(paneId: "p", terminalId: "t", agent: "cursor", nativeSessionId: "s")
+        func payload(_ body: [String: Any]) throws -> AgentBridgePayload {
+            var base: [String: Any] = ["identity": ["pane_id": "p", "terminal_id": "t", "agent": "cursor", "native_session_id": "s"], "generation": 1]
+            base.merge(body) { _, new in new }
+            return try #require(AgentBridgeFrame.decode(JSONSerialization.data(withJSONObject: ["result": base])).result)
+        }
+        let efforts: [[String: Any]] = [["id": "low", "label": "Low"], ["id": "high", "label": "High"], ["id": "xhigh", "label": "Extra High"]]
+        let state = AgentModelControlState(); state.bind(identity: identity, generation: 1); state.connect(nil, supported: true)
+        try state.update(payload([
+            "model": ["id": "claude-opus-5-5", "label": "Claude Opus 5.5", "efforts": efforts], "effort": "high", "efforts": efforts,
+            "models": [["id": "claude-opus-5-5", "label": "Claude Opus 5.5", "efforts": efforts, "current": true],
+                       ["id": "claude-opus-5", "label": "Claude Opus 5", "efforts": []], ["id": "auto", "label": "Auto", "efforts": []]],
+            "catalog": ["source": "picker", "fresh": true, "complete": true, "cliVersion": "2026.10.22-27dcf5f"],
+        ]), options: true)
+        #expect(state.models.map(\.id) == ["claude-opus-5-5", "claude-opus-5", "auto"])
+        #expect(state.modelName == "Claude Opus 5.5" && state.effortText == "high")
+        #expect(state.efforts.map(\.id) == ["low", "high", "xhigh"])
+        #expect(state.efforts.last?.label == "Extra High")
+        #expect(state.persistsAcrossSessions)
+        // A model whose efforts are not known yet offers none, never a guess.
+        #expect(state.models[1].efforts.isEmpty && state.models[2].efforts.isEmpty)
+        let other = AgentModelControlState(); other.bind(identity: AgentTimelineIdentity(paneId: "p", terminalId: "t", agent: "claude", nativeSessionId: "s"), generation: 1)
+        #expect(!other.persistsAcrossSessions)
+    }
+    @MainActor @Test func cursorModelRefusalsAreActionableAndNeverBlame() {
+        let codes = ["cursor_unsupported_version", "cursor_version_unverified", "mode_not_agent", "composer_not_empty", "approval_pending", "question_pending", "picker_open", "footer_unrecognized", "unknown_model", "invalid_effort", "picker_stuck", "picker_mismatch", "catalog_incomplete", "confirm_timeout"]
+        for code in codes {
+            let load = AgentModelControlState.catalogMessage(for: code)
+            let change = AgentModelControlState.message(for: code)
+            #expect(load != "Couldn't load model choices. Retry or use Terminal.", "\(code)")
+            #expect(change != "Couldn't change the model. Try again.", "\(code)")
+        }
+        #expect(AgentModelControlState.cursorMessage(for: "picker_stuck")?.contains("Terminal") == true)
+        #expect(AgentModelControlState.cursorMessage(for: "cursor_unsupported_version")?.contains("verified") == true)
+        #expect(AgentModelControlState.cursorMessage(for: "nonsense") == nil)
+    }
+    @Test func slashPromptsAreRefusedForCursorOnly() {
+        for text in ["/model grok-4.7", "/quit", "  /new", "\n/compact", "\t /x"] {
+            #expect(CursorPromptPolicy.refusesSlashCommand(agent: "cursor", text: text), "\(text)")
+            // Other agents keep their own slash commands.
+            #expect(!CursorPromptPolicy.refusesSlashCommand(agent: "claude", text: text))
+            #expect(!CursorPromptPolicy.refusesSlashCommand(agent: "codex", text: text))
+        }
+        for text in ["hello", "use a/b and /tmp", "", " ", "\\/escaped"] {
+            #expect(!CursorPromptPolicy.refusesSlashCommand(agent: "cursor", text: text), "\(text)")
+        }
+        #expect(CursorPromptPolicy.message(forCode: "slash_command_refused") == CursorPromptPolicy.slashMessage)
+        #expect(CursorPromptPolicy.slashMessage.contains("Terminal"))
+    }
+    @Test func cursorPromptRefusalsAreActionableAndAlwaysPointToTerminalOrTheDesk() {
+        let codes = ["approval_pending", "question_pending", "composer_not_empty", "agent_busy", "picker_open", "screen_unrecognized", "stale", "prompt_unconfirmed", "unsupported_capability", "something_else"]
+        let messages = codes.map { CursorPromptPolicy.message(forCode: $0) }
+        #expect(Set(messages).count == codes.count - 1 || Set(messages).count >= 8)
+        #expect(CursorPromptPolicy.message(forCode: "approval_pending").contains("permission"))
+        #expect(CursorPromptPolicy.message(forCode: "question_pending").contains("question"))
+        #expect(CursorPromptPolicy.message(forCode: nil).contains("Terminal"))
+    }
+    @Test func cursorComposerIsClosedWhileTheAgentWorks() {
+        let cursor = AgentTimelineIdentity(paneId: "p", terminalId: "t", agent: "cursor", nativeSessionId: "s")
+        let claude = AgentTimelineIdentity(paneId: "p", terminalId: "t", agent: "claude", nativeSessionId: "s")
+        for status in ["idle", "done"] { #expect(TimelineComposePolicy.canSend(identity: cursor, paneId: "p", status: status, connected: true)) }
+        for status in ["working", "blocked", "unknown"] { #expect(!TimelineComposePolicy.canSend(identity: cursor, paneId: "p", status: status, connected: true)) }
+        #expect(TimelineComposePolicy.canSend(identity: claude, paneId: "p", status: "working", connected: true))
+    }
+    @MainActor @Test func cursorPromptsFailClosedWithoutALiveBridgeChannel() async {
+        let state = AgentTimelineState()
+        do { try await state.submitCursorPrompt("hi"); Issue.record("sent with no channel") }
+        catch { #expect((error as? AgentBridgeError)?.code == "unsupported_capability") }
+    }
+    @Test func cursorShellAndQuestionToolsGetPlainLanguage() {
+        func entry(_ name: String, _ details: String) -> AgentTimelineEntry {
+            AgentTimelineEntry(id: "cursor:0:tool:0", kind: "tool", text: name, role: nil, toolName: name, status: "completed", details: details, truncated: false)
+        }
+        let shell = entry("Shell", #"{"command":"printf X","description":"Print the marker"}"#)
+        #expect(TimelineActivitySummary.isCommand(shell))
+        #expect(TimelineActivitySummary.purpose(shell) == "Print the marker")
+        #expect(TimelineActivitySummary.purpose(entry("Shell", #"{"command":"printf X"}"#)) == "Run a shell command")
+        #expect(TimelineActivitySummary.purpose(entry("AskQuestion", "{}")) == "Ask a question")
+        #expect(!TimelineActivitySummary.isRunning(shell))
+    }
     @Test func agyRequiresItsOwnCapabilityAndExplicitSessionSource() throws {
         #expect(TimelineAgentAvailability.supports(agent: "agy"))
         #expect(TimelineAgentAvailability.supports(agent: "antigravity_cli"))
@@ -177,7 +276,7 @@ struct TimelineAgentAvailabilityTests {
     @Test func onlyImplementedAdaptersExposeTimeline() {
         #expect(TimelineAgentAvailability.supports(agent: "claude"))
         #expect(TimelineAgentAvailability.supports(agent: "codex"))
-        for agent in [nil, "", "chatgpt", "cursor", "unknown"] as [String?] {
+        for agent in [nil, "", "chatgpt", "Cursor", "unknown"] as [String?] {
             #expect(!TimelineAgentAvailability.supports(agent: agent))
         }
     }

@@ -55,7 +55,7 @@
             let kind = kind ?? (ScreenshotFixtures.screen == "timeline-question-agy-focus" ? .agy
                 : ScreenshotFixtures.screen == "timeline-question-codex-plan" ? .codexPlan
                 : ScreenshotFixtures.screen == "timeline-question-codex-async" ? .codexAsync : .claude)
-            let agent = kind == .agy ? "antigravity_cli" : (kind == .claude ? "claude" : "codex")
+            let agent = kind == .agy ? "antigravity_cli" : (kind == .claude ? "claude" : kind == .cursor ? "cursor" : "codex")
             func options(_ labels: [String], _ descriptions: [String]) -> [[String: Any]] {
                 labels.enumerated().map { index, label in
                     ["number": index + 1, "label": label, "description": descriptions[index]]
@@ -90,6 +90,7 @@
             }
             let step: [String: Any] = switch kind {
             case .agy: ["kind": "agy_question", "index": 0, "total": 2]
+            case .cursor: ["kind": "cursor_question", "index": 0, "total": 2]
             case .claude: ["kind": "claude_question", "index": 0]
             case .codexPlan: ["kind": "codex_question", "index": 0, "total": 2]
             case .codexAsync: ["kind": "async_queued"]

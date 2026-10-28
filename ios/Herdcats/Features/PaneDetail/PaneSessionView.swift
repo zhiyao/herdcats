@@ -76,6 +76,8 @@ struct PaneSessionView: View {
     /// async authorization/microphone setup cannot leave a revived engine
     /// recording silently after the surface has moved on.
     @State var voiceSession: UUID?
+    /// The draft as it was when recording began, restored by cancel.
+    @State var draftBeforeVoice: String?
     /// Aggregate local diagnostics. Recording no-ops unless a deliberate
     /// test run enables it from the DEBUG-only navigation button.
     let liveMetrics = PaneLiveInputMetrics.shared
@@ -375,7 +377,9 @@ struct PaneSessionView: View {
             isVoiceDraining: surfaceModel.isDrainingDictation,
             dictationError: $dictationError,
             onStartVoice: startVoice,
-            onFinishVoice: finishVoice,
+            onFinishVoice: { finishVoice() },
+            onSendVoice: { finishVoice(send: true) },
+            onCancelVoice: cancelVoice,
             onOpenCompose: openCompose,
             photoItem: $photoItem,
             isPhotoPickerPresented: $isPhotoPickerPresented,
@@ -458,20 +462,19 @@ struct PaneSessionView: View {
                 voiceComposeBar
                     .environment(\.colorScheme, showsTimeline ? colorScheme : .dark)
             }
-            .background {
-                GeometryReader { geometry in
-                    Color.clear.preference(
-                        key: PaneBottomDockHeightPreferenceKey.self, value: geometry.size.height)
-                }
+            // Track the rendered dock directly, including multiline drafts,
+            // attachments and keyboard-driven layout changes. Scroll controls
+            // and transcript padding must use the same current height.
+            .onGeometryChange(for: CGFloat.self) { geometry in
+                geometry.size.height
+            } action: { height in
+                if height > 0 { bottomDockHeight = height }
             }
         }
         .onChange(of: showsTimeline) { _, _ in
             dismissLiveKeyboard(); composeFieldFocused = false; dictation.cancel()
             surfaceModel.resetToDefaultSurface()
             updateSessionParsedOutput()
-        }
-        .onPreferenceChange(PaneBottomDockHeightPreferenceKey.self) { height in
-            if height > 0 { bottomDockHeight = height }
         }
     }
 
@@ -605,11 +608,11 @@ struct PaneSessionView: View {
             if phase == .background {
                 abandonLiveInput()
                 flushDraftSave()
-                dictation.cancel()
+                interruptDictation()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { _ in
-            dictation.cancel()
+            interruptDictation()
         }
         .onChange(of: photoItem) { _, item in
             guard let item else { return }

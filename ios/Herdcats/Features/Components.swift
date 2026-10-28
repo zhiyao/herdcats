@@ -119,20 +119,28 @@ struct StatusNavigationTitle: View {
     let title: String
     let status: AgentStatus
     var subtitle: String? = nil
+    var agent: String? = nil
 
     var body: some View {
-        HStack(spacing: 8) {
-            StatusDot(status: status, animated: status == .working)
-            VStack(spacing: 1) {
+        VStack(spacing: 1) {
+            HStack(spacing: 6) {
+                StatusDot(status: status, animated: status == .working)
                 Text(title)
                     .font(.jost(.headline))
                     .lineLimit(1)
-                if let subtitle, !subtitle.isEmpty {
+            }
+            if let subtitle, !subtitle.isEmpty {
+                HStack(spacing: 4) {
+                    if let agent, !agent.isEmpty {
+                        AgentKindIcon(kind: agent, size: 10)
+                    }
                     Text(subtitle)
                         .font(.jost(.caption2))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
+            } else if let agent, !agent.isEmpty {
+                AgentKindIcon(kind: agent, size: 10)
             }
         }
         .accessibilityElement(children: .ignore)
@@ -141,10 +149,15 @@ struct StatusNavigationTitle: View {
     }
 
     private var accessibilityText: String {
-        if let subtitle, !subtitle.isEmpty {
-            return "\(title), \(subtitle), \(status.label)"
+        var parts: [String] = [title]
+        if let agent, !agent.isEmpty {
+            parts.append(AgentKindVisual.displayName(for: agent))
         }
-        return "\(title), \(status.label)"
+        if let subtitle, !subtitle.isEmpty {
+            parts.append(subtitle)
+        }
+        parts.append(status.label)
+        return parts.joined(separator: ", ")
     }
 }
 

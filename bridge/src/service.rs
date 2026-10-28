@@ -1,8 +1,10 @@
 use crate::{
+    cursor_screen,
     Result,
     adapter::Adapter,
     agy::AgyAdapter,
     pi::PiAdapter,
+    cursor::CursorAdapter,
     approval_match::{self, PendingRequest, Resolution},
     approval_screen::{self, ApprovalDialog, OptionKey},
     claude::{ClaudeAdapter, Entry},
@@ -17,6 +19,8 @@ use crate::{
     question_screen::{self, QuestionScreen, QuestionStep},
     spool,
 };
+mod cursor_control;
+use cursor_control::CursorCatalog;
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
@@ -86,11 +90,18 @@ impl PendingApproval {
             (Agent::Codex, OptionKey::Letter(c)) if c.is_ascii_alphabetic() => Ok(c.to_string()),
             (Agent::Codex, OptionKey::Escape) => Ok("esc".into()),
             (Agent::Agy, OptionKey::Navigate(_)) => Ok("navigate".into()),
+            (Agent::Cursor, OptionKey::Navigate(i)) if cursor_screen::phone_option(*i) => Ok("navigate".into()),
             _ => Err("mismatch"),
         }
     }
     fn data(&self) -> Value {
-        let options: Vec<_> = self.dialog.options.iter().map(|option| {
+        // Cursor's persistent and global-permission rows stay in Terminal. The
+        // rest keep their screen numbers and exact labels; `selected` indexes
+        // the advertised list, or is null while a hidden row is highlighted.
+        let advertised: Vec<usize> = (0..self.dialog.options.len())
+            .filter(|i| self.request.agent != Agent::Cursor || cursor_screen::phone_option(*i)).collect();
+        let selected = self.dialog.selected.and_then(|s| advertised.iter().position(|i| *i == s));
+        let options: Vec<_> = advertised.iter().map(|i| &self.dialog.options[*i]).map(|option| {
             let key = match option.key {
                 OptionKey::Digit(n) => n.to_string(),
                 OptionKey::Letter(c) => c.to_string(),
@@ -107,7 +118,7 @@ impl PendingApproval {
                 self.request.tool_input.get("description").and_then(Value::as_str)
             } else { None },
             "justification":self.request.justification,"environment":self.dialog.environment,
-            "title":self.dialog.title,"options":options,"selected":self.dialog.selected
+            "title":self.dialog.title,"options":options,"selected":selected
         })
     }
 }
@@ -140,6 +151,7 @@ impl PendingInteraction {
                 let step = match p.screen.step {
                     QuestionStep::ClaudeQuestion(index) => json!({"kind":"claude_question","index":index}),
                     QuestionStep::AgyQuestion { index, total } => json!({"kind":"agy_question","index":index,"total":total}),
+                    QuestionStep::CursorQuestion { index, total } => json!({"kind":"cursor_question","index":index,"total":total}),
                     QuestionStep::ClaudeReview => json!({"kind":"claude_review"}),
                     QuestionStep::CodexQuestion { index, total } => json!({"kind":"codex_question","index":index,"total":total}),
                     QuestionStep::AsyncQueued => json!({"kind":"async_queued"}),
@@ -149,6 +161,7 @@ impl PendingInteraction {
                     QuestionKind::ClaudeAsk => "claude", QuestionKind::CodexPlan => "codex_plan",
                     QuestionKind::CodexAsync => "codex_async",
                     QuestionKind::AgyAsk => "agy",
+                    QuestionKind::CursorAsk => "cursor",
                 };
                 json!({"identity":p.identity,"generation":p.generation,"request_id":p.request.request_id,
                     "agent":p.identity.agent,"kind":"question","question_kind":kind,
@@ -281,6 +294,10 @@ pub struct Service {
     agy_catalog_cache: std::cell::RefCell<Option<(Instant, Vec<model_control::AgyModel>)>>,
     agy_catalog_error: std::cell::RefCell<Option<(Instant, &'static str)>>,
     agy_executable: std::cell::RefCell<Option<PathBuf>>,
+    /// Picker rows of the verified Cursor build, scanned once per version.
+    cursor_catalog: std::cell::RefCell<Option<CursorCatalog>>,
+    /// Where a scanned Cursor model list is saved between sessions; off unless set.
+    cursor_catalog_file: Option<PathBuf>,
     codex_executable: std::cell::RefCell<Option<PathBuf>>,
     codex_catalog_cache: std::cell::RefCell<Option<(Instant, Vec<model_control::CodexCatalogModel>)>>,
     codex_catalog_error: std::cell::RefCell<Option<(Instant, &'static str)>>,
@@ -361,6 +378,7 @@ impl Service {
             Box::new(CodexAdapter::new(codex_resolver.clone())),
             Box::new(AgyAdapter::new(AgyAdapter::default_root())),
             Box::new(PiAdapter::new(PiAdapter::default_root())),
+            Box::new(CursorAdapter::new(CursorAdapter::default_root())),
         ];
         Self {
             client: Client { socket },
@@ -370,6 +388,8 @@ impl Service {
             agy_catalog_cache: std::cell::RefCell::new(None),
             agy_catalog_error: std::cell::RefCell::new(None),
             agy_executable: std::cell::RefCell::new(None),
+            cursor_catalog: std::cell::RefCell::new(None),
+            cursor_catalog_file: None,
             codex_executable: std::cell::RefCell::new(None),
             codex_catalog_cache: std::cell::RefCell::new(None),
             codex_catalog_error: std::cell::RefCell::new(None),
@@ -443,6 +463,7 @@ impl Service {
             Box::new(CodexAdapter::new(self.codex_resolver.clone())),
             Box::new(AgyAdapter::new(AgyAdapter::default_root())),
             Box::new(PiAdapter::new(PiAdapter::default_root())),
+            Box::new(CursorAdapter::new(CursorAdapter::default_root())),
         ];
         self
     }
@@ -461,6 +482,15 @@ impl Service {
         let dir=self.pi_agent_dir.as_deref().ok_or("pi_extension_unavailable")?;
         let socket=crate::pi::extension_socket_at(dir,session)?;
         crate::pi::extension_request_at(&socket,method,params)
+    }
+    pub fn with_cursor_catalog_file(mut self, file: PathBuf) -> Self {
+        self.cursor_catalog_file = Some(file);
+        self
+    }
+    pub fn with_cursor_root(mut self, root: PathBuf) -> Self {
+        self.adapters.retain(|a| a.name() != "cursor");
+        self.adapters.push(Box::new(CursorAdapter::new(Some(root))));
+        self
     }
     fn adapter_for(&self, agent: &str) -> Option<&dyn Adapter> {
         self.adapters
@@ -554,7 +584,9 @@ impl Service {
         watch.source_pane = Some(pane.clone());
         // Clone only the descriptor. Tail reading happens after timeline work,
         // using the same adapter-verified source and no additional path lookup.
-        let approval_file = if identity.agent == "antigravity_cli" || ((self.include_approvals || self.include_questions) && pane.agent_status == "blocked") {
+        let approval_file = if identity.agent == "antigravity_cli"
+            || (identity.agent == "cursor" && (self.include_approvals || self.include_questions))
+            || ((self.include_approvals || self.include_questions) && pane.agent_status == "blocked") {
             file.as_ref().and_then(|f| f.try_clone().ok())
         } else {
             None
@@ -712,6 +744,26 @@ impl Service {
                             }
                         }
                         None => "unknown".to_owned(),
+                    }
+                } else if identity.agent == "cursor" {
+                    // Herdr reports a live question form as done, so the screen
+                    // decides. Cards still need the blocked status Herdr gives them.
+                    match approval_file {
+                        Some(file) => {
+                            if self.include_approvals && status == "blocked" {
+                                pending = file.try_clone().ok().and_then(|file|
+                                    self.read_pending(&identity, file, &mut None))
+                                    .map(PendingInteraction::Approval);
+                            }
+                            if pending.is_none() && self.include_questions
+                                && matches!(status.as_str(), "blocked" | "idle" | "done") {
+                                pending = self.read_question(&identity, file, &mut None)
+                                    .map(PendingInteraction::Question);
+                            }
+                            // A pending decision closes the composer for the phone too.
+                            if pending.is_some() { "blocked".to_owned() } else { status }
+                        }
+                        None => status,
                     }
                 } else {
                     if status == "blocked" && let Some(file) = approval_file {
@@ -878,6 +930,16 @@ impl Service {
         cache: &mut Option<ApprovalMatchCache>,
         mut read_tail: impl FnMut(std::fs::File) -> Result<Vec<Value>>,
     ) -> Option<PendingRequest> {
+        if Agent::parse(&identity.agent) == Some(Agent::Cursor) {
+            // Cursor writes nothing to its transcript while a card is pending,
+            // so the live screen supplies the request. The ID is anchored to the
+            // transcript length: resolving any call appends a record, so a new
+            // card for an identical command gets a new ID.
+            *cache = None;
+            let screen = self.client.read_visible(&identity.pane_id).ok()?;
+            let (command, _) = cursor_screen::parse_card(&screen)?;
+            return crate::cursor::pending_shell(&identity.native_session_id, &file, &command);
+        }
         if Agent::parse(&identity.agent) == Some(Agent::Agy) {
             *cache = None;
             let history = read_tail(file).ok()?;
@@ -909,11 +971,11 @@ impl Service {
         let requests = match agent {
             Agent::Claude => approval_match::match_claude_records(&records, &history),
             Agent::Codex => approval_match::match_codex_records(&records, &history),
-            Agent::Agy => return None,
+            Agent::Agy | Agent::Cursor => return None,
         };
         let request = requests.into_iter().rfind(|request| {
             let resolution = match agent {
-                Agent::Agy => return false,
+                Agent::Agy | Agent::Cursor => return false,
                 Agent::Claude => approval_match::claude_resolution(&request.request_id, &history),
                 Agent::Codex => match request.turn_id.as_deref() {
                     Some(turn) => approval_match::codex_resolution(&request.request_id, turn, &history),
@@ -953,6 +1015,8 @@ impl Service {
                 let meta = file.metadata().ok()?;
                 meta.is_file().then(|| QuestionInputStamp::Agy(ApprovalFileStamp::of(&meta)))
             }
+            // Cursor questions arrive in a later section; none are advertised.
+            Agent::Cursor => None,
             Agent::Codex => {
                 let meta = file.metadata().ok()?;
                 meta.is_file().then(|| QuestionInputStamp::Codex(ApprovalFileStamp::of(&meta)))
@@ -965,6 +1029,14 @@ impl Service {
         file: std::fs::File,
         cache: &mut Option<QuestionMatchCache>,
     ) -> Option<PendingQuestion> {
+        if Agent::parse(&identity.agent) == Some(Agent::Cursor) {
+            // Nothing about a pending Cursor form is in the transcript: the
+            // screen is the request. Never cached; the length anchors the ID.
+            *cache = None;
+            let length = file.metadata().ok().filter(|m| m.is_file())?.len();
+            let form = crate::cursor_form::parse_form(&self.client.read_visible(&identity.pane_id).ok()?)?;
+            return crate::cursor_form::pending(&form, length);
+        }
         let stamp = match self.question_input_stamp(identity, &file) {
             Some(stamp) => stamp,
             None => { *cache = None; return None; }
@@ -985,6 +1057,7 @@ impl Service {
                 },
                 Agent::Codex => question_match::pending_codex_questions(&history),
                 Agent::Agy => question_match::pending_agy_questions(&history),
+                Agent::Cursor => vec![],
             };
             // A queued banner cannot identify which async call shift+left opens,
             // even when the calls have identical questions. Preserve Plan selection.
@@ -1433,6 +1506,9 @@ impl Service {
             .clone()
             .filter(|_| watch.unavailable.is_none())
             .ok_or("timeline_unavailable")?;
+        if identity.agent == "cursor" {
+            return self.cursor_model_status(&identity);
+        }
         let (pane, file) = self.model_pane_file(&identity)?;
         self.agy_require_no_pending(&identity, file.try_clone().map_err(|_|"stale")?)?;
         let agent = identity.agent.as_str();
@@ -1573,6 +1649,9 @@ impl Service {
             .clone()
             .filter(|_| watch.unavailable.is_none())
             .ok_or("timeline_unavailable")?;
+        if identity.agent == "cursor" {
+            return self.cursor_model_set(&identity, params);
+        }
         let agent = identity.agent.as_str();
         if agent=="antigravity_cli" && (params["expect"]["identity"]!=serde_json::to_value(&identity).map_err(|_|"stale")? || params["expect"]["generation"].as_u64()!=Some(self.generation)) {return Err("stale");}
         let target_model = params["model"].as_str();
@@ -2274,8 +2353,9 @@ impl Service {
         if session != identity.native_session_id {
             return Err("stale");
         }
-        if pending.request.agent == Agent::Agy {
-            let target = params["option"].as_u64().and_then(|n| n.checked_sub(1)).ok_or("mismatch")? as usize;
+        let navigated = matches!(pending.request.agent, Agent::Agy | Agent::Cursor);
+        let target = params["option"].as_u64().and_then(|n| n.checked_sub(1)).unwrap_or(usize::MAX as u64) as usize;
+        if navigated {
             let plan = approval_screen::agy_plan(&current, target).ok_or("mismatch")?;
             let mut expected = current.selected;
             for (key, after) in plan {
@@ -2284,7 +2364,7 @@ impl Service {
                 let newest = self.matched_request(identity, file, &mut None, crate::follower::read_tail).ok_or("stale")?;
                 if newest != pending.request { return Err("stale"); }
                 let screen = self.client.read_visible(&identity.pane_id).map_err(|_|"stale")?;
-                let dialog = approval_screen::parse(Agent::Agy, &screen, command).ok_or("stale")?;
+                let dialog = approval_screen::parse(pending.request.agent, &screen, command).ok_or("stale")?;
                 if !pending.dialog.same_dialog(&dialog) || dialog.selected != expected { return Err("stale"); }
                 // No retry after this call: transport failure can mean delivered.
                 self.client.send_keys(&identity.pane_id, &[key.as_str()])?;
@@ -2292,7 +2372,7 @@ impl Service {
                     let deadline = Instant::now()+Duration::from_secs(1);
                     loop {
                         let screen = self.client.read_visible(&identity.pane_id).map_err(|_|"stale")?;
-                        let dialog=approval_screen::parse(Agent::Agy,&screen,command).ok_or("stale")?;
+                        let dialog=approval_screen::parse(pending.request.agent,&screen,command).ok_or("stale")?;
                         if !pending.dialog.same_dialog(&dialog) { return Err("stale"); }
                         if dialog.selected == Some(after) {break;}
                         if Instant::now()>=deadline {return Err("stale");}
@@ -2305,14 +2385,28 @@ impl Service {
             self.client.send_keys(&identity.pane_id, &[key.as_str()])?;
         }
 
-        let deadline = Instant::now() + Duration::from_secs(2);
+        let cursor = pending.request.agent == Agent::Cursor;
+        if cursor && target == cursor_screen::SKIP {
+            self.cursor_finish_skip(identity, pending)?;
+        }
+        // Cursor records the call only after the command finishes or is skipped.
+        let window = Duration::from_secs(if cursor { 5 } else { 2 });
+        let deadline = Instant::now() + window;
         let mut confirmed = false;
-        for _ in 0..20 {
+        for _ in 0..(window.as_millis() / 100) {
             let Ok(screen) = self.client.read_visible(&identity.pane_id) else { break };
             let same = approval_screen::parse(pending.request.agent, &screen, command)
                 .is_some_and(|dialog| pending.dialog.same_dialog(&dialog));
-            if !same {
-                if pending.request.agent==Agent::Agy {
+            if cursor && !same && matches!(cursor_screen::classify(&screen, ""), cursor_screen::Screen::DenyFeedback) {
+                // Still on the optional feedback input: nothing has resolved yet.
+            } else if !same {
+                if cursor {
+                    let Ok((_,file))=self.model_pane_file(identity) else {break};
+                    if watch.follower.verify_source(file.try_clone().map_err(|_|"stale")?).is_err() {break;}
+                    let anchor = crate::cursor::request_offset(&pending.request.request_id).ok_or("stale")?;
+                    confirmed = crate::cursor::recorded_shell(&file, anchor, command);
+                    if confirmed {break;}
+                } else if pending.request.agent==Agent::Agy {
                     let Ok((_,file))=self.model_pane_file(identity) else {break};
                     if watch.follower.verify_source(file.try_clone().map_err(|_|"stale")?).is_err() {break;}
                     if let Ok(history)=crate::follower::read_tail(file) {
@@ -2329,10 +2423,134 @@ impl Service {
         }
         Ok(json!({"request_id":pending.request.request_id,"sent":key,"confirmed":confirmed}))
     }
+    /// After choosing Skip, Cursor shows an optional "tell the agent what to do
+    /// instead" input. Submit it empty so the skip completes without feedback.
+    fn cursor_finish_skip(&self, identity: &Identity, pending: &PendingApproval) -> Result<()> {
+        let command = pending.request.tool_input["command"].as_str().ok_or("stale")?;
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            let screen = self.client.read_visible(&identity.pane_id).map_err(|_| "stale")?;
+            match cursor_screen::classify(&screen, "") {
+                cursor_screen::Screen::DenyFeedback => {
+                    self.model_pane_file(identity)?;
+                    // Delivery is not retried: a transport error may still have sent it.
+                    self.client.send_keys(&identity.pane_id, &["enter"])?;
+                    return Ok(());
+                }
+                cursor_screen::Screen::Approval(dialog) if pending.dialog.same_dialog(&dialog)
+                    && approval_screen::parse(Agent::Cursor, &screen, command).is_some() => {}
+                // The card went away without a feedback input; confirm normally.
+                _ => return Ok(()),
+            }
+            if Instant::now() >= deadline { return Err("stale"); }
+            thread::sleep(Duration::from_millis(50));
+        }
+    }
+    /// The only safe basis for typing into a Cursor pane: an idle occupant whose
+    /// screen shows an empty composer and no approval card or question form.
+    /// Herdr can report `done` for a live question form, and Cursor writes no
+    /// pending card to its transcript, so neither status nor transcript counts.
+    fn cursor_ready(&self, identity: &Identity, require_agent_mode: bool) -> Result<()> {
+        self.cursor_ready_with(identity, require_agent_mode, true)
+    }
+    /// The occupant of a pane that has no transcript yet: same pane and terminal,
+    /// a Cursor agent, and Herdr's own `herdr:cursor` id reference for this chat.
+    fn cursor_pane_without_transcript(&self, identity: &Identity) -> Result<Pane> {
+        let snapshot = self.client.snapshot().map_err(|_| "stale")?;
+        let pane = snapshot.panes.iter().find(|p| p.pane_id == identity.pane_id).ok_or("stale")?.clone();
+        let reference = pane.agent_session.as_ref().ok_or("stale")?;
+        if pane.terminal_id != identity.terminal_id || pane.agent.as_deref() != Some("cursor")
+            || reference.agent != "cursor" || reference.source != "herdr:cursor" || reference.kind != "id"
+            || reference.value != identity.native_session_id
+        {
+            return Err("stale");
+        }
+        Ok(pane)
+    }
+    /// `transcript` is false only for a brand-new chat, whose file Cursor creates
+    /// on the first prompt; the screen guard is the same either way.
+    fn cursor_ready_with(&self, identity: &Identity, require_agent_mode: bool, transcript: bool) -> Result<()> {
+        let idle = |pane: &Pane| matches!(pane.agent_status.as_str(), "idle" | "done");
+        let occupant = |this: &Self| -> Result<Pane> {
+            if transcript { Ok(this.model_pane_file(identity)?.0) } else { this.cursor_pane_without_transcript(identity) }
+        };
+        let pane = occupant(self)?;
+        if !idle(&pane) { return Err("agent_busy"); }
+        let plain = self.client.read_visible(&identity.pane_id).map_err(|_| "screen_unavailable")?;
+        let styled = self.client.read_visible_ansi(&identity.pane_id).map_err(|_| "screen_unavailable")?;
+        match cursor_screen::classify(&plain, &styled) {
+            cursor_screen::Screen::Idle { mode } if !require_agent_mode || mode.is_none() => {}
+            cursor_screen::Screen::Idle { .. } => return Err("mode_not_agent"),
+            cursor_screen::Screen::Draft => return Err("composer_not_empty"),
+            cursor_screen::Screen::Busy => return Err("agent_busy"),
+            cursor_screen::Screen::Approval(_) | cursor_screen::Screen::UnsupportedCard
+            | cursor_screen::Screen::DenyFeedback => return Err("approval_pending"),
+            cursor_screen::Screen::Question => return Err("question_pending"),
+            cursor_screen::Screen::Overlay => return Err("picker_open"),
+            cursor_screen::Screen::Unknown => return Err("screen_unrecognized"),
+        }
+        // Re-verify the occupant last, immediately before the caller types.
+        let pane = occupant(self)?;
+        if !idle(&pane) { return Err("agent_busy"); }
+        Ok(())
+    }
+    /// Submit one prompt to a Cursor pane. The screen guard and the prompt are
+    /// one bridge call, so no phone round trip separates check from send.
+    fn prompt_submit(&mut self, params: &Value) -> Result<Value> {
+        let watch = self.watch.as_ref().ok_or("not_watching")?;
+        let text = params["text"].as_str().ok_or("invalid_request")?;
+        if text.trim().is_empty() || text.len() > 65_536 || text.chars().any(|c| c == '\0') {
+            return Err("invalid_request");
+        }
+        // A leading slash would run a Cursor command (/quit, /model ...) instead
+        // of reaching the model; the phone never sends one.
+        if text.trim_start().starts_with('/') { return Err("slash_command_refused"); }
+        // A brand-new chat has no transcript until its first prompt, so there is
+        // no native identity to bind yet. Only that exact state is accepted, by
+        // pane and generation, with the chat taken from Herdr's own reference.
+        if watch.identity.is_none() && watch.unavailable == Some("transcript_unavailable") {
+            if params["pane_id"].as_str() != Some(watch.pane_id.as_str())
+                || params["generation"].as_u64() != Some(self.generation) {
+                return Err("stale");
+            }
+            let pane_id = watch.pane_id.clone();
+            let snapshot = self.client.snapshot().map_err(|_| "stale")?;
+            let pane = snapshot.panes.iter().find(|p| p.pane_id == pane_id).ok_or("stale")?;
+            let reference = pane.agent_session.as_ref().ok_or("session_reference_unavailable")?;
+            if pane.agent.as_deref() != Some("cursor") || !crate::resolver::session_id(&reference.value) {
+                return Err("unsupported_agent");
+            }
+            let identity = Identity {
+                pane_id, terminal_id: pane.terminal_id.clone(), agent: "cursor".into(),
+                native_session_id: reference.value.clone(), native_instance_id: None,
+            };
+            self.cursor_ready_with(&identity, false, false)?;
+            self.client.agent_prompt(&identity.pane_id, text).map_err(|_| "prompt_unconfirmed")?;
+            return Ok(json!({"submitted":true}));
+        }
+        let identity = watch.identity.clone().filter(|_| watch.unavailable.is_none())
+            .ok_or("timeline_unavailable")?;
+        if identity.agent != "cursor" { return Err("unsupported_agent"); }
+        if params["expect"]["identity"] != serde_json::to_value(&identity).map_err(|_| "stale")?
+            || params["expect"]["generation"].as_u64() != Some(self.generation) {
+            return Err("stale");
+        }
+        self.cursor_ready(&identity, false)?;
+        // No retry: a failed transport call may still have delivered the prompt.
+        self.client.agent_prompt(&identity.pane_id, text).map_err(|_| "prompt_unconfirmed")?;
+        Ok(json!({"submitted":true}))
+    }
     fn question_pane_file(&self, identity: &Identity) -> Result<std::fs::File> {
         let snapshot = self.client.snapshot().map_err(|_| "stale")?;
         let pane = snapshot.panes.iter().find(|p| p.pane_id == identity.pane_id).ok_or("stale")?;
-        if (identity.agent != "antigravity_cli" && pane.agent_status != "blocked") || pane.terminal_id != identity.terminal_id
+        // Herdr reports a live Cursor question form as done, so Cursor is judged
+        // by its screen; a working or unknown pane is still refused.
+        let status_ok = match identity.agent.as_str() {
+            "antigravity_cli" => true,
+            "cursor" => matches!(pane.agent_status.as_str(), "blocked" | "idle" | "done"),
+            _ => pane.agent_status == "blocked",
+        };
+        if !status_ok || pane.terminal_id != identity.terminal_id
             || !pane.agent.as_deref().is_some_and(|agent| self.adapter_for(agent).is_some_and(|a| a.name() == identity.agent)) { return Err("stale"); }
         let adapter = self.adapter_for(&identity.agent).ok_or("stale")?;
         let (session, file) = adapter.resolve_and_open(pane).map_err(|_| "stale")?;
@@ -2358,6 +2576,9 @@ impl Service {
         if !current.is_fresh(&newest) { return Err("in_progress".into()); }
         let steps = question_keys::plan(newest.kind, &newest, &current, params)?;
         let mut confirmed = self.execute_question(identity, &newest, current, &steps)?;
+        if newest.kind == QuestionKind::CursorAsk {
+            confirmed = self.confirm_cursor_question(watch, identity, &newest);
+        }
         if newest.kind == QuestionKind::AgyAsk {
             confirmed=false;
             let deadline=Instant::now()+Duration::from_secs(2);
@@ -2372,10 +2593,37 @@ impl Service {
         }
         Ok(json!({"request_id":newest.request_id,"confirmed":confirmed}))
     }
+    /// The question left the screen. Confirmed means the form moved on: the next
+    /// question is showing, or (for the last one) the form closed and Cursor
+    /// appended the `AskQuestion` call. The answers themselves are not in the
+    /// transcript, so neither proves what was chosen.
+    fn confirm_cursor_question(&self, watch: &Watch, identity: &Identity, asked: &PendingQuestion) -> bool {
+        let Some((anchor, number, total)) = crate::cursor_form::request_parts(&asked.request_id) else { return false };
+        let prompt = asked.questions.first().map(|q| q.text.as_str()).unwrap_or("");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            let Ok(screen) = self.client.read_visible(&identity.pane_id) else { return false };
+            match crate::cursor_form::parse_form(&screen) {
+                // The same question again: Enter has not taken effect yet.
+                Some(form) if form.index + 1 == number && form.total == total => {}
+                Some(form) => return number < total && form.index + 1 == number + 1 && form.total == total,
+                None if number < total => return false,
+                None => {
+                    let Ok((_, file)) = self.model_pane_file(identity) else { return false };
+                    if watch.follower.verify_source(match file.try_clone() { Ok(f) => f, Err(_) => return false }).is_err() {
+                        return false;
+                    }
+                    if crate::cursor::recorded_question(&file, anchor, prompt) { return true; }
+                }
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+        false
+    }
     fn execute_question(&self, identity: &Identity, pending: &PendingQuestion, mut current: QuestionScreen, steps: &[Step]) -> InteractionResult<bool> {
         let mut steps_sent = 0;
         for (index, step) in steps.iter().enumerate() {
-            if pending.kind == QuestionKind::AgyAsk {
+            if matches!(pending.kind, QuestionKind::AgyAsk | QuestionKind::CursorAsk) {
                 let file=self.question_pane_file(identity).map_err(|_|InteractionError::stale_after(steps_sent))?;
                 let watch=self.watch.as_ref().ok_or("stale")?;
                 watch.follower.verify_source(file.try_clone().map_err(|_|"stale")?).map_err(|_|InteractionError::stale_after(steps_sent))?;
@@ -2482,7 +2730,7 @@ impl Service {
             let codex_available = self.adapter_for("codex").is_some_and(|a| a.is_available());
             return Self::write(
                 out,
-                &json!({"id":id,"result":{"protocol":1,"bridge_version":env!("CARGO_PKG_VERSION"),"epoch":self.epoch,"capabilities":{"agy":self.adapter_for("agy").is_some_and(|a| a.is_available()),"pi":self.adapter_for("pi").is_some_and(|a|a.is_available()),"claude_timeline":claude_available,"record_content":true,"codex_timeline":codex_available,"codex_daemon_config":true,"codex_daemon_stop":true,"git":false,"prompts":false,"approvals":true,"questions":true,"model_control":true,"routed_hosts":false}}}),
+                &json!({"id":id,"result":{"protocol":1,"bridge_version":env!("CARGO_PKG_VERSION"),"epoch":self.epoch,"capabilities":{"agy":self.adapter_for("agy").is_some_and(|a| a.is_available()),"pi":self.adapter_for("pi").is_some_and(|a|a.is_available()),"cursor":self.adapter_for("cursor").is_some_and(|a| a.is_available()),"cursor_prompts":self.adapter_for("cursor").is_some_and(|a| a.is_available()),"claude_timeline":claude_available,"record_content":true,"codex_timeline":codex_available,"codex_daemon_config":true,"codex_daemon_stop":true,"git":false,"prompts":false,"approvals":true,"questions":true,"model_control":true,"routed_hosts":false}}}),
             );
         }
         if !self.initialized {
@@ -2519,6 +2767,16 @@ impl Service {
                 match result {
                     Ok(result) => Self::write(out, &json!({"id":id,"result":result})),
                     Err(code) => Self::error(out, id, code),
+                }
+            }
+            "prompt.submit" => {
+                self.poll_with_refresh(out, refresh)?;
+                match self.prompt_submit(params) {
+                    Ok(result) => {
+                        Self::write(out, &json!({"id":id,"result":result}))?;
+                        self.poll(out)
+                    }
+                    Err(code) => Self::write(out, &json!({"id":id,"error":{"code":code}})),
                 }
             }
             "model.set" => {
@@ -2765,6 +3023,10 @@ mod tests {
         terminal_id: Option<String>,
         session_override: Option<String>,
         transcript_after_inputs: Option<(usize, PathBuf, String)>,
+        // A stateful Cursor TUI emulator; when set it answers reads and inputs.
+        tui: Option<CursorTui>,
+        // Foreground process command lines for pane.process_info.
+        process_lines: Option<Vec<String>>,
     }
     type SharedHerdr = std::sync::Arc<std::sync::Mutex<HerdrState>>;
     fn fixture() -> (Service, PathBuf, std::sync::Arc<std::sync::Mutex<String>>) {
@@ -2808,6 +3070,30 @@ mod tests {
                 let request: Value = serde_json::from_str(&line).unwrap();
                 let mut state = server_state.lock().unwrap();
                 let result = match request["method"].as_str().unwrap() {
+                    "pane.read" if state.tui.is_some() => {
+                        let ansi = request["params"]["format"] == "ansi";
+                        let tui = state.tui.as_ref().unwrap();
+                        json!({"read":{"text":if ansi { tui.styled() } else { tui.plain() }}})
+                    }
+                    "pane.send_keys" if state.tui.is_some() => {
+                        let keys: Vec<String> = request["params"]["keys"].as_array().unwrap().iter().map(|k| k.as_str().unwrap().to_owned()).collect();
+                        assert_eq!(keys.len(), 1, "one key per call");
+                        state.inputs.push(json!({"method":"pane.send_keys","params":request["params"]}));
+                        state.tui.as_mut().unwrap().key(&keys[0]);
+                        json!({})
+                    }
+                    "pane.send_text" if state.tui.is_some() => {
+                        let text = request["params"]["text"].as_str().unwrap().to_owned();
+                        state.inputs.push(json!({"method":"pane.send_text","params":request["params"]}));
+                        state.tui.as_mut().unwrap().text(&text);
+                        json!({})
+                    }
+                    "pane.process_info" => {
+                        let lines = state.process_lines.clone().unwrap_or_else(|| vec![
+                            "/home/u/.local/bin/cursor-agent --use-system-ca /home/u/.local/share/cursor-agent/versions/2026.10.22-27dcf5f/index.js --trust".to_owned()]);
+                        let procs: Vec<Value> = lines.iter().map(|l| json!({"cmdline":l,"name":"node","pid":1})).collect();
+                        json!({"type":"pane_process_info","process_info":{"foreground_process_group_id":1,"foreground_processes":procs,"pane_id":"w1:p1","shell_pid":1}})
+                    }
                     "pane.read" if request["params"]["format"] == "ansi" => {
                         assert_eq!(request["params"], json!({"pane_id":"w1:p1","source":"visible","format":"ansi"}));
                         // Real agents draw idle placeholders faint; a test sets
@@ -2909,6 +3195,8 @@ mod tests {
         (service, root, session, herdr)
     }
     include!("service_agy_tests.rs");
+    include!("service_cursor_tests.rs");
+    include!("service_cursor_model_tests.rs");
     include!("service_approval_tests.rs");
     include!("service_question_tests.rs");
     include!("service_question_response_tests.rs");

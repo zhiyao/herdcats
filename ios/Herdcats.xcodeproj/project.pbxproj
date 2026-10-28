@@ -115,6 +115,7 @@
 		CEC27F8163C92B00CD38EE22 /* SpaceDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 795CA6C4625F7448B13868B0 /* SpaceDetailView.swift */; };
 		D1A9C334FA2B179A16BC74A7 /* HerdrConnection+Remote.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1137CF91FF8580175F53E3 /* HerdrConnection+Remote.swift */; };
 		D1EF0D278EE3D5017C400DEA /* SpacesScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0B450F19759740A5C938D45 /* SpacesScreen.swift */; };
+		D207CAF048B6C930676C5ADC /* VoiceWaveform.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F47756B075A75A4323C2A2D /* VoiceWaveform.swift */; };
 		D42BA0884EABA9E4B3C98943 /* HerdrModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85BDAAC12F57BDD3F41B090C /* HerdrModels.swift */; };
 		D82A1C06AA4BDA852E848F59 /* PaneLiveModifierComposerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 217943F1848BADFC038A2932 /* PaneLiveModifierComposerTests.swift */; };
 		D88366995735A638B5816998 /* TimelineEntryViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 420F85D2A36D8492474B19DF /* TimelineEntryViews.swift */; };
@@ -237,6 +238,7 @@
 		8AA651ECCA572E1B7EA98DD4 /* QuestionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionTests.swift; sourceTree = "<group>"; };
 		8BC70F0B4AB3ADF429A92F00 /* QuotaModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaModels.swift; sourceTree = "<group>"; };
 		8D67B69724707A16FD4618DF /* LicensesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicensesView.swift; sourceTree = "<group>"; };
+		8F47756B075A75A4323C2A2D /* VoiceWaveform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceWaveform.swift; sourceTree = "<group>"; };
 		902C762017C8EEFB00E85C2F /* ConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectView.swift; sourceTree = "<group>"; };
 		92640BC7EDFFEEFCA4FB2AB6 /* AgentBridgeClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentBridgeClientTests.swift; sourceTree = "<group>"; };
 		945BC05E891ACD9EC97F059A /* HapticFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticFeedback.swift; sourceTree = "<group>"; };
@@ -396,6 +398,7 @@
 				895293DDBB9E064DE802A838 /* SettingsScreen+Sections.swift */,
 				795CA6C4625F7448B13868B0 /* SpaceDetailView.swift */,
 				A0B450F19759740A5C938D45 /* SpacesScreen.swift */,
+				8F47756B075A75A4323C2A2D /* VoiceWaveform.swift */,
 				602E9D77F8554C6A6CA0EF28 /* AgentTimeline */,
 				095C3A4CD43BD2710C85B22F /* PaneDetail */,
 				9DB04F84E3CA017A7BC569AA /* Shared */,
@@ -810,6 +813,7 @@
 				A85C0F18679FF1BA73DAC863 /* TimelineDiffParser.swift in Sources */,
 				D88366995735A638B5816998 /* TimelineEntryViews.swift in Sources */,
 				6FCE23D3A5BDBCE65BAE1B67 /* UserPreferences.swift in Sources */,
+				D207CAF048B6C930676C5ADC /* VoiceWaveform.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

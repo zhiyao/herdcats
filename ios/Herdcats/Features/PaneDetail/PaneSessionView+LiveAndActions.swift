@@ -188,6 +188,7 @@ extension PaneSessionView {
     /// merges into (never replaces) unsent text.
     func startVoice() {
         surfaceModel.requestVoiceRecording()
+        draftBeforeVoice = draft
         liveInputFocused = false
         composeFieldFocused = false
         let id = UUID()
@@ -203,7 +204,7 @@ extension PaneSessionView {
                 // fast enough that the onChange transition can coalesce away;
                 // the error callback opens the preserved Compose draft itself
                 // so the recording surface can never get stuck.
-                completeDictationSurface()
+                completeDictationSurface(failed: true)
             } initialText: { draft }
             guard !Task.isCancelled else { return }
             if voiceSession != id {
@@ -227,10 +228,35 @@ extension PaneSessionView {
     /// transition, the error callback, or the reconciliation above — is the
     /// only path that opens the Compose bubble, so a partial transcript is
     /// never shown or sent.
-    func finishVoice() {
-        guard surfaceModel.requestFinishDictation() else { return }
+    /// Send only counts once capture is running: during setup `finish()`
+    /// cancels outright, and that idle must not send the prior draft.
+    func finishVoice(send: Bool = false) {
+        let capturing = dictation.isBusy && !dictation.isPreparing
+        guard surfaceModel.requestFinishDictation(sendWhenDone: send && capturing) else { return }
         voiceSession = nil
         dictation.finish()
+    }
+
+    /// The recording bar's cancel: drop capture and any speech from this
+    /// recording, restore the draft as it was, and return to where Voice began.
+    func cancelVoice() {
+        guard surfaceModel.cancelVoiceRecording() else { return }
+        voiceSession = nil
+        dictation.cancel()
+        if let draftBeforeVoice { draft = draftBeforeVoice }
+        draftBeforeVoice = nil
+        if surfaceModel.isComposeSurface { composeFieldFocused = true }
+    }
+
+    /// Lifecycle cancellation (audio interruption, backgrounding) mid-recording
+    /// or mid-drain. Completes the surface as failed before the isBusy
+    /// transition can report it as a successful drain, so a pending Send never
+    /// sends an incomplete transcript; the captured text stays in Compose.
+    func interruptDictation() {
+        let wasRecording = surfaceModel.surface == .voiceRecording
+        voiceSession = nil
+        dictation.cancel()
+        if wasRecording { completeDictationSurface(failed: true) }
     }
 
     /// Single idempotent funnel off the recording surface onto the Compose
@@ -239,10 +265,14 @@ extension PaneSessionView {
     /// precedes `isBusy` clearing on the main actor, so the bubble opens
     /// with a complete transcript — on success, error, timeout, or
     /// interruption alike, preserving the captured draft.
-    func completeDictationSurface() {
+    func completeDictationSurface(failed: Bool = false) {
         let wasRecording = surfaceModel.surface == .voiceRecording
-        surfaceModel.noteDictationIdle()
-        if wasRecording, surfaceModel.isComposeSurface {
+        let sends = surfaceModel.noteDictationIdle(failed: failed)
+        guard wasRecording else { return }
+        draftBeforeVoice = nil
+        if sends, canSend {
+            Task { await send() }
+        } else if surfaceModel.isComposeSurface {
             composeFieldFocused = true
         }
     }
@@ -390,6 +420,11 @@ extension PaneSessionView {
         } ?? trimmedDraft
         guard !text.isEmpty else { return }
 
+        // Cursor runs a leading "/" as its own command; refuse before anything is sent.
+        if CursorPromptPolicy.refusesSlashCommand(agent: pane.agent, text: trimmedDraft) {
+            sessionError = CursorPromptPolicy.slashMessage
+            return
+        }
         let sendRevision = persistenceRevision
         let sentDraft = trimmedDraft
         let originalDraft = draft
@@ -400,9 +435,18 @@ extension PaneSessionView {
                 defer {isTimelineSending=false}
                 if identity.agent == "pi" {
                     try await timeline.submitPiPrompt(text)
+                } else if identity.agent == "cursor" {
+                    do { try await timeline.submitCursorPrompt(text) }
+                    catch { throw HerdrError.invalidConfiguration(CursorPromptPolicy.message(forCode: (error as? AgentBridgeError)?.code)) }
                 } else {
                     try await appModel.connection.submitTimelinePrompt(text:text,identity:identity,owned:owned)
                 }
+            } else if pane.agent == "cursor", showsTimeline, timeline.canSendFirstCursorPrompt {
+                // A brand-new chat: no transcript, so no identity yet. Same bridge guard.
+                isTimelineSending=true
+                defer {isTimelineSending=false}
+                do { try await timeline.submitFirstCursorPrompt(text, paneId: pane.paneId) }
+                catch { throw HerdrError.invalidConfiguration(CursorPromptPolicy.message(forCode: (error as? AgentBridgeError)?.code)) }
             } else {
                 try await session.send(text:text,connection:appModel.connection)
             }

@@ -279,7 +279,8 @@ final class AgentTimelineUITests: XCTestCase {
     }
 
     func testUnsupportedAgentsStayInTerminalWithoutTimelineSetup() {
-        for agent in ["cursor", "unknown"] {
+        // Cursor now has a Timeline adapter; these agents still do not.
+        for agent in ["gemini", "unknown"] {
             let app = XCUIApplication()
             app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-helper-missing", "-hc.agent", agent, "-hc.light", "-paneShowComposeByDefault", "YES"]
             launch(app)
@@ -290,6 +291,37 @@ final class AgentTimelineUITests: XCTestCase {
             XCTAssertTrue(app.descendants(matching: .any)["pane-compose-field"].firstMatch.exists)
             app.terminate()
         }
+    }
+
+    /// The pinned 0.3.0 installer cannot install Cursor support, so a Cursor pane whose
+    /// bridge is missing explains the source build instead of offering the installer.
+    func testCursorWithMissingHelperExplainsTheSourceBuildAndOffersNoInstaller() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-helper-missing", "-hc.agent", "cursor", "-hc.light", "-paneShowComposeByDefault", "YES"]
+        launch(app)
+        let explanation = app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] %@", "source build of Herdcats Bridge with Cursor support")).firstMatch
+        if !explanation.waitForExistence(timeout: 5) {
+            // The pane may open on its terminal view first.
+            let open = app.buttons["terminal-open-timeline"]
+            if open.waitForExistence(timeout: 3) { open.tap() }
+        }
+        XCTAssertTrue(explanation.waitForExistence(timeout: 5), "the source-build message is shown")
+        XCTAssertTrue(explanation.label.contains("Install the source bridge manually"))
+        XCTAssertTrue(explanation.label.contains("Terminal"))
+        // No installer or first-use drawer for an agent the pinned installer cannot support.
+        for identifier in ["timeline-helper-setup", "timeline-helper-install", "timeline-helper-check-again", "timeline-helper-copy-command"] {
+            XCTAssertFalse(app.buttons[identifier].exists, identifier)
+        }
+        for title in ["Install Herdcats Bridge", "Upgrade Herdcats Bridge", "Set up Timeline"] {
+            XCTAssertFalse(app.buttons[title].exists, title)
+        }
+        XCTAssertFalse(app.staticTexts["A clearer view of your agent"].exists)
+        XCTAssertFalse(app.scrollViews["timeline-setup-scroll"].exists)
+        let preview = XCTAttachment(screenshot: app.screenshot())
+        preview.name = "Cursor timeline with no bridge"
+        preview.lifetime = .keepAlways
+        add(preview)
+        app.terminate()
     }
 
     func testCodexHelperUpdateShowsUpdateHelperLabel() {
@@ -352,6 +384,39 @@ final class AgentTimelineUITests: XCTestCase {
         XCTAssertTrue(latest.waitForNonExistence(timeout: 5), "Manual return to bottom hides the button")
         scroll.swipeDown()
         XCTAssertTrue(latest.waitForExistence(timeout: 5))
+        latest.tap()
+        XCTAssertTrue(latest.waitForNonExistence(timeout: 5))
+        app.terminate()
+    }
+
+    func testLatestStaysAboveExpandedComposerWithKeyboard() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline", "-hc.timeline-long", "-hc.light", "-paneShowComposeByDefault", "YES"]
+        launch(app)
+        let scroll = app.scrollViews["agent-timeline-scroll"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: 5))
+        let field = app.textFields["timeline-compose-field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        field.typeText(String(repeating: "Please check the conversation layout. ", count: 5))
+        // Drag within the transcript to move away from the newest message.
+        scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25))
+            .press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)))
+        let latest = app.buttons["timeline-latest"]
+        XCTAssertTrue(latest.waitForExistence(timeout: 5))
+        let composer = app.descendants(matching: .any)["pane-compose-bar"].firstMatch
+        XCTAssertTrue(composer.exists)
+        let clearOfComposer = NSPredicate { _, _ in
+            latest.exists && latest.frame.maxY <= composer.frame.minY - 4
+        }
+        expectation(for: clearOfComposer, evaluatedWith: nil)
+        waitForExpectations(timeout: 5)
+        XCTAssertTrue(latest.isHittable)
+        let capture = XCTAttachment(screenshot: app.screenshot())
+        capture.name = "Latest button above expanded conversation composer"
+        capture.lifetime = .keepAlways
+        add(capture)
         latest.tap()
         XCTAssertTrue(latest.waitForNonExistence(timeout: 5))
         app.terminate()
