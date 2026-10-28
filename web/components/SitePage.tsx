@@ -30,7 +30,7 @@ export function SiteFooter() {
         <p>© {new Date().getFullYear()} Herdcats. Open source iOS client for Herdr.</p>
         <p>Independent project, not affiliated with Herdr.</p>
         <div className={styles.footerLinks}>
-          <Link href="/screenshots" className={styles.footerLink}>Screenshots</Link>
+          <Link href="/features" className={styles.footerLink}>Features</Link>
           <Link href="/support" className={styles.footerLink}>Support</Link>
           <Link href="/about" className={styles.footerLink}>About</Link>
           <Link href="/privacy" className={styles.footerLink}>Privacy</Link>

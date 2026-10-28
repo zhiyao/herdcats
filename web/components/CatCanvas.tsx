@@ -34,7 +34,7 @@ export function CatCanvas({ onVictory, gameWon, onRef }: CatCanvasProps) {
     const hero = document.querySelector<HTMLElement>('#ui-layer .hero');
     const footer = document.querySelector<HTMLElement>('#ui-layer .landing-footer');
     const world = new World(container, {
-      skyReserve: () => (hero ? hero.getBoundingClientRect().bottom + 8 : 0),
+      skyReserve: () => (hero ? hero.getBoundingClientRect().bottom - container.getBoundingClientRect().top + 8 : 0),
       groundReserve: () => footer?.offsetHeight ?? 0,
     });
     worldRef.current = world;

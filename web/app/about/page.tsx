@@ -32,6 +32,9 @@ export default function AboutPage() {
         <ul className={styles.list}>
           <li>Direct SSH to your machine, with no relay — the optional Herdcats Bridge runs on your own computer, only while you use it</li>
           <li>Navigation that follows Herdr&rsquo;s own spaces, tabs, panes and agents</li>
+          <li>Readable Claude, Codex, Agy, Pi, and Cursor Agent conversations with optional Bridge, plus Terminal for direct controls</li>
+          <li>Compose for reviewed messages, dictation and photos, with supported phone approvals and questions</li>
+          <li>Saved SSH connections so you can switch directly between your computers</li>
           <li>An optional quota view, if <code>quota-axi</code> is installed on the connected machine</li>
         </ul>
       </section>

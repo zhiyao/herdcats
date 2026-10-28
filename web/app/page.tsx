@@ -2,7 +2,6 @@
 
 import React, { useState, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import Link from 'next/link';
 import { SiteNav } from '@/components/SiteNav';
 import { SiteFooter } from '@/components/SitePage';
 import { VictoryModal } from '@/components/VictoryModal';
@@ -62,7 +61,6 @@ export default function Home() {
             >
               Join the TestFlight ↗
             </a>
-            <Link href="/screenshots" className="nav-link">See app screenshots →</Link>
             <span className="hero-hint">or herd the cats into the corral below</span>
           </div>
         </section>
