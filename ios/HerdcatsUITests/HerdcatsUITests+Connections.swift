@@ -3,6 +3,27 @@ import UIKit
 import XCTest
 
 extension HerdcatsUITests {
+    func testAuthMethodTogglePreservesPrivateKeyDraft() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-connectionSelectionUITest", "-launchPreference", "connectionSelection"]
+        app.launch()
+        defer { app.terminate() }
+        let gear = app.buttons["settings-machine-00000000-0000-0000-0000-000000000002"]
+        XCTAssertTrue(gear.waitForExistence(timeout: 8))
+        gear.tap()
+        app.buttons["Show Private Key"].tap()
+        let editor = app.textViews["Private key"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.tap()
+        editor.typeText("PRIVATE_KEY_DRAFT")
+        app.buttons["Hide Private Key"].tap()
+        app.segmentedControls.buttons["Password"].tap()
+        app.segmentedControls.buttons["Private Key"].tap()
+        app.buttons["Show Private Key"].tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        XCTAssertEqual(editor.value as? String, "PRIVATE_KEY_DRAFT")
+    }
+
     func testSavedConnectionCardAndGear() {
         for appearance in ["dark", "light"] {
             let app = XCUIApplication()

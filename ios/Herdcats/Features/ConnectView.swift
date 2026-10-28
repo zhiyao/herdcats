@@ -574,10 +574,6 @@ struct SavedConnectionSignInView: View {
                     if requestsSecret || editingRejectedSecret {
                         if value.isKey {
                             ConnectionPrivateKeyField(key: $value.secret) { keyImporterPresented = true }
-                            if !value.secret.isEmpty && !value.needsSecret {
-                                Label(value.encrypted ? "Encrypted ed25519 key loaded" : "ed25519 key loaded", systemImage: "key")
-                                    .font(.jost(.subheadline))
-                            }
                             if let importError { Text(importError).foregroundStyle(Theme.destructive) }
                             if !value.secret.isEmpty && value.needsSecret {
                                 Text("Enter a valid OpenSSH ed25519 private key.").foregroundStyle(Theme.warning)
