@@ -72,7 +72,7 @@ extension ConnectionSettingsView {
                         Button {
                             showPassword.toggle()
                         } label: {
-                            Image(systemName: showPassword ? "eye.slash" : "eye")
+                            Image(systemName: showPassword ? "eye" : "eye.slash")
                                 .font(.jost(14, weight: .medium))
                                 .foregroundStyle(.secondary)
                         }
@@ -85,10 +85,8 @@ extension ConnectionSettingsView {
             case .privateKey:
                 VStack(alignment: .leading, spacing: 8) {
                     ConnectionPrivateKeyField(key: $keyPEM) { keyImporterPresented = true }
-                    if !keyPEM.isEmpty {
-                        Label(keyValidationError == nil
-                              ? (keyIsEncrypted ? "Encrypted ed25519 key loaded" : "ed25519 key loaded")
-                              : "Check private key", systemImage: "key")
+                    if !keyPEM.isEmpty && keyValidationError != nil {
+                        Label("Check private key", systemImage: "key")
                             .font(.jost(.subheadline))
                     }
                     if keyIsEncrypted {
@@ -98,9 +96,6 @@ extension ConnectionSettingsView {
                                 .font(.jost(.footnote))
                                 .tint(Theme.accent)
                         }
-                        Text("The key is unlocked on this device. Remember the passphrase to reconnect after restarting the app.")
-                            .font(.jost(.caption2))
-                            .foregroundStyle(.secondary)
                     }
                     if let importError = importErrorMessage {
                         Text(importError)
@@ -175,10 +170,9 @@ extension ConnectionSettingsView {
 /// Connection-only field surface: lifted from the sheet canvas in every palette.
 struct ConnectionInputSurface: ViewModifier {
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle.continuous(DesignSystem.CornerRadius.md)
+        let shape = RoundedRectangle.continuous(DesignSystem.CornerRadius.lg)
         content
             .background(shape.fill(Theme.cardBackground))
-            .overlay(shape.strokeBorder(Theme.hairline, lineWidth: 1).allowsHitTesting(false))
     }
 }
 
@@ -216,7 +210,7 @@ struct ConnectionPrivateKeyField: View {
                     editing = false
                     revealed.toggle()
                 } label: {
-                    Image(systemName: revealed ? "eye.slash" : "eye")
+                    Image(systemName: revealed ? "eye" : "eye.slash")
                         .resizable()
                         .scaledToFit()
                         .frame(width: 18, height: 18)
@@ -239,12 +233,20 @@ struct ConnectionPrivateKeyField: View {
                 } else {
                     ZStack(alignment: .topLeading) {
                         Color.clear
-                        Text(key.isEmpty ? "Reveal to paste or edit, or import a private key." : "••••••••\n••••••••\n••••••••")
-                            .font(.system(size: fontSize, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(3)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 8)
+                        GeometryReader { geometry in
+                            let font = UIFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+                            let dotWidth = ("•" as NSString).size(withAttributes: [.font: font]).width
+                            let count = max(0, Int(floor(max(0, geometry.size.width - 10) / dotWidth)))
+                            let line = String(repeating: "•", count: count)
+                            Text(key.isEmpty
+                                 ? "Reveal to paste or edit, or import a private key."
+                                 : Array(repeating: line, count: 3).joined(separator: "\n"))
+                                .font(.system(size: fontSize, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(3)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 8)
+                        }
                     }
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel(key.isEmpty ? "Private key input" : "Private key hidden")
@@ -277,10 +279,10 @@ struct ConnectionFieldHeader<Controls: View>: View {
             .overlay(alignment: .trailing) { headerControls }
     }
 
-    private var controlsWidth: CGFloat { CGFloat(controlCount) * 52 }
+    private var controlsWidth: CGFloat { CGFloat(controlCount) * 44 + 8 }
 
     private var headerControls: some View {
-        HStack(spacing: 8) { controls() }
+        HStack(spacing: 0) { controls() }
             .font(Font.jost(14, weight: .medium))
             .imageScale(.medium)
             .buttonStyle(.plain)
@@ -300,7 +302,7 @@ struct ConnectionPassphraseField: View {
                     editing = false
                     revealed.toggle()
                 } label: {
-                    Image(systemName: revealed ? "eye.slash" : "eye")
+                    Image(systemName: revealed ? "eye" : "eye.slash")
                         .resizable()
                         .scaledToFit()
                         .frame(width: 18, height: 18)

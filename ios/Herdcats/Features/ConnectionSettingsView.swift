@@ -220,7 +220,8 @@ struct ConnectionSettingsView: View {
             HerdrSetupGuideView()
         }
         .onChange(of: destination) { old, new in
-            guard !ConnectionSignIn.sameDestination(old, new) else { return }
+            guard old.host.lowercased() != new.host.lowercased()
+                || old.port != new.port || old.username != new.username else { return }
             // Destination changes require fresh, intentional credential entry.
             password = ""
             keyPEM = ""
