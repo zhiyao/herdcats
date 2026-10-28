@@ -42,18 +42,51 @@ enum PaneSwitcherCollapse {
 
 /// Each selectable pane gets its own solid card in the expanded and compact rows:
 /// `--surface` with a `--border` outline, or `--raised` with an accent outline
-/// when selected, like the website's active rows. Moonlit uses no glass or blur.
+/// when selected, like the website's active rows.
 struct PaneSwitcherGlassItem<S: InsettableShape>: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorScheme) private var colorScheme
     let shape: S
     var isSelected = false
 
     func body(content: Content) -> some View {
         content
             .background(isSelected ? Theme.selectedFill : Theme.cardBackground, in: shape)
-            .overlay(
-                shape.strokeBorder(isSelected ? Theme.accent : Theme.hairline, lineWidth: isSelected ? 1.5 : 1)
+            .overlay {
+                if isSelected {
+                    shape.strokeBorder(Theme.accent, lineWidth: 1.5)
+                        .allowsHitTesting(false)
+                } else if !reduceTransparency {
+                    // A fine outer rim and inset highlight give the edge depth
+                    // while preserving the nearly opaque field background.
+                    shape.strokeBorder(
+                        .black.opacity(colorScheme == .dark ? 0.45 : 0.18),
+                        lineWidth: 0.5
+                    )
                     .allowsHitTesting(false)
-            )
+                } else {
+                    shape.strokeBorder(Theme.hairline, lineWidth: 1)
+                        .allowsHitTesting(false)
+                }
+            }
+            .overlay {
+                if !isSelected && !reduceTransparency {
+                    shape.inset(by: 0.75).strokeBorder(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .white.opacity(colorScheme == .dark ? 0.4 : 0.95), location: 0),
+                                .init(color: .clear, location: 0.15),
+                                .init(color: .clear, location: 0.85),
+                                .init(color: .white.opacity(colorScheme == .dark ? 0.35 : 0.85), location: 1)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 1
+                    )
+                    .allowsHitTesting(false)
+                }
+            }
     }
 }
 
