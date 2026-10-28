@@ -11,7 +11,7 @@ cargo build --release --manifest-path bridge/Cargo.toml
 ./bridge/target/release/herdcats-bridge --version-json
 ```
 
-The development binary reports bridge version `0.4.0`; Pi capability is negotiated separately at runtime and does not require changing the published installer metadata. Manually install that binary in the bridge location used by Herdcats (normally `~/.local/bin/herdcats-bridge`). Building does not replace the running bridge. Do not change a published installer checksum to point to this development build.
+The development binary reports bridge version `0.5.0`; Pi capability is negotiated separately at runtime and does not require changing the published installer metadata. Manually install that binary in the bridge location used by Herdcats (normally `~/.local/bin/herdcats-bridge`). Building does not replace the running bridge. Do not change a published installer checksum to point to this development build.
 
 Enable the extension from `bridge/pi-extension/` in the Pi process Herdcats will control. For a new test pane, follow the README's `pi -e ...` command. For an existing TUI, add the extension to Pi's personal extension directory and use Pi's own `/reload` command if available; reload replaces the extension runtime in that same process. If that Pi build cannot load it into the current process, start a separate disposable test pane with the extension enabled. Never launch a second RPC process to represent the same running session. Rebuild this iOS app, connect to the computer, open the Pi pane's Conversation mode, then choose **Check again** if needed. If no exact native session reference is available from Herdr, use Terminal; Herdcats never picks the newest transcript or another session in the same working folder.
 

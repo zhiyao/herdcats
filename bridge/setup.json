@@ -84,15 +84,19 @@
     "record_content": "App requires negotiated record_content support; older helpers reopen setup and require explicit replacement. Images and unfamiliar records expose complete source bytes."
   },
   "source_support": {
-    "version": "0.4.0 source (unpublished)",
+    "version": "0.5.0 release candidate (unpublished)",
     "agents": [
       "claude",
       "codex",
-      "antigravity_cli"
+      "antigravity_cli",
+      "pi",
+      "cursor"
     ],
     "agy": "Build this checkout and explicitly install the local binary. Published 0.3.0 installer and its checksum remain unchanged; they do not support Agy. After a real Agy-enabled artifact is published and verified, update the iOS version/checksum/supported-agent pin together.",
     "docs": "ios/docs/agy-conversations.md",
     "cursor": "Build this checkout and explicitly install the local binary; the published 0.3.0 installer does not support Cursor. Model control is verified on Cursor build 2026.10.22-27dcf5f only. Update the iOS version/checksum/supported-agent pin together once a real Cursor-enabled artifact is published and verified.",
-    "docs_cursor": "ios/docs/cursor-conversations.md"
+    "docs_cursor": "ios/docs/cursor-conversations.md",
+    "pi": "Requires the opt-in extension in herdcats-pi-extension.tar.gz (or bridge/pi-extension from source), enabled inside Pi 1.4.0. Binary installation alone does not enable Pi controls.",
+    "docs_pi": "ios/docs/pi-conversations.md"
   }
 }

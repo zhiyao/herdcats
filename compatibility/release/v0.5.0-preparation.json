@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-28",
+  "status": "release_preparation_unpublished",
+  "version": "0.5.0",
+  "proposed_tag": "herdcats-bridge-v0.5.0",
+  "base_commit": "51f8c98",
+  "version_reason": "0.4.0 is already tagged with a draft; preserve it and prepare a new minor release for Pi and Cursor Agent.",
+  "agents": [
+    "claude",
+    "codex",
+    "antigravity_cli",
+    "pi",
+    "cursor"
+  ],
+  "local_validation": {
+    "platform": "darwin-arm64",
+    "rust_tests": 614,
+    "pi_extension_tests": 19,
+    "python_installer_distribution_tests": 35,
+    "clippy": "passed (--locked --all-targets -- -D warnings)",
+    "release_build": "passed (--release --locked)",
+    "pi_tui_probe": "passed on Pi 1.4.0 with isolated configuration and local synthetic provider: exact identity, explicit dialog denial, model and effort changes, prompt streaming, cancellation and idle recovery",
+    "packaging": "archive contents, private-source exclusion by explicit file list, deterministic archive bytes, checksums, exact binary, rendered installer and setup-agent agreement passed"
+  },
+  "unchanged_published_pin": {
+    "version": "0.3.0",
+    "installer_sha256": "abc709fd23eed7e8ba395f21aec7a31415c8d79d8e32655748d14514f3322025"
+  },
+  "remaining": [
+    "Merge PR with passing Bridge, iOS and Web checks; tag the tested main SHA using scripts/bridge-release-tag.sh 0.5.0",
+    "Review four native CI builds and draft assets; verify five checksummed downloads and smoke-test installation",
+    "Review and publish the draft; separately update iOS version/checksum/supported-agent pins using verified published assets"
+  ],
+  "limits": [
+    "Local native build validated only on Apple Silicon; other native platforms require release CI",
+    "Cursor live probes from the integration work are recorded in bridge/validation.json; no fresh Cursor live input was sent for this release preparation",
+    "Cursor model controls verified only on 2026.10.22-27dcf5f; Pi controls require opt-in extension on Pi 1.4.0",
+    "No iOS or Web code changed; their CI remains a merge gate",
+    "Local installer digest is not published-release evidence"
+  ]
+}

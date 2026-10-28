@@ -6,6 +6,7 @@ import platform
 import subprocess
 import sys
 import tempfile
+import tarfile
 import textwrap
 import unittest
 
@@ -76,8 +77,25 @@ class PackageTests(unittest.TestCase):
                 '--binary', str(binary), '--platform', 'darwin-arm64', '--version', version, '--out', str(out)], capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             report = json.loads(subprocess.check_output([str(binary), '--version-json']))
+            self.assertEqual(report['agents'], json.loads((ROOT / 'setup.json').read_text())['source_support']['agents'])
             agents = json.dumps(report['agents'], separators=(',', ':'))
             self.assertIn('"agents":' + agents, (out / 'install.sh').read_text())
+            # The release helper verifies the rendered template at the tag.
+            template = (ROOT / 'scripts/install.sh').read_text()
+            self.assertEqual((out / 'install.sh').read_text(),
+                template.replace('"agents":["claude","codex"]', '"agents":' + agents))
+            extension = out / 'herdcats-pi-extension.tar.gz'
+            with tarfile.open(extension) as archive:
+                self.assertEqual(archive.getnames(), ['herdcats/index.ts', 'herdcats/runtime.mjs', 'herdcats/README.md'])
+                for entry in archive.getmembers():
+                    self.assertEqual(entry.mode, 0o644)
+                    self.assertEqual(archive.extractfile(entry).read(), (ROOT / 'pi-extension' / Path(entry.name).name).read_bytes())
+            self.assertEqual((out / 'SHA256SUMS-pi-extension').read_text(),
+                hashlib.sha256(extension.read_bytes()).hexdigest() + '  herdcats-pi-extension.tar.gz\n')
+            again = Path(tmp) / 'again'
+            subprocess.run([sys.executable, str(ROOT / 'scripts/package.py'),
+                '--binary', str(binary), '--platform', 'darwin-arm64', '--version', version, '--out', str(again)], check=True)
+            self.assertEqual(extension.read_bytes(), (again / extension.name).read_bytes())
             asset = out / 'herdcats-bridge-darwin-arm64'
             self.assertEqual(asset.read_bytes(), binary.read_bytes())
             self.assertEqual((out / 'SHA256SUMS-darwin-arm64').read_text(), hashlib.sha256(binary.read_bytes()).hexdigest() + '  herdcats-bridge-darwin-arm64\n')
