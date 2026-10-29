@@ -49,11 +49,23 @@ def set_posture(posture: str):
 def capture_screen(udid: str, display_id: int, flow_path: Path, output_file: Path):
     print(f"  -> Validating with Maestro flow: {flow_path.name}")
     try:
-        # Run maestro flow with a reasonable timeout
-        subprocess.run(['maestro', '--device', udid, 'test', str(flow_path)],
-                       capture_output=True, timeout=30)
-    except Exception as e:
-        print(f"     (Maestro validation note: {e})")
+        proc = subprocess.run(
+            ['maestro', '--device', udid, 'test', str(flow_path)],
+            cwd='/tmp',
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+    except FileNotFoundError:
+        raise RuntimeError("Maestro CLI executable not found in PATH")
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(f"Maestro validation timed out after 30s on {flow_path.name}") from e
+
+    if proc.returncode != 0:
+        details = (proc.stderr or proc.stdout or "").strip()
+        raise RuntimeError(
+            f"Maestro validation failed for {flow_path.name} (exit {proc.returncode}):\n{details}"
+        )
     
     # Capture the exact hardware framebuffer for this display
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -64,10 +76,30 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--posture', choices=['closed', 'open', 'both'], default='both')
     parser.add_argument('--only', nargs='+', choices=FRAMES.keys())
+    parser.add_argument('--app', type=Path, help='Use an already-built Debug simulator app bundle')
+    parser.add_argument('--build', action='store_true', help='Build and install fresh Debug app before running')
     options = parser.parse_args()
 
     udid = get_duo_udid()
     print(f"Using booted iPhone Duo: {udid}")
+
+    if options.build:
+        build_dir = IOS / 'build/screenshots-derived-data'
+        print("Building fresh Debug simulator app...")
+        run('xcodegen', 'generate', '--spec', str(IOS / 'project.yml'))
+        run('xcodebuild', '-project', str(IOS / 'Herdcats.xcodeproj'), '-scheme', 'Herdcats',
+            '-configuration', 'Debug', '-destination', f"platform=iOS Simulator,id={udid}",
+            '-derivedDataPath', str(build_dir), 'CODE_SIGNING_ALLOWED=NO', 'build')
+        app_to_install = build_dir / 'Build/Products/Debug-iphonesimulator/Herdcats.app'
+        print(f"Installing {app_to_install.name}...")
+        run('xcrun', 'simctl', 'install', udid, str(app_to_install))
+    elif options.app:
+        print(f"Installing specified app {options.app}...")
+        run('xcrun', 'simctl', 'install', udid, str(options.app))
+    elif (IOS / 'build/screenshots-derived-data/Build/Products/Debug-iphonesimulator/Herdcats.app').exists():
+        app_to_install = IOS / 'build/screenshots-derived-data/Build/Products/Debug-iphonesimulator/Herdcats.app'
+        print(f"Ensuring latest built Debug app from {app_to_install} is installed...")
+        run('xcrun', 'simctl', 'install', udid, str(app_to_install))
 
     # Set dark appearance
     run('xcrun', 'simctl', 'ui', udid, 'appearance', 'dark')
@@ -80,6 +112,16 @@ def main():
     if options.posture in ('open', 'both'):
         postures.append(('Open', 3, OUTPUT / 'inner'))
 
+    manifest_path = OUTPUT / 'manifest.json'
+    existing_frames = {}
+    if manifest_path.exists() and (options.only or options.posture != 'both'):
+        try:
+            prev = json.loads(manifest_path.read_text())
+            existing_frames = prev.get('frames', {})
+        except Exception as e:
+            print(f"Warning: could not read existing manifest ({e})")
+            existing_frames = {}
+
     manifest_data = {
         'suite': 'iPhone Duo Maestro Standard Suite',
         'createdAt': datetime.now(timezone.utc).isoformat(),
@@ -90,7 +132,7 @@ def main():
             'outer': {'displayId': 1, 'surface': 'LCD', 'posture': 'Closed'},
             'inner': {'displayId': 3, 'surface': 'LCD-1', 'posture': 'Open'}
         },
-        'frames': {}
+        'frames': existing_frames
     }
 
     try:
@@ -140,6 +182,7 @@ def main():
             shutil.copy2(OUTPUT / 'inner/03_spaces.png', OUTPUT / 'iphone-duo-inner-screen.png')
 
         # Write manifest
+        manifest_data['frames'] = dict(sorted(manifest_data['frames'].items()))
         manifest_path = OUTPUT / 'manifest.json'
         manifest_path.write_text(json.dumps(manifest_data, indent=2) + '\n')
         print(f"\nManifest written to: {manifest_path}")

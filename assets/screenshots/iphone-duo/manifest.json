@@ -1,6 +1,6 @@
 {
   "suite": "iPhone Duo Maestro Standard Suite",
-  "createdAt": "2026-10-29T12:36:13.302693+00:00",
+  "createdAt": "2026-10-29T15:19:14.809249+00:00",
   "device": "iPhone Duo",
   "udid": "4730FABB-DF45-406D-A2D2-1A8DD4109A63",
   "appearance": "dark",
@@ -17,101 +17,101 @@
     }
   },
   "frames": {
-    "outer/01_onboarding.png": {
-      "sha256": "d56340dc05c4e2a5d92b737dbf26ea78089630aa9cbffae7fdcc4b027f096612",
-      "size": 250852
-    },
-    "outer/02_connect_form.png": {
-      "sha256": "585e321347d66d04e6244b498c161a2af9cd5b6491a519d14dc36572243ac339",
-      "size": 246846
-    },
-    "outer/03_spaces.png": {
-      "sha256": "e030eaaf2cc4a31a44a3f953863459954f2a374946ef9d2ed49df7823cbd748b",
-      "size": 250825
-    },
-    "outer/04_workspace_pane.png": {
-      "sha256": "1df1fe19ddbce9400ddab366965de9eb10bc366227251f03894a739b7d252986",
-      "size": 315618
-    },
-    "outer/05_pane_keys.png": {
-      "sha256": "1df1fe19ddbce9400ddab366965de9eb10bc366227251f03894a739b7d252986",
-      "size": 315618
-    },
-    "outer/06_agents.png": {
-      "sha256": "0b163bb89d7a47124284782fa7ab316dd8445570d1fdb8f28ad88f226ac06f91",
-      "size": 262423
-    },
-    "outer/07_agent_pane.png": {
-      "sha256": "1df1fe19ddbce9400ddab366965de9eb10bc366227251f03894a739b7d252986",
-      "size": 315618
-    },
-    "outer/08_quota.png": {
-      "sha256": "c8981400f47d2af2aa27bd98de1dd6d3f3245e0eb1528c8284962604e7a0158c",
-      "size": 308527
-    },
-    "outer/09_settings.png": {
-      "sha256": "cc3df7891ec0c4f2eaebc37cb0abba26b33f1d004b13128fa5efb26e22636467",
-      "size": 320712
-    },
-    "outer/10_compose.png": {
-      "sha256": "9af53aa6cd1f974017997d5678ea2ea77f79096d97eca77fea5a48d02e9d3ee4",
-      "size": 317918
-    },
-    "outer/11_voice.png": {
-      "sha256": "b41ae011976cd556a067b51c3a81a3e49836c202d6a9e5aa2231e76378fe4ca3",
-      "size": 316591
-    },
-    "outer/12_timeline.png": {
-      "sha256": "1df1fe19ddbce9400ddab366965de9eb10bc366227251f03894a739b7d252986",
-      "size": 315618
-    },
     "inner/01_onboarding.png": {
-      "sha256": "7f9b2adbdcdf2c0bbeb269bab6ef44c62e0587f2ad9ce38eea9ac78f1481b8e9",
-      "size": 273920
+      "sha256": "6404d83aef6c03c201234086625a887ba169de4d911bfd50ae8ef4c0be68f52e",
+      "size": 291562
     },
     "inner/02_connect_form.png": {
-      "sha256": "b36f25e635e9594e63fbd4342e1df58ddf4037467f92d4a5c5aad75aacef4cd8",
-      "size": 271166
+      "sha256": "7d3cae28b94a8e902038c2ff705661ed82e84c41074d6faf0ba44c0f4c2cf9b7",
+      "size": 273144
     },
     "inner/03_spaces.png": {
-      "sha256": "362209d04491953caaa13c6d3f559eacc249f93d92dba2bae1119f9e86129767",
-      "size": 273957
+      "sha256": "896fc063182f9f4286a563bdca5229e613736ccf3c93e26c834f66580ad70f2e",
+      "size": 273942
     },
     "inner/04_workspace_pane.png": {
-      "sha256": "94b51155cf7a55a5d57acf6698f85a55e3561728b52170e115b6cb8b609dd07d",
-      "size": 335368
+      "sha256": "a247479f59dee6f1178cbfece905e43fccc47f435ef4afa7284ca7c01772c6c5",
+      "size": 437281
     },
     "inner/05_pane_keys.png": {
-      "sha256": "94b51155cf7a55a5d57acf6698f85a55e3561728b52170e115b6cb8b609dd07d",
-      "size": 335368
+      "sha256": "9b62b6d533356bc7c3e5f56b4ff02ed6653aacbaa932ac65f99f4fe991ec5364",
+      "size": 460541
     },
     "inner/06_agents.png": {
-      "sha256": "c57b8fd7ac692e58dc101d22eebd08160427eceaabaa0d096328de4cf7042abf",
-      "size": 290107
+      "sha256": "35171b83e63b812e17952ddafdbb452be9540e8a6908f4e2645e7398f1ef1c6f",
+      "size": 290056
     },
     "inner/07_agent_pane.png": {
-      "sha256": "94b51155cf7a55a5d57acf6698f85a55e3561728b52170e115b6cb8b609dd07d",
-      "size": 335368
+      "sha256": "a247479f59dee6f1178cbfece905e43fccc47f435ef4afa7284ca7c01772c6c5",
+      "size": 437281
     },
     "inner/08_quota.png": {
-      "sha256": "fd1de5726125f7a1fd379ebed0ccf47e2d13df7e725da581b07c506110d2d1b2",
-      "size": 336404
+      "sha256": "ce5a9d4208467de276ee343172f391a61e1c4ab117df6f274129b52660b3a13b",
+      "size": 328580
     },
     "inner/09_settings.png": {
       "sha256": "fb0591c87f2cffcadfa3a909dbcbda0df777be5e5afaf2e72dadcf6226867ac1",
       "size": 337450
     },
     "inner/10_compose.png": {
-      "sha256": "9719e7b597c9ba0dc6c4611257ac886bf52c69ae75f2686139f7c85c6992d0f6",
-      "size": 339783
+      "sha256": "299183e8f50833836a82d416c6af7f199c5bac6d0fd23b090640fa9900a14482",
+      "size": 370499
     },
     "inner/11_voice.png": {
-      "sha256": "147abe3d3527b6f5d2dc908ec8c2d20d06e2086dfb3f467fc8672b26d52c1716",
-      "size": 342980
+      "sha256": "ed4aa3de812a426fdfe0673700d96bc404e7344d6ffbd90c40bccbb42801c00d",
+      "size": 385931
     },
     "inner/12_timeline.png": {
-      "sha256": "94b51155cf7a55a5d57acf6698f85a55e3561728b52170e115b6cb8b609dd07d",
-      "size": 335368
+      "sha256": "f660cc42607c5eee55f19bbe66d86bf9374ab80969ae9a1a0c23790adf6426ab",
+      "size": 361078
+    },
+    "outer/01_onboarding.png": {
+      "sha256": "06181c8543c4b4f95048bbff36c3179c047b8933aa292a604d1bae2100db2364",
+      "size": 264130
+    },
+    "outer/02_connect_form.png": {
+      "sha256": "9ee151c11d21943e3179c2e6d9c79d862027d87a955aa334579a7a5629ae1485",
+      "size": 248539
+    },
+    "outer/03_spaces.png": {
+      "sha256": "625c69191f7a4b7c06fb42a881916fbf5aff0662ca432022d23f1fd59cac6f38",
+      "size": 250933
+    },
+    "outer/04_workspace_pane.png": {
+      "sha256": "6a21bc08d8490d6b7da8142a99a2e75bbdd9631c7a1f035d2b22efd19c438451",
+      "size": 574653
+    },
+    "outer/05_pane_keys.png": {
+      "sha256": "9017e14546e82c19f7efefcf057282023bfbd8a4b6c1e95558ce5243247cd873",
+      "size": 394682
+    },
+    "outer/06_agents.png": {
+      "sha256": "9c95ed134e88f8629ad941d0d8d611215241ea7aa0cebaff8a45dbc335510053",
+      "size": 262514
+    },
+    "outer/07_agent_pane.png": {
+      "sha256": "6a21bc08d8490d6b7da8142a99a2e75bbdd9631c7a1f035d2b22efd19c438451",
+      "size": 574653
+    },
+    "outer/08_quota.png": {
+      "sha256": "46ee114491f48382417424641634d6142b0a41dd7595c99b80cba4fc08e77111",
+      "size": 301906
+    },
+    "outer/09_settings.png": {
+      "sha256": "cc3df7891ec0c4f2eaebc37cb0abba26b33f1d004b13128fa5efb26e22636467",
+      "size": 320712
+    },
+    "outer/10_compose.png": {
+      "sha256": "a649053c1d631754131717008846c0d4739ed58b29cf23c2ce00b2e83162676e",
+      "size": 349779
+    },
+    "outer/11_voice.png": {
+      "sha256": "941b667f08f54ba097aac8f537f28eb9703085b0ccf76a2f5867495b13319d82",
+      "size": 341283
+    },
+    "outer/12_timeline.png": {
+      "sha256": "000c38504de1132faf5fbce97ecbb8f05849eeb8727c07ba946383b199ea2c78",
+      "size": 343698
     }
   }
 }
