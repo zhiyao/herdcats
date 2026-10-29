@@ -1,0 +1,7 @@
+appId: com.enchantinglabs.herdrcat
+---
+# Onboarding welcome & replay
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- takeScreenshot: "01_onboarding"

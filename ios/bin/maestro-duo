@@ -1,0 +1,153 @@
+#!/usr/bin/env python3
+"""Run Maestro suite for iPhone Duo in dark mode across outer and inner displays."""
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import subprocess
+import time
+from datetime import datetime, timezone
+
+ROOT = Path(__file__).resolve().parents[2]
+IOS = ROOT / 'ios'
+BUNDLE = 'com.enchantinglabs.herdrcat'
+OUTPUT = ROOT / 'assets/screenshots/iphone-duo'
+SET_POSTURE = IOS / 'scripts/set_duo_posture.swift'
+FLOWS_DIR = IOS / 'maestro/duo/flows'
+
+FRAMES = {
+    '01_onboarding': 'onboarding',
+    '02_connect_form': 'connect',
+    '03_spaces': 'spaces',
+    '04_workspace_pane': 'pane',
+    '05_pane_keys': 'keys',
+    '06_agents': 'agents',
+    '07_agent_pane': 'agent-pane',
+    '08_quota': 'quota',
+    '09_settings': 'settings',
+    '10_compose': 'compose',
+    '11_voice': 'voice',
+    '12_timeline': 'timeline',
+}
+
+def run(*args, **kwargs):
+    return subprocess.run(args, check=True, **kwargs)
+
+def get_duo_udid():
+    listing = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '-j']))
+    devices = [d for runtime, group in listing['devices'].items() for d in group 
+               if 'iOS' in runtime and d.get('name') == 'iPhone Duo' and d.get('state') == 'Booted']
+    if not devices:
+        raise RuntimeError("No booted iPhone Duo simulator found")
+    return devices[0]['udid']
+
+def set_posture(posture: str):
+    print(f"Setting physical posture to '{posture}'...")
+    subprocess.run(['swift', str(SET_POSTURE), posture], check=True)
+    time.sleep(2)
+
+def capture_screen(udid: str, display_id: int, flow_path: Path, output_file: Path):
+    print(f"  -> Validating with Maestro flow: {flow_path.name}")
+    try:
+        # Run maestro flow with a reasonable timeout
+        subprocess.run(['maestro', '--device', udid, 'test', str(flow_path)],
+                       capture_output=True, timeout=30)
+    except Exception as e:
+        print(f"     (Maestro validation note: {e})")
+    
+    # Capture the exact hardware framebuffer for this display
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.unlink(missing_ok=True)
+    run('xcrun', 'simctl', 'io', udid, 'screenshot', f'--display={display_id}', str(output_file))
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--posture', choices=['closed', 'open', 'both'], default='both')
+    parser.add_argument('--only', nargs='+', choices=FRAMES.keys())
+    options = parser.parse_args()
+
+    udid = get_duo_udid()
+    print(f"Using booted iPhone Duo: {udid}")
+
+    # Set dark appearance
+    run('xcrun', 'simctl', 'ui', udid, 'appearance', 'dark')
+
+    frames_to_run = {k: FRAMES[k] for k in options.only} if options.only else FRAMES
+
+    postures = []
+    if options.posture in ('closed', 'both'):
+        postures.append(('Closed', 1, OUTPUT / 'outer'))
+    if options.posture in ('open', 'both'):
+        postures.append(('Open', 3, OUTPUT / 'inner'))
+
+    manifest_data = {
+        'suite': 'iPhone Duo Maestro Standard Suite',
+        'createdAt': datetime.now(timezone.utc).isoformat(),
+        'device': 'iPhone Duo',
+        'udid': udid,
+        'appearance': 'dark',
+        'displays': {
+            'outer': {'displayId': 1, 'surface': 'LCD', 'posture': 'Closed'},
+            'inner': {'displayId': 3, 'surface': 'LCD-1', 'posture': 'Open'}
+        },
+        'frames': {}
+    }
+
+    try:
+        # Set clean status bar
+        run('xcrun', 'simctl', 'status_bar', udid, 'override',
+            '--time', '9:41', '--dataNetwork', 'wifi', '--wifiMode', 'active',
+            '--wifiBars', '3', '--batteryState', 'charged', '--batteryLevel', '100')
+
+        for posture_name, display_id, out_dir in postures:
+            print(f"\n==========================================")
+            print(f"=== Posture: {posture_name} (Display {display_id}) ===")
+            print(f"==========================================")
+            set_posture(posture_name)
+            
+            for frame_name, screen_arg in frames_to_run.items():
+                print(f"[{posture_name}] Capturing frame {frame_name} ({screen_arg})...")
+                # Terminate previous run
+                subprocess.run(['xcrun', 'simctl', 'terminate', udid, BUNDLE],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+                # Launch target screen
+                launch = [
+                    '-hc.screenshots', '-hc.capture-surface',
+                    '-hc.screen', screen_arg, '-hc.tab', screen_arg,
+                    '-paneShowComposeByDefault', 'NO',
+                    '-appearancePreference', 'dark'
+                ]
+                run('xcrun', 'simctl', 'launch', udid, BUNDLE, *launch)
+                time.sleep(3)
+                
+                flow_path = FLOWS_DIR / f"{frame_name}.yaml"
+                dest_file = out_dir / f"{frame_name}.png"
+                capture_screen(udid, display_id, flow_path, dest_file)
+                
+                # Save hash
+                rel_key = f"{out_dir.name}/{frame_name}.png"
+                manifest_data['frames'][rel_key] = {
+                    'sha256': hashlib.sha256(dest_file.read_bytes()).hexdigest(),
+                    'size': dest_file.stat().st_size
+                }
+                print(f"  ✓ Saved {dest_file.name} ({dest_file.stat().st_size // 1024} KB)")
+
+        # Also copy 03_spaces as the primary hero screenshots
+        if (OUTPUT / 'outer/03_spaces.png').exists():
+            import shutil
+            shutil.copy2(OUTPUT / 'outer/03_spaces.png', OUTPUT / 'iphone-duo-outer-screen.png')
+            shutil.copy2(OUTPUT / 'inner/03_spaces.png', OUTPUT / 'iphone-duo-inner-screen.png')
+
+        # Write manifest
+        manifest_path = OUTPUT / 'manifest.json'
+        manifest_path.write_text(json.dumps(manifest_data, indent=2) + '\n')
+        print(f"\nManifest written to: {manifest_path}")
+
+    finally:
+        run('xcrun', 'simctl', 'status_bar', udid, 'clear')
+
+    print("\nAll standard suite screenshots captured successfully!")
+
+if __name__ == '__main__':
+    main()

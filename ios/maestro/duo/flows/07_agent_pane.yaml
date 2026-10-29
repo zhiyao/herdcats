@@ -1,0 +1,7 @@
+appId: com.enchantinglabs.herdrcat
+---
+# Agent pane detail view
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- takeScreenshot: "07_agent_pane"

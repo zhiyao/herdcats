@@ -1,0 +1,7 @@
+appId: com.enchantinglabs.herdrcat
+---
+# Agents overview
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- takeScreenshot: "06_agents"

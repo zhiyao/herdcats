@@ -1,0 +1,7 @@
+appId: com.enchantinglabs.herdrcat
+---
+# Spaces list with active workspaces
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- takeScreenshot: "03_spaces"

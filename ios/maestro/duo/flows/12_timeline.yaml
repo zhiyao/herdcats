@@ -1,0 +1,7 @@
+appId: com.enchantinglabs.herdrcat
+---
+# Native agent timeline view
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- takeScreenshot: "12_timeline"

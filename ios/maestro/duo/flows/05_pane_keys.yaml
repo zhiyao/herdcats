@@ -1,0 +1,7 @@
+appId: com.enchantinglabs.herdrcat
+---
+# Terminal keyboard keys bar
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- takeScreenshot: "05_pane_keys"
