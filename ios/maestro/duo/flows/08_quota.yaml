@@ -1,0 +1,7 @@
+appId: com.enchantinglabs.herdrcat
+---
+# Quota gauge rings
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- takeScreenshot: "08_quota"

@@ -1,0 +1,13 @@
+appId: com.enchantinglabs.herdrcat
+---
+# iPhone Duo: Inner Screen (Unfolded / Open) in Dark Mode
+- launchApp
+
+- extendedWaitUntil:
+    visible: "Herdcats"
+    timeout: 20000
+
+- waitForAnimationToEnd:
+    timeout: 1500
+
+- takeScreenshot: "iphone_duo_inner_dark"

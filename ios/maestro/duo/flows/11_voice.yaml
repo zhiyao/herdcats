@@ -1,0 +1,7 @@
+appId: com.enchantinglabs.herdrcat
+---
+# Voice recording waveform bar
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- takeScreenshot: "11_voice"

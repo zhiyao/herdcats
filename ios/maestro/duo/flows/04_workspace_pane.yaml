@@ -1,0 +1,7 @@
+appId: com.enchantinglabs.herdrcat
+---
+# Workspace terminal pane
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- takeScreenshot: "04_workspace_pane"
