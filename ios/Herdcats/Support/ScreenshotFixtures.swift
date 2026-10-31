@@ -143,7 +143,7 @@ struct ScreenshotRootView: View {
         app.phase = .connected(host: "studio-mac", username: "demo")
         app.hasActiveSession = true
         if ScreenshotFixtures.screen == "timeline-connecting" { app.phase = .connecting }
-        if ScreenshotFixtures.screen == "timeline-offline" {
+        if ScreenshotFixtures.screen == "timeline-offline" || ScreenshotFixtures.screen.hasPrefix("loading-audit-offline-") {
             app.phase = .offline(host: "studio-mac", username: "demo")
             app.connectionBanner = .offline(message: "Offline · Connection lost", canRetry: true)
         }
@@ -195,6 +195,7 @@ struct ScreenshotRootView: View {
 private struct LoadingAuditFixtureView: View {
     @Environment(AppModel.self) private var appModel
     @State private var quota: SpacesModel
+    @State private var retryCount = 0
     private var screen: String { ScreenshotFixtures.screen }
 
     init() {
@@ -219,7 +220,48 @@ private struct LoadingAuditFixtureView: View {
     }
 
     var body: some View {
-        if screen.contains("quota") {
+        if screen.hasPrefix("loading-audit-offline-") {
+            if screen.hasSuffix("action") {
+                NavigationStack {
+                    OfflineHerdView()
+                        .overlay(alignment: .bottom) { Text("Retries: \(retryCount)").accessibilityIdentifier("fixture-retry-count") }
+                        .connectionStatusBanner(banner: .offline(message: "Offline · Connection lost", canRetry: true)) {
+                            retryCount += 1
+                        }
+                }
+            } else {
+                TabView {
+                    Group {
+                        if screen.hasSuffix("agents") { AgentsScreen(model: quota) }
+                        else if screen.hasSuffix("spaces") { SpacesScreen(model: quota) }
+                        else if screen.hasSuffix("quota") { QuotaScreen(model: quota) }
+                        else if screen.hasSuffix("terminal") {
+                            NavigationStack {
+                                PaneOutputScrollView(output: "", outputLines: [], outputRevision: 0,
+                                    outputPointSize: 14, paneScrollBehavior: .holdPosition, keyboardFocused: false,
+                                    isOffline: true, isLoading: false, reservesMarkAsReadSpace: false,
+                                    topOverlayInset: 60, bottomOverlayInset: 100, paneId: "fixture",
+                                    shouldPinToBottom: .constant(false), onUserScroll: {}, onTapOutput: {}, onSelectionChange: { _ in })
+                                    .navigationTitle("Terminal")
+                                    .overlay(alignment: .bottom) { Text("Retries: \(retryCount)").accessibilityIdentifier("fixture-retry-count") }
+                                    .connectionStatusBanner(banner: appModel.connectionBanner) { retryCount += 1 }
+                            }
+                        }
+                        else {
+                            NavigationStack {
+                                Text("Verified retained content")
+                                    .padding(16)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                                    .overlay(alignment: .bottom) { Text("Retries: \(retryCount)").accessibilityIdentifier("fixture-retry-count") }
+                                    .connectionStatusBanner(banner: retryCount == 0 ? appModel.connectionBanner : .connecting(message: "Reconnecting…")) { retryCount += 1 }
+                            }
+                        }
+                    }
+                    .tabItem { Label("Offline", systemImage: "wifi.slash") }
+                }
+                .environment(quota)
+            }
+        } else if screen.contains("quota") {
             TabView {
                 QuotaScreen(model: quota)
                     .tabItem { Label("Quota", systemImage: "gauge.with.dots.needle.67percent") }

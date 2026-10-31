@@ -30,10 +30,10 @@ enum PaneLiveModifier: String, CaseIterable, Identifiable, Hashable, Sendable {
     }
 }
 
-/// One surface for a whole pane input group. The controls inside keep
+/// Shared surface for pane input and offline recovery. Input controls keep
 /// their plain style so the Live row does not turn into separate pills.
-/// Uses the theme surface and border, with optional translucency for Compose.
-private struct PaneInputGlassSurface: ViewModifier {
+/// Uses the theme surface and border, with optional translucency.
+struct PaneInputGlassSurface: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var colorScheme
     let cornerRadius: CGFloat

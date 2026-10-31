@@ -387,9 +387,72 @@ struct ErrorBanner: View {
 
 // MARK: - Connection status bar
 
+private struct ConnectionRetryActionKey: EnvironmentKey {
+    static var defaultValue: (() -> Void)? { nil }
+}
+
+extension EnvironmentValues {
+    var connectionRetryAction: (() -> Void)? {
+        get { self[ConnectionRetryActionKey.self] }
+        set { self[ConnectionRetryActionKey.self] = newValue }
+    }
+}
+
+private struct ConnectionRetryInContentKey: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
+    }
+}
+
+/// The session owner supplies recovery beneath the offline explanation.
+/// Reporting this placement suppresses the retained-content recovery card.
+struct ConnectionContentRetryButton: View {
+    @Environment(\.connectionRetryAction) private var retryAction
+
+    var body: some View {
+        if let retryAction {
+            OutlinedConnectionRetryButton(action: retryAction)
+                .preference(key: ConnectionRetryInContentKey.self, value: true)
+        }
+    }
+}
+
+private struct OutlinedConnectionRetryButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button("Retry", action: action)
+            .buttonStyle(.herdrSecondary(fullWidth: false))
+            .controlSize(.regular)
+            .accessibilityIdentifier("connection-content-retry")
+    }
+}
+
+/// Retains cached content and supplies recovery when no offline empty state is shown.
+private struct ConnectionRecoveryCard: View {
+    let retryAction: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text("You're offline. Reconnect to bring the cats back.")
+                .font(.jost(.subheadline))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            OutlinedConnectionRetryButton(action: retryAction)
+        }
+        .padding(24)
+        .frame(maxWidth: 360)
+        .modifier(PaneInputGlassSurface(cornerRadius: 24, backgroundOpacity: 0.98))
+        .padding(16)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("connection-offline-recovery")
+    }
+}
+
 struct ConnectionStatusBar: View {
     let banner: ConnectionBanner
-    var retryAction: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -402,18 +465,6 @@ struct ConnectionStatusBar: View {
 
             if banner.showsProgress {
                 CircularArcSpinner(size: 13, color: banner.tintColor)
-            } else if banner.canRetry, let retryAction {
-                Button(action: retryAction) {
-                    Text("Retry")
-                        .font(.jost(12, weight: .bold))
-                        .foregroundStyle(banner.tintColor)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 3)
-                        .background(
-                            Capsule().fill(banner.tintColor.opacity(0.18))
-                        )
-                }
-                .buttonStyle(.plain)
             }
         }
         .foregroundStyle(banner.tintColor)
@@ -433,12 +484,18 @@ struct ConnectionStatusBannerModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            .overlayPreferenceValue(ConnectionRetryInContentKey.self) { retryInContent in
+                if !retryInContent, banner?.canRetry == true, let retryAction {
+                    ConnectionRecoveryCard(retryAction: retryAction)
+                }
+            }
             .safeAreaInset(edge: .top, spacing: 0) {
                 if let banner {
-                    ConnectionStatusBar(banner: banner, retryAction: retryAction)
+                    ConnectionStatusBar(banner: banner)
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
+            .environment(\.connectionRetryAction, banner?.canRetry == true ? retryAction : nil)
             .animation(.spring(response: 0.35, dampingFraction: 0.8), value: banner)
     }
 }

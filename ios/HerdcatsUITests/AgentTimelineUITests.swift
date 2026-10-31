@@ -2,6 +2,79 @@ import XCTest
 import UIKit
 
 final class AgentTimelineUITests: XCTestCase {
+    func testOfflineRetrySitsBelowOfflineMessageAndNotInStatusBar() {
+        for screen in ["loading-audit-offline-agents", "loading-audit-offline-spaces", "loading-audit-offline-quota", "timeline-offline", "loading-audit-offline-terminal"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", screen, "-paneShowComposeByDefault", screen == "timeline-offline" ? "YES" : "NO"]
+            launch(app)
+            let retry = app.buttons["connection-content-retry"]
+            XCTAssertTrue(retry.waitForExistence(timeout: 5), screen)
+            if retry.exists {
+                let body = app.staticTexts["You're offline. Reconnect to bring the cats back."]
+                XCTAssertTrue(body.exists)
+                XCTAssertGreaterThanOrEqual(retry.frame.minY, body.frame.maxY)
+                XCTAssertEqual(retry.frame.midX, app.frame.midX, accuracy: 3)
+                XCTAssertTrue(retry.isHittable)
+                XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "Retry")).count, 1)
+                let status = app.descendants(matching: .any)["connection-status-bar"].firstMatch
+                XCTAssertTrue(status.exists)
+                XCTAssertEqual(status.buttons.count, 0)
+                if screen == "timeline-offline" {
+                    let composer = app.descendants(matching: .any)["timeline-compose-field"].firstMatch
+                    XCTAssertLessThanOrEqual(retry.frame.maxY, composer.frame.minY - 8)
+                }
+                if screen.hasSuffix("terminal") {
+                    retry.tap()
+                    XCTAssertEqual(app.staticTexts["fixture-retry-count"].label, "Retries: 1")
+                }
+                let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "centered-retry-" + screen; shot.lifetime = .keepAlways; add(shot)
+            }
+            app.terminate()
+        }
+    }
+
+    func testCenteredOfflineRetryInvokesItsOwnerAndRetainedContentKeepsRecovery() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "loading-audit-offline-action", "-hc.light", "-hc.accessibility-type"]
+        launch(app)
+        let retry = app.buttons["connection-content-retry"]
+        XCTAssertTrue(retry.waitForExistence(timeout: 5))
+        if retry.exists {
+            retry.tap()
+            XCTAssertEqual(app.staticTexts["fixture-retry-count"].label, "Retries: 1")
+            XCTAssertTrue(app.descendants(matching: .any)["connection-status-bar"].firstMatch.exists)
+            XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "Retry")).count, 1)
+            let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "centered-retry-large-text"; shot.lifetime = .keepAlways; add(shot)
+        }
+        app.terminate()
+        for light in [true, false] {
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", "loading-audit-offline-retained"] + (light ? ["-hc.light"] : [])
+            launch(app)
+            XCTAssertTrue(app.staticTexts["Verified retained content"].waitForExistence(timeout: 5))
+            let retainedRetry = app.buttons["connection-content-retry"]
+            XCTAssertTrue(retainedRetry.waitForExistence(timeout: 5))
+            XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "Retry")).count, 1)
+            let status = app.descendants(matching: .any)["connection-status-bar"].firstMatch
+            XCTAssertTrue(status.exists)
+            XCTAssertEqual(status.buttons.count, 0, "The connection banner is status-only, even with retained content")
+            if retainedRetry.exists {
+                let explanation = app.staticTexts["You're offline. Reconnect to bring the cats back."]
+                XCTAssertTrue(explanation.exists)
+                XCTAssertGreaterThanOrEqual(retainedRetry.frame.minY, explanation.frame.maxY)
+                XCTAssertEqual(retainedRetry.frame.midX, app.frame.midX, accuracy: 3)
+                XCTAssertGreaterThanOrEqual(retainedRetry.frame.height, 44)
+                XCTAssertTrue(retainedRetry.isHittable)
+                let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "outlined-retry-retained-light-\(light)"; shot.lifetime = .keepAlways; add(shot)
+                retainedRetry.tap()
+                XCTAssertEqual(app.staticTexts["fixture-retry-count"].label, "Retries: 1")
+                XCTAssertTrue(app.staticTexts["Verified retained content"].exists)
+                XCTAssertEqual(status.label, "Reconnecting…")
+                XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "Retry")).count, 0)
+            }
+            app.terminate()
+        }
+    }
+
     func testActualQuotaScreenWrapperBoundsAndSettledStates() {
         for (suffix, expected, large) in [("", "quota-content-loading", false), ("", "quota-content-loading", true),
             ("-error", "quota-load-error", false), ("-empty", "quota-load-empty", false),

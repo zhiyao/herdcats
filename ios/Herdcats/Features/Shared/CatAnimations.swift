@@ -249,10 +249,15 @@ struct OfflineHerdView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
+
+            ConnectionContentRetryButton()
         }
         .padding(24)
+        .frame(maxWidth: 360)
+        .modifier(PaneInputGlassSurface(cornerRadius: 24, backgroundOpacity: 0.98))
+        .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("offline-herd")
     }
 }
