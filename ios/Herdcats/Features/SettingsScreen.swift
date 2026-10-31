@@ -163,6 +163,7 @@ struct SettingsScreen: View {
 
             }
             .scrollContentBackground(.hidden)
+            .regularWidthReadable()
             .background(Theme.listBackground.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

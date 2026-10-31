@@ -16,6 +16,8 @@ struct PaneDetailView: View {
     @Environment(AppModel.self) private var appModel
     @Environment(SpacesModel.self) private var spacesModel: SpacesModel?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.showsPaneSwitcher) private var showsPaneSwitcher
+    @Environment(\.showsPaneBackButton) private var showsPaneBackButton
     @State private var siblings: [PaneEntry]
     @State private var tabs: [TabEntry] = []
     @State private var selectedPaneID: String
@@ -60,7 +62,8 @@ struct PaneDetailView: View {
     }
 
     private var paneSwitcherHeight: CGFloat {
-        isSwitcherCompact ? paneChipHeight + 12 : paneCardHeight + 20
+        guard showsPaneSwitcher else { return 0 }
+        return isSwitcherCompact ? paneChipHeight + 12 : paneCardHeight + 20
     }
 
     /// Identity for `PaneSessionView`: the selected pane within the current
@@ -118,25 +121,27 @@ struct PaneDetailView: View {
     var body: some View {
         selectedPaneSession
         .overlay(alignment: .top) {
-            PaneSwitcher(
-                panes: siblings,
-                tabs: tabs,
-                selection: $selectedPaneID,
-                isCompact: $isSwitcherCompact,
-                lastUpdatedByPaneID: lastUpdatedByPaneID,
-                pendingPane: creatingPane,
-                isAddDisabled: isPerformingAction,
-                allowsMutations: !appModel.isCoreMode,
-                onAdd: {
-                    isShowingAddPane = true
-                },
-                onRename: { pane in
-                    beginRename(pane)
-                },
-                onKill: { pane in
-                    beginKill(pane)
-                }
-            )
+            if showsPaneSwitcher {
+                PaneSwitcher(
+                    panes: siblings,
+                    tabs: tabs,
+                    selection: $selectedPaneID,
+                    isCompact: $isSwitcherCompact,
+                    lastUpdatedByPaneID: lastUpdatedByPaneID,
+                    pendingPane: creatingPane,
+                    isAddDisabled: isPerformingAction,
+                    allowsMutations: !appModel.isCoreMode,
+                    onAdd: {
+                        isShowingAddPane = true
+                    },
+                    onRename: { pane in
+                        beginRename(pane)
+                    },
+                    onKill: { pane in
+                        beginKill(pane)
+                    }
+                )
+            }
         }
         .background(Theme.backgroundGradient.ignoresSafeArea())
         .navigationTitle(selectedPane.displayTitle)
@@ -145,14 +150,17 @@ struct PaneDetailView: View {
         // Leaving a pane requires an explicit tap.
         .navigationBarBackButtonHidden(true)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    dismiss()
-                } label: {
-                    Label("Back", systemImage: "chevron.backward")
+            // The split view's detail column has no stack to pop.
+            if showsPaneBackButton {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Label("Back", systemImage: "chevron.backward")
+                    }
+                    .tint(Color.primary)
+                    .accessibilityIdentifier("pane-back-button")
                 }
-                .tint(Color.primary)
-                .accessibilityIdentifier("pane-back-button")
             }
             ToolbarItem(placement: .principal) {
                 StatusNavigationTitle(
@@ -251,7 +259,8 @@ struct PaneDetailView: View {
         .onChange(of: selectedPaneID) { _, _ in
             bridgeUpgrade.bridgeVersion = nil
         }
-        .toolbar(.hidden, for: .tabBar)
+        // Pushed panes hide the tab bar; in the detail column it stays so tabs can still switch.
+        .toolbar(showsPaneBackButton ? .hidden : .automatic, for: .tabBar)
         .onDisappear {
             #if DEBUG
             showLiveDiagnostics = false

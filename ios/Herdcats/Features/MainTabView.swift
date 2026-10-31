@@ -145,8 +145,15 @@ struct ConnectedTabsView: View {
 struct AgentsScreen: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let model: SpacesModel
     @State private var raisedCardID: String?
+    /// Pane id of the open agent. Shared by the split view and the compact
+    /// stack, so folding or unfolding keeps the same agent open.
+    @State private var selectedID: String?
+    /// The selected agent as last seen in the list, so a refresh that drops
+    /// it doesn't blank the pane mid-read.
+    @State private var lastSeen: AgentListItem?
 
     @AppStorage(AgentsSortPreference.storageKey)
     private var sortRaw = AgentsSortPreference.default.rawValue
@@ -187,7 +194,12 @@ struct AgentsScreen: View {
 
     var body: some View {
         let currentItems = items
-        NavigationStack {
+        SelectionSplitView(
+            selection: $selectedID,
+            storageKey: "agents.columnVisibility",
+            emptyTitle: "Select an agent",
+            emptySystemImage: "cpu"
+        ) {
             Group {
                 if appModel.isOffline && currentItems.isEmpty {
                     OfflineHerdView()
@@ -250,11 +262,8 @@ struct AgentsScreen: View {
                 }
             }
             .toolbarBackground(.hidden, for: .navigationBar)
-            .navigationDestination(for: AgentListItem.self) { item in
-                WorkspacePaneView(space: item.space, initialPaneID: item.agent.paneId)
-                    .environment(appModel)
-                    .environment(model)
-            }
+            .onChange(of: currentItems) { _, _ in rememberSelected() }
+            .onChange(of: selectedID) { _, _ in rememberSelected() }
             .overlay(alignment: .bottom) {
                 if let error = model.agentListError,
                    case .connected = appModel.phase {
@@ -274,7 +283,21 @@ struct AgentsScreen: View {
                 await model.refresh(appModel.connection)
             }
             .connectionStatusBanner(appModel: appModel)
+        } detail: { id in
+            if let item = currentItems.first(where: { $0.id == id }) ?? lastSeen.flatMap({ $0.id == id ? $0 : nil }) {
+                WorkspacePaneView(space: item.space, initialPaneID: item.agent.paneId)
+                    .environment(appModel)
+                    .environment(model)
+            } else {
+                ContentUnavailableView("Agent unavailable", systemImage: "cpu",
+                                       description: Text("This agent may have closed."))
+            }
         }
+    }
+
+    private func rememberSelected() {
+        guard let selectedID, let live = items.first(where: { $0.id == selectedID }) else { return }
+        lastSeen = live
     }
 
     // MARK: Pieces
@@ -318,12 +341,20 @@ struct AgentsScreen: View {
             .frame(width: width, height: height)
     }
 
+    @ViewBuilder
     private func agentRow(_ item: AgentListItem) -> some View {
-        NavigationLink(value: item) {
-            AgentListRow(
-                item: item,
-                lastUpdated: model.lastUpdatedByPaneID[item.agent.paneId]
-            )
+        let isRegular = horizontalSizeClass == .regular
+        let row = AgentListRow(
+            item: item,
+            isSelected: isRegular && selectedID == item.id,
+            lastUpdated: model.lastUpdatedByPaneID[item.agent.paneId]
+        )
+        Group {
+            if isRegular {
+                Button { selectedID = item.id } label: { row }
+            } else {
+                NavigationLink(value: item.id) { row }
+            }
         }
         .buttonStyle(.plain)
         .zIndex(raisedCardID == item.id ? 1 : 0)
@@ -415,6 +446,8 @@ struct AgentListItem: Identifiable, Hashable {
 
 struct AgentListRow: View {
     let item: AgentListItem
+    /// The row open in the split view's detail column.
+    var isSelected = false
     var lastUpdated: Date?
 
     private var agent: AgentEntry { item.agent }
@@ -455,8 +488,10 @@ struct AgentListRow: View {
         .padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+        .background { RowHighlight(isActive: false, isSelected: isSelected) }
         .overlay(alignment: .bottom) { QuietListDivider() }
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

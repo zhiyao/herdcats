@@ -28,6 +28,8 @@ struct PendingSpaceRow: View {
 struct SpaceRow: View {
     let group: SpaceGroup
     var isHighlighted = false
+    /// The row open in the split view's detail column.
+    var isSelected = false
     var lastUpdated: Date? = nil
 
     private var workspace: Workspace { group.root.workspace }
@@ -58,7 +60,7 @@ struct SpaceRow: View {
         .padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .background { RowHighlight(isActive: isHighlighted) }
+        .background { RowHighlight(isActive: isHighlighted, isSelected: isSelected) }
         .overlay(alignment: .bottom) { QuietListDivider() }
         .accessibilityElement(children: .combine)
     }
@@ -68,6 +70,7 @@ struct SpaceRow: View {
 struct WorktreeRow: View {
     let space: Space
     var isHighlighted = false
+    var isSelected = false
     var lastUpdated: Date? = nil
 
     var body: some View {
@@ -92,7 +95,7 @@ struct WorktreeRow: View {
         .padding(.vertical, 9)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .background { RowHighlight(isActive: isHighlighted) }
+        .background { RowHighlight(isActive: isHighlighted, isSelected: isSelected) }
         .overlay(alignment: .bottom) { QuietListDivider(leadingInset: QuietListMetrics.titleInset * 2) }
         .accessibilityElement(children: .combine)
     }
@@ -133,10 +136,18 @@ struct FocusedMark: View {
 
 struct RowHighlight: View {
     let isActive: Bool
+    var isSelected = false
 
     var body: some View {
-        if isActive {
-            RoundedRectangle.continuous(DesignSystem.CornerRadius.md)
+        let shape = RoundedRectangle.continuous(DesignSystem.CornerRadius.md)
+        if isSelected {
+            // Open in the detail column: soft teal fill with a mint hairline.
+            shape
+                .fill(Theme.sky.opacity(0.45))
+                .overlay { shape.strokeBorder(Theme.accent.opacity(0.35), lineWidth: 1) }
+                .padding(.horizontal, -8)
+        } else if isActive {
+            shape
                 .fill(Theme.selectedFill)
                 .padding(.horizontal, -8)
         }
