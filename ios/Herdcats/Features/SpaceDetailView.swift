@@ -166,7 +166,7 @@ struct PaneDetailView: View {
                     Button {
                         timelineMode.wrappedValue.toggle()
                     } label: {
-                        Image(systemName: timelineMode.wrappedValue ? "terminal" : "text.bubble")
+                        Image(systemName: timelineMode.wrappedValue ? "terminal" : "bubble.left")
                             .font(.jost(16, weight: .medium))
                             .foregroundStyle(.primary)
                     }

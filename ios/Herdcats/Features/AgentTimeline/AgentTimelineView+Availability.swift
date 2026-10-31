@@ -28,7 +28,7 @@ extension AgentTimelineView {
         case .unavailable("transcript_unavailable"):
             // Claude writes its transcript only after the first prompt; the
             // helper keeps polling and swaps in the timeline once it exists.
-            ContentUnavailableView("Send a message to start", systemImage: "text.bubble")
+            ContentUnavailableView("Send a message to start", systemImage: "bubble.left")
         case .unavailable(let code):
             let isCodex = agent == "codex"
             let isSupportedAgent = canPinnedInstallerSupportAgent
@@ -46,7 +46,8 @@ extension AgentTimelineView {
                 : nil
 
             ContentUnavailableView {
-                Label(codexNoSession.map(Self.codexNoSessionTitle) ?? title(code), systemImage: "text.bubble")
+                Label(codexNoSession.map(Self.codexNoSessionTitle) ?? title(code), systemImage: Self.availabilitySymbol(code: code, agent: agent,
+                    capabilities: bridgeCapabilities, codexDaemon: timeline.codexDaemon, bridgeVersion: bridgeVersion))
             } description: {
                 if codexNoSession != nil, let outcome = codexDaemonStopOutcome {
                     Text(outcome.message)
@@ -132,13 +133,23 @@ extension AgentTimelineView {
     }
 
     private var timelineContentLoading: some View {
-        HStack {
-            ProgressView()
-            Text("Connecting to timeline…")
+        LazyCatLoadingView(message: "Connecting to timeline…")
+            .frame(height: max(200, viewportHeight - topOverlayInset - bottomOverlayInset - 48))
+            .accessibilityIdentifier("timeline-content-loading")
+    }
+
+    static func availabilitySymbol(code: String, agent: String?, capabilities: AgentBridgeCapabilities?,
+                                   codexDaemon: String?, bridgeVersion: String? = nil) -> String {
+        if isNeedsUpgrade(code: code, agent: agent, bridgeVersion: bridgeVersion) { return "bubble.left" }
+        let noSession = ["session_reference_unavailable", "ambiguous_session", "invalid_session_reference"].contains(code)
+        if agent == "codex", noSession {
+            return codexNoSessionAction(agent: agent, code: code, capabilities: capabilities, codexDaemon: codexDaemon) == .waitForSession
+                ? "bubble.left" : "questionmark.bubble"
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 32)
-        .accessibilityIdentifier("timeline-content-loading")
+        if (agent == "cursor" && noSession) || (agent == "codex" && code == "session_cwd_mismatch") {
+            return "questionmark.bubble"
+        }
+        return "bubble.left"
     }
 
     func explanation(_ code: String) -> String {

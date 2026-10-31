@@ -183,7 +183,7 @@ struct AgentTimelineView: View {
                                     }
                             }
                             if conversationItems.isEmpty {
-                                ContentUnavailableView("No messages yet", systemImage: "text.bubble")
+                                ContentUnavailableView("No messages yet", systemImage: "bubble.left")
                             }
                             ForEach(conversationItems) { item in
                                 let scope = contentScope

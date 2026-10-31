@@ -2,6 +2,63 @@ import XCTest
 import UIKit
 
 final class AgentTimelineUITests: XCTestCase {
+    func testActualQuotaScreenWrapperBoundsAndSettledStates() {
+        for (suffix, expected, large) in [("", "quota-content-loading", false), ("", "quota-content-loading", true),
+            ("-error", "quota-load-error", false), ("-empty", "quota-load-empty", false),
+            ("-missing", "quota-axi-check-button", false), ("-retained", "agy-usage-card", false)] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", "loading-audit-quota" + suffix, "-hc.light"]
+                + (large ? ["-hc.accessibility-type"] : [])
+            launch(app)
+            XCTAssertTrue(app.buttons["quota-options-menu"].waitForExistence(timeout: 5), "Must mount actual QuotaScreen")
+            let tab = app.tabBars.firstMatch
+            XCTAssertTrue(tab.exists)
+            let content = app.descendants(matching: .any)[expected].firstMatch
+            XCTAssertTrue(content.waitForExistence(timeout: 5))
+            if suffix.isEmpty {
+                XCTAssertEqual(content.label, "Loading quota…")
+                XCTAssertGreaterThanOrEqual(content.frame.minY, app.navigationBars.firstMatch.frame.maxY)
+                XCTAssertLessThanOrEqual(content.frame.maxY, tab.frame.minY)
+            } else {
+                XCTAssertFalse(app.descendants(matching: .any)["quota-content-loading"].exists)
+                if suffix == "-error" || suffix == "-empty" { XCTAssertTrue(app.buttons["Retry"].isHittable) }
+            }
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = "actual-quota-wrapper\(suffix)-large-\(large)"; shot.lifetime = .keepAlways; add(shot)
+            app.terminate()
+        }
+    }
+
+    func testApprovedEmptyContentLoadsUseRunningCat() {
+        for (screen, identifier, message) in [
+            ("timeline-loading", "timeline-content-loading", "Connecting to timeline…"),
+            ("loading-audit-worktree", "worktree-content-loading", "Loading worktrees…"),
+            ("loading-audit-quota", "quota-content-loading", "Loading quota…"),
+            ("loading-audit-terminal", "pane-content-loading", "Reading pane…")
+        ] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", screen, "-hc.light", "-paneShowComposeByDefault", "NO"]
+            launch(app)
+            let loader = app.descendants(matching: .any)[identifier].firstMatch
+            XCTAssertTrue(loader.waitForExistence(timeout: 5), screen)
+            XCTAssertEqual(loader.label, message)
+            XCTAssertFalse(app.staticTexts["Timeline disconnected"].exists)
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = screen; shot.lifetime = .keepAlways; add(shot)
+            app.terminate()
+        }
+    }
+
+    func testWorktreeRowsStayVisibleWhileRefreshing() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "loading-audit-worktree-retained", "-hc.light"]
+        launch(app)
+        XCTAssertTrue(app.buttons["Open worktree retained-branch"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.descendants(matching: .any)["worktree-content-loading"].exists)
+        app.terminate()
+    }
+
+
     func testTimelineForegroundRestorationDoesNotShowDisconnected() {
         let app = XCUIApplication()
         app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline", "-hc.light", "-paneShowComposeByDefault", "NO"]
@@ -35,6 +92,54 @@ final class AgentTimelineUITests: XCTestCase {
             XCTAssertFalse(app.staticTexts["Timeline disconnected"].exists)
             XCTAssertFalse(app.buttons["timeline-helper-retry"].exists)
             let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = screen; shot.lifetime = .keepAlways; add(shot)
+            app.terminate()
+        }
+    }
+
+    func testSettledQuotaAndRetainedContentNeverUseCat() {
+        for (screen, expected) in [
+            ("loading-audit-quota-error", "quota-load-error"),
+            ("loading-audit-quota-empty", "quota-load-empty"),
+            ("loading-audit-quota-missing", "quota-axi-check-button"),
+            ("loading-audit-quota-retained", "agy-usage-card"),
+            ("loading-audit-terminal-retained", "pane-output-scroll-view")
+        ] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", screen, "-hc.light"]
+            launch(app)
+            XCTAssertTrue(app.descendants(matching: .any)[expected].firstMatch.waitForExistence(timeout: 5), screen)
+            XCTAssertFalse(app.descendants(matching: .any)["quota-content-loading"].exists)
+            XCTAssertFalse(app.descendants(matching: .any)["pane-content-loading"].exists)
+            let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = screen; shot.lifetime = .keepAlways; add(shot)
+            app.terminate()
+        }
+    }
+
+    func testApprovedSymbolsAndAccessibleLoaderLayouts() {
+        let scenarios: [(String, String, [String])] = [
+            ("timeline-pending", "Send a message to start", ["-hc.light"]),
+            ("timeline-empty", "No messages yet", []),
+            ("timeline-helper-missing", "Set up Timeline", ["-hc.light", "-hc.timeline-suppress-drawer"]),
+            ("timeline-helper-missing", "A clearer view of your agent", ["-hc.light"]),
+            ("timeline-codex-no-session", "Codex session not identified", ["-hc.agent", "codex"]),
+            ("timeline-session-unresolved", "Cursor chat not identified", ["-hc.agent", "cursor", "-hc.light"])
+        ]
+        for (index, scenario) in scenarios.enumerated() {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", scenario.0, "-paneShowComposeByDefault", "NO"] + scenario.2
+            launch(app)
+            XCTAssertTrue(app.staticTexts[scenario.1].firstMatch.waitForExistence(timeout: 5))
+            XCTAssertFalse(app.descendants(matching: .any)["timeline-content-loading"].exists)
+            let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "symbol-\(index)-\(scenario.0)"; shot.lifetime = .keepAlways; add(shot)
+            app.terminate()
+        }
+        for screen in ["timeline-loading", "loading-audit-worktree", "loading-audit-quota", "loading-audit-terminal"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", screen, "-paneShowComposeByDefault", "NO", "-hc.accessibility-type", "-darkThemePalette", "mocha"]
+            launch(app)
+            let label = screen == "timeline-loading" ? "Connecting to timeline…" : screen.contains("worktree") ? "Loading worktrees…" : screen.contains("quota") ? "Loading quota…" : "Reading pane…"
+            XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch.waitForExistence(timeout: 5))
+            let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "accessible-\(screen)"; shot.lifetime = .keepAlways; add(shot)
             app.terminate()
         }
     }

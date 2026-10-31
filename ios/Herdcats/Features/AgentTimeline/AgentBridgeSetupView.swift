@@ -60,7 +60,7 @@ struct AgentBridgeSetupView: View {
                         Text("Tapping Upgrade downloads \(pinnedVersion), verifies its checksum, and replaces the copy at the location shown. No sudo, background service, or agent hooks are required.")
                             .font(.jost(.subheadline)).foregroundStyle(Theme.textMuted)
                     } else {
-                        Image(systemName: "text.bubble.fill")
+                        Image(systemName: "calendar.day.timeline.left")
                             .font(.system(size: 36)).foregroundStyle(Theme.text)
                         Text("A clearer view of your agent")
                             .font(.jost(.title, weight: .semibold))
