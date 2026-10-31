@@ -38,24 +38,22 @@ extension EnvironmentValues {
 /// is regular and use `NavigationLink(value: id)` when compact.
 struct SelectionSplitView<Sidebar: View, Detail: View>: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @SceneStorage private var visibilityRaw: String
+    @SceneStorage(SidebarVisibility.storageKey)
+    private var visibilityRaw = NavigationSplitViewVisibility.all.storageValue
     @Binding var selection: String?
     let emptyTitle: LocalizedStringKey
     let emptySystemImage: String
     let sidebar: Sidebar
     let detail: (String) -> Detail
 
-    /// `storageKey` keeps each tab's column visibility separate in the scene.
     init(
         selection: Binding<String?>,
-        storageKey: String,
         emptyTitle: LocalizedStringKey,
         emptySystemImage: String,
         @ViewBuilder sidebar: () -> Sidebar,
         @ViewBuilder detail: @escaping (String) -> Detail
     ) {
         _selection = selection
-        _visibilityRaw = SceneStorage(wrappedValue: NavigationSplitViewVisibility.all.storageValue, storageKey)
         self.emptyTitle = emptyTitle
         self.emptySystemImage = emptySystemImage
         self.sidebar = sidebar()
@@ -81,6 +79,7 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
         if horizontalSizeClass == .regular {
             NavigationSplitView(columnVisibility: columnVisibility) {
                 sidebar
+                    .safeAreaInset(edge: .top, spacing: 0) { SidebarTabSwitcher() }
                     .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 440)
             } detail: {
                 Group {

@@ -41,6 +41,7 @@ struct ConnectedTabsView: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.scenePhase) private var scenePhase
     @State private var model = SpacesModel()
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Binding var selectedTab: MainTab
 
     enum MainTab: String, Hashable {
@@ -68,12 +69,14 @@ struct ConnectedTabsView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             SpacesScreen(model: model)
+                .hidesSystemTabBarWhenRegular(horizontalSizeClass)
                 .tabItem {
                     Label("Spaces", systemImage: "square.grid.3x3")
                 }
                 .tag(MainTab.spaces)
 
             AgentsScreen(model: model)
+                .hidesSystemTabBarWhenRegular(horizontalSizeClass)
                 .tabItem {
                     Label("Agents", systemImage: "cpu")
                 }
@@ -81,18 +84,21 @@ struct ConnectedTabsView: View {
                 .tag(MainTab.agents)
 
             QuotaScreen(model: model)
+                .hidesSystemTabBarWhenRegular(horizontalSizeClass)
                 .tabItem {
                     Label("Quota", systemImage: "gauge.with.dots.needle.67percent")
                 }
                 .tag(MainTab.quota)
 
             SettingsScreen(model: model)
+                .hidesSystemTabBarWhenRegular(horizontalSizeClass)
                 .tabItem {
                     Label("Settings", systemImage: "gearshape")
                 }
                 .tag(MainTab.settings)
         }
         .environment(model)
+        .environment(\.sidebarTabs, SidebarTabs(selection: $selectedTab, blockedCount: model.blockedAgentCount))
         .task {
             model.stopAutoRefresh()
             model.bindConnectionScope(appModel.connectionIdentity)
@@ -196,7 +202,6 @@ struct AgentsScreen: View {
         let currentItems = items
         SelectionSplitView(
             selection: $selectedID,
-            storageKey: "agents.columnVisibility",
             emptyTitle: "Select an agent",
             emptySystemImage: "cpu"
         ) {

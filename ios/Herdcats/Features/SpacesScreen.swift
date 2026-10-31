@@ -81,7 +81,6 @@ struct SpacesScreen: View {
 
         return SelectionSplitView(
             selection: $selectedID,
-            storageKey: "spaces.columnVisibility",
             emptyTitle: "Select a space",
             emptySystemImage: "square.grid.3x3"
         ) {

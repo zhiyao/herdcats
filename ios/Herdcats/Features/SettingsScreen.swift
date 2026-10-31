@@ -140,6 +140,12 @@ struct SettingsScreen: View {
     }
 
     var body: some View {
+        TabSplitView(hint: "Settings appear on the right.") {
+            screen
+        }
+    }
+
+    private var screen: some View {
         NavigationStack {
             Form {
                 #if DEBUG

@@ -19,6 +19,12 @@ struct QuotaScreen: View {
     }
 
     var body: some View {
+        TabSplitView(hint: "Usage for your agents appears on the right.") {
+            screen
+        }
+    }
+
+    private var screen: some View {
         NavigationStack {
             Group {
                 if appModel.isOffline && model.usageCards.isEmpty {
