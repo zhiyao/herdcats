@@ -259,6 +259,7 @@ extension AgentTimelineView {
     @MainActor private func prepareScreenshotTimeline(owner: UUID) async -> Bool {
         #if DEBUG && targetEnvironment(simulator)
             if ScreenshotFixtures.enabled {
+                if ScreenshotFixtures.screen == "timeline-loading" { return true }
                 if ScreenshotFixtures.screen == "timeline-history-position" { following = false }
                 if ScreenshotFixtures.screen.contains("helper-old") || ScreenshotFixtures.screen.contains("needs-upgrade") {
                     bridgeVersion = "0.1.4"

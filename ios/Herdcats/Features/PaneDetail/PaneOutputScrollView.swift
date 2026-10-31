@@ -270,7 +270,11 @@ struct PaneOutputScrollView: View, Equatable {
                         .padding(.bottom, 68)
                         .allowsHitTesting(false)
                 } else if isLoading {
-                    CircularArcSpinner("Reading pane…")
+                    LazyCatLoadingView(message: "Reading pane…")
+                        .padding(.top, topOverlayInset)
+                        .padding(.bottom, bottomOverlayInset)
+                        .allowsHitTesting(false)
+                        .accessibilityIdentifier("pane-content-loading")
                 }
             }
         }

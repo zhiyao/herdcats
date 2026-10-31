@@ -160,7 +160,9 @@ struct ScreenshotRootView: View {
     }()
     var body: some View {
         Group {
-            if ScreenshotFixtures.screen == "onboarding" {
+            if ScreenshotFixtures.screen.hasPrefix("loading-audit-") {
+                LoadingAuditFixtureView()
+            } else if ScreenshotFixtures.screen == "onboarding" {
                 ConnectView(replay: true)
                     .background(Theme.backgroundGradient)
             } else if ScreenshotFixtures.screen == "pane" || ScreenshotFixtures.screen == "agent-pane" || ["keys", "compose", "voice", "turn-interrupted", "optional-upgrade-menu"].contains(ScreenshotFixtures.screen) || ScreenshotFixtures.screen.hasPrefix("timeline") {
@@ -184,6 +186,67 @@ struct ScreenshotRootView: View {
         .tint(Theme.accent)
         .foregroundStyle(Theme.text)
         .font(.jost(.body))
+        .transformEnvironment(\.dynamicTypeSize) { value in
+            if ProcessInfo.processInfo.arguments.contains("-hc.accessibility-type") { value = .accessibility3 }
+        }
+    }
+}
+/// Static, isolated presentation fixtures. These never dial a host or alter saved machines.
+private struct LoadingAuditFixtureView: View {
+    @Environment(AppModel.self) private var appModel
+    @State private var quota: SpacesModel
+    private var screen: String { ScreenshotFixtures.screen }
+
+    init() {
+        let model = SpacesModel()
+        let screen = ScreenshotFixtures.screen
+        // Inject only the fetch boundary. QuotaScreen owns its actual refresh task,
+        // GeometryReader, scroll view, navigation, and recovery UI.
+        model.quotaReportFetch = {
+            if screen.hasSuffix("error") { throw HerdrError.unexpectedResponse("Quota fixture failed") }
+            if screen.hasSuffix("missing") { throw HerdrError.quotaAxiNotFound }
+            if screen.hasSuffix("empty") { throw CancellationError() }
+            // A controlled pending request, canceled with the screen; no host access or timer.
+            let pending = AsyncStream<QuotaReport> { _ in }
+            for await report in pending { return report }
+            throw CancellationError()
+        }
+        if screen.hasSuffix("retained") {
+            model.applyUsageReport(ScreenshotFixtures.quota)
+            model.usageLastUpdated = .distantPast
+        }
+        _quota = State(initialValue: model)
+    }
+
+    var body: some View {
+        if screen.contains("quota") {
+            TabView {
+                QuotaScreen(model: quota)
+                    .tabItem { Label("Quota", systemImage: "gauge.with.dots.needle.67percent") }
+                Text("Fixture").tabItem { Label("Spaces", systemImage: "square.grid.3x3") }
+            }
+        } else {
+            NavigationStack {
+                Group {
+                    if screen.contains("worktree") {
+                        if let workspace = try? JSONDecoder().decode(Workspace.self, from: Data(ScreenshotFixtures.json(ScreenshotFixtures.workspaces[0]).utf8)) {
+                            OpenWorktreeDrawer(space: Space(workspace: workspace, agents: []), connection: appModel.connection,
+                                onOpen: { _, _ in }, onCancel: {})
+                        }
+                    } else {
+                        let text = screen.hasSuffix("retained") ? "Verified terminal output" : ""
+                        PaneOutputScrollView(output: text, outputLines: ANSIText.lines(from: text), outputRevision: 0,
+                            outputPointSize: 14, paneScrollBehavior: .holdPosition, keyboardFocused: false,
+                            isOffline: false, isLoading: true, reservesMarkAsReadSpace: false,
+                            topOverlayInset: 60, bottomOverlayInset: 100, paneId: "fixture",
+                            shouldPinToBottom: .constant(false), onUserScroll: {}, onTapOutput: {}, onSelectionChange: { _ in })
+                    }
+                }
+                .background(Theme.background)
+                .navigationTitle(screen.contains("worktree") ? "Open worktree" : "Terminal output")
+                .navigationBarTitleDisplayMode(.inline)
+            }
+        }
     }
 }
 #endif

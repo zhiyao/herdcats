@@ -95,6 +95,22 @@ import UIKit
         #expect(store.entries.first?.text == "pane A private") // Hide, not mutate the old owner's data.
     }
 
+    @Test func unavailableSymbolsKeepFirstMessageDistinctFromUnidentifiedSessions() {
+        let stop = AgentBridgeCapabilities(claudeTimeline: true, codexTimeline: true, codexDaemonStop: true)
+        for code in ["session_reference_unavailable", "ambiguous_session", "invalid_session_reference"] {
+            #expect(AgentTimelineView.availabilitySymbol(code: code, agent: "cursor", capabilities: nil, codexDaemon: nil) == "questionmark.bubble")
+            #expect(AgentTimelineView.availabilitySymbol(code: code, agent: "codex", capabilities: stop, codexDaemon: "running") == "questionmark.bubble")
+        }
+        #expect(AgentTimelineView.availabilitySymbol(code: "session_reference_unavailable", agent: "codex", capabilities: stop, codexDaemon: "not_running") == "bubble.left")
+        #expect(AgentTimelineView.availabilitySymbol(code: "session_cwd_mismatch", agent: "codex", capabilities: nil, codexDaemon: nil) == "questionmark.bubble")
+        for code in ["helper_missing", "helper_update_required", "transcript_unavailable", "protocol_mismatch", "unsafe_transcript_path"] {
+            #expect(AgentTimelineView.availabilitySymbol(code: code, agent: "claude", capabilities: nil, codexDaemon: nil) == "bubble.left")
+        }
+        for name in ["bubble.left", "questionmark.bubble", "calendar.day.timeline.left"] {
+            #expect(UIImage(systemName: name) != nil)
+        }
+    }
+
     @Test func connectingAndConnectedHaveDifferentStreamKeys() {
         let connecting = AgentTimelineConnectionState(
             phase: .connecting, generation: ConnectionGeneration(rawValue: 2))
