@@ -236,6 +236,15 @@ struct LaunchHerdLoadingView: View {
 /// Decorative motion stays local to the empty state and never drives networking.
 struct OfflineHerdView: View {
     var body: some View {
+        ConnectionRecoveryViewport {
+            recoveryCard
+        }
+        .clipped()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("offline-herd")
+    }
+
+    private var recoveryCard: some View {
         VStack(spacing: 12) {
             HerdWanderCanvas(catCount: 6, layout: .radial, travelRadius: 124)
                 .frame(maxWidth: 320)
@@ -256,9 +265,6 @@ struct OfflineHerdView: View {
         .frame(maxWidth: 360)
         .modifier(PaneInputGlassSurface(cornerRadius: 24, backgroundOpacity: 0.98))
         .padding(16)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("offline-herd")
     }
 }
 

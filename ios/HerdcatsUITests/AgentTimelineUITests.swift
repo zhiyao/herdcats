@@ -2,6 +2,26 @@ import XCTest
 import UIKit
 
 final class AgentTimelineUITests: XCTestCase {
+    func testEmptyScreenRecoveryRemainsReachableAtAccessibilitySizes() {
+        for screen in ["loading-audit-offline-agents", "loading-audit-offline-spaces", "loading-audit-offline-quota"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", screen, "-hc.accessibility-type-max", "-hc.light"]
+            launch(app)
+            let retry = app.buttons["connection-content-retry"]
+            XCTAssertTrue(retry.waitForExistence(timeout: 5), screen)
+            XCTAssertEqual(app.buttons.matching(identifier: "connection-content-retry").count, 1, screen)
+            XCTAssertTrue(retry.isHittable, screen)
+            XCTAssertGreaterThanOrEqual(retry.frame.minY, app.navigationBars.firstMatch.frame.maxY, screen)
+            XCTAssertLessThanOrEqual(retry.frame.maxY, app.tabBars.firstMatch.frame.minY, screen)
+            let status = app.descendants(matching: .any)["connection-status-bar"].firstMatch
+            XCTAssertTrue(status.exists, screen)
+            XCTAssertEqual(status.buttons.count, 0, screen)
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = "accessible-recovery-" + screen; shot.lifetime = .keepAlways; add(shot)
+            app.terminate()
+        }
+    }
+
     func testOfflineRecoveryStaysAboveMultilineComposerWithKeyboard() {
         for (terminal, empty) in [(false, false), (true, false), (true, true)] {
             let app = XCUIApplication()

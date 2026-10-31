@@ -197,7 +197,12 @@ struct ScreenshotRootView: View {
         .foregroundStyle(Theme.text)
         .font(.jost(.body))
         .transformEnvironment(\.dynamicTypeSize) { value in
-            if ProcessInfo.processInfo.arguments.contains("-hc.accessibility-type") { value = .accessibility3 }
+            let args = ProcessInfo.processInfo.arguments
+            if args.contains("-hc.accessibility-type-max") {
+                value = .accessibility5
+            } else if args.contains("-hc.accessibility-type") {
+                value = .accessibility3
+            }
         }
     }
 }
