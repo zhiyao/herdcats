@@ -151,6 +151,7 @@ img.pixel, canvas.pixel {
 - Center one **Retry** button directly beneath the offline explanation. Keep the existing cats, heading, and explanation together; keep the action clear of the keyboard, composer, navigation, and tabs.
 - Retry must have a visible outline so it reads as a button, not a text link. Use `.buttonStyle(.herdrSecondary(fullWidth: false))` with regular control size: transparent fill, **2pt `Theme.accent` outline**, matching accent label, **8pt corners**, and **44pt minimum height**. Use semantic theme tokens so the outline remains visible in light and dark appearances; never use a ghost/borderless style for this action.
 - When retained messages, terminal output, or other cached content remain visible, preserve that content and show a compact offline explanation with the same centered, outlined Retry in the content area. Do not restore a banner Retry as a fallback.
+- Bound retained-content recovery by the measured pane-switcher and composition-dock insets. If a multiline draft and keyboard leave too little room for the card, scroll it within that output area and keep Retry reachable above the dock.
 - Show exactly one recovery action and invoke the current session owner's reconnect callback. Connecting and success status do not add a Retry button. Verify the outlined action in both appearances, with large text and with the Timeline keyboard open.
 
 ### Accent / "sign" badge

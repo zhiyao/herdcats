@@ -398,10 +398,19 @@ extension EnvironmentValues {
     }
 }
 
-private struct ConnectionRetryInContentKey: PreferenceKey {
-    static let defaultValue = false
-    static func reduce(value: inout Bool, nextValue: () -> Bool) {
-        value = value || nextValue()
+struct ConnectionRecoveryLayout {
+    var hasContentRetry = false
+    var topInset: CGFloat = 0
+    var bottomInset: CGFloat = 0
+}
+
+struct ConnectionRecoveryLayoutKey: PreferenceKey {
+    static var defaultValue: ConnectionRecoveryLayout { .init() }
+    static func reduce(value: inout ConnectionRecoveryLayout, nextValue: () -> ConnectionRecoveryLayout) {
+        let next = nextValue()
+        value.hasContentRetry = value.hasContentRetry || next.hasContentRetry
+        value.topInset = max(value.topInset, next.topInset)
+        value.bottomInset = max(value.bottomInset, next.bottomInset)
     }
 }
 
@@ -413,7 +422,7 @@ struct ConnectionContentRetryButton: View {
     var body: some View {
         if let retryAction {
             OutlinedConnectionRetryButton(action: retryAction)
-                .preference(key: ConnectionRetryInContentKey.self, value: true)
+                .preference(key: ConnectionRecoveryLayoutKey.self, value: .init(hasContentRetry: true))
         }
     }
 }
@@ -451,6 +460,26 @@ private struct ConnectionRecoveryCard: View {
     }
 }
 
+/// Keeps recovery within the usable output area even with a tall draft and keyboard.
+struct ConnectionRecoveryViewport<Recovery: View>: View {
+    let recovery: Recovery
+
+    init(@ViewBuilder recovery: () -> Recovery) {
+        self.recovery = recovery()
+    }
+
+    var body: some View {
+        ViewThatFits(in: .vertical) {
+            recovery
+            ScrollView {
+                recovery.frame(maxWidth: .infinity)
+            }
+            .defaultScrollAnchor(.bottom)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
 struct ConnectionStatusBar: View {
     let banner: ConnectionBanner
 
@@ -484,9 +513,13 @@ struct ConnectionStatusBannerModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .overlayPreferenceValue(ConnectionRetryInContentKey.self) { retryInContent in
-                if !retryInContent, banner?.canRetry == true, let retryAction {
-                    ConnectionRecoveryCard(retryAction: retryAction)
+            .overlayPreferenceValue(ConnectionRecoveryLayoutKey.self) { layout in
+                if !layout.hasContentRetry, banner?.canRetry == true, let retryAction {
+                    ConnectionRecoveryViewport {
+                        ConnectionRecoveryCard(retryAction: retryAction)
+                    }
+                    .padding(.top, layout.topInset)
+                    .padding(.bottom, layout.bottomInset)
                 }
             }
             .safeAreaInset(edge: .top, spacing: 0) {

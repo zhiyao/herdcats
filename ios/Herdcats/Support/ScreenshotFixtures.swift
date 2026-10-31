@@ -170,6 +170,15 @@ struct ScreenshotRootView: View {
                     if let pane = try? JSONDecoder().decode(PaneEntry.self, from: Data(ScreenshotFixtures.json(ScreenshotFixtures.panes[0]).utf8)) {
                         PaneDetailView(pane: pane)
                             .connectionStatusBanner(appModel: model)
+                            .toolbar {
+                                if ScreenshotFixtures.screen == "timeline-offline-transition" {
+                                    Button("Go offline") {
+                                        model.phase = .offline(host: "studio-mac", username: "demo")
+                                        model.connectionBanner = .offline(message: "Offline · Connection lost", canRetry: true)
+                                    }
+                                    .accessibilityIdentifier("fixture-go-offline")
+                                }
+                            }
                     }
                 }
             } else if ScreenshotFixtures.screen == "connect" {

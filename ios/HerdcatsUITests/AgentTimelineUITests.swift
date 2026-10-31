@@ -2,6 +2,38 @@ import XCTest
 import UIKit
 
 final class AgentTimelineUITests: XCTestCase {
+    func testOfflineRecoveryStaysAboveMultilineComposerWithKeyboard() {
+        for terminal in [false, true] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-offline-transition", "-paneShowComposeByDefault", "YES"]
+            launch(app)
+            XCTAssertTrue(app.staticTexts["Review the connection guidance and make it clearer in light mode."].waitForExistence(timeout: 5))
+            if terminal { app.buttons["Terminal"].tap() }
+            let composer = app.textFields[terminal ? "pane-compose-field" : "timeline-compose-field"]
+            XCTAssertTrue(composer.waitForExistence(timeout: 5))
+            composer.tap()
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+            XCTAssertGreaterThanOrEqual(composer.frame.height, 100, "Exercise a tall multiline draft")
+            app.buttons["fixture-go-offline"].tap()
+            let retry = app.buttons["connection-content-retry"]
+            XCTAssertTrue(retry.waitForExistence(timeout: 5))
+            XCTAssertEqual(app.buttons.matching(identifier: "connection-content-retry").count, 1)
+            XCTAssertTrue(retry.isHittable)
+            let dock = app.descendants(matching: .any)["pane-compose-bar"].firstMatch
+            XCTAssertLessThanOrEqual(retry.frame.maxY, dock.frame.minY - 8)
+            XCTAssertTrue(composer.isHittable)
+            let draft = composer.value as? String
+            composer.tap()
+            composer.typeText("Still editable")
+            XCTAssertTrue((composer.value as? String)?.contains("Still editable") == true)
+            // Tapping may place the caret inside the existing draft.
+            XCTAssertEqual((composer.value as? String)?.replacingOccurrences(of: "Still editable", with: ""), draft)
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = "offline-recovery-keyboard-terminal-\(terminal)"; shot.lifetime = .keepAlways; add(shot)
+            app.terminate()
+        }
+    }
+
     func testOfflineRetrySitsBelowOfflineMessageAndNotInStatusBar() {
         for screen in ["loading-audit-offline-agents", "loading-audit-offline-spaces", "loading-audit-offline-quota", "timeline-offline", "loading-audit-offline-terminal"] {
             let app = XCUIApplication()

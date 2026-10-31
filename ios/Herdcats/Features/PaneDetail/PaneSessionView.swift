@@ -147,6 +147,9 @@ struct PaneSessionView: View {
         _draft = State(initialValue: policy.loadDraft(key: draftKey))
 #if DEBUG && targetEnvironment(simulator)
         if ScreenshotFixtures.enabled {
+            if ScreenshotFixtures.screen == "timeline-offline-transition" {
+                _draft = State(initialValue: String(repeating: "A multiline draft stays editable while offline. ", count: 10))
+            }
             if ProcessInfo.processInfo.arguments.contains("-hc.long-terminal-selection") {
                 _draft = State(initialValue: ProcessInfo.processInfo.arguments.contains("-hc.selection-draft")
                     ? "Selection draft" : "")
@@ -449,6 +452,12 @@ struct PaneSessionView: View {
                 (showsTimeline ? Theme.background : Color(uiColor: UIColor(hex: terminalPalette.background)))
                     .ignoresSafeArea(edges: .bottom)
             }
+        }
+        .transformPreference(ConnectionRecoveryLayoutKey.self) { layout in
+            // Preserve the empty state's own Retry marker while supplying the
+            // measured usable area for recovery over retained output.
+            layout.topInset = max(layout.topInset, topOutputInset)
+            layout.bottomInset = max(layout.bottomInset, bottomDockHeight)
         }
         .overlay(alignment: .bottom) {
             VStack(spacing: 0) {
