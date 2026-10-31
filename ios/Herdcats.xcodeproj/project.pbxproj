@@ -124,6 +124,7 @@
 		D1EF0D278EE3D5017C400DEA /* SpacesScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0B450F19759740A5C938D45 /* SpacesScreen.swift */; };
 		D207CAF048B6C930676C5ADC /* VoiceWaveform.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F47756B075A75A4323C2A2D /* VoiceWaveform.swift */; };
 		D42BA0884EABA9E4B3C98943 /* HerdrModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85BDAAC12F57BDD3F41B090C /* HerdrModels.swift */; };
+		D7674EDD0035DCAEAD07B942 /* HerdcatsTests+KeyboardOverlap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EC9B3BD3B7237EE2679CE65 /* HerdcatsTests+KeyboardOverlap.swift */; };
 		D82A1C06AA4BDA852E848F59 /* PaneLiveModifierComposerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 217943F1848BADFC038A2932 /* PaneLiveModifierComposerTests.swift */; };
 		D88366995735A638B5816998 /* TimelineEntryViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 420F85D2A36D8492474B19DF /* TimelineEntryViews.swift */; };
 		D9236D424B2DBFF26A50E066 /* HerdcatsTests+PaneLiveInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 565E52FF93633CC2CB6D65E5 /* HerdcatsTests+PaneLiveInput.swift */; };
@@ -191,6 +192,7 @@
 		2AFE5DFC694EBCD2A7C697D9 /* PaneLiveInputTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneLiveInputTests.swift; sourceTree = "<group>"; };
 		2D6AD0D245B62B4BA7FEEFA2 /* HerdcatsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdcatsUITests.swift; sourceTree = "<group>"; };
 		2E10C64E9E413CFD1DE700E0 /* CoreHierarchyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreHierarchyTests.swift; sourceTree = "<group>"; };
+		2EC9B3BD3B7237EE2679CE65 /* HerdcatsTests+KeyboardOverlap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdcatsTests+KeyboardOverlap.swift"; sourceTree = "<group>"; };
 		2EEF703BF74FD93DEF242E75 /* PaneDrawers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneDrawers.swift; sourceTree = "<group>"; };
 		2F13BDB183FEA9BA4E3B3340 /* HerdcatsTests+OnboardingAndHostKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdcatsTests+OnboardingAndHostKeys.swift"; sourceTree = "<group>"; };
 		324E0765A02EFCD22169C48E /* PaneLastUpdated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneLastUpdated.swift; sourceTree = "<group>"; };
@@ -219,7 +221,7 @@
 		568BEE7592258AE6D1351685 /* PhoneAnswersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneAnswersTests.swift; sourceTree = "<group>"; };
 		58D221D9158228E5593662D7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		59460EB647F68FC33C825D67 /* HerdrConnection+Queries.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdrConnection+Queries.swift"; sourceTree = "<group>"; };
-		5E030A59A32EEE2D37BBF028 /* Herdcats.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Herdcats.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5E030A59A32EEE2D37BBF028 /* Herdcats.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Herdcats.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6349F51A9FF576CFF9455B92 /* ConnectionSettingsView+Card.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionSettingsView+Card.swift"; sourceTree = "<group>"; };
 		690A325C18C2D89D90900F04 /* QuestionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionCard.swift; sourceTree = "<group>"; };
 		691B7C7DD3FA9BD5F5661DEA /* CoreRPCClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreRPCClient.swift; sourceTree = "<group>"; };
@@ -558,6 +560,7 @@
 				AD0542ABC20C507904C8BCD5 /* HerdcatsTests+ConnectionOwnership.swift */,
 				CBCEFE9A7B22D06413A9E138 /* HerdcatsTests+CredentialMigration.swift */,
 				7475F5A880AB410731990323 /* HerdcatsTests+DictationAndHistory.swift */,
+				2EC9B3BD3B7237EE2679CE65 /* HerdcatsTests+KeyboardOverlap.swift */,
 				28803B5BCDAAF690E04DE5FF /* HerdcatsTests+MachineSwitching.swift */,
 				C7D8691E59345CB8F559F5BB /* HerdcatsTests+ModelDecoding.swift */,
 				2F13BDB183FEA9BA4E3B3340 /* HerdcatsTests+OnboardingAndHostKeys.swift */,
@@ -872,6 +875,7 @@
 				228CA92864B4D7666F38530B /* HerdcatsTests+ConnectionOwnership.swift in Sources */,
 				85480D39459046813F07E9E7 /* HerdcatsTests+CredentialMigration.swift in Sources */,
 				2B3A742B2DDD9B5702E52638 /* HerdcatsTests+DictationAndHistory.swift in Sources */,
+				D7674EDD0035DCAEAD07B942 /* HerdcatsTests+KeyboardOverlap.swift in Sources */,
 				B80AB9F9F584F6A8694D96A7 /* HerdcatsTests+MachineSwitching.swift in Sources */,
 				66A6D27875DD944D947DFC86 /* HerdcatsTests+ModelDecoding.swift in Sources */,
 				07B6DC3D2E655393132F1045 /* HerdcatsTests+OnboardingAndHostKeys.swift in Sources */,
@@ -920,7 +924,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = Y9434R2ZNR;
 				INFOPLIST_FILE = Herdcats/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1096,7 +1099,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = Y9434R2ZNR;
 				INFOPLIST_FILE = Herdcats/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
