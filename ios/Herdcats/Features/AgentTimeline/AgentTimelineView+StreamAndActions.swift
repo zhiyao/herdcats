@@ -210,22 +210,53 @@ extension AgentTimelineView {
     }
 
     @MainActor func run() async {
+        guard !Task.isCancelled else { return }
+        let runKey = taskKey
         historyLoader.cancel()
         approvalResponse.reset()
         questionResponse.reset()
         let owner = UUID()
         activeOwner = owner
-        timeline.begin(owner: owner, paneId: paneId)
         pageError = nil
         isPaging = false
-        bridgeCapabilities = await connection.bridgeCapabilities(for: connectionState.generation)
-        bridgeVersion = await connection.bridgeVersion(for: connectionState.generation)
-        Self.publishBridgeVersion(bridgeVersion, to: bridgeUpgrade, owner: owner, activeOwner: activeOwner)
-        clearCodexDaemonResult()
-        guard scenePhase == .active, connectionState.isReady else {
-            timeline.end(owner: owner, error: .closed)
-            return
-        }
+        await AgentTimelineStreamRunner(
+            timeline: timeline, key: runKey, owner: owner,
+            currentKey: { taskKey },
+            isOwner: { activeOwner == owner },
+            metadata: {
+                let capabilities = await connection.bridgeCapabilities(for: runKey.connection.generation)
+                let version = await connection.bridgeVersion(for: runKey.connection.generation)
+                return .init(capabilities: capabilities, version: version)
+            },
+            publish: { metadata in
+                bridgeCapabilities = metadata.capabilities
+                bridgeVersion = metadata.version
+                Self.publishBridgeVersion(metadata.version, to: bridgeUpgrade, owner: owner, activeOwner: activeOwner)
+            },
+            prepare: {
+                clearCodexDaemonResult()
+                return await prepareScreenshotTimeline(owner: owner)
+            },
+            open: { onEvent in
+                try await connection.openAgentTimeline(paneId: runKey.paneId, agent: runKey.agent, onEvent: onEvent)
+            },
+            attach: { activeClient = $0 },
+            acceptedEvent: {
+                approvalResponse.sync(timeline.pendingApproval)
+                questionResponse.sync(timeline.pendingQuestion)
+            },
+            close: { await connection.endAgentTimeline($0) },
+            finish: {
+                if activeOwner == owner {
+                    activeClient = nil
+                    activeOwner = nil
+                    isPaging = false
+                }
+            }
+        ).run()
+    }
+
+    @MainActor private func prepareScreenshotTimeline(owner: UUID) async -> Bool {
         #if DEBUG && targetEnvironment(simulator)
             if ScreenshotFixtures.enabled {
                 if ScreenshotFixtures.screen == "timeline-history-position" { following = false }
@@ -262,60 +293,12 @@ extension AgentTimelineView {
                         await timeline.modelControl.loadScreenshotFixture(agent: ScreenshotFixtures.paneAgent)
                     }
                 } catch { timeline.end(owner: owner, error: (error as? AgentBridgeError) ?? .invalidFrame) }
-                return
+                return true
             }
         #endif
-        let ownedConnection = connectionState
-        var opened: AgentBridgeClient?
-        do {
-            let client = try await connection.openAgentTimeline(paneId: paneId, agent: agent) { frame in
-                try await commit(frame, owner: owner, connectionState: ownedConnection)
-            }
-            opened = client
-            let capabilities = await client.capabilities
-            try Task.checkCancellation()
-            if activeOwner == owner {
-                timeline.modelControl.connect(client, supported: capabilities?.modelControl == true)
-                timeline.connectPi(capabilities?.pi == true ? client : nil)
-                timeline.connectPrompts(capabilities?.cursorPrompts == true ? client : nil)
-                activeClient = client
-                bridgeCapabilities = await connection.bridgeCapabilities(for: ownedConnection.generation)
-                bridgeVersion = await connection.bridgeVersion(for: ownedConnection.generation)
-                Self.publishBridgeVersion(bridgeVersion, to: bridgeUpgrade, owner: owner, activeOwner: activeOwner)
-            }
-            try await client.waitUntilClosed()
-        } catch {
-            if activeOwner == owner {
-                bridgeCapabilities = await connection.bridgeCapabilities(for: ownedConnection.generation)
-                bridgeVersion = await connection.bridgeVersion(for: ownedConnection.generation)
-                Self.publishBridgeVersion(bridgeVersion, to: bridgeUpgrade, owner: owner, activeOwner: activeOwner)
-            }
-            timeline.end(owner: owner, error: (error as? AgentBridgeError) ?? .closed)
-        }
-        if let opened { await connection.endAgentTimeline(opened) }
-        if activeOwner == owner {
-            activeClient = nil
-            activeOwner = nil
-            isPaging = false
-        }
+        return false
     }
 
-    @MainActor func commit(
-        _ frame: AgentBridgeFrame, owner: UUID, connectionState owned: AgentTimelineConnectionState
-    ) async throws {
-        // The handshake is recorded before watch events arrive. Load its version
-        // before publishing unavailable, so an older host can open the upgrade drawer.
-        let version = await connection.bridgeVersion(for: owned.generation)
-        // Readiness/generation and the store mutation share one MainActor turn;
-        // a callback suspended before the UI hop cannot commit after reconnect.
-        try owned.requireCurrent(connectionState)
-        guard activeOwner == owner else { return }
-        bridgeVersion = version
-        Self.publishBridgeVersion(version, to: bridgeUpgrade, owner: owner, activeOwner: activeOwner)
-        try timeline.consume(frame, owner: owner)
-        approvalResponse.sync(timeline.pendingApproval)
-        questionResponse.sync(timeline.pendingQuestion)
-    }
     @MainActor func mergeHistoryPreservingPosition(
         _ page: AgentBridgePayload, owner: UUID, generation: UInt64
     ) throws {
@@ -381,5 +364,85 @@ extension AgentTimelineView {
                 pageError = "Earlier messages could not load. Pull down to try again."
             }
         }
+    }
+}
+
+/// The production async lifetime, shared by SwiftUI and controlled transport tests.
+/// Dependencies stop at the transport/metadata boundary; owner and event policy live here.
+@MainActor struct AgentTimelineStreamRunner {
+    struct Metadata {
+        var capabilities: AgentBridgeCapabilities?
+        var version: String?
+    }
+    let timeline: AgentTimelineState
+    let key: AgentTimelineView.TaskKey
+    let owner: UUID
+    let currentKey: () -> AgentTimelineView.TaskKey
+    let isOwner: () -> Bool
+    let metadata: () async -> Metadata
+    let publish: (Metadata) -> Void
+    var prepare: () async -> Bool = { false }
+    let open: (@escaping @Sendable (AgentBridgeFrame) async throws -> Void) async throws -> AgentBridgeClient
+    let attach: (AgentBridgeClient) -> Void
+    var acceptedEvent: () -> Void = {}
+    let close: (AgentBridgeClient) async -> Void
+    var finish: () -> Void = {}
+
+    private var isCurrent: Bool {
+        key == currentKey() && isOwner() && key.isActive && key.connection.isReady
+    }
+    private func retire() {
+        timeline.retire(owner: owner, preservingContent: key.connection == currentKey().connection)
+    }
+    func run() async {
+        // A queued retired task must not steal the store before its first await.
+        // Current inactive/unready owners still begin below, publishing neutral suspension.
+        guard !Task.isCancelled, key == currentKey(), isOwner() else { return }
+        timeline.begin(owner: owner, paneId: key.paneId, connection: key.connection, isActive: key.isActive, agent: key.agent)
+        let initial = await metadata()
+        guard !Task.isCancelled, isCurrent else { retire(); finish(); return }
+        publish(initial)
+        if await prepare() { return }
+        guard !Task.isCancelled, isCurrent else { retire(); finish(); return }
+        var opened: AgentBridgeClient?
+        do {
+            let client = try await open { frame in try await commit(frame) }
+            opened = client
+            let capabilities = await client.capabilities
+            let recorded = await metadata()
+            try Task.checkCancellation()
+            guard isCurrent else { throw CancellationError() }
+            timeline.modelControl.connect(client, supported: capabilities?.modelControl == true)
+            timeline.connectPi(capabilities?.pi == true ? client : nil)
+            timeline.connectPrompts(capabilities?.cursorPrompts == true ? client : nil)
+            attach(client)
+            publish(recorded)
+            try await client.waitUntilClosed()
+        } catch {
+            if Task.isCancelled || error is CancellationError || !isCurrent {
+                retire()
+            } else {
+                // Handshake metadata can be recorded before open throws (without an event/client).
+                // Revalidate after every lookup has completed, then publish metadata + failure
+                // in the same MainActor turn. A retired attempt cannot replace current guidance.
+                let recorded = await metadata()
+                if !Task.isCancelled, isCurrent {
+                    publish(recorded)
+                    timeline.end(owner: owner, error: (error as? AgentBridgeError) ?? .unavailable("bridge_unavailable"))
+                } else {
+                    retire()
+                }
+            }
+        }
+        if let opened { await close(opened) }
+        finish()
+    }
+    private func commit(_ frame: AgentBridgeFrame) async throws {
+        let recorded = await metadata()
+        try key.connection.requireCurrent(currentKey().connection)
+        guard !Task.isCancelled, isCurrent else { throw AgentBridgeError.closed }
+        publish(recorded)
+        try timeline.consume(frame, owner: owner)
+        acceptedEvent()
     }
 }

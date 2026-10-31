@@ -2,6 +2,43 @@ import XCTest
 import UIKit
 
 final class AgentTimelineUITests: XCTestCase {
+    func testTimelineForegroundRestorationDoesNotShowDisconnected() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline", "-hc.light", "-paneShowComposeByDefault", "NO"]
+        launch(app)
+        XCTAssertTrue(app.buttons["timeline-tool-tool:read"].waitForExistence(timeout: 5))
+        for _ in 0..<2 {
+            XCUIDevice.shared.press(.home)
+            app.activate()
+            XCTAssertFalse(app.staticTexts["Timeline disconnected"].exists)
+            XCTAssertTrue(app.buttons["timeline-tool-tool:read"].waitForExistence(timeout: 5))
+        }
+        app.terminate()
+    }
+
+    func testUnreadyTimelineIsNeutralAndOfflineBannerOwnsRecovery() {
+        for screen in ["timeline-connecting", "timeline-offline"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", screen, "-hc.light", "-paneShowComposeByDefault", "YES"]
+            launch(app)
+            if screen == "timeline-offline" {
+                XCTAssertTrue(app.descendants(matching: .any)["connection-status-bar"].firstMatch.waitForExistence(timeout: 5))
+                XCTAssertTrue(app.buttons["Retry"].isEnabled)
+                let body = app.staticTexts["You're offline. Reconnect to bring the cats back."]
+                XCTAssertTrue(body.exists)
+                let composer = app.descendants(matching: .any)["timeline-compose-field"].firstMatch
+                XCTAssertTrue(composer.exists)
+                XCTAssertLessThanOrEqual(body.frame.maxY, composer.frame.minY - 8, "Offline information must fit above the keyboard composer")
+            } else {
+                XCTAssertTrue(app.descendants(matching: .any)["timeline-content-loading"].firstMatch.waitForExistence(timeout: 5))
+            }
+            XCTAssertFalse(app.staticTexts["Timeline disconnected"].exists)
+            XCTAssertFalse(app.buttons["timeline-helper-retry"].exists)
+            let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = screen; shot.lifetime = .keepAlways; add(shot)
+            app.terminate()
+        }
+    }
+
     func testTimelineLightAndDarkRenderToolCardsAndKeepTerminalAvailable() {
         for light in [true, false] {
             let app = XCUIApplication()

@@ -142,6 +142,11 @@ struct ScreenshotRootView: View {
         let app = AppModel(autoConnectOnLaunch: false)
         app.phase = .connected(host: "studio-mac", username: "demo")
         app.hasActiveSession = true
+        if ScreenshotFixtures.screen == "timeline-connecting" { app.phase = .connecting }
+        if ScreenshotFixtures.screen == "timeline-offline" {
+            app.phase = .offline(host: "studio-mac", username: "demo")
+            app.connectionBanner = .offline(message: "Offline · Connection lost", canRetry: true)
+        }
         app.connectionIdentity = ConnectionIdentity(host: "studio-mac", port: 22, username: "demo")
         // Keep each capture independent of previous timeline/terminal navigation.
         if ProcessInfo.processInfo.arguments.contains("-hc.capture-surface"), let identity = app.connectionIdentity {
@@ -162,6 +167,7 @@ struct ScreenshotRootView: View {
                 NavigationStack {
                     if let pane = try? JSONDecoder().decode(PaneEntry.self, from: Data(ScreenshotFixtures.json(ScreenshotFixtures.panes[0]).utf8)) {
                         PaneDetailView(pane: pane)
+                            .connectionStatusBanner(appModel: model)
                     }
                 }
             } else if ScreenshotFixtures.screen == "connect" {

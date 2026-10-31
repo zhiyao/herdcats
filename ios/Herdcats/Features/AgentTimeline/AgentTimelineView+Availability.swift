@@ -5,12 +5,15 @@ import UIKit
 
 extension AgentTimelineView {
     @ViewBuilder var availability: some View {
-        switch timeline.phase {
+        switch timeline.presentationPhase(connection: connectionState, isActive: scenePhase == .active, paneId: paneId, agent: agent) {
         case .loading:
-            HStack {
-                ProgressView()
-                Text("Connecting to timeline…")
-            }.frame(maxWidth: .infinity).padding(.vertical, 32)
+            timelineContentLoading
+        case .suspended:
+            if appModel.isOffline {
+                timelineOfflineState
+            } else if scenePhase == .active {
+                timelineContentLoading
+            }
         case .disconnected:
             ContentUnavailableView {
                 Label("Timeline disconnected", systemImage: "wifi.slash")
@@ -105,6 +108,37 @@ extension AgentTimelineView {
             }
         case .ready: EmptyView()
         }
+    }
+
+    /// Intrinsic, finite content fits above the floating composer even with the keyboard open.
+    private var timelineOfflineState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "wifi.slash")
+                .font(.jost(.title2))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text("The herd got loose")
+                .font(.jost(.headline))
+            Text("You're offline. Reconnect to bring the cats back.")
+                .font(.jost(.subheadline))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("timeline-offline-state")
+    }
+
+    private var timelineContentLoading: some View {
+        HStack {
+            ProgressView()
+            Text("Connecting to timeline…")
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
+        .accessibilityIdentifier("timeline-content-loading")
     }
 
     func explanation(_ code: String) -> String {
@@ -579,6 +613,7 @@ extension AgentTimelineView {
     /// off, stream re-ran), close it instead of stopping a working server.
     func dismissStaleCodexDaemonConfirm() {
         guard showsCodexDaemonConfirm else { return }
+        guard matchesLiveTimeline else { showsCodexDaemonConfirm = false; return }
         if !Self.canRunCodexDaemonStop(
             phase: timeline.phase,
             agent: agent,
@@ -590,7 +625,8 @@ extension AgentTimelineView {
     }
 
     func disableCodexDaemon() {
-        guard !isDisablingCodexDaemon else { return }
+        guard matchesLiveTimeline, scenePhase == .active, connectionState.isReady,
+              !isDisablingCodexDaemon else { return }
         // The sheet may have stayed open after the pane moved on; revalidate
         // the live state so confirming a stale sheet never stops a server the
         // pane no longer reports as running.
