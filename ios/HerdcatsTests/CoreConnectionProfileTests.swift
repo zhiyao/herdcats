@@ -114,6 +114,14 @@ struct CoreConnectionProfileTests {
         #expect(ConnectionSignIn(entry: tui).resolving(.core, in: [tui, core]).entry.id == core.id)
     }
 
+    @Test func autoReusesTheSavedRuntimeWhenTheSignInMethodChanges() {
+        let core = RecentConnection(host: "mac.local", port: 22, username: "alex", authMode: "password", remember: true, backend: .core)
+        let keyed = RecentConnection(host: "mac.local", port: 22, username: "alex", authMode: "privateKey", remember: true)
+        let resolved = ConnectionSignIn(entry: keyed, detectsBackend: true).resolving(.core, in: [core])
+        #expect(resolved.entry.id == core.id)
+        #expect(resolved.entry.authMode == "privateKey")
+    }
+
     @Test func listsShowOneServerOnTheRuntimeUsedLast() {
         let tui = RecentConnection(host: "mac.local", port: 22, username: "alex", authMode: "password", remember: true,
                                    lastConnectedAt: Date(timeIntervalSince1970: 1))

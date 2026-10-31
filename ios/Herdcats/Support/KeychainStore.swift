@@ -722,7 +722,8 @@ struct ConnectionSignIn: Identifiable {
     func resolving(_ backend: ConnectionBackend, in entries: [RecentConnection]) -> Self {
         guard entry.backend != backend else { return self }
         var value = self
-        let saved = entries.first { Self.sameDestination($0, entry) && $0.backend == backend }
+        // Match by server, not sign-in method, so a new auth mode refreshes the saved runtime.
+        let saved = entries.first { RecentConnectionStore.sameServer($0, entry) && $0.backend == backend }
         value.entry = saved ?? (entries.contains { $0.id == entry.id }
             ? RecentConnection(host: entry.host, port: entry.port, username: entry.username,
                 authMode: entry.authMode, remember: entry.remember, backend: backend)

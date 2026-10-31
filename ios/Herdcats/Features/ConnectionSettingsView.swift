@@ -308,6 +308,14 @@ struct ConnectionSettingsView: View {
         if !editing {
             entry = RecentConnectionStore.entry(host: entry.host, port: entry.port, username: entry.username,
                 authMode: entry.authMode, remember: entry.remember, name: name, backend: entry.backend, in: isReplay ? RecentConnectionStore.snapshot(defaults: defaults) : try RecentConnectionStore.load(defaults: defaults, using: keychain))
+        } else if entry.backend != original.backend {
+            // Picking the other runtime edits that runtime's saved entry, so this
+            // one is never repointed and the server keeps one entry per runtime.
+            let entries = isReplay ? RecentConnectionStore.snapshot(defaults: defaults) : try RecentConnectionStore.load(defaults: defaults, using: keychain)
+            if let sibling = RecentConnectionStore.runtimes(of: original, in: entries).first(where: { $0.backend == entry.backend }) {
+                entry.id = sibling.id
+                entry.lastConnectedAt = sibling.lastConnectedAt
+            }
         }
         return ConnectionSignIn(entry: entry, secret: authMode == .password ? password : keyPEM,
             passphrase: keyPassphrase, savePassphrase: rememberPassphrase, detectsBackend: backend == nil)

@@ -379,6 +379,10 @@ struct PaneSessionView: View {
                 if appModel.isCoreMode, case let .text(text) = event,
                    HerdrConnection.coreTypedKeys(text) == nil {
                     sessionError = HerdrConnection.coreUntypeableMessage
+                    // Disarm like the composer does for text it can't wrap, so a
+                    // later key never inherits a stale Ctrl/Alt arm.
+                    liveModifierComposer.reset()
+                    applyLiveModifierOutcome(.state(armed: []))
                     return
                 }
                 applyLiveModifierOutcome(liveModifierComposer.apply(event))
