@@ -3,6 +3,7 @@ import SwiftUI
 
 extension AppModel {
     func connect(config: ConnectionConfig) async {
+        var config = config
         guard !isDialing else { return }
         isDialing = true
         defer { isDialing = false }
@@ -28,7 +29,22 @@ extension AppModel {
             // their own command deadlines and must report their own errors.
             state.watchdog.cancel()
             isCheckingHerdr = true
-            connectionProgressMessage = "Checking Herdr…"
+            if config.detectsBackend {
+                connectionProgressMessage = "Detecting Herdr…"
+                let found = try await connection.detectBackends()
+                guard ownership.isCurrent(state.attempt) else {
+                    connection.forceClose(generation: generation)
+                    return
+                }
+                // TUI has every feature; the machine picker offers Herdr Core when both exist.
+                config.backend = found.contains(.core) && !found.contains(.tui) ? .core : .tui
+                config.detectsBackend = false
+                await connection.adoptBackend(config.backend)
+                activeConfig = config
+                connectionIdentity = ConnectionIdentity(config)
+                detectedBackends = found
+            }
+            connectionProgressMessage = config.backend == .core ? "Checking Herdr Core…" : "Checking Herdr…"
             #if DEBUG
             print("[HC] ssh connected, checking herdr…")
             #endif
@@ -38,7 +54,7 @@ extension AppModel {
             print("[HC] herdr version: \(version)")
             #endif
             if ownership.isCurrent(state.attempt) {
-                connectionProgressMessage = "Checking default session…"
+                connectionProgressMessage = config.backend == .core ? "Reading Herdr Core terminals…" : "Checking default session…"
             }
             try await checkSessionReadiness()
             guard ownership.isCurrent(state.attempt) else {
@@ -73,6 +89,12 @@ extension AppModel {
         print("[HC] connect start \(config.host):\(config.port)")
         #endif
         activeConfig = config
+        detectedBackends = []
+        await connection.setRuntimeChangeHandler { [weak self] generation in
+            Task { @MainActor in
+                self?.noteRuntimeChange(generation: generation)
+            }
+        }
         let wasOffline = isOffline
         phase = .connecting
         if connectionBanner == nil || isOffline {

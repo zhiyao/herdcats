@@ -1,6 +1,6 @@
 import Foundation
 
-/// Stable identity for a remote SSH endpoint (host / port / user).
+/// Stable identity for one runtime at a remote SSH endpoint.
 ///
 /// Used to namespace pane drafts, command history, remote-draft markers, and
 /// activity timestamps so the same Herdr pane id on two machines cannot collide.
@@ -8,15 +8,17 @@ struct ConnectionIdentity: Hashable, Sendable, Codable, Equatable {
     var host: String
     var port: Int
     var username: String
+    var backend: ConnectionBackend
 
-    init(host: String, port: Int, username: String) {
+    init(host: String, port: Int, username: String, backend: ConnectionBackend = .tui) {
         self.host = host.trimmingCharacters(in: .whitespacesAndNewlines)
         self.port = port
         self.username = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.backend = backend
     }
 
     init(_ config: ConnectionConfig) {
-        self.init(host: config.host, port: config.port, username: config.username)
+        self.init(host: config.host, port: config.port, username: config.username, backend: config.backend)
     }
 
     /// UserDefaults-safe fragment unique for this endpoint.
@@ -27,7 +29,9 @@ struct ConnectionIdentity: Hashable, Sendable, Codable, Equatable {
     var storageKey: String {
         let user = Self.encodeComponent(username)
         let host = Self.encodeComponent(self.host.lowercased())
-        return "u=\(user)|h=\(host)|p=\(port)"
+        let endpoint = "u=\(user)|h=\(host)|p=\(port)"
+        // Keep existing TUI draft/history keys byte-for-byte compatible.
+        return backend == .tui ? endpoint : endpoint + "|b=\(backend.rawValue)"
     }
 
     private static let allowedComponentCharacters = CharacterSet(
@@ -36,6 +40,18 @@ struct ConnectionIdentity: Hashable, Sendable, Codable, Equatable {
 
     static func encodeComponent(_ value: String) -> String {
         value.addingPercentEncoding(withAllowedCharacters: allowedComponentCharacters) ?? value
+    }
+}
+
+extension ConnectionIdentity {
+    private enum CodingKeys: String, CodingKey { case host, port, username, backend }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(host: try values.decode(String.self, forKey: .host),
+                  port: try values.decode(Int.self, forKey: .port),
+                  username: try values.decode(String.self, forKey: .username),
+                  backend: try values.decodeIfPresent(ConnectionBackend.self, forKey: .backend) ?? .tui)
     }
 }
 

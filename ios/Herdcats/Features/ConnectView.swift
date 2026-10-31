@@ -233,7 +233,7 @@ struct ConnectView: View {
     private func forget(_ connection: RecentConnection) {
         guard !replay else { return }
         do {
-            recentConnections = try RecentConnectionStore.remove(connection)
+            recentConnections = try RecentConnectionStore.removeServer(connection)
         } catch {
             appModel.lastError = error.localizedDescription
             recentConnections = (try? RecentConnectionStore.load()) ?? recentConnections
@@ -252,14 +252,15 @@ struct ConnectView: View {
             }
 
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14, alignment: .top), count: dynamicTypeSize.isAccessibilitySize ? 1 : 2), spacing: 14) {
-                ForEach(recentConnections) { connection in
+                let servers = RecentConnectionStore.servers(recentConnections)
+                ForEach(servers) { connection in
                     ZStack(alignment: .topTrailing) {
                         Button {
                             Task { await connectSaved(connection) }
                         } label: {
                             VStack(alignment: .leading, spacing: 10) {
                                 HStack(alignment: .top) {
-                                    Text(connection.shortDisplayName(among: recentConnections))
+                                    Text(connection.shortDisplayName(among: servers))
                                         .font(.jost(.headline))
                                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                                         .fixedSize(horizontal: false, vertical: true)
@@ -274,7 +275,7 @@ struct ConnectView: View {
                                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                                     .fixedSize(horizontal: false, vertical: true)
                                     .truncationMode(.middle)
-                                Text("Port \(String(connection.port))").font(.jost(.caption)).foregroundStyle(.secondary)
+                                Text("\(RecentConnectionStore.runtimeSummary(of: connection, in: recentConnections)) · Port \(String(connection.port))").font(.jost(.caption)).foregroundStyle(.secondary)
                             }
                             .frame(maxWidth: .infinity, minHeight: 126, alignment: .leading)
                             .padding(16)
@@ -282,9 +283,17 @@ struct ConnectView: View {
                         }
                         .buttonStyle(.herdrCard)
                         .accessibilityIdentifier("connect-machine-\(connection.id.uuidString)")
-                        .accessibilityLabel("\(connection.shortDisplayName(among: recentConnections)), \(connection.username) at \(connection.host), port \(String(connection.port))")
+                        .accessibilityLabel("\(connection.shortDisplayName(among: servers)), \(connection.username) at \(connection.host), port \(String(connection.port)), \(RecentConnectionStore.runtimeSummary(of: connection, in: recentConnections))")
                         .accessibilityHint("Connects to this machine")
                         .contextMenu {
+                            let runtimes = RecentConnectionStore.runtimes(of: connection, in: recentConnections)
+                            if runtimes.count > 1 {
+                                ForEach(runtimes) { runtime in
+                                    Button("Connect with \(runtime.backend.title)", systemImage: "arrow.left.arrow.right") {
+                                        Task { await connectSaved(runtime) }
+                                    }
+                                }
+                            }
                             if !replay {
                                 Button("Forget Connection", systemImage: "trash", role: .destructive) { forget(connection) }
                             }
@@ -724,7 +733,7 @@ struct ManageMachinesView: View {
         NavigationStack {
             List {
                 if let error { ErrorBanner(message: error) }
-                ForEach(draft.connections) { connection in
+                ForEach(draft.servers) { connection in
                     Button {
                         renaming = connection
                     } label: {

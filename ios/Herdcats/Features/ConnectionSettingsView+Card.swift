@@ -3,8 +3,31 @@ import UIKit
 import UniformTypeIdentifiers
 
 extension ConnectionSettingsView {
+    var backendSummary: String {
+        switch backend {
+        case nil: "Detect TUI and Herdr Core. Each one found is added to your machines."
+        case .core: "Connect to Herdr Core for terminal access."
+        case .tui: "Connect to the Herdr TUI session."
+        }
+    }
+
     var connectionCard: some View {
         VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                fieldLabel("Herdr")
+                Picker("Herdr runtime", selection: $backend) {
+                    Text("Auto").tag(ConnectionBackend?.none)
+                    ForEach(ConnectionBackend.allCases) { option in
+                        Text(option.title).tag(Optional(option))
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("connection-backend")
+                Text(backendSummary)
+                    .font(.jost(.footnote))
+                    .foregroundStyle(.secondary)
+            }
+
             VStack(alignment: .leading, spacing: 8) {
                 fieldLabel("Name (optional)")
                 TextField("Name (optional)", text: $name)

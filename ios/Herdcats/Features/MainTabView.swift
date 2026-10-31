@@ -112,6 +112,10 @@ struct ConnectedTabsView: View {
                 }
             }
         }
+        .onChange(of: appModel.runtimeRevision) { _, _ in
+            guard appModel.isCoreMode, appModel.isSceneActive, !appModel.isOffline else { return }
+            Task { await model.refresh(appModel.connection) }
+        }
         .onChange(of: scenePhase) { _, phase in
             let active = phase == .active
             model.isSceneActive = active
@@ -348,7 +352,9 @@ struct AgentsScreen: View {
                 .foregroundStyle(.tertiary)
             Text("No agents running")
                 .font(.jost(.title3, weight: .semibold))
-            Text("Launch an agent inside a herdr space —\nit will show up here on the next refresh.")
+            Text(appModel.isCoreMode
+                 ? "Run a status-reporting agent in Herdr Core. You can browse every terminal in Spaces."
+                 : "Launch an agent inside a herdr space —\nit will show up here on the next refresh.")
                 .font(.jost(.footnote))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -473,16 +479,69 @@ struct HerdrcatBrandMark: View {
     }
 
     private func identity(_ connection: RecentConnection) -> ConnectionIdentity {
-        ConnectionIdentity(host: connection.host, port: connection.port, username: connection.username)
+        ConnectionIdentity(host: connection.host, port: connection.port, username: connection.username,
+            backend: connection.backend)
     }
 
     private var activeConnection: RecentConnection? {
         connections.first { identity($0) == appModel.connectionIdentity }
     }
 
+    /// The active machine's saved login for the other runtime, offered as its own switch item.
+    private var otherBackendConnection: RecentConnection? {
+        guard let activeConnection else { return nil }
+        return connections.first {
+            $0.id != activeConnection.id && $0.host.lowercased() == activeConnection.host.lowercased()
+                && $0.port == activeConnection.port && $0.username == activeConnection.username
+                && $0.backend != activeConnection.backend
+        }
+    }
+
+    /// The other runtime on the active machine: its saved login, or a new one copied from the active login.
+    private var otherBackendTarget: RecentConnection? {
+        if let otherBackendConnection { return otherBackendConnection }
+        guard let activeConnection,
+              let backend = ConnectionBackend.allCases.first(where: { $0 != activeConnection.backend }) else { return nil }
+        return RecentConnection(host: activeConnection.host, port: activeConnection.port,
+            username: activeConnection.username, authMode: activeConnection.authMode,
+            remember: activeConnection.remember, name: activeConnection.name, backend: backend)
+    }
+
+    private func switchBackend(to target: RecentConnection) {
+        guard let active else { return }
+        guard otherBackendConnection == nil, let activeConnection else { return select(target) }
+        Task {
+            // A new runtime entry reuses the active login; it is saved only once the switch connects.
+            var value = ConnectionSignIn(entry: target)
+            if let current = try? ConnectionSignIn.load(activeConnection) {
+                value.secret = current.secret
+                value.passphrase = current.passphrase
+                value.savePassphrase = current.savePassphrase
+            }
+            let outcome = try? await active.signIn(using: value)
+            if outcome == nil || outcome == .needsCredentials { selectedConnection = target }
+        }
+    }
+
+    private func select(_ connection: RecentConnection) {
+        guard let active else { return }
+        Task {
+            if await active.switchMachine(to: connection) == .needsCredentials {
+                selectedConnection = connection
+            }
+        }
+    }
+
+    /// One row per server; the active server shows the runtime in use, others the one used last.
+    private var servers: [RecentConnection] {
+        RecentConnectionStore.servers(connections).map { server in
+            activeConnection.flatMap { RecentConnectionStore.sameServer($0, server) ? $0 : nil } ?? server
+        }
+    }
+
     private var shortHost: String {
         // Same label as the checked menu row.
-        activeConnection?.shortDisplayName(among: connections) ?? RecentConnection.abbreviatedHost(host ?? "")
+        activeConnection?.shortDisplayName(among: servers) ?? RecentConnection.abbreviatedHost(host ?? "")
     }
 
     private func isPending(_ connection: RecentConnection) -> Bool {
@@ -512,15 +571,11 @@ struct HerdrcatBrandMark: View {
             if let host {
                 Menu {
                     // The checkmark marks the current machine, so no host header.
-                    ForEach(connections) { connection in
-                        let label = connection.shortDisplayName(among: connections)
+                    let servers = servers
+                    ForEach(servers) { connection in
+                        let label = connection.shortDisplayName(among: servers)
                         Button {
-                            guard let active else { return }
-                            Task {
-                                if await active.switchMachine(to: connection) == .needsCredentials {
-                                    selectedConnection = connection
-                                }
-                            }
+                            select(connection)
                         } label: {
                             HStack {
                                 Text(label)
@@ -536,6 +591,23 @@ struct HerdrcatBrandMark: View {
                         .accessibilityLabel(label + (isPending(connection) ? ", Connecting…" : ""))
                     }
                     .onAppear { reloadConnections() }
+                    if let target = otherBackendTarget {
+                        Divider()
+                        let label = "Switch to \(target.backend.title)"
+                        Button {
+                            switchBackend(to: target)
+                        } label: {
+                            HStack {
+                                Label(label, systemImage: "arrow.left.arrow.right")
+                                if isPending(target) {
+                                    ProgressView()
+                                    Text("Connecting…")
+                                }
+                            }
+                        }
+                        .accessibilityLabel(label + (isPending(target) ? ", Connecting…" : ""))
+                        .accessibilityIdentifier("machine-picker-switch-backend")
+                    }
                     Divider()
                     Button("Add Machine…", systemImage: "plus") {
                         Task {

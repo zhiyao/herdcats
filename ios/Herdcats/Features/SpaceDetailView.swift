@@ -82,10 +82,10 @@ struct PaneDetailView: View {
         let key = sessionIdentity
         return Binding(
             get: {
-                guard TimelineAgentAvailability.supports(agent: selectedPane.agent) else { return false }
+                guard !appModel.isCoreMode, TimelineAgentAvailability.supports(agent: selectedPane.agent) else { return false }
                 return timelineModes[key] ?? !UserDefaults.standard.bool(forKey: TimelineSetupPreference.key(scope: connectionScope))
             },
-            set: { timelineModes[key] = TimelineAgentAvailability.supports(agent: selectedPane.agent) && $0 }
+            set: { timelineModes[key] = !appModel.isCoreMode && TimelineAgentAvailability.supports(agent: selectedPane.agent) && $0 }
         )
     }
 
@@ -126,6 +126,7 @@ struct PaneDetailView: View {
                 lastUpdatedByPaneID: lastUpdatedByPaneID,
                 pendingPane: creatingPane,
                 isAddDisabled: isPerformingAction,
+                allowsMutations: !appModel.isCoreMode,
                 onAdd: {
                     isShowingAddPane = true
                 },
@@ -161,7 +162,7 @@ struct PaneDetailView: View {
                     agent: selectedPane.agent
                 )
             }
-            if TimelineAgentAvailability.supports(agent: selectedPane.agent) {
+            if !appModel.isCoreMode, TimelineAgentAvailability.supports(agent: selectedPane.agent) {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         timelineMode.wrappedValue.toggle()
@@ -185,6 +186,7 @@ struct PaneDetailView: View {
                         .accessibilityIdentifier("timeline-upgrade-menu-button")
                         Divider()
                     }
+                    if !appModel.isCoreMode {
                     Toggle("Show Compose by Default", isOn: $showComposeByDefault)
                         .accessibilityIdentifier("pane-show-compose-toggle")
                     Divider()
@@ -218,6 +220,7 @@ struct PaneDetailView: View {
                     }
                     .disabled(workspace?.worktree == nil)
                     .accessibilityIdentifier("workspace-delete-worktree-button")
+                    }
 
                     #if DEBUG
                     Divider()
@@ -355,6 +358,13 @@ struct PaneDetailView: View {
                     autoRefreshEnabled: auto,
                     isSceneActive: active
                 ) else { continue }
+                await refreshPeersAndTabs()
+            }
+        }
+        .onChange(of: appModel.runtimeRevision) { _, _ in
+            guard appModel.isCoreMode, appModel.isSceneActive, !appModel.isOffline else { return }
+            Task {
+                await refreshWorkspace()
                 await refreshPeersAndTabs()
             }
         }

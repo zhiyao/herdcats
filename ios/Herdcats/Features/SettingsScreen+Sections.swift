@@ -10,7 +10,7 @@ extension SettingsScreen {
     }
     var phoneAnswersScreenKey: PhoneAnswersScreenKey {
         PhoneAnswersScreenKey(target: appModel.connectionIdentity, generation: appModel.ownership.transportGeneration,
-            active: settingsVisible && scenePhase == .active && appModel.isSceneActive
+            active: !appModel.isCoreMode && settingsVisible && scenePhase == .active && appModel.isSceneActive
                 && AgentTimelineConnectionState(phase: appModel.phase, generation: appModel.ownership.transportGeneration).isReady)
     }
     func phoneAnswersKey(_ agent: ApprovalAgent) -> PhoneAnswersStore.Key? {
@@ -45,7 +45,7 @@ extension SettingsScreen {
         }
     }
     @ViewBuilder var phoneAnswersSection: some View {
-        if phoneAnswersCapability && phoneAnswersScreenKey.active {
+        if !appModel.isCoreMode && phoneAnswersCapability && phoneAnswersScreenKey.active {
             Section {
                 ForEach(ApprovalAgent.allCases, id: \.rawValue) { agent in
                     if let key = phoneAnswersKey(agent) {
