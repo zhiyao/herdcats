@@ -112,7 +112,15 @@ extension AgentTimelineView {
     }
 
     /// Intrinsic, finite content fits above the floating composer even with the keyboard open.
+    /// The session owner supplies recovery here; the banner keeps its status text.
     private var timelineOfflineState: some View {
+        ConnectionRecoveryViewport {
+            timelineOfflineCard
+        }
+        .frame(height: max(1, viewportHeight - topOverlayInset - bottomOverlayInset - 32))
+    }
+
+    private var timelineOfflineCard: some View {
         VStack(spacing: 8) {
             Image(systemName: "wifi.slash")
                 .font(.jost(.title2))
@@ -125,8 +133,12 @@ extension AgentTimelineView {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
+            ConnectionContentRetryButton()
         }
+        .padding(.horizontal, 24)
         .padding(.vertical, 16)
+        .frame(maxWidth: 360)
+        .modifier(PaneInputGlassSurface(cornerRadius: 24, backgroundOpacity: 0.98))
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("timeline-offline-state")
