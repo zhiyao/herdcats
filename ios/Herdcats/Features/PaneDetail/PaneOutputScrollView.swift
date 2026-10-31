@@ -267,10 +267,14 @@ struct PaneOutputScrollView: View, Equatable {
             if output.isEmpty {
                 if isOffline {
                     OfflineHerdView()
-                        .padding(.bottom, 68)
-                        .allowsHitTesting(false)
+                        .padding(.top, topOverlayInset)
+                        .padding(.bottom, bottomOverlayInset)
                 } else if isLoading {
-                    CircularArcSpinner("Reading pane…")
+                    LazyCatLoadingView(message: "Reading pane…")
+                        .padding(.top, topOverlayInset)
+                        .padding(.bottom, bottomOverlayInset)
+                        .allowsHitTesting(false)
+                        .accessibilityIdentifier("pane-content-loading")
                 }
             }
         }

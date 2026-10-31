@@ -147,6 +147,9 @@ struct PaneSessionView: View {
         _draft = State(initialValue: policy.loadDraft(key: draftKey))
 #if DEBUG && targetEnvironment(simulator)
         if ScreenshotFixtures.enabled {
+            if ScreenshotFixtures.screen == "timeline-offline-transition" {
+                _draft = State(initialValue: String(repeating: "A multiline draft stays editable while offline. ", count: 10))
+            }
             if ProcessInfo.processInfo.arguments.contains("-hc.long-terminal-selection") {
                 _draft = State(initialValue: ProcessInfo.processInfo.arguments.contains("-hc.selection-draft")
                     ? "Selection draft" : "")
@@ -185,7 +188,8 @@ struct PaneSessionView: View {
     /// attached image alone is never sent (Return would otherwise leak an
     /// image-only message past the hidden button).
     var canSend: Bool {
-        !trimmedDraft.isEmpty
+        !trimmedDraft.isEmpty && appModel.isSceneActive
+            && (!showsTimeline || (timeline.phase != .suspended && timeline.matchesLivePane(paneId: pane.paneId, agent: pane.agent, connection: AgentTimelineConnectionState(phase: appModel.phase, generation: appModel.ownership.transportGeneration))))
             && !isSending && !isTimelineSending
             && (!showsTimeline || !timeline.modelControl.isChanging)
             && (!showsTimeline || pane.agent != "pi" || timeline.canSubmitPiPrompt)
@@ -390,7 +394,7 @@ struct PaneSessionView: View {
             isSending: isSending,
             onSend: handleSend
         )
-        bar.modelControl = showsTimeline ? timeline.modelControl : nil
+        bar.modelControl = showsTimeline && timeline.matchesLivePane(paneId: pane.paneId, agent: pane.agent, connection: AgentTimelineConnectionState(phase: appModel.phase, generation: appModel.ownership.transportGeneration)) ? timeline.modelControl : nil
         bar.composeFieldIdentifier = showsTimeline ? "timeline-compose-field" : "pane-compose-field"
         bar.composeSendIdentifier = showsTimeline ? "timeline-compose-send" : "pane-compose-send-button"
         return bar
@@ -448,6 +452,12 @@ struct PaneSessionView: View {
                 (showsTimeline ? Theme.background : Color(uiColor: UIColor(hex: terminalPalette.background)))
                     .ignoresSafeArea(edges: .bottom)
             }
+        }
+        .transformPreference(ConnectionRecoveryLayoutKey.self) { layout in
+            // Preserve the empty state's own Retry marker while supplying the
+            // measured usable area for recovery over retained output.
+            layout.topInset = max(layout.topInset, topOutputInset)
+            layout.bottomInset = max(layout.bottomInset, bottomDockHeight)
         }
         .overlay(alignment: .bottom) {
             VStack(spacing: 0) {
