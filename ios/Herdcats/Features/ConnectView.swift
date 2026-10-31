@@ -286,7 +286,7 @@ struct ConnectView: View {
                         .accessibilityLabel("\(connection.shortDisplayName(among: servers)), \(connection.username) at \(connection.host), port \(String(connection.port)), \(RecentConnectionStore.runtimeSummary(of: connection, in: recentConnections))")
                         .accessibilityHint("Connects to this machine")
                         .contextMenu {
-                            let runtimes = RecentConnectionStore.runtimes(of: connection, in: recentConnections)
+                            let runtimes = RecentConnectionStore.savedRuntimes(of: connection, in: recentConnections)
                             if runtimes.count > 1 {
                                 ForEach(runtimes) { runtime in
                                     Button("Connect with \(runtime.backend.title)", systemImage: "arrow.left.arrow.right") {

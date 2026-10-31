@@ -90,7 +90,7 @@ struct ConnectionSettingsView: View {
         _username = State(initialValue: connection.username)
         _authModeRaw = State(initialValue: connection.authMode)
         // A server saved with both runtimes is edited as one, so it opens on Auto.
-        let runtimes = RecentConnectionStore.runtimes(of: connection, in: RecentConnectionStore.snapshot(defaults: defaults))
+        let runtimes = RecentConnectionStore.savedRuntimes(of: connection, in: RecentConnectionStore.snapshot(defaults: defaults))
         _backend = State(initialValue: connection.host.isEmpty || runtimes.count > 1 ? nil : connection.backend)
         _remember = State(initialValue: connection.remember)
         do {

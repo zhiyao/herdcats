@@ -185,6 +185,24 @@ struct CoreConnectionProfileTests {
         #expect(Set(try RecentConnectionStore.load(defaults: defaults, using: keychain).map(\.id)) == [tui.id, core.id])
     }
 
+    @Test func savingARuntimeReplacesItsDuplicateEntries() throws {
+        let suite = "CoreConnectionProfileTests.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        let first = RecentConnection(host: "mac.local", port: 22, username: "alex", authMode: "password", remember: true)
+        let core = RecentConnection(host: "mac.local", port: 22, username: "alex", authMode: "password", remember: true, backend: .core)
+        let duplicate = RecentConnection(host: "MAC.local", port: 22, username: "alex", authMode: "password", remember: true)
+        // Builds before this fix could save two TUI entries for one server.
+        defaults.set(try JSONEncoder().encode([first, core, duplicate]), forKey: RecentConnectionStore.storageKey)
+        #expect(RecentConnectionStore.savedRuntimes(of: first, in: [first, core, duplicate]).map(\.backend) == [.tui, .core])
+        try KeychainStore.save("stale", account: first.secretAccount, using: keychain)
+        try ConnectionSignIn(entry: duplicate, secret: "pw").persist(defaults: defaults, using: keychain)
+        let saved = try RecentConnectionStore.load(defaults: defaults, using: keychain)
+        #expect(saved.map(\.id) == [core.id, duplicate.id])
+        #expect(try KeychainStore.load(account: first.secretAccount, using: keychain) == nil)
+    }
+
     #if canImport(UIKit)
     @MainActor @Test func editingAServerWithBothRuntimesOpensOnAuto() throws {
         let suite = "CoreConnectionProfileTests.\(UUID())"

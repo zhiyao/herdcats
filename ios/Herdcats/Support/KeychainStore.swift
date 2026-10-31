@@ -212,6 +212,15 @@ enum RecentConnectionStore {
         entries.filter { sameServer($0, server) }
     }
 
+    /// One entry per saved runtime of `server`, TUI first; duplicates show the one used last.
+    static func savedRuntimes(of server: RecentConnection, in entries: [RecentConnection]) -> [RecentConnection] {
+        let group = runtimes(of: server, in: entries)
+        return ConnectionBackend.allCases.compactMap { backend in
+            group.filter { $0.backend == backend }
+                .max { ($0.lastConnectedAt ?? .distantPast) < ($1.lastConnectedAt ?? .distantPast) }
+        }
+    }
+
     /// One entry per server, at its first position: the runtime used last.
     static func servers(_ entries: [RecentConnection]) -> [RecentConnection] {
         var result: [RecentConnection] = []
@@ -330,19 +339,34 @@ enum RecentConnectionStore {
     @discardableResult
     static func record(
         _ entry: RecentConnection, in entries: [RecentConnection], defaults: UserDefaults = .standard,
-        now: Date = .now, stampConnected: Bool = true, updateName: Bool = true
+        now: Date = .now, stampConnected: Bool = true, updateName: Bool = true,
+        using keychain: KeychainOperations = KeychainStore.operations
     ) throws -> [RecentConnection] {
         var entry = entry
         var updated = entries
-        if let index = updated.firstIndex(where: { $0.id == entry.id }) {
+        let isDuplicate = { (other: RecentConnection) in sameServer(other, entry) && other.backend == entry.backend }
+        // A server keeps one entry per runtime: this one takes the slot of any duplicate.
+        let slot: Int
+        var removedEntries: [RecentConnection] = []
+        if let index = updated.firstIndex(where: { $0.id == entry.id }) ?? updated.firstIndex(where: isDuplicate) {
+            if updated[index].id != entry.id { removedEntries.append(updated[index]) }
             entry.lastConnectedAt = stampConnected ? now : updated[index].lastConnectedAt
             if !updateName { entry.name = updated[index].name }
             updated[index] = entry
+            slot = index
         } else {
             entry.lastConnectedAt = stampConnected ? now : nil
             updated.append(entry)
+            slot = updated.count - 1
         }
+        let removed = updated.indices.filter { $0 != slot && isDuplicate(updated[$0]) }
+        removedEntries += removed.map { updated[$0] }
+        updated = updated.indices.filter { !removed.contains($0) }.map { updated[$0] }
         try persist(updated, defaults: defaults)
+        for duplicate in removedEntries where duplicate.id != entry.id {
+            try KeychainStore.delete(account: duplicate.secretAccount, using: keychain)
+            try KeychainStore.delete(account: duplicate.secretAccount + ".passphrase", using: keychain)
+        }
         return updated
     }
 
@@ -675,7 +699,8 @@ struct ConnectionSignIn: Identifiable {
             // If any write fails, no old credential can be used at the new destination.
             try KeychainStore.delete(account: entry.secretAccount, using: keychain)
             try KeychainStore.delete(account: entry.secretAccount + ".passphrase", using: keychain)
-            _ = try RecentConnectionStore.record(entry, in: entries, defaults: defaults, stampConnected: false, updateName: updateName)
+            _ = try RecentConnectionStore.record(entry, in: entries, defaults: defaults, stampConnected: false,
+                updateName: updateName, using: keychain)
         }
         if entry.remember && !secret.isEmpty {
             try KeychainStore.save(secret, account: entry.secretAccount, using: keychain)
@@ -689,7 +714,7 @@ struct ConnectionSignIn: Identifiable {
         }
         _ = try RecentConnectionStore.record(entry,
             in: RecentConnectionStore.load(defaults: defaults, using: keychain), defaults: defaults,
-            stampConnected: connected, updateName: updateName)
+            stampConnected: connected, updateName: updateName, using: keychain)
     }
 
     /// The saved entry for the runtime Auto connected with. An entry already
