@@ -421,7 +421,7 @@ extension PaneSessionView {
         guard !text.isEmpty else { return }
 
         // Cursor runs a leading "/" as its own command; refuse before anything is sent.
-        if CursorPromptPolicy.refusesSlashCommand(agent: pane.agent, text: trimmedDraft) {
+        if !appModel.isCoreMode, CursorPromptPolicy.refusesSlashCommand(agent: pane.agent, text: trimmedDraft) {
             sessionError = CursorPromptPolicy.slashMessage
             return
         }
@@ -450,6 +450,7 @@ extension PaneSessionView {
             } else {
                 try await session.send(text:text,connection:appModel.connection)
             }
+            sessionError = nil
             guard persistence.revision == sendRevision else { return }
             // Remember what the user typed (not image-path wrappers) for reuse.
             persistence.record(sentDraft, key: historyKey, revision: sendRevision)
@@ -518,7 +519,8 @@ extension PaneSessionView {
         do {
             let path = try await appModel.connection.uploadAttachment(
                 data: pending.imageData,
-                fileExtension: pending.fileExtension
+                fileExtension: pending.fileExtension,
+                paneId: pending.paneId
             )
             guard !Task.isCancelled else { return }
             guard attachment?.id == pending.id else { return }

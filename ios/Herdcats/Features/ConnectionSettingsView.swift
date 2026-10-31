@@ -18,6 +18,8 @@ struct ConnectionSettingsView: View {
     @State var port = "22"
     @State var username = ""
     @State var authModeRaw = AuthMode.password.rawValue
+    /// nil is Auto: connect detects TUI and Herdr Core and saves each one found.
+    @State var backend: ConnectionBackend?
     @State var remember = true
 
     @State var credentialLoadError: String?
@@ -76,7 +78,8 @@ struct ConnectionSettingsView: View {
 
     static let documentationURL = URL(string: "https://herdcats.dev/support/#connect")!
 
-    init(connection: RecentConnection, isReplay: Bool = false, editing: Bool = false, switcher: ActiveMachine? = nil, using keychain: KeychainOperations = KeychainStore.operations) {
+    init(connection: RecentConnection, isReplay: Bool = false, editing: Bool = false, switcher: ActiveMachine? = nil,
+         defaults: UserDefaults = .standard, using keychain: KeychainOperations = KeychainStore.operations) {
         self.isReplay = isReplay
         self.original = connection
         self.editing = editing
@@ -86,6 +89,9 @@ struct ConnectionSettingsView: View {
         _port = State(initialValue: String(connection.port))
         _username = State(initialValue: connection.username)
         _authModeRaw = State(initialValue: connection.authMode)
+        // A server saved with both runtimes is edited as one, so it opens on Auto.
+        let runtimes = RecentConnectionStore.savedRuntimes(of: connection, in: RecentConnectionStore.snapshot(defaults: defaults))
+        _backend = State(initialValue: connection.host.isEmpty || runtimes.count > 1 ? nil : connection.backend)
         _remember = State(initialValue: connection.remember)
         do {
             let loaded = try ConnectionSignIn.load(connection, using: keychain, readOnly: isReplay)
@@ -217,7 +223,7 @@ struct ConnectionSettingsView: View {
             }
         }
         .sheet(isPresented: $showingSetupGuide) {
-            HerdrSetupGuideView()
+            HerdrSetupGuideView(backend: backend ?? .tui)
         }
         .onChange(of: destination) { old, new in
             guard old.host.lowercased() != new.host.lowercased()
@@ -285,7 +291,7 @@ struct ConnectionSettingsView: View {
     var destination: RecentConnection {
         RecentConnection(id: original.id, host: host.trimmingCharacters(in: .whitespacesAndNewlines),
             port: portNumber ?? 0, username: username.trimmingCharacters(in: .whitespacesAndNewlines),
-            authMode: authModeRaw, remember: remember, name: name, lastConnectedAt: original.lastConnectedAt)
+            authMode: authModeRaw, remember: remember, name: name, lastConnectedAt: original.lastConnectedAt, backend: backend ?? original.backend)
     }
 
     var validDestination: Bool {
@@ -301,10 +307,18 @@ struct ConnectionSettingsView: View {
         var entry = destination
         if !editing {
             entry = RecentConnectionStore.entry(host: entry.host, port: entry.port, username: entry.username,
-                authMode: entry.authMode, remember: entry.remember, name: name, in: isReplay ? RecentConnectionStore.snapshot(defaults: defaults) : try RecentConnectionStore.load(defaults: defaults, using: keychain))
+                authMode: entry.authMode, remember: entry.remember, name: name, backend: entry.backend, in: isReplay ? RecentConnectionStore.snapshot(defaults: defaults) : try RecentConnectionStore.load(defaults: defaults, using: keychain))
+        } else if entry.backend != original.backend {
+            // Picking the other runtime edits that runtime's saved entry, so this
+            // one is never repointed and the server keeps one entry per runtime.
+            let entries = isReplay ? RecentConnectionStore.snapshot(defaults: defaults) : try RecentConnectionStore.load(defaults: defaults, using: keychain)
+            if let sibling = RecentConnectionStore.runtimes(of: original, in: entries).first(where: { $0.backend == entry.backend }) {
+                entry.id = sibling.id
+                entry.lastConnectedAt = sibling.lastConnectedAt
+            }
         }
         return ConnectionSignIn(entry: entry, secret: authMode == .password ? password : keyPEM,
-            passphrase: keyPassphrase, savePassphrase: rememberPassphrase)
+            passphrase: keyPassphrase, savePassphrase: rememberPassphrase, detectsBackend: backend == nil)
     }
 
     var nameWasEdited: Bool { name != (original.name ?? "") }
@@ -312,9 +326,22 @@ struct ConnectionSettingsView: View {
     func saveChanges() {
         guard canSaveChanges else { return }
         do {
-            if !isReplay { try signIn().persist(connected: false, updateName: nameWasEdited) }
+            if !isReplay {
+                let value = try signIn()
+                if value.detectsBackend && editing {
+                    try value.persistServer(from: original, updateName: nameWasEdited)
+                } else {
+                    try value.persist(connected: false, updateName: nameWasEdited)
+                }
+                try syncServerName(value)
+            }
             dismiss()
         } catch { appModel.lastError = error.localizedDescription }
+    }
+
+    private func syncServerName(_ value: ConnectionSignIn) throws {
+        guard nameWasEdited else { return }
+        try RecentConnectionStore.renameServer(value.entry, to: value.entry.name)
     }
 
     func connect() async {
@@ -331,7 +358,16 @@ struct ConnectionSettingsView: View {
                 if !isReplay { try value.prepareAttempt() }
                 await appModel.connect(config: value.config)
                 guard case .connected = appModel.phase else { return }
-                if !isReplay { try value.persist(updateName: true) }
+                if !isReplay {
+                    // Move the whole server first so detection reuses its runtimes at the new host.
+                    if value.detectsBackend && editing { try value.persistServer(from: original, updateName: true) }
+                    if value.detectsBackend, let backend = appModel.activeConfig?.backend {
+                        try value.persistDetected(backend: backend, found: appModel.detectedBackends, updateName: true)
+                    } else {
+                        try value.persist(updateName: true)
+                    }
+                    try syncServerName(value)
+                }
                 dismiss()
             }
         } catch {
@@ -342,7 +378,11 @@ struct ConnectionSettingsView: View {
 
     private func handleSwitchOutcome(_ outcome: ActiveMachine.SwitchOutcome) {
         switch outcome {
-        case .switched, .alreadyActive: dismiss()
+        case .switched:
+            do { if let pendingSignIn, !isReplay { try syncServerName(pendingSignIn) } }
+            catch { appModel.lastError = error.localizedDescription }
+            dismiss()
+        case .alreadyActive: dismiss()
         case .failed:
             if switcher?.pending?.hostKeyChallenge == nil {
                 switchConnectionError = switcher?.switchError ?? "Connection failed"

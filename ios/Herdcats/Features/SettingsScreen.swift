@@ -158,7 +158,7 @@ struct SettingsScreen: View {
                 soundSection
                 launchSection
                 connectionSection
-                phoneAnswersSection
+                if !appModel.isCoreMode { phoneAnswersSection }
                 versionSection
 
             }

@@ -21,10 +21,41 @@ extension HerdrConnection {
         owned: ConnectionGeneration? = nil
     ) async throws {
         if let owned { try requireGeneration(owned) }
+        if backend == .core {
+            guard let keys = Self.coreTypedKeys(text) else {
+                throw HerdrError.invalidConfiguration(Self.coreUntypeableMessage)
+            }
+            try await paneSendKeysUnlocked(paneId: paneId, keys, owned: owned)
+            return
+        }
         try await runHerdr(
             Self.paneSendTextArguments(paneId: paneId, text: text),
             allowEmptyOutput: true
         )
+    }
+
+    static let coreUntypeableMessage = "Herdr Core can’t type that character directly. Use Compose to send it."
+
+    /// Core has no raw-text input; typed text becomes key presses. Returns nil
+    /// when a character has no exact Core key (shifted symbols, non-ASCII), so
+    /// nothing is sent rather than a different character.
+    static func coreTypedKeys(_ text: String) -> [String]? {
+        let unshifted = Set("=[]\\;',./`-")
+        var keys: [String] = []
+        for character in text {
+            guard character.isASCII else { return nil }
+            switch character {
+            case "a"..."z", "0"..."9": keys.append(String(character))
+            case "A"..."Z": keys.append("shift+" + character.lowercased())
+            case " ": keys.append("space")
+            case "\n", "\r", "\r\n": keys.append("enter")
+            case "\t": keys.append("tab")
+            default:
+                guard unshifted.contains(character) else { return nil }
+                keys.append(String(character))
+            }
+        }
+        return keys
     }
 
     /// Sends logical key presses into the pane (`pane send-keys`).
@@ -48,6 +79,10 @@ extension HerdrConnection {
         owned: ConnectionGeneration? = nil
     ) async throws {
         if let owned { try requireGeneration(owned) }
+        if backend == .core {
+            _ = try await coreRequest("terminal.keys", params: ["terminal": .string(paneId), "keys": .array(keys.map(CoreJSON.string))], timeout: 30)
+            return
+        }
         try await runHerdr(
             Self.paneSendKeysArguments(paneId: paneId, keys: keys),
             allowEmptyOutput: true
@@ -101,6 +136,10 @@ extension HerdrConnection {
         owned: ConnectionGeneration
     ) async throws {
         try requireGeneration(owned)
+        if backend == .core {
+            _ = try await coreRequest("terminal.send", params: ["terminal": .string(paneId), "text": .string(text)], timeout: 30)
+            return
+        }
         // Cursor prompts need the bridge's screen guard; never type into it blind.
         guard agent != "cursor" else { throw HerdrError.invalidConfiguration(CursorPromptPolicy.bridgeMessage) }
         if Self.shouldTypeAndEnterForTimelinePrompt(agent: agent ?? "", agentStatus: status?.rawValue) {
@@ -154,7 +193,8 @@ extension HerdrConnection {
     }
 
     func paneReadVisibleText(paneId: String) async throws -> String {
-        try await runHerdr(
+        if backend == .core { return try await paneReadText(paneId: paneId, lines: 0) }
+        return try await runHerdr(
             "pane read \(Self.shellSafeArgument(paneId)) --source visible --lines 60 --format text",
             allowEmptyOutput: true
         )
@@ -171,8 +211,13 @@ extension HerdrConnection {
     /// repository. SFTP creates the final UUID path exclusively.
     func uploadAttachment(
         data: Data,
-        fileExtension: String
+        fileExtension: String,
+        paneId: String? = nil
     ) async throws -> String {
+        if backend == .core {
+            guard let paneId else { throw HerdrError.invalidConfiguration("Select a Herdr Core terminal before uploading an image.") }
+            return try await coreUploadAttachment(data: data, fileExtension: fileExtension, terminal: paneId)
+        }
         guard let client else { throw HerdrError.notConnected }
         guard !data.isEmpty else {
             throw HerdrError.invalidConfiguration("Image data is empty.")

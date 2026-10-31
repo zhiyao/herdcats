@@ -125,6 +125,11 @@ struct RecentConnection: Codable, Identifiable, Equatable {
     var remember: Bool
     var name: String?
     var lastConnectedAt: Date?
+    var backend: ConnectionBackend = .tui
+
+    enum CodingKeys: String, CodingKey {
+        case id, host, port, username, authMode, remember, name, lastConnectedAt, backend
+    }
 
     var displayName: String {
         if let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
@@ -138,12 +143,19 @@ struct RecentConnection: Codable, Identifiable, Equatable {
     /// saved login shares the host, and the full host only when abbreviations
     /// collide.
     func shortDisplayName(among connections: [RecentConnection]) -> String {
-        if let name = trimmedName { return name }
-        let others = connections.filter { $0.id != id && $0.trimmedName == nil }
-        for level in 0..<3 where !others.contains(where: { $0.hostLabel(level: level) == hostLabel(level: level) }) {
-            return hostLabel(level: level)
+        let hasOtherBackend = connections.contains {
+            $0.id != id && $0.host.lowercased() == host.lowercased()
+                && $0.port == port && $0.username == username && $0.backend != backend
         }
-        return hostLabel(level: 3)
+        let suffix = hasOtherBackend ? " · \(backend.title)" : ""
+        if let name = trimmedName { return name + suffix }
+        let others = connections.filter { $0.id != id && $0.trimmedName == nil }
+        for level in 0..<3 where !others.contains(where: {
+            $0.hostLabel(level: level) == hostLabel(level: level) && (!hasOtherBackend || $0.backend == backend)
+        }) {
+            return hostLabel(level: level) + suffix
+        }
+        return hostLabel(level: 3) + suffix
     }
 
     private var trimmedName: String? {
@@ -167,8 +179,84 @@ struct RecentConnection: Codable, Identifiable, Equatable {
     var secretAccount: String { "connection.\(id.uuidString).secret" }
 }
 
+extension RecentConnection {
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        host = try values.decode(String.self, forKey: .host)
+        port = try values.decode(Int.self, forKey: .port)
+        username = try values.decode(String.self, forKey: .username)
+        authMode = try values.decode(String.self, forKey: .authMode)
+        remember = try values.decode(Bool.self, forKey: .remember)
+        name = try values.decodeIfPresent(String.self, forKey: .name)
+        lastConnectedAt = try values.decodeIfPresent(Date.self, forKey: .lastConnectedAt)
+        backend = try values.decodeIfPresent(ConnectionBackend.self, forKey: .backend) ?? .tui
+    }
+}
+
 enum RecentConnectionStore {
     static let storageKey = "hc.recentConnections"
+
+    // MARK: Servers
+    // TUI and Herdr Core stay separate entries (own id and Keychain secret);
+    // lists show them as one server.
+
+    static func sameServer(_ lhs: RecentConnection, _ rhs: RecentConnection) -> Bool {
+        lhs.host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            == rhs.host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            && lhs.port == rhs.port && lhs.username == rhs.username
+    }
+
+    /// Every saved runtime of `server`, in list order.
+    static func runtimes(of server: RecentConnection, in entries: [RecentConnection]) -> [RecentConnection] {
+        entries.filter { sameServer($0, server) }
+    }
+
+    /// One entry per saved runtime of `server`, TUI first; duplicates show the one used last.
+    static func savedRuntimes(of server: RecentConnection, in entries: [RecentConnection]) -> [RecentConnection] {
+        let group = runtimes(of: server, in: entries)
+        return ConnectionBackend.allCases.compactMap { backend in
+            group.filter { $0.backend == backend }
+                .max { ($0.lastConnectedAt ?? .distantPast) < ($1.lastConnectedAt ?? .distantPast) }
+        }
+    }
+
+    /// One entry per server, at its first position: the runtime used last.
+    static func servers(_ entries: [RecentConnection]) -> [RecentConnection] {
+        var result: [RecentConnection] = []
+        for entry in entries where !result.contains(where: { sameServer($0, entry) }) {
+            let group = runtimes(of: entry, in: entries)
+            result.append(group.max { ($0.lastConnectedAt ?? .distantPast) < ($1.lastConnectedAt ?? .distantPast) } ?? entry)
+        }
+        return result
+    }
+
+    /// "TUI", "Herdr Core", or both for a server with each runtime saved.
+    static func runtimeSummary(of server: RecentConnection, in entries: [RecentConnection]) -> String {
+        let saved = Set(runtimes(of: server, in: entries).map(\.backend))
+        return ConnectionBackend.allCases.filter(saved.contains).map(\.title).joined(separator: " + ")
+    }
+
+    /// A server has one name across its runtimes.
+    static func renameServer(_ server: RecentConnection, to name: String?, defaults: UserDefaults = .standard,
+                             using keychain: KeychainOperations = KeychainStore.operations) throws {
+        var entries = try load(defaults: defaults, using: keychain)
+        for index in entries.indices where sameServer(entries[index], server) { entries[index].name = name }
+        try persist(entries, defaults: defaults)
+    }
+
+    /// Forgets every runtime of a server.
+    @discardableResult
+    static func removeServer(
+        _ server: RecentConnection, defaults: UserDefaults = .standard,
+        using keychain: KeychainOperations = KeychainStore.operations
+    ) throws -> [RecentConnection] {
+        var updated = try load(defaults: defaults, using: keychain)
+        for entry in runtimes(of: server, in: updated) {
+            updated = try remove(entry, defaults: defaults, using: keychain)
+        }
+        return updated
+    }
     private static let pendingMigrationKey = "hc.pendingCredentialMigration"
 
     private struct PendingMigration: Codable {
@@ -234,13 +322,14 @@ enum RecentConnectionStore {
 
     static func entry(
         host: String, port: Int, username: String, authMode: String,
-        remember: Bool, name: String? = nil, in entries: [RecentConnection]
+        remember: Bool, name: String? = nil, backend: ConnectionBackend = .tui, in entries: [RecentConnection]
     ) -> RecentConnection {
         let host = host.trimmingCharacters(in: .whitespaces)
         let username = username.trimmingCharacters(in: .whitespaces)
         var entry = entries.first {
             $0.host.lowercased() == host.lowercased() && $0.port == port && $0.username == username
-        } ?? RecentConnection(host: host, port: port, username: username, authMode: authMode, remember: remember)
+                && $0.backend == backend
+        } ?? RecentConnection(host: host, port: port, username: username, authMode: authMode, remember: remember, backend: backend)
         entry.authMode = authMode
         entry.remember = remember
         if let name { entry.name = name }
@@ -250,19 +339,34 @@ enum RecentConnectionStore {
     @discardableResult
     static func record(
         _ entry: RecentConnection, in entries: [RecentConnection], defaults: UserDefaults = .standard,
-        now: Date = .now, stampConnected: Bool = true, updateName: Bool = true
+        now: Date = .now, stampConnected: Bool = true, updateName: Bool = true,
+        using keychain: KeychainOperations = KeychainStore.operations
     ) throws -> [RecentConnection] {
         var entry = entry
         var updated = entries
-        if let index = updated.firstIndex(where: { $0.id == entry.id }) {
+        let isDuplicate = { (other: RecentConnection) in sameServer(other, entry) && other.backend == entry.backend }
+        // A server keeps one entry per runtime: this one takes the slot of any duplicate.
+        let slot: Int
+        var removedEntries: [RecentConnection] = []
+        if let index = updated.firstIndex(where: { $0.id == entry.id }) ?? updated.firstIndex(where: isDuplicate) {
+            if updated[index].id != entry.id { removedEntries.append(updated[index]) }
             entry.lastConnectedAt = stampConnected ? now : updated[index].lastConnectedAt
             if !updateName { entry.name = updated[index].name }
             updated[index] = entry
+            slot = index
         } else {
             entry.lastConnectedAt = stampConnected ? now : nil
             updated.append(entry)
+            slot = updated.count - 1
         }
+        let removed = updated.indices.filter { $0 != slot && isDuplicate(updated[$0]) }
+        removedEntries += removed.map { updated[$0] }
+        updated = updated.indices.filter { !removed.contains($0) }.map { updated[$0] }
         try persist(updated, defaults: defaults)
+        for duplicate in removedEntries where duplicate.id != entry.id {
+            try KeychainStore.delete(account: duplicate.secretAccount, using: keychain)
+            try KeychainStore.delete(account: duplicate.secretAccount + ".passphrase", using: keychain)
+        }
         return updated
     }
 
@@ -288,18 +392,26 @@ enum RecentConnectionStore {
             originalIDs = Set(connections.map(\.id))
         }
 
+        /// Rows are servers; each edit applies to all of a server's runtimes.
+        var servers: [RecentConnection] { RecentConnectionStore.servers(connections) }
+
         mutating func rename(id: UUID, to name: String) {
-            guard let index = connections.firstIndex(where: { $0.id == id }) else { return }
-            connections[index].name = name
-            renamedIDs.insert(id)
+            guard let server = connections.first(where: { $0.id == id }) else { return }
+            for index in connections.indices where RecentConnectionStore.sameServer(connections[index], server) {
+                connections[index].name = name
+                renamedIDs.insert(connections[index].id)
+            }
         }
 
         mutating func move(fromOffsets: IndexSet, toOffset: Int) {
-            connections.move(fromOffsets: fromOffsets, toOffset: toOffset)
+            var order = servers
+            order.move(fromOffsets: fromOffsets, toOffset: toOffset)
+            connections = order.flatMap { RecentConnectionStore.runtimes(of: $0, in: connections) }
         }
 
         mutating func delete(at offsets: IndexSet) {
-            connections.remove(atOffsets: offsets)
+            let removed = offsets.map { servers[$0] }
+            connections.removeAll { entry in removed.contains { RecentConnectionStore.sameServer($0, entry) } }
         }
 
         @discardableResult
@@ -530,6 +642,8 @@ struct ConnectionSignIn: Identifiable {
     var secret = ""
     var passphrase = ""
     var savePassphrase = false
+    /// Auto: connect detects the runtime; `entry.backend` is a placeholder until then.
+    var detectsBackend = false
     var id: UUID { entry.id }
     var isKey: Bool { entry.authMode == "privateKey" }
     var encrypted: Bool { isKey && (try? OpenSSHEd25519.isEncrypted(pem: secret)) == true }
@@ -548,7 +662,8 @@ struct ConnectionSignIn: Identifiable {
     var isReady: Bool { !needsSecret && !needsPassphrase }
     var config: ConnectionConfig {
         ConnectionConfig(host: entry.host, port: entry.port, username: entry.username,
-            auth: isKey ? .privateKey(secret, passphrase: encrypted ? passphrase : nil) : .password(secret))
+            auth: isKey ? .privateKey(secret, passphrase: encrypted ? passphrase : nil) : .password(secret),
+            backend: entry.backend, detectsBackend: detectsBackend)
     }
 
     static func importPrivateKey(from url: URL) throws -> String {
@@ -584,7 +699,8 @@ struct ConnectionSignIn: Identifiable {
             // If any write fails, no old credential can be used at the new destination.
             try KeychainStore.delete(account: entry.secretAccount, using: keychain)
             try KeychainStore.delete(account: entry.secretAccount + ".passphrase", using: keychain)
-            _ = try RecentConnectionStore.record(entry, in: entries, defaults: defaults, stampConnected: false, updateName: updateName)
+            _ = try RecentConnectionStore.record(entry, in: entries, defaults: defaults, stampConnected: false,
+                updateName: updateName, using: keychain)
         }
         if entry.remember && !secret.isEmpty {
             try KeychainStore.save(secret, account: entry.secretAccount, using: keychain)
@@ -598,7 +714,65 @@ struct ConnectionSignIn: Identifiable {
         }
         _ = try RecentConnectionStore.record(entry,
             in: RecentConnectionStore.load(defaults: defaults, using: keychain), defaults: defaults,
-            stampConnected: connected, updateName: updateName)
+            stampConnected: connected, updateName: updateName, using: keychain)
+    }
+
+    /// The saved entry for the runtime Auto connected with. An entry already
+    /// saved for another runtime is never repointed; a new one is added instead.
+    func resolving(_ backend: ConnectionBackend, in entries: [RecentConnection]) -> Self {
+        guard entry.backend != backend else { return self }
+        var value = self
+        // Match by server, not sign-in method, so a new auth mode refreshes the saved runtime.
+        let saved = entries.first { RecentConnectionStore.sameServer($0, entry) && $0.backend == backend }
+        value.entry = saved ?? (entries.contains { $0.id == entry.id }
+            ? RecentConnection(host: entry.host, port: entry.port, username: entry.username,
+                authMode: entry.authMode, remember: entry.remember, backend: backend)
+            : entry)
+        value.entry.authMode = entry.authMode
+        value.entry.remember = entry.remember
+        value.entry.name = entry.name
+        value.entry.backend = backend
+        return value
+    }
+
+    /// After an Auto connect: saves the runtime used and, when the machine has
+    /// both, adds the other runtime with the same sign-in unless it is saved already.
+    func persistDetected(backend: ConnectionBackend, found: Set<ConnectionBackend>,
+                         defaults: UserDefaults = .standard, using keychain: KeychainOperations = KeychainStore.operations,
+                         connected: Bool = true, updateName: Bool = false) throws {
+        let value = resolving(backend, in: try RecentConnectionStore.load(defaults: defaults, using: keychain))
+        try value.persist(defaults: defaults, using: keychain, connected: connected, updateName: updateName)
+        guard let other = ConnectionBackend.allCases.first(where: { $0 != backend }), found.contains(other) else { return }
+        // Same SSH account, so the sign-in that just worked is the sibling's too.
+        try value.persistSibling(other, defaults: defaults, using: keychain)
+    }
+
+    /// Auto edits a whole server: this entry and every other runtime saved for
+    /// `original` move to this destination and sign-in, keeping ids and history.
+    func persistServer(from original: RecentConnection, defaults: UserDefaults = .standard,
+                       using keychain: KeychainOperations = KeychainStore.operations, updateName: Bool) throws {
+        let others = RecentConnectionStore.runtimes(of: original, in: try RecentConnectionStore.load(defaults: defaults, using: keychain))
+            .filter { $0.id != entry.id }
+        try persist(defaults: defaults, using: keychain, connected: false, updateName: updateName)
+        for runtime in others {
+            var moved = self
+            moved.entry.id = runtime.id
+            moved.entry.backend = runtime.backend
+            moved.entry.lastConnectedAt = runtime.lastConnectedAt
+            try moved.persist(defaults: defaults, using: keychain, connected: false, updateName: updateName)
+        }
+    }
+
+    /// Saves this sign-in as the server's `backend` runtime, reusing its entry when saved.
+    func persistSibling(_ backend: ConnectionBackend, defaults: UserDefaults = .standard,
+                        using keychain: KeychainOperations = KeychainStore.operations) throws {
+        let entries = try RecentConnectionStore.load(defaults: defaults, using: keychain)
+        let saved = entries.first { RecentConnectionStore.sameServer($0, entry) && $0.backend == backend }
+        var sibling = self
+        sibling.entry = RecentConnection(id: saved?.id ?? UUID(), host: entry.host, port: entry.port, username: entry.username,
+            authMode: entry.authMode, remember: entry.remember, name: entry.name,
+            lastConnectedAt: saved?.lastConnectedAt, backend: backend)
+        try sibling.persist(defaults: defaults, using: keychain, connected: false, updateName: true)
     }
 
     func prepareAttempt(defaults: UserDefaults = .standard, using keychain: KeychainOperations = KeychainStore.operations) throws {

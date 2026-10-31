@@ -6,7 +6,8 @@ import NIOSSH
 
 extension HerdrConnection {
     func agentList() async throws -> [AgentEntry] {
-        try await fetch(AgentListResult.self, args: "agent list").agents
+        if backend == .core { return try await corePresentation().agents }
+        return try await fetch(AgentListResult.self, args: "agent list").agents
     }
 
     /// Reads local provider quotas via `quota-axi` on the Herdr machine.
@@ -115,7 +116,8 @@ extension HerdrConnection {
     }
 
     func tabList(workspaceId: String) async throws -> [TabEntry] {
-        try await fetch(TabListResult.self, args: Self.tabListArguments(workspaceId: workspaceId)).tabs
+        if backend == .core { return try await corePresentation().tabs.filter { $0.workspaceId == workspaceId } }
+        return try await fetch(TabListResult.self, args: Self.tabListArguments(workspaceId: workspaceId)).tabs
     }
 
     /// Creates a tab with its own root pane and returns that pane's ID.
@@ -145,7 +147,8 @@ extension HerdrConnection {
     }
 
     func paneList(workspaceId: String) async throws -> [PaneEntry] {
-        try await fetch(PaneListResult.self, args: Self.paneListArguments(workspaceId: workspaceId)).panes
+        if backend == .core { return try await corePresentation().panes.filter { $0.workspaceId == workspaceId } }
+        return try await fetch(PaneListResult.self, args: Self.paneListArguments(workspaceId: workspaceId)).panes
     }
 
     /// Builds `pane list` arguments. Workspace IDs come from remote JSON and
@@ -184,6 +187,8 @@ extension HerdrConnection {
     /// `agent focus` (pane ID is a valid target); falls back to `tab focus`
     /// when the pane has no recognized agent.
     func markAgentSeen(paneId: String, tabId: String, hasAgent: Bool) async throws {
+        // Seen/attention belongs to this phone, not the program's OSC status.
+        if backend == .core { return }
         _ = try await runHerdr(
             Self.markAgentSeenArguments(paneId: paneId, tabId: tabId, hasAgent: hasAgent),
             allowEmptyOutput: true
@@ -206,6 +211,11 @@ extension HerdrConnection {
     /// Empty output is legitimate here (a freshly cleared pane), so it is
     /// allowed through instead of being treated as a protocol error.
     func paneReadText(paneId: String, lines: Int = 400) async throws -> String {
+        if backend == .core {
+            let result = try await coreRequest("terminal.read", params: ["terminal": .string(paneId), "lines": .number(0)])
+            guard let text = result["text"].stringValue else { throw HerdrError.unexpectedResponse("Herdr Core returned no screen text.") }
+            return text
+        }
         if let shells = liveShells[paneId], shells.session.generation == generation,
            await shells.output.isOpen {
             let output = try await shells.output.execute(Self.remoteCommand(
@@ -223,12 +233,18 @@ extension HerdrConnection {
 
     /// Types `text` into the pane followed by Enter (`pane run`).
     func paneSendText(paneId: String, text: String) async throws {
+        let owned = generation
         try await paneInput.run(paneId: paneId) {
-            try await self.paneSendTextUnlocked(paneId: paneId, text: text)
+            try await self.paneSendTextUnlocked(paneId: paneId, text: text, owned: owned)
         }
     }
 
-    func paneSendTextUnlocked(paneId: String, text: String) async throws {
+    func paneSendTextUnlocked(paneId: String, text: String, owned: ConnectionGeneration? = nil) async throws {
+        if let owned { try requireGeneration(owned) }
+        if backend == .core {
+            _ = try await coreRequest("terminal.send", params: ["terminal": .string(paneId), "text": .string(text)], timeout: 30)
+            return
+        }
         try await runHerdr(
             "pane run \(Self.shellSafeArgument(paneId)) \(Self.shellSafeArgument(text))",
             timeout: 15,
@@ -259,7 +275,8 @@ extension HerdrConnection {
         let session = try await paneInput.run(paneId: trimmed) {
             try await self.paneLiveBeginBarrierUnlocked(paneId: trimmed, owned: owned)
         }
-        await prepareLiveShells(session: session)
+        // Core input goes over its RPC channel; the persistent shells run the TUI CLI.
+        if backend == .tui { await prepareLiveShells(session: session) }
         try requireGeneration(owned)
         return session
     }

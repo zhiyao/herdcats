@@ -189,6 +189,7 @@ struct PaneSessionView: View {
     /// image-only message past the hidden button).
     var canSend: Bool {
         !trimmedDraft.isEmpty && appModel.isSceneActive
+            && (!appModel.isCoreMode || appModel.isReadyForTerminalInput)
             && (!showsTimeline || (timeline.phase != .suspended && timeline.matchesLivePane(paneId: pane.paneId, agent: pane.agent, connection: AgentTimelineConnectionState(phase: appModel.phase, generation: appModel.ownership.transportGeneration))))
             && !isSending && !isTimelineSending
             && (!showsTimeline || !timeline.modelControl.isChanging)
@@ -375,6 +376,15 @@ struct PaneSessionView: View {
                 )
             },
             onLiveEvent: { event in
+                if appModel.isCoreMode, case let .text(text) = event,
+                   HerdrConnection.coreTypedKeys(text) == nil {
+                    sessionError = HerdrConnection.coreUntypeableMessage
+                    // Disarm like the composer does for text it can't wrap, so a
+                    // later key never inherits a stale Ctrl/Alt arm.
+                    liveModifierComposer.reset()
+                    applyLiveModifierOutcome(.state(armed: []))
+                    return
+                }
                 applyLiveModifierOutcome(liveModifierComposer.apply(event))
             },
             dictation: dictation,
