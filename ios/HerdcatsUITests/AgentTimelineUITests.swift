@@ -3,12 +3,14 @@ import UIKit
 
 final class AgentTimelineUITests: XCTestCase {
     func testOfflineRecoveryStaysAboveMultilineComposerWithKeyboard() {
-        for terminal in [false, true] {
+        for (terminal, empty) in [(false, false), (true, false), (true, true)] {
             let app = XCUIApplication()
             app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-offline-transition", "-paneShowComposeByDefault", "YES"]
+                + (empty ? ["-hc.empty-terminal-output"] : [])
             launch(app)
             XCTAssertTrue(app.staticTexts["Review the connection guidance and make it clearer in light mode."].waitForExistence(timeout: 5))
             if terminal { app.buttons["Terminal"].tap() }
+            if empty { XCTAssertTrue(app.staticTexts["No output yet"].waitForExistence(timeout: 5)) }
             let composer = app.textFields[terminal ? "pane-compose-field" : "timeline-compose-field"]
             XCTAssertTrue(composer.waitForExistence(timeout: 5))
             composer.tap()
@@ -17,6 +19,10 @@ final class AgentTimelineUITests: XCTestCase {
             app.buttons["fixture-go-offline"].tap()
             let retry = app.buttons["connection-content-retry"]
             XCTAssertTrue(retry.waitForExistence(timeout: 5))
+            if empty {
+                XCTAssertTrue(app.descendants(matching: .any)["offline-herd"].firstMatch.exists)
+                XCTAssertFalse(app.descendants(matching: .any)["connection-offline-recovery"].firstMatch.exists)
+            }
             XCTAssertEqual(app.buttons.matching(identifier: "connection-content-retry").count, 1)
             XCTAssertTrue(retry.isHittable)
             let dock = app.descendants(matching: .any)["pane-compose-bar"].firstMatch
@@ -29,7 +35,7 @@ final class AgentTimelineUITests: XCTestCase {
             // Tapping may place the caret inside the existing draft.
             XCTAssertEqual((composer.value as? String)?.replacingOccurrences(of: "Still editable", with: ""), draft)
             let shot = XCTAttachment(screenshot: app.screenshot())
-            shot.name = "offline-recovery-keyboard-terminal-\(terminal)"; shot.lifetime = .keepAlways; add(shot)
+            shot.name = "offline-recovery-keyboard-terminal-\(terminal)-empty-\(empty)"; shot.lifetime = .keepAlways; add(shot)
             app.terminate()
         }
     }

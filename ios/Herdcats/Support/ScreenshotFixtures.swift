@@ -104,6 +104,7 @@ enum ScreenshotFixtures {
     }
 
     static var terminal: String {
+        if ProcessInfo.processInfo.arguments.contains("-hc.empty-terminal-output") { return "" }
         if ProcessInfo.processInfo.arguments.contains("-hc.long-terminal-selection") {
             return (0..<400).map { index in
                 let marker = String(format: "%04d", index)

@@ -266,9 +266,12 @@ struct PaneOutputScrollView: View, Equatable {
         .overlay {
             if output.isEmpty {
                 if isOffline {
-                    OfflineHerdView()
-                        .padding(.top, topOverlayInset)
-                        .padding(.bottom, bottomOverlayInset)
+                    ConnectionRecoveryViewport {
+                        OfflineHerdView()
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.top, topOverlayInset)
+                    .padding(.bottom, bottomOverlayInset)
                 } else if isLoading {
                     LazyCatLoadingView(message: "Reading pane…")
                         .padding(.top, topOverlayInset)
