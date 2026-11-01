@@ -78,8 +78,11 @@ struct SidebarTabSwitcher: View {
             tabs.selection.wrappedValue = tab
         } label: {
             VStack(spacing: 2) {
+                // Sized and filled when selected, like the system tab bar's symbols.
                 Image(systemName: tab.systemImage)
-                    .font(.jost(15, weight: .medium))
+                    .font(.system(size: 22))
+                    .symbolVariant(isSelected ? .fill : .none)
+                    .frame(height: 26)
                     .overlay(alignment: .topTrailing) {
                         if tab == .agents, tabs.blockedCount > 0 {
                             Text("\(tabs.blockedCount)")
@@ -88,7 +91,7 @@ struct SidebarTabSwitcher: View {
                                 .padding(.horizontal, 4)
                                 .frame(minWidth: 14, minHeight: 14)
                                 .background(Color.red, in: Capsule())
-                                .offset(x: 9, y: -6)
+                                .offset(x: 11, y: -5)
                         }
                     }
                 Text(tab.title)
