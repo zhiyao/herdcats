@@ -97,6 +97,7 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
                 Group {
                     if let selection {
                         detail(selection)
+                            .environment(\.openPaneMemory, OpenPaneSlot(memory: openPaneMemory, selection: selection))
                             // A new item gets fresh pane state, not the last item's.
                             .id(selection)
                     } else {
