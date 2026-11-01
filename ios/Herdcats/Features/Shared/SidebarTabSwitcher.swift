@@ -120,13 +120,17 @@ private struct FloatingGlass: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if reduceTransparency {
-            content.background(Theme.cardBackground, in: Capsule())
-        } else if #available(iOS 26.0, *) {
-            content.glassEffect(.regular.interactive(), in: Capsule())
-        } else {
-            content.background(.ultraThinMaterial, in: Capsule())
+        Group {
+            if reduceTransparency {
+                content.background(Theme.cardBackground, in: Capsule())
+            } else if #available(iOS 26.0, *) {
+                content.glassEffect(.regular.interactive(), in: Capsule())
+            } else {
+                content.background(.ultraThinMaterial, in: Capsule())
+            }
         }
+        // The sidebar is nearly the glass's own colour, which hides its rim.
+        .overlay { Capsule().strokeBorder(Theme.hairline, lineWidth: 1).allowsHitTesting(false) }
     }
 }
 
