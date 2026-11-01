@@ -114,6 +114,7 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
                             .background(Theme.backgroundGradient.ignoresSafeArea())
                     }
                 }
+                .revealsSidebarOnEdgeSwipe(columnVisibility)
                 .environment(\.showsPaneSwitcher, columnVisibility.wrappedValue == .detailOnly)
                 .environment(\.showsPaneBackButton, false)
             }

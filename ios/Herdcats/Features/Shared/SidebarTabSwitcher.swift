@@ -139,6 +139,32 @@ private struct FloatingGlass: ViewModifier {
     }
 }
 
+// MARK: - Edge swipe
+
+extension View {
+    /// A swipe right from the leading edge brings the sidebar back while it
+    /// is hidden. The strip exists only then, so it never takes touches from
+    /// the content when the sidebar is showing.
+    func revealsSidebarOnEdgeSwipe(_ visibility: Binding<NavigationSplitViewVisibility>) -> some View {
+        overlay(alignment: .leading) {
+            if visibility.wrappedValue == .detailOnly {
+                Color.clear
+                    .frame(width: 20)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 24)
+                            .onEnded { drag in
+                                guard drag.translation.width > 40,
+                                      abs(drag.translation.height) < drag.translation.width else { return }
+                                withAnimation { visibility.wrappedValue = .all }
+                            }
+                    )
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+}
+
 // MARK: - Tabs without a list
 
 /// Quota and Settings on regular width: the sidebar is only the tab switcher,
@@ -179,6 +205,7 @@ struct TabSplitView<Content: View>: View {
                     .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 440)
             } detail: {
                 content
+                    .revealsSidebarOnEdgeSwipe(columnVisibility)
             }
             .navigationSplitViewStyle(.balanced)
         } else {
