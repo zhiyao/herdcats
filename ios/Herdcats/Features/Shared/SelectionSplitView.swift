@@ -79,7 +79,7 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
         if horizontalSizeClass == .regular {
             NavigationSplitView(columnVisibility: columnVisibility) {
                 sidebar
-                    .safeAreaInset(edge: .top, spacing: 0) { SidebarTabSwitcher() }
+                    .safeAreaInset(edge: .bottom, spacing: 0) { SidebarTabSwitcher() }
                     .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 440)
             } detail: {
                 Group {

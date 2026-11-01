@@ -50,10 +50,11 @@ enum SidebarVisibility {
 
 // MARK: - Switcher
 
-/// The tab switcher on regular width. It sits at the top of the sidebar in
-/// place of the system tab bar, which floats over the detail column on iPad.
+/// The tab switcher on regular width. It floats at the bottom of the sidebar
+/// in place of the system tab bar, which floats over the detail column on iPad.
 struct SidebarTabSwitcher: View {
     @Environment(\.sidebarTabs) private var tabs
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
         if let tabs {
@@ -63,7 +64,7 @@ struct SidebarTabSwitcher: View {
                 }
             }
             .padding(4)
-            .background(Theme.subtleFill, in: Capsule())
+            .modifier(FloatingGlass(reduceTransparency: reduceTransparency))
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .accessibilityElement(children: .contain)
@@ -110,6 +111,22 @@ struct SidebarTabSwitcher: View {
     }
 }
 
+/// The floating capsule the navigation bar gives its trailing buttons on iOS 26.
+private struct FloatingGlass: ViewModifier {
+    let reduceTransparency: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if reduceTransparency {
+            content.background(Theme.cardBackground, in: Capsule())
+        } else if #available(iOS 26.0, *) {
+            content.glassEffect(.regular.interactive(), in: Capsule())
+        } else {
+            content.background(.ultraThinMaterial, in: Capsule())
+        }
+    }
+}
+
 // MARK: - Tabs without a list
 
 /// Quota and Settings on regular width: the sidebar is only the tab switcher,
@@ -144,7 +161,7 @@ struct TabSplitView<Content: View>: View {
                     .padding(.horizontal, 32)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Theme.listBackground.ignoresSafeArea())
-                    .safeAreaInset(edge: .top, spacing: 0) { SidebarTabSwitcher() }
+                    .safeAreaInset(edge: .bottom, spacing: 0) { SidebarTabSwitcher() }
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbarBackground(.hidden, for: .navigationBar)
                     .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 440)
