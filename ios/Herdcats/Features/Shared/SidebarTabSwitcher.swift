@@ -55,6 +55,10 @@ enum SidebarVisibility {
 struct SidebarTabSwitcher: View {
     @Environment(\.sidebarTabs) private var tabs
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    /// Compact width hugs the items like the system bar; the sidebar fills its column.
+    private var fillsWidth: Bool { horizontalSizeClass == .regular }
 
     var body: some View {
         if let tabs {
@@ -67,6 +71,7 @@ struct SidebarTabSwitcher: View {
             .modifier(FloatingGlass(reduceTransparency: reduceTransparency))
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("sidebar-tab-switcher")
         }
@@ -99,7 +104,9 @@ struct SidebarTabSwitcher: View {
                     .lineLimit(1)
             }
             .foregroundStyle(isSelected ? Theme.accent : Color.secondary)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: fillsWidth ? .infinity : nil)
+            .frame(minWidth: fillsWidth ? nil : 56)
+            .padding(.horizontal, fillsWidth ? 0 : 4)
             .padding(.vertical, 6)
             .background {
                 if isSelected {
