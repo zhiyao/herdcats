@@ -262,7 +262,7 @@ struct PaneDetailView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .onChange(of: selectedPaneID) { _, selected in
             bridgeUpgrade.bridgeVersion = nil
-            openPaneMemory?.remember(selected, forEntryPane: pane.id)
+            openPaneMemory?.remember(selected)
         }
         // Pushed panes hide the tab bar; in the detail column it stays so tabs can still switch.
         .toolbar(showsPaneBackButton ? .hidden : .automatic, for: .tabBar)

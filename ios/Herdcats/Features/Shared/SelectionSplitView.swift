@@ -80,7 +80,10 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
     }
 
     var body: some View {
-        layout.environment(\.openPaneMemory, openPaneMemory)
+        layout
+            .onChange(of: selection) { _, selected in
+                if selected == nil { openPaneMemory.forget() }
+            }
     }
 
     @ViewBuilder
@@ -110,32 +113,54 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
                 sidebar
                     .navigationDestination(for: String.self) { id in
                         detail(id)
+                            .environment(\.openPaneMemory, OpenPaneSlot(memory: openPaneMemory, selection: id))
                     }
             }
         }
     }
 }
 
-/// The sibling pane open in each detail, keyed by the pane the detail was
-/// entered with, so it survives a size-class change.
+/// The sibling pane open in the selected item's detail. It is keyed by the
+/// list selection, which survives a size-class change that rebuilds the
+/// detail; unlike the entry pane, the selection can't change underneath it.
+/// Backing out clears it, so opening the item again starts fresh.
 final class OpenPaneMemory {
-    private var selectedByEntryPane: [String: String] = [:]
+    private var selection: String?
+    private var paneID: String?
 
-    func remember(_ paneID: String, forEntryPane entryPaneID: String) {
-        selectedByEntryPane[entryPaneID] = paneID
+    func remember(_ paneID: String, forSelection selection: String) {
+        self.selection = selection
+        self.paneID = paneID
     }
 
-    func paneID(forEntryPane entryPaneID: String) -> String? {
-        selectedByEntryPane[entryPaneID]
+    func paneID(forSelection selection: String) -> String? {
+        self.selection == selection ? paneID : nil
+    }
+
+    func forget() {
+        selection = nil
+        paneID = nil
+    }
+}
+
+/// `OpenPaneMemory` bound to the selection a detail was built for.
+struct OpenPaneSlot {
+    let memory: OpenPaneMemory
+    let selection: String
+
+    var paneID: String? { memory.paneID(forSelection: selection) }
+
+    func remember(_ paneID: String) {
+        memory.remember(paneID, forSelection: selection)
     }
 }
 
 private struct OpenPaneMemoryKey: EnvironmentKey {
-    static let defaultValue: OpenPaneMemory? = nil
+    static let defaultValue: OpenPaneSlot? = nil
 }
 
 extension EnvironmentValues {
-    var openPaneMemory: OpenPaneMemory? {
+    var openPaneMemory: OpenPaneSlot? {
         get { self[OpenPaneMemoryKey.self] }
         set { self[OpenPaneMemoryKey.self] = newValue }
     }

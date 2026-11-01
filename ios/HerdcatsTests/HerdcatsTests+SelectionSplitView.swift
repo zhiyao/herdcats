@@ -14,14 +14,23 @@ struct SelectionSplitViewTests {
         #expect(NavigationSplitViewVisibility(storageValue: "garbage") == .all)
     }
 
-    @Test func openPaneMemoryKeepsTheSiblingPerEntryPane() {
+    @Test func openPaneMemoryKeepsTheSiblingOfTheSelectedItem() {
         let memory = OpenPaneMemory()
-        #expect(memory.paneID(forEntryPane: "a") == nil)
-        memory.remember("b", forEntryPane: "a")
-        memory.remember("d", forEntryPane: "c")
-        #expect(memory.paneID(forEntryPane: "a") == "b")
-        #expect(memory.paneID(forEntryPane: "c") == "d")
-        memory.remember("e", forEntryPane: "a")
-        #expect(memory.paneID(forEntryPane: "a") == "e")
+        let slot = OpenPaneSlot(memory: memory, selection: "a")
+        #expect(slot.paneID == nil)
+        slot.remember("b")
+        #expect(slot.paneID == "b")
+        // Another selection neither sees nor keeps it.
+        #expect(OpenPaneSlot(memory: memory, selection: "c").paneID == nil)
+        OpenPaneSlot(memory: memory, selection: "c").remember("d")
+        #expect(slot.paneID == nil)
+    }
+
+    @Test func openPaneMemoryIsClearedWhenBackingOut() {
+        let memory = OpenPaneMemory()
+        let slot = OpenPaneSlot(memory: memory, selection: "a")
+        slot.remember("b")
+        memory.forget()
+        #expect(slot.paneID == nil)
     }
 }

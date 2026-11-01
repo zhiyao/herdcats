@@ -109,6 +109,11 @@ struct SidebarTabSwitcher: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        // Like the system tab bar, whose fixed-size items show a larger
+        // version of themselves while pressed at accessibility text sizes.
+        .accessibilityShowsLargeContentViewer {
+            Label(tab.title, systemImage: tab.systemImage)
+        }
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityIdentifier("sidebar-tab-\(tab.rawValue)")
     }

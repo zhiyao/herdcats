@@ -63,6 +63,7 @@ struct SpaceRow: View {
         .background { RowHighlight(isActive: isHighlighted, isSelected: isSelected) }
         .overlay(alignment: .bottom) { QuietListDivider() }
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -98,6 +99,7 @@ struct WorktreeRow: View {
         .background { RowHighlight(isActive: isHighlighted, isSelected: isSelected) }
         .overlay(alignment: .bottom) { QuietListDivider(leadingInset: QuietListMetrics.titleInset * 2) }
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -196,7 +198,7 @@ struct WorkspacePaneView: View {
     var body: some View {
         Group {
             if let pane = initialPane {
-                PaneDetailView(pane: pane, siblings: panes, restoring: openPaneMemory?.paneID(forEntryPane: pane.id))
+                PaneDetailView(pane: pane, siblings: panes, restoring: openPaneMemory?.paneID)
             } else {
                 VStack(spacing: 16) {
                     if isLoading {
