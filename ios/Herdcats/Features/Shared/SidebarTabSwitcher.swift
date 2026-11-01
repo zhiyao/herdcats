@@ -65,7 +65,7 @@ struct SidebarTabSwitcher: View {
             }
             .padding(4)
             .modifier(FloatingGlass(reduceTransparency: reduceTransparency))
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 20)
             .padding(.vertical, 8)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("sidebar-tab-switcher")
@@ -78,10 +78,10 @@ struct SidebarTabSwitcher: View {
             tabs.selection.wrappedValue = tab
         } label: {
             VStack(spacing: 2) {
-                // Sized and filled when selected, like the system tab bar's symbols.
+                // Filled symbols at the system tab bar's size.
                 Image(systemName: tab.systemImage)
                     .font(.system(size: 22))
-                    .symbolVariant(isSelected ? .fill : .none)
+                    .symbolVariant(.fill)
                     .frame(height: 26)
                     .overlay(alignment: .topTrailing) {
                         if tab == .agents, tabs.blockedCount > 0 {
@@ -98,12 +98,12 @@ struct SidebarTabSwitcher: View {
                     .font(.jost(10, weight: .medium))
                     .lineLimit(1)
             }
-            .foregroundStyle(isSelected ? Theme.accent : Color.secondary)
+            .foregroundStyle(isSelected ? Theme.accent : Color.primary)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
+            .padding(.vertical, 8)
             .background {
                 if isSelected {
-                    Capsule().fill(Theme.sky.opacity(0.45))
+                    Capsule().fill(Color.primary.opacity(0.1))
                 }
             }
             .contentShape(Capsule())
