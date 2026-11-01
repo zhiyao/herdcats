@@ -99,6 +99,7 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
         } else {
             NavigationStack(path: stackPath) {
                 sidebar
+                    .compactTabSwitcher()
                     .navigationDestination(for: String.self) { id in
                         detail(id)
                     }

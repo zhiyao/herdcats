@@ -50,8 +50,8 @@ enum SidebarVisibility {
 
 // MARK: - Switcher
 
-/// The tab switcher on regular width. It floats at the bottom of the sidebar
-/// in place of the system tab bar, which floats over the detail column on iPad.
+/// The tab switcher. It floats at the bottom of the sidebar on regular width
+/// and of each tab's root screen on compact width, in place of the system bar.
 struct SidebarTabSwitcher: View {
     @Environment(\.sidebarTabs) private var tabs
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -176,9 +176,28 @@ struct TabSplitView<Content: View>: View {
 }
 
 extension View {
-    /// The sidebar's tab switcher replaces the system tab bar on regular width.
-    func hidesSystemTabBarWhenRegular(_ sizeClass: UserInterfaceSizeClass?) -> some View {
-        background(SystemTabBarHider(isHidden: sizeClass == .regular))
+    /// The floating tab switcher replaces the system tab bar at every width.
+    func hidesSystemTabBar() -> some View {
+        toolbar(.hidden, for: .tabBar)
+            .background(SystemTabBarHider(isHidden: true))
+    }
+
+    /// Compact width has no sidebar, so the switcher floats at the bottom of
+    /// each tab's root screen. Pushed screens cover it, like the system bar.
+    func compactTabSwitcher() -> some View {
+        modifier(CompactTabSwitcher())
+    }
+}
+
+private struct CompactTabSwitcher: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    func body(content: Content) -> some View {
+        if horizontalSizeClass == .regular {
+            content
+        } else {
+            content.safeAreaInset(edge: .bottom, spacing: 0) { SidebarTabSwitcher() }
+        }
     }
 }
 

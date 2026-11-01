@@ -69,14 +69,14 @@ struct ConnectedTabsView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             SpacesScreen(model: model)
-                .hidesSystemTabBarWhenRegular(horizontalSizeClass)
+                .hidesSystemTabBar()
                 .tabItem {
                     Label("Spaces", systemImage: "square.grid.3x3")
                 }
                 .tag(MainTab.spaces)
 
             AgentsScreen(model: model)
-                .hidesSystemTabBarWhenRegular(horizontalSizeClass)
+                .hidesSystemTabBar()
                 .tabItem {
                     Label("Agents", systemImage: "cpu")
                 }
@@ -84,14 +84,14 @@ struct ConnectedTabsView: View {
                 .tag(MainTab.agents)
 
             QuotaScreen(model: model)
-                .hidesSystemTabBarWhenRegular(horizontalSizeClass)
+                .hidesSystemTabBar()
                 .tabItem {
                     Label("Quota", systemImage: "gauge.with.dots.needle.67percent")
                 }
                 .tag(MainTab.quota)
 
             SettingsScreen(model: model)
-                .hidesSystemTabBarWhenRegular(horizontalSizeClass)
+                .hidesSystemTabBar()
                 .tabItem {
                     Label("Settings", systemImage: "gearshape")
                 }

@@ -71,6 +71,7 @@ struct QuotaScreen: View {
                 }
             }
             .toolbarBackground(.hidden, for: .navigationBar)
+            .compactTabSwitcher()
             .task { await model.refreshUsage(appModel.connection) }
             .refreshable { await model.refreshUsage(appModel.connection, force: true) }
             .connectionStatusBanner(appModel: appModel)

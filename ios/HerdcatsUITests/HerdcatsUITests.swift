@@ -328,7 +328,7 @@ final class HerdcatsUITests: XCTestCase {
     func testDebugReplayReturnsToConnectedSettings() throws {
         let app = try launchFixture(mode: "ready")
         defer { app.terminate() }
-        let settingsTab = app.tabBars.buttons["Settings"]
+        let settingsTab = app.buttons["sidebar-tab-settings"]
         XCTAssertTrue(settingsTab.waitForExistence(timeout: 30))
         settingsTab.tap()
         let replay = app.buttons["Replay Onboarding"]
@@ -354,7 +354,7 @@ final class HerdcatsUITests: XCTestCase {
     func testReleaseSettingsDoNotOfferOnboardingReplay() throws {
         let app = try launchFixture(mode: "ready")
         defer { app.terminate() }
-        let settingsTab = app.tabBars.buttons["Settings"]
+        let settingsTab = app.buttons["sidebar-tab-settings"]
         XCTAssertTrue(settingsTab.waitForExistence(timeout: 30))
         settingsTab.tap()
         XCTAssertFalse(app.buttons["Replay Onboarding"].exists)
