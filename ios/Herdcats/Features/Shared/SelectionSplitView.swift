@@ -42,20 +42,17 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
     private var visibilityRaw = NavigationSplitViewVisibility.all.storageValue
     @Binding var selection: String?
     let emptyTitle: LocalizedStringKey
-    let emptySystemImage: String
     let sidebar: Sidebar
     let detail: (String) -> Detail
 
     init(
         selection: Binding<String?>,
         emptyTitle: LocalizedStringKey,
-        emptySystemImage: String,
         @ViewBuilder sidebar: () -> Sidebar,
         @ViewBuilder detail: @escaping (String) -> Detail
     ) {
         _selection = selection
         self.emptyTitle = emptyTitle
-        self.emptySystemImage = emptySystemImage
         self.sidebar = sidebar()
         self.detail = detail
     }
@@ -101,7 +98,19 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
                             // A new item gets fresh pane state, not the last item's.
                             .id(selection)
                     } else {
-                        ContentUnavailableView(emptyTitle, systemImage: emptySystemImage)
+                        ContentUnavailableView {
+                            Label {
+                                Text(emptyTitle)
+                            } icon: {
+                                // The herd's cat stands in for a symbol, as in the loading states.
+                                Image("LaunchCat")
+                                    .interpolation(.none)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 72)
+                                    .accessibilityHidden(true)
+                            }
+                        }
                             .background(Theme.backgroundGradient.ignoresSafeArea())
                     }
                 }

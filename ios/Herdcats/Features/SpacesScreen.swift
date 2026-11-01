@@ -81,8 +81,7 @@ struct SpacesScreen: View {
 
         return SelectionSplitView(
             selection: $selectedID,
-            emptyTitle: "Select a space",
-            emptySystemImage: "square.grid.3x3"
+            emptyTitle: "Select a space"
         ) {
             Group {
                 if model.spaces.isEmpty && model.unconfirmedSpaces.isEmpty

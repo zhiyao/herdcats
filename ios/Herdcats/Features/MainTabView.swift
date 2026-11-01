@@ -202,8 +202,7 @@ struct AgentsScreen: View {
         let currentItems = items
         SelectionSplitView(
             selection: $selectedID,
-            emptyTitle: "Select an agent",
-            emptySystemImage: "cpu"
+            emptyTitle: "Select an agent"
         ) {
             Group {
                 if appModel.isOffline && currentItems.isEmpty {
