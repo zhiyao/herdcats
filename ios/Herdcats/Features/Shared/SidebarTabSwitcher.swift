@@ -50,15 +50,11 @@ enum SidebarVisibility {
 
 // MARK: - Switcher
 
-/// The tab switcher. It floats at the bottom of the sidebar on regular width
-/// and of each tab's root screen on compact width, in place of the system bar.
+/// The tab switcher on regular width. It floats at the bottom of the sidebar
+/// in place of the system tab bar, which floats over the detail column on iPad.
 struct SidebarTabSwitcher: View {
     @Environment(\.sidebarTabs) private var tabs
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-
-    /// Compact width hugs the items like the system bar; the sidebar fills its column.
-    private var fillsWidth: Bool { horizontalSizeClass == .regular }
 
     var body: some View {
         if let tabs {
@@ -71,7 +67,6 @@ struct SidebarTabSwitcher: View {
             .modifier(FloatingGlass(reduceTransparency: reduceTransparency))
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
-            .frame(maxWidth: .infinity)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("sidebar-tab-switcher")
         }
@@ -104,9 +99,7 @@ struct SidebarTabSwitcher: View {
                     .lineLimit(1)
             }
             .foregroundStyle(isSelected ? Theme.accent : Color.secondary)
-            .frame(maxWidth: fillsWidth ? .infinity : nil)
-            .frame(minWidth: fillsWidth ? nil : 74)
-            .padding(.horizontal, fillsWidth ? 0 : 4)
+            .frame(maxWidth: .infinity)
             .padding(.vertical, 6)
             .background {
                 if isSelected {
@@ -186,28 +179,9 @@ struct TabSplitView<Content: View>: View {
 }
 
 extension View {
-    /// The floating tab switcher replaces the system tab bar at every width.
-    func hidesSystemTabBar() -> some View {
-        toolbar(.hidden, for: .tabBar)
-            .background(SystemTabBarHider(isHidden: true))
-    }
-
-    /// Compact width has no sidebar, so the switcher floats at the bottom of
-    /// each tab's root screen. Pushed screens cover it, like the system bar.
-    func compactTabSwitcher() -> some View {
-        modifier(CompactTabSwitcher())
-    }
-}
-
-private struct CompactTabSwitcher: ViewModifier {
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-
-    func body(content: Content) -> some View {
-        if horizontalSizeClass == .regular {
-            content
-        } else {
-            content.safeAreaInset(edge: .bottom, spacing: 0) { SidebarTabSwitcher() }
-        }
+    /// The sidebar's tab switcher replaces the system tab bar on regular width.
+    func hidesSystemTabBarWhenRegular(_ sizeClass: UserInterfaceSizeClass?) -> some View {
+        background(SystemTabBarHider(isHidden: sizeClass == .regular))
     }
 }
 

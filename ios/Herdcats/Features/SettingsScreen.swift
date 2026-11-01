@@ -178,7 +178,6 @@ struct SettingsScreen: View {
                 }
             }
             .toolbarBackground(.hidden, for: .navigationBar)
-            .compactTabSwitcher()
             .confirmationDialog(
                 "Stop Preserving Prompts and History?",
                 isPresented: $confirmDisablePaneSaving,

@@ -420,22 +420,22 @@ extension HerdcatsUITests {
         approveMachineHostKeyIfNeeded(app)
         let picker = app.buttons["machine-picker"]
         XCTAssertTrue(waitForMachine(picker, label: first.name))
-        app.buttons["sidebar-tab-agents"].tap()
+        app.tabBars.buttons["Agents"].tap()
         picker.tap()
         app.buttons[second.name].firstMatch.tap()
         approveMachineHostKeyIfNeeded(app)
         XCTAssertTrue(waitForMachine(picker, label: second.name))
-        XCTAssertTrue(app.buttons["sidebar-tab-agents"].isSelected, "Switching should retain Agents")
-        app.buttons["sidebar-tab-spaces"].tap()
+        XCTAssertTrue(app.tabBars.buttons["Agents"].isSelected, "Switching should retain Agents")
+        app.tabBars.buttons["Spaces"].tap()
         for label in expectedRows {
             XCTAssertTrue(app.buttons[label].firstMatch.waitForExistence(timeout: 30),
                           "Second host workspace did not load: \(label)")
         }
-        app.buttons["sidebar-tab-agents"].tap()
+        app.tabBars.buttons["Agents"].tap()
         picker.tap()
         app.buttons[first.name].firstMatch.tap()
         XCTAssertTrue(waitForMachine(picker, label: first.name))
-        XCTAssertTrue(app.buttons["sidebar-tab-agents"].isSelected)
+        XCTAssertTrue(app.tabBars.buttons["Agents"].isSelected)
     }
 
     func testSwitchToUnreachableMachineKeepsCurrent() throws {
@@ -447,14 +447,14 @@ extension HerdcatsUITests {
         approveMachineHostKeyIfNeeded(app)
         let picker = app.buttons["machine-picker"]
         XCTAssertTrue(waitForMachine(picker, label: first.name))
-        app.buttons["sidebar-tab-agents"].tap()
+        app.tabBars.buttons["Agents"].tap()
         picker.tap()
         app.buttons[unreachable.name].firstMatch.tap()
         let error = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@",
             "Couldn't reach " + unreachable.name + ":")).firstMatch
         XCTAssertTrue(error.waitForExistence(timeout: 45))
         XCTAssertEqual(picker.label, "Machine: " + first.name)
-        XCTAssertTrue(app.buttons["sidebar-tab-agents"].isSelected)
+        XCTAssertTrue(app.tabBars.buttons["Agents"].isSelected)
         app.buttons["Dismiss error"].tap()
         XCTAssertTrue(error.waitForNonExistence(timeout: 5))
     }
@@ -554,7 +554,7 @@ extension HerdcatsUITests {
     func testAgyCardShowsLoginPrompt() throws {
         let app = try launchConnectedApp()
         defer { app.terminate() }
-        let quota = app.buttons["sidebar-tab-quota"]
+        let quota = app.tabBars.buttons["Quota"]
         XCTAssertTrue(quota.waitForExistence(timeout: 30))
         quota.tap()
         let card = app.buttons["agy-usage-card"]
@@ -627,8 +627,8 @@ extension HerdcatsUITests {
         let app = try launchConnectedApp()
 
         // Both tabs are present once connected.
-        let spacesTab = app.buttons["sidebar-tab-spaces"]
-        let agentsTab = app.buttons["sidebar-tab-agents"]
+        let spacesTab = app.tabBars.buttons["Spaces"]
+        let agentsTab = app.tabBars.buttons["Agents"]
         let isSpacesVisible = app.navigationBars.staticTexts["Spaces"].waitForExistence(timeout: 25)
             || app.navigationBars.staticTexts["Herdcats"].waitForExistence(timeout: 25)
         XCTAssertTrue(isSpacesVisible, "Spaces screen did not appear")
@@ -695,7 +695,7 @@ extension HerdcatsUITests {
     /// a pane-switcher row before checking readiness.
     @discardableResult
     func openFirstPane(_ app: XCUIApplication) -> Bool {
-        let spacesTab = app.buttons["sidebar-tab-spaces"]
+        let spacesTab = app.tabBars.buttons["Spaces"]
         guard spacesTab.waitForExistence(timeout: 25) else { return false }
         if !spacesTab.isSelected {
             spacesTab.tap()
