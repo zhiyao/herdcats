@@ -105,7 +105,7 @@ struct SidebarTabSwitcher: View {
             }
             .foregroundStyle(isSelected ? Theme.accent : Color.secondary)
             .frame(maxWidth: fillsWidth ? .infinity : nil)
-            .frame(minWidth: fillsWidth ? nil : 56)
+            .frame(minWidth: fillsWidth ? nil : 74)
             .padding(.horizontal, fillsWidth ? 0 : 4)
             .padding(.vertical, 6)
             .background {
