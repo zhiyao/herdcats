@@ -67,6 +67,10 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
         )
     }
 
+    /// Switching between the split view and the stack rebuilds the detail,
+    /// so the open sibling pane is remembered here, above both layouts.
+    @State private var openPaneMemory = OpenPaneMemory()
+
     /// The stack's path is just the selected id, so Back clears the selection.
     private var stackPath: Binding<[String]> {
         Binding(
@@ -76,6 +80,11 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
     }
 
     var body: some View {
+        layout.environment(\.openPaneMemory, openPaneMemory)
+    }
+
+    @ViewBuilder
+    private var layout: some View {
         if horizontalSizeClass == .regular {
             NavigationSplitView(columnVisibility: columnVisibility) {
                 sidebar
@@ -104,6 +113,31 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
                     }
             }
         }
+    }
+}
+
+/// The sibling pane open in each detail, keyed by the pane the detail was
+/// entered with, so it survives a size-class change.
+final class OpenPaneMemory {
+    private var selectedByEntryPane: [String: String] = [:]
+
+    func remember(_ paneID: String, forEntryPane entryPaneID: String) {
+        selectedByEntryPane[entryPaneID] = paneID
+    }
+
+    func paneID(forEntryPane entryPaneID: String) -> String? {
+        selectedByEntryPane[entryPaneID]
+    }
+}
+
+private struct OpenPaneMemoryKey: EnvironmentKey {
+    static let defaultValue: OpenPaneMemory? = nil
+}
+
+extension EnvironmentValues {
+    var openPaneMemory: OpenPaneMemory? {
+        get { self[OpenPaneMemoryKey.self] }
+        set { self[OpenPaneMemoryKey.self] = newValue }
     }
 }
 

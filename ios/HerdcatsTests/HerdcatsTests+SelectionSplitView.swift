@@ -13,4 +13,15 @@ struct SelectionSplitViewTests {
     @Test func unknownStoredVisibilityShowsBothColumns() {
         #expect(NavigationSplitViewVisibility(storageValue: "garbage") == .all)
     }
+
+    @Test func openPaneMemoryKeepsTheSiblingPerEntryPane() {
+        let memory = OpenPaneMemory()
+        #expect(memory.paneID(forEntryPane: "a") == nil)
+        memory.remember("b", forEntryPane: "a")
+        memory.remember("d", forEntryPane: "c")
+        #expect(memory.paneID(forEntryPane: "a") == "b")
+        #expect(memory.paneID(forEntryPane: "c") == "d")
+        memory.remember("e", forEntryPane: "a")
+        #expect(memory.paneID(forEntryPane: "a") == "e")
+    }
 }

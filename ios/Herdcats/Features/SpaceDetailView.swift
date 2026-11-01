@@ -18,6 +18,7 @@ struct PaneDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.showsPaneSwitcher) private var showsPaneSwitcher
     @Environment(\.showsPaneBackButton) private var showsPaneBackButton
+    @Environment(\.openPaneMemory) private var openPaneMemory
     @State private var siblings: [PaneEntry]
     @State private var tabs: [TabEntry] = []
     @State private var selectedPaneID: String
@@ -48,13 +49,16 @@ struct PaneDetailView: View {
     @State private var workspace: Workspace?
     @State private var pendingWorkspaceAction: WorkspaceAction?
 
-    init(pane: PaneEntry, siblings: [PaneEntry] = []) {
+    /// `restoring` is the sibling that was open before the layout changed
+    /// width; it is ignored when that pane is no longer in the workspace.
+    init(pane: PaneEntry, siblings: [PaneEntry] = [], restoring restoredPaneID: String? = nil) {
         self.pane = pane
         let peers = siblings.filter {
             $0.workspaceId == pane.workspaceId
         }
-        _siblings = State(initialValue: peers.contains(where: { $0.id == pane.id }) ? peers : [pane] + peers)
-        _selectedPaneID = State(initialValue: pane.id)
+        let all = peers.contains(where: { $0.id == pane.id }) ? peers : [pane] + peers
+        _siblings = State(initialValue: all)
+        _selectedPaneID = State(initialValue: all.contains { $0.id == restoredPaneID } ? restoredPaneID ?? pane.id : pane.id)
     }
 
     private var selectedPane: PaneEntry {
@@ -256,8 +260,9 @@ struct PaneDetailView: View {
             }
         }
         .toolbarBackground(.hidden, for: .navigationBar)
-        .onChange(of: selectedPaneID) { _, _ in
+        .onChange(of: selectedPaneID) { _, selected in
             bridgeUpgrade.bridgeVersion = nil
+            openPaneMemory?.remember(selected, forEntryPane: pane.id)
         }
         // Pushed panes hide the tab bar; in the detail column it stays so tabs can still switch.
         .toolbar(showsPaneBackButton ? .hidden : .automatic, for: .tabBar)

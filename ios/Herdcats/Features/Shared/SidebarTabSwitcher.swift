@@ -185,7 +185,22 @@ struct TabSplitView<Content: View>: View {
 extension View {
     /// The sidebar's tab switcher replaces the system tab bar on regular width.
     func hidesSystemTabBarWhenRegular(_ sizeClass: UserInterfaceSizeClass?) -> some View {
-        background(SystemTabBarHider(isHidden: sizeClass == .regular))
+        modifier(HidesSystemTabBar(isHidden: sizeClass == .regular))
+    }
+}
+
+private struct HidesSystemTabBar: ViewModifier {
+    let isHidden: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.background(SystemTabBarHider(isHidden: isHidden))
+        } else {
+            // No UIKit hook before iOS 18, which also has no floating bar
+            // whose top inset the SwiftUI modifier would leave behind.
+            content.toolbar(isHidden ? .hidden : .automatic, for: .tabBar)
+        }
     }
 }
 

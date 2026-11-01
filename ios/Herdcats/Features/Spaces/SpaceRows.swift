@@ -179,6 +179,7 @@ struct WorkspacePaneView: View {
     var initialPaneID: String? = nil
 
     @Environment(AppModel.self) private var appModel
+    @Environment(\.openPaneMemory) private var openPaneMemory
     @State private var panes: [PaneEntry] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
@@ -195,7 +196,7 @@ struct WorkspacePaneView: View {
     var body: some View {
         Group {
             if let pane = initialPane {
-                PaneDetailView(pane: pane, siblings: panes)
+                PaneDetailView(pane: pane, siblings: panes, restoring: openPaneMemory?.paneID(forEntryPane: pane.id))
             } else {
                 VStack(spacing: 16) {
                     if isLoading {

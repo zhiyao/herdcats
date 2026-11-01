@@ -291,16 +291,20 @@ struct PaneOutputScrollView: View, Equatable {
     }
 }
 
-/// How far the keyboard covers the bottom of a window. Both frames are in
-/// the window's coordinate space. A hidden, floating or undocked keyboard,
-/// or one beside the window, covers nothing; a window shorter than the
-/// screen is covered only from the keyboard's top edge down.
-func keyboardOverlap(keyboardFrameInWindow frame: CGRect, windowBounds: CGRect) -> CGFloat {
-    guard frame.maxX > windowBounds.minX, frame.minX < windowBounds.maxX else { return 0 }
-    // Docked keyboards reach the bottom of the screen, which is at or
-    // below the window's bottom edge. A floating one ends above it.
-    guard frame.maxY >= windowBounds.maxY - 1 else { return 0 }
-    return max(0, windowBounds.maxY - frame.minY)
+/// Whether a keyboard frame, in screen coordinates, is docked: a docked
+/// keyboard reaches the bottom of the screen, a floating one ends above it.
+func isDockedKeyboard(screenFrame: CGRect, screenBounds: CGRect) -> Bool {
+    screenFrame.maxY >= screenBounds.maxY - 1
+}
+
+/// How far a keyboard covers the bottom of a window. The frame and bounds
+/// are in the window's coordinate space; `isDocked` comes from the screen,
+/// since a short window's bottom edge says nothing about docking. An undocked
+/// or hidden keyboard, or one beside the window, covers nothing; a window
+/// shorter than the screen is covered only from the keyboard's top edge down.
+func keyboardOverlap(keyboardFrameInWindow frame: CGRect, windowBounds: CGRect, isDocked: Bool) -> CGFloat {
+    guard isDocked, frame.maxX > windowBounds.minX, frame.minX < windowBounds.maxX else { return 0 }
+    return min(windowBounds.height, max(0, windowBounds.maxY - frame.minY))
 }
 
 /// Weak handle to the window hosting a SwiftUI view, so keyboard frames
@@ -315,7 +319,11 @@ final class HostingWindow {
     func keyboardOverlap(screenFrame: CGRect) -> CGFloat {
         guard let window else { return 0 }
         let frame = window.convert(screenFrame, from: window.screen.coordinateSpace)
-        return Herdcats.keyboardOverlap(keyboardFrameInWindow: frame, windowBounds: window.bounds)
+        return Herdcats.keyboardOverlap(
+            keyboardFrameInWindow: frame,
+            windowBounds: window.bounds,
+            isDocked: isDockedKeyboard(screenFrame: screenFrame, screenBounds: window.screen.bounds)
+        )
     }
 }
 
