@@ -31,6 +31,8 @@ struct PaneDetailView: View {
     @State private var lastUpdatedByPaneID: [String: Date] = [:]
     /// Pane switcher shows chips instead of cards to give the output more room.
     @State private var isSwitcherCompact = false
+    /// The pane's own width: a narrow split slot starts with the chip strip.
+    @State private var paneWidth: CGFloat = 0
     /// Side the newly selected pane sits on in the switcher; drives the
     /// incoming session's slide. Set before the animated selection change.
     @State private var switchEdge: Edge = .trailing
@@ -155,7 +157,7 @@ struct PaneDetailView: View {
         )
     }
 
-    /// What the hidden switcher strip offers: pick a sibling pane, and add,
+    /// What the switcher strip offers, when a screen turns it off: pick a sibling pane, and add,
     /// rename or kill one.
     @ViewBuilder
     private var paneMenuSection: some View {
@@ -242,8 +244,8 @@ struct PaneDetailView: View {
                 .accessibilityIdentifier("timeline-upgrade-menu-button")
                 Divider()
             }
-            // The switcher strip is hidden while the list column shows,
-            // so its pane switching and actions move into this menu.
+            // Without the switcher strip, its pane switching and actions
+            // move into this menu.
             if !showsPaneSwitcher {
                 paneMenuSection
                 Divider()
@@ -360,6 +362,10 @@ struct PaneDetailView: View {
             // The session sits below the header, so nothing hides under it.
             paneContent
                 .frame(maxHeight: .infinity)
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { paneWidth = $0 }
+        .onChange(of: PaneSwitcherCollapse.prefersCompact(paneWidth: paneWidth), initial: true) { _, narrow in
+            if narrow { isSwitcherCompact = true }
         }
         .background(Theme.backgroundGradient.ignoresSafeArea())
         .navigationTitle(selectedPane.displayTitle)

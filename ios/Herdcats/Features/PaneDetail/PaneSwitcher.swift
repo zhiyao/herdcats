@@ -21,6 +21,14 @@ enum PaneSwitcherCollapse {
     /// Drag distance past which releasing the strip toggles its state.
     static let snapDistance: CGFloat = 24
 
+    /// Panes narrower than this start with the chip strip, so the strip
+    /// doesn't eat a split pane's terminal. 0 means not measured yet.
+    static let narrowPaneWidth: CGFloat = 420
+
+    static func prefersCompact(paneWidth: CGFloat) -> Bool {
+        paneWidth > 0 && paneWidth < narrowPaneWidth
+    }
+
     /// Whether the switcher is compact after a vertical drag on it ends.
     /// Dragging down expands; dragging up collapses.
     static func isCompact(afterDragFrom startCompact: Bool, translation: CGFloat) -> Bool {

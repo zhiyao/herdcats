@@ -11,9 +11,8 @@ private struct ShowsPaneBackButtonKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    /// Whether a pane shows its sibling-pane switcher strip. The split view
-    /// turns it off while the list column is visible, because the list
-    /// already switches panes.
+    /// Whether a pane shows its sibling-pane switcher strip. On by default,
+    /// in the detail column and each split slot alike; a screen can turn it off.
     var showsPaneSwitcher: Bool {
         get { self[ShowsPaneSwitcherKey.self] }
         set { self[ShowsPaneSwitcherKey.self] = newValue }
@@ -180,7 +179,6 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
                 }
                 .paneDropTarget(layout: $layout)
                 .revealsSidebarOnEdgeSwipe(columnVisibility)
-                .environment(\.showsPaneSwitcher, columnVisibility.wrappedValue == .detailOnly)
                 .environment(\.showsPaneBackButton, false)
             }
             .navigationSplitViewStyle(.balanced)
