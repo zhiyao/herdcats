@@ -31,12 +31,21 @@ enum PaneDropZone {
 }
 
 extension PaneLayout {
-    /// Opens a dropped row in `half`. With one pane, the left half replaces it
-    /// and the right half splits. Returns false for a payload that isn't a row.
+    /// Opens a dropped row in `half`. With one pane, either half splits: the
+    /// dropped pane takes that side and the open pane moves to the other. With
+    /// a split, the half's pane is replaced. Returns false for a payload that
+    /// isn't a row.
     @discardableResult
     mutating func drop(_ payload: String, onHalf half: Slot) -> Bool {
         guard let ref = PaneDragPayload.decode(payload) else { return false }
-        open(ref, in: half)
+        if half == .left, !isSplit, let existing = left, existing != ref {
+            // Splitting on the left: the open pane moves right, then the drop takes the left.
+            right = existing
+            left = ref
+            focused = .left
+        } else {
+            open(ref, in: half)
+        }
         return true
     }
 }

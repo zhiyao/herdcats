@@ -40,12 +40,27 @@ struct PaneDragDropTests {
         #expect(PaneDropZone.slot(atX: 10, width: 0) == .left)
     }
 
-    @Test func droppingOnTheLeftHalfOfASinglePaneReplacesIt() {
+    @Test func droppingOnTheLeftHalfOfASinglePaneSplitsWithTheDroppedPaneOnTheLeft() {
         var layout = PaneLayout(left: a)
         let accepted = layout.drop(PaneDragPayload.encode(b), onHalf: .left)
         #expect(accepted)
         #expect(layout.left == b)
-        #expect(layout.right == nil)
+        #expect(layout.right == a)
+        #expect(layout.focused == .left)
+    }
+
+    @Test func droppingTheOpenPaneOnItsOwnHalfDoesNotSplit() {
+        var layout = PaneLayout(left: a)
+        layout.drop(PaneDragPayload.encode(a), onHalf: .left)
+        #expect(layout == PaneLayout(left: a))
+    }
+
+    @Test func droppingOnTheLeftHalfWhileSplitReplacesTheLeftPane() {
+        var layout = PaneLayout(left: a, right: b)
+        let c = PaneRef(spaceID: "c", paneID: nil)
+        layout.drop(PaneDragPayload.encode(c), onHalf: .left)
+        #expect(layout.left == c)
+        #expect(layout.right == b)
     }
 
     @Test func droppingOnTheRightHalfOfASinglePaneSplits() {
