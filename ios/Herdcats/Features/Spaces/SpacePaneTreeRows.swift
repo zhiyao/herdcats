@@ -69,17 +69,14 @@ struct SpacePaneTreePill: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                Image(systemName: "chevron.right")
-                    .font(.jost(10, weight: .bold))
-                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 Text("\(paneCount)")
                     .font(.jost(12, weight: .medium))
                     .monospacedDigit()
+                Image(systemName: "chevron.right")
+                    .font(.jost(10, weight: .bold))
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
             }
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 3)
-            .overlay(Capsule().strokeBorder(Theme.border, lineWidth: 1))
             .padding(8)
             .contentShape(Rectangle())
         }
