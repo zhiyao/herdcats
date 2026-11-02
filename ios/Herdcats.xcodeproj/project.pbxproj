@@ -141,6 +141,7 @@
 		D88366995735A638B5816998 /* TimelineEntryViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 420F85D2A36D8492474B19DF /* TimelineEntryViews.swift */; };
 		D9236D424B2DBFF26A50E066 /* HerdcatsTests+PaneLiveInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 565E52FF93633CC2CB6D65E5 /* HerdcatsTests+PaneLiveInput.swift */; };
 		DA7B25BE2115655CF67F2D04 /* CoreRPCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 691B7C7DD3FA9BD5F5661DEA /* CoreRPCClient.swift */; };
+		DB245951720AF5ACA9209508 /* PaneHeaderBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = F468DA0CB58A8497CF538FB4 /* PaneHeaderBar.swift */; };
 		DC0A40BA4F3F046A4AEAA18A /* AgentStatusAlerts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 276245D2931453A0D298BEA4 /* AgentStatusAlerts.swift */; };
 		DD031217170E5A6F5E67FCCD /* ScreenshotFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F54450F78CCB68F3776BF68 /* ScreenshotFixtures.swift */; };
 		DE737B5F385D5A11A2522BF2 /* AgentTimelineState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A3BFF904815E2BD66B154D9 /* AgentTimelineState.swift */; };
@@ -347,6 +348,7 @@
 		F2574C878298C238467F43D1 /* QuestionAnswerState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionAnswerState.swift; sourceTree = "<group>"; };
 		F2DBC72D55F63C7915ECC5EB /* ConnectionOwnership.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionOwnership.swift; sourceTree = "<group>"; };
 		F3CF48B1051365BBB404CD1A /* HerdcatsTests+SelectionSplitView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdcatsTests+SelectionSplitView.swift"; sourceTree = "<group>"; };
+		F468DA0CB58A8497CF538FB4 /* PaneHeaderBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneHeaderBar.swift; sourceTree = "<group>"; };
 		F4DDE8BBF5A15558C77D128F /* PaneDragDrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneDragDrop.swift; sourceTree = "<group>"; };
 		F7A31DD5DCC846135C375DF7 /* AgentTimelineModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTimelineModels.swift; sourceTree = "<group>"; };
 		F8CA019F2DDA830AC9B7D1D0 /* test_release_preparation.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = test_release_preparation.py; sourceTree = "<group>"; };
@@ -371,6 +373,7 @@
 			isa = PBXGroup;
 			children = (
 				2EEF703BF74FD93DEF242E75 /* PaneDrawers.swift */,
+				F468DA0CB58A8497CF538FB4 /* PaneHeaderBar.swift */,
 				CFA2F0F5808532EFF68325C7 /* PaneInputSurfaceModel.swift */,
 				A31D62840B8B70277A41A95F /* PaneOutputOnlyStrip.swift */,
 				E8E71594C60B5C8C5087748C /* PaneOutputScrollView.swift */,
@@ -858,6 +861,7 @@
 				EBCC026B6DED3089253E3058 /* PaneDictation.swift in Sources */,
 				07DE0E179C7EEAC7FA2F7777 /* PaneDragDrop.swift in Sources */,
 				AF61ACAACA06A71F83F18DEB /* PaneDrawers.swift in Sources */,
+				DB245951720AF5ACA9209508 /* PaneHeaderBar.swift in Sources */,
 				70F0B1110708E8A8A840511C /* PaneImageEncoder.swift in Sources */,
 				0D88B6E24B663B93F6C5DEFA /* PaneInputCoordinator.swift in Sources */,
 				EFF9611EB48CB74D0AD22167 /* PaneInputSurfaceModel.swift in Sources */,

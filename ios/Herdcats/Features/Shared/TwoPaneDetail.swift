@@ -57,8 +57,8 @@ extension EnvironmentValues {
 // MARK: - Two-pane detail
 
 /// The split view's detail column: one pane, or two side by side with a
-/// draggable divider. Each slot has its own `NavigationStack`, so each pane
-/// keeps its own toolbar.
+/// draggable divider. The column has one system navigation bar, so while
+/// split each pane draws its own header (`PaneHeaderBar`).
 struct TwoPaneDetail<Content: View>: View {
     @Binding var layout: PaneLayout
     let memory: OpenPaneMemory
@@ -123,28 +123,23 @@ struct TwoPaneDetail<Content: View>: View {
     private func slot(_ slot: PaneLayout.Slot, _ ref: PaneRef) -> some View {
         let isSplit = layout.isSplit
         let isFocused = !isSplit || layout.focused == slot
-        return NavigationStack {
-            content(ref)
-                .environment(\.paneIsFocused, isFocused)
-                .environment(\.openPaneMemory, OpenPaneSlot(memory: memory, selection: ref.memoryKey))
-                .environment(\.closeDetail, CloseDetailAction(layout: $layout, slot: slot, ref: ref))
-                .environment(\.paneSlotActions, PaneSlotActions(
-                    slot: slot,
-                    isSplit: isSplit,
-                    split: { pick(.right) },
-                    replace: { pick(slot) },
-                    swap: { layout.swap() },
-                    fullWidth: { layout.fullWidth(slot) },
-                    close: { layout.close(slot) },
-                    focus: { layout.focus(slot) }
-                ))
-                .overlay(alignment: .top) {
-                    // Sits on the bottom edge of the navigation bar.
-                    if isSplit && isFocused {
-                        Theme.accent.frame(height: 2).offset(y: -2).allowsHitTesting(false)
-                    }
-                }
-        }
+        return content(ref)
+            .environment(\.paneIsFocused, isFocused)
+            .environment(\.openPaneMemory, OpenPaneSlot(memory: memory, selection: ref.memoryKey))
+            .environment(\.closeDetail, CloseDetailAction(layout: $layout, slot: slot, ref: ref))
+            .environment(\.paneSlotActions, PaneSlotActions(
+                slot: slot,
+                isSplit: isSplit,
+                split: { pick(.right) },
+                replace: { pick(slot) },
+                swap: { layout.swap() },
+                fullWidth: { layout.fullWidth(slot) },
+                close: { layout.close(slot) },
+                focus: { layout.focus(slot) }
+            ))
+            // Split panes draw their own headers, so keep the shared system bar off
+            // even while a pane is still loading and has none.
+            .toolbar(isSplit ? .hidden : .automatic, for: .navigationBar)
         .id(ref)
         // Simultaneous, so scrolling and text selection in the pane still work.
         .simultaneousGesture(
