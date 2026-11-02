@@ -14,6 +14,13 @@ struct PaneFocusTests {
         #expect(PaneFocusPolicy.effects(wasFocused: false, isFocused: true) == .init(releasesInput: false, marksSeen: true))
     }
 
+    @Test func theKeyboardPassesToTheNewlyFocusedPaneOnlyJustAfterTheHandoff() {
+        #expect(PaneFocusPolicy.takesOverKeyboard(handoffAt: 10, now: 10.4))
+        #expect(!PaneFocusPolicy.takesOverKeyboard(handoffAt: nil, now: 10.4))
+        // A handoff nobody collected goes stale rather than raising a keyboard later.
+        #expect(!PaneFocusPolicy.takesOverKeyboard(handoffAt: 10, now: 12))
+    }
+
     @Test func unchangedFocusDoesNothing() {
         #expect(PaneFocusPolicy.effects(wasFocused: true, isFocused: true) == .init(releasesInput: false, marksSeen: false))
         #expect(PaneFocusPolicy.effects(wasFocused: false, isFocused: false) == .init(releasesInput: false, marksSeen: false))

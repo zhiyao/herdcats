@@ -281,10 +281,30 @@ extension PaneSessionView {
         }
     }
 
+    /// This slot gained focus while the other had its keyboard up: once that
+    /// keyboard has slid down, bring this slot's up, so it reads as a handoff.
+    func takeOverKeyboard() async {
+        try? await Task.sleep(for: .milliseconds(300))
+        guard !Task.isCancelled, paneIsFocused,
+              PaneFocusPolicy.takesOverKeyboard(
+                  handoffAt: keyboardHandoff?.stampedAt,
+                  now: ProcessInfo.processInfo.systemUptime
+              ) else { return }
+        keyboardHandoff?.stampedAt = nil
+        if surfaceModel.isComposeSurface {
+            composeFieldFocused = true
+        } else if liveInputEnabled, surfaceModel.isLiveKeyboardSurface {
+            liveInputFocused = true
+        }
+    }
+
     /// A slot lost focus: put the keyboard away, end the Live session, and
     /// stop dictation the way leaving the pane does. The draft and composer
     /// state stay, and return when the pane is focused again.
     func releaseInputFocus() {
+        // The other slot raises its keyboard once this one is down.
+        keyboardHandoff?.stampedAt = (composeFieldFocused || liveInputFocused)
+            ? ProcessInfo.processInfo.systemUptime : nil
         dismissLiveKeyboard()
         composeFieldFocused = false
         switch PaneFocusPolicy.dictationTeardown(

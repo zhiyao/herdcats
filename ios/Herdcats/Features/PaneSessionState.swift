@@ -152,6 +152,18 @@ enum PaneFocusPolicy {
         Effects(releasesInput: wasFocused && !isFocused, marksSeen: !wasFocused && isFocused)
     }
 
+    /// How long after a slot put its keyboard away the other slot may still
+    /// take it over.
+    static let keyboardHandoffWindow: TimeInterval = 1.5
+
+    /// A slot that lost focus with its keyboard up leaves a handoff stamp. The
+    /// slot that gains focus raises its own keyboard when the stamp is fresh,
+    /// so the old one slides down and the new one slides up.
+    static func takesOverKeyboard(handoffAt: TimeInterval?, now: TimeInterval) -> Bool {
+        guard let handoffAt else { return false }
+        return now - handoffAt <= keyboardHandoffWindow
+    }
+
     enum DictationTeardown: Equatable {
         /// Recording: cancel and restore the draft from before the recording.
         case cancelRecording

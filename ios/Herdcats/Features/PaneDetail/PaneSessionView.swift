@@ -21,6 +21,7 @@ struct PaneSessionView: View {
     /// False for the output-only slot of a split: no input surface, no Live
     /// session, no rapid reads, no implicit mark-as-seen.
     @Environment(\.paneIsFocused) var paneIsFocused
+    @Environment(\.paneKeyboardHandoff) var keyboardHandoff
     @State var session: PaneSessionState
     /// Pane text is held in view state and synchronously persisted through the
     /// privacy policy so a cleared session cannot restore stale values.
@@ -606,7 +607,10 @@ struct PaneSessionView: View {
         .onChange(of: paneIsFocused) { wasFocused, isFocused in
             let effects = PaneFocusPolicy.effects(wasFocused: wasFocused, isFocused: isFocused)
             if effects.releasesInput { releaseInputFocus() }
-            if effects.marksSeen { Task { await considerImplicitMarkSeen() } }
+            if effects.marksSeen {
+                Task { await considerImplicitMarkSeen() }
+                Task { await takeOverKeyboard() }
+            }
         }
         // Only the focused pane makes room for the software keyboard.
         .ignoresSafeArea(.keyboard, edges: paneIsFocused ? [] : .bottom)

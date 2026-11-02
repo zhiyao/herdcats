@@ -31,11 +31,27 @@ struct PanePartner {
     let focus: () -> Void
 }
 
+/// Passes the software keyboard from the slot that lost focus to the one
+/// that gained it. One per split, shared by both slots.
+final class PaneKeyboardHandoff {
+    /// When a slot put its keyboard away on losing focus, if it had one up.
+    var stampedAt: TimeInterval?
+}
+
+private struct PaneKeyboardHandoffKey: EnvironmentKey {
+    static let defaultValue: PaneKeyboardHandoff? = nil
+}
+
 private struct PanePartnerKey: EnvironmentKey {
     static let defaultValue: PanePartner? = nil
 }
 
 extension EnvironmentValues {
+    var paneKeyboardHandoff: PaneKeyboardHandoff? {
+        get { self[PaneKeyboardHandoffKey.self] }
+        set { self[PaneKeyboardHandoffKey.self] = newValue }
+    }
+
     var panePartner: PanePartner? {
         get { self[PanePartnerKey.self] }
         set { self[PanePartnerKey.self] = newValue }
@@ -70,6 +86,7 @@ struct TwoPaneDetail<Content: View>: View {
 
     /// The ratio while the divider is being dragged; committed, snapped, on release.
     @State private var dragRatio: Double?
+    @State private var keyboardHandoff = PaneKeyboardHandoff()
 
     var body: some View {
         GeometryReader { proxy in
@@ -125,6 +142,7 @@ struct TwoPaneDetail<Content: View>: View {
         let isFocused = !isSplit || layout.focused == slot
         return content(ref)
             .environment(\.paneIsFocused, isFocused)
+            .environment(\.paneKeyboardHandoff, isSplit ? keyboardHandoff : nil)
             .environment(\.openPaneMemory, OpenPaneSlot(memory: memory, selection: ref.memoryKey))
             .environment(\.closeDetail, CloseDetailAction(layout: $layout, slot: slot, ref: ref))
             .environment(\.paneSlotActions, PaneSlotActions(
