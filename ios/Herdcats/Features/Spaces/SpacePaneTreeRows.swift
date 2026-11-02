@@ -96,6 +96,22 @@ struct SpacePaneTreeRows: View {
     @Binding var layout: PaneLayout
     let retry: () -> Void
 
+    @Environment(\.paneMemoryStore) private var memory
+
+    /// The pane each open slot of this space shows, in a split or not.
+    private func shownPanes(in panes: [PaneEntry]) -> [(slot: PaneLayout.Slot, paneID: String)] {
+        [(PaneLayout.Slot.left, layout.left), (.right, layout.right)].compactMap { slot, ref in
+            guard let ref, ref.spaceID == space.id,
+                  let paneID = SpacePaneTree.shownPaneID(
+                      of: ref,
+                      remembered: memory?.paneID(forSelection: ref.memoryKey),
+                      panes: panes,
+                      activeTabID: space.workspace.activeTabId
+                  ) else { return nil }
+            return (slot, paneID)
+        }
+    }
+
     var body: some View {
         switch load {
         case nil, .loading:
@@ -121,6 +137,7 @@ struct SpacePaneTreeRows: View {
             .padding(.vertical, 8)
             .quietListRow()
         case let .loaded(_, tabs):
+            let shown = shownPanes(in: tabs.flatMap(\.panes))
             ForEach(tabs) { tab in
                 if tab.showsHeader {
                     Text(tab.headerTitle)
@@ -136,18 +153,19 @@ struct SpacePaneTreeRows: View {
                         .accessibilityAddTraits(.isHeader)
                 }
                 ForEach(tab.panes) { pane in
-                    paneRow(pane)
+                    paneRow(pane, shown: shown)
                 }
             }
         }
     }
 
-    private func paneRow(_ pane: PaneEntry) -> some View {
+    private func paneRow(_ pane: PaneEntry, shown: [(slot: PaneLayout.Slot, paneID: String)]) -> some View {
         let ref = PaneRef(spaceID: space.id, paneID: pane.paneId)
-        let isOpen = layout.left == ref || layout.right == ref
+        let slots = shown.filter { $0.paneID == pane.paneId }.map(\.slot)
         return Button { layout.openInFocused(ref) } label: {
-            PaneTreeRow(pane: pane, indent: indent, isSelected: isOpen)
-                .paneSlotBadge(layout.badgeSlot(paneID: pane.paneId), focused: layout.focused)
+            PaneTreeRow(pane: pane, indent: indent, isSelected: !slots.isEmpty)
+                // Tags only while split, like the space rows.
+                .paneSlotBadge(layout.isSplit ? slots : [], focused: layout.focused)
         }
         .buttonStyle(.plain)
         .paneDraggable(ref, title: pane.displayTitle, enabled: true)

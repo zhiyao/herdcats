@@ -1,3 +1,4 @@
+import Observation
 import SwiftUI
 
 // MARK: - Pane chrome environment
@@ -154,6 +155,7 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
         if sizeClass == .regular {
             NavigationSplitView(columnVisibility: columnVisibility) {
                 sidebar
+                    .environment(\.paneMemoryStore, openPaneMemory)
                     .safeAreaInset(edge: .bottom, spacing: 0) { SidebarTabSwitcher() }
                     .navigationSplitViewColumnWidth(min: 320, ideal: Self.listColumnWidth, max: 440)
             } detail: {
@@ -211,6 +213,7 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
 /// item's `PaneRef.memoryKey`, which survives a size-class change that
 /// rebuilds the detail and follows the ref when the slots swap. Entries for
 /// items that are no longer open are dropped with `retain`.
+@Observable
 final class OpenPaneMemory {
     private var paneIDs: [String: String] = [:]
 
@@ -244,11 +247,21 @@ struct OpenPaneSlot {
     }
 }
 
+/// The whole memory, for the list column, which marks the pane each slot shows.
+private struct PaneMemoryStoreKey: EnvironmentKey {
+    static let defaultValue: OpenPaneMemory? = nil
+}
+
 private struct OpenPaneMemoryKey: EnvironmentKey {
     static let defaultValue: OpenPaneSlot? = nil
 }
 
 extension EnvironmentValues {
+    var paneMemoryStore: OpenPaneMemory? {
+        get { self[PaneMemoryStoreKey.self] }
+        set { self[PaneMemoryStoreKey.self] = newValue }
+    }
+
     var openPaneMemory: OpenPaneSlot? {
         get { self[OpenPaneMemoryKey.self] }
         set { self[OpenPaneMemoryKey.self] = newValue }

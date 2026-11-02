@@ -96,4 +96,38 @@ struct SpacePaneTreeTests {
         #expect(SpacePaneTree.needsReload(loaded: key, current: .init(tabCount: 2, paneCount: 4)))
         #expect(SpacePaneTree.needsReload(loaded: nil, current: key))
     }
+
+    // MARK: which pane a slot shows
+
+    private func pane(_ id: String, tab: String, focused: Bool) -> PaneEntry {
+        PaneEntry(
+            paneId: id, tabId: tab, workspaceId: "w", label: nil, agent: nil, agentStatus: "idle",
+            cwd: nil, terminalTitle: "t", terminalTitleStripped: "t", focused: focused, revision: nil
+        )
+    }
+
+    @Test func aPaneRefShowsItsOwnPane() {
+        let shown = SpacePaneTree.shownPaneID(
+            of: PaneRef(spaceID: "w", paneID: "p2"), remembered: "p1",
+            panes: [pane("p1", tab: "t1", focused: true)], activeTabID: "t1"
+        )
+        #expect(shown == "p2")
+    }
+
+    @Test func aSpaceRefShowsTheRememberedSiblingWhenItStillExists() {
+        let panes = [pane("p1", tab: "t1", focused: true), pane("p2", tab: "t1", focused: false)]
+        let ref = PaneRef(spaceID: "w", paneID: nil)
+        #expect(SpacePaneTree.shownPaneID(of: ref, remembered: "p2", panes: panes, activeTabID: "t1") == "p2")
+        #expect(SpacePaneTree.shownPaneID(of: ref, remembered: "gone", panes: panes, activeTabID: "t1") == "p1")
+    }
+
+    @Test func aSpaceRefFallsBackToFocusedThenActiveTabThenFirst() {
+        let ref = PaneRef(spaceID: "w", paneID: nil)
+        let focused = [pane("p1", tab: "t1", focused: false), pane("p2", tab: "t2", focused: true)]
+        #expect(SpacePaneTree.shownPaneID(of: ref, remembered: nil, panes: focused, activeTabID: "t1") == "p2")
+        let none = [pane("p1", tab: "t1", focused: false), pane("p2", tab: "t2", focused: false)]
+        #expect(SpacePaneTree.shownPaneID(of: ref, remembered: nil, panes: none, activeTabID: "t2") == "p2")
+        #expect(SpacePaneTree.shownPaneID(of: ref, remembered: nil, panes: none, activeTabID: "zz") == "p1")
+        #expect(SpacePaneTree.shownPaneID(of: ref, remembered: nil, panes: [], activeTabID: "t1") == nil)
+    }
 }
