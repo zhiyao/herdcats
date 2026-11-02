@@ -100,6 +100,7 @@ struct PaneSwitcher: View {
     var lastUpdatedByPaneID: [String: Date] = [:]
     var pendingPane: PendingPanePlaceholder?
     var isAddDisabled = false
+    var allowsMutations = true
     var onAdd: () -> Void
     var onRename: (PaneEntry) -> Void = { _ in }
     var onKill: (PaneEntry) -> Void = { _ in }
@@ -118,6 +119,7 @@ struct PaneSwitcher: View {
         lastUpdatedByPaneID: [String: Date] = [:],
         pendingPane: PendingPanePlaceholder? = nil,
         isAddDisabled: Bool = false,
+        allowsMutations: Bool = true,
         onAdd: @escaping () -> Void,
         onRename: @escaping (PaneEntry) -> Void = { _ in },
         onKill: @escaping (PaneEntry) -> Void = { _ in }
@@ -129,6 +131,7 @@ struct PaneSwitcher: View {
         self.lastUpdatedByPaneID = lastUpdatedByPaneID
         self.pendingPane = pendingPane
         self.isAddDisabled = isAddDisabled
+        self.allowsMutations = allowsMutations
         self.onAdd = onAdd
         self.onRename = onRename
         self.onKill = onKill
@@ -288,22 +291,24 @@ struct PaneSwitcher: View {
                             pendingCard
                         }
 
-                        Button(action: onAdd) {
-                            Image(systemName: "plus")
-                                .font(.jost(.title2, weight: .semibold))
-                                .foregroundStyle(Theme.accent)
-                                .frame(width: 56, height: cardHeight)
-                                .contentShape(RoundedRectangle.continuous(DesignSystem.CornerRadius.lg))
-                                .modifier(PaneSwitcherGlassItem(
-                                    shape: RoundedRectangle.continuous(DesignSystem.CornerRadius.lg)
-                                ))
+                        if allowsMutations {
+                            Button(action: onAdd) {
+                                Image(systemName: "plus")
+                                    .font(.jost(.title2, weight: .semibold))
+                                    .foregroundStyle(Theme.accent)
+                                    .frame(width: 56, height: cardHeight)
+                                    .contentShape(RoundedRectangle.continuous(DesignSystem.CornerRadius.lg))
+                                    .modifier(PaneSwitcherGlassItem(
+                                        shape: RoundedRectangle.continuous(DesignSystem.CornerRadius.lg)
+                                    ))
+                            }
+                            .buttonStyle(.herdrCard)
+                            .disabled(isAddDisabled)
+                            .opacity(isAddDisabled ? 0.45 : 1)
+                            .accessibilityLabel("Add Pane or Tab")
+                            .accessibilityIdentifier("pane-add-button")
+                            .id("pane-add")
                         }
-                        .buttonStyle(.herdrCard)
-                        .disabled(isAddDisabled)
-                        .opacity(isAddDisabled ? 0.45 : 1)
-                        .accessibilityLabel("Add Pane or Tab")
-                        .accessibilityIdentifier("pane-add-button")
-                        .id("pane-add")
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
@@ -346,20 +351,22 @@ struct PaneSwitcher: View {
                             pendingChip
                         }
 
-                        Button(action: onAdd) {
-                            Image(systemName: "plus")
-                                .font(.jost(.caption, weight: .semibold))
-                                .foregroundStyle(Theme.accent)
-                                .frame(width: chipHeight, height: chipHeight)
-                                .contentShape(Capsule())
-                                .modifier(PaneSwitcherGlassItem(shape: Capsule()))
+                        if allowsMutations {
+                            Button(action: onAdd) {
+                                Image(systemName: "plus")
+                                    .font(.jost(.caption, weight: .semibold))
+                                    .foregroundStyle(Theme.accent)
+                                    .frame(width: chipHeight, height: chipHeight)
+                                    .contentShape(Capsule())
+                                    .modifier(PaneSwitcherGlassItem(shape: Capsule()))
+                            }
+                            .buttonStyle(.herdrCard)
+                            .disabled(isAddDisabled)
+                            .opacity(isAddDisabled ? 0.45 : 1)
+                            .accessibilityLabel("Add Pane or Tab")
+                            .accessibilityIdentifier("pane-add-button")
+                            .id("pane-add")
                         }
-                        .buttonStyle(.herdrCard)
-                        .disabled(isAddDisabled)
-                        .opacity(isAddDisabled ? 0.45 : 1)
-                        .accessibilityLabel("Add Pane or Tab")
-                        .accessibilityIdentifier("pane-add-button")
-                        .id("pane-add")
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
@@ -470,20 +477,22 @@ struct PaneSwitcher: View {
 
     @ViewBuilder
     private func paneMenu(for pane: PaneEntry) -> some View {
-        Button {
-            onRename(pane)
-        } label: {
-            Label("Rename", systemImage: "pencil")
-        }
-        .disabled(isAddDisabled)
-        .accessibilityIdentifier("pane-card-rename-\(pane.id)")
+        if allowsMutations {
+            Button {
+                onRename(pane)
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+            .disabled(isAddDisabled)
+            .accessibilityIdentifier("pane-card-rename-\(pane.id)")
 
-        Button(role: .destructive) {
-            onKill(pane)
-        } label: {
-            Label("Kill", systemImage: "xmark.circle")
+            Button(role: .destructive) {
+                onKill(pane)
+            } label: {
+                Label("Kill", systemImage: "xmark.circle")
+            }
+            .disabled(isAddDisabled)
+            .accessibilityIdentifier("pane-card-kill-\(pane.id)")
         }
-        .disabled(isAddDisabled)
-        .accessibilityIdentifier("pane-card-kill-\(pane.id)")
     }
 }

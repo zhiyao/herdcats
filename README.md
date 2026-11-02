@@ -12,8 +12,22 @@ A native iPhone client for [Herdr](https://herdr.dev). Connect over SSH to
 browse spaces and agents, read pane output, and send terminal input, composed
 messages, dictation, and photos from your phone.
 
-Herdcats uses SwiftUI and Observation on iOS 17 or later. It runs the remote
-`herdr` CLI over SSH; it needs no companion daemon or custom relay.
+Herdcats uses SwiftUI and Observation on iOS 17 or later. Each SSH connection
+uses **TUI** (the `herdr` CLI) or **Herdr Core** (the `hc connect` API). **Auto**,
+the default for new machines, detects both and saves each one it finds. A
+machine with both appears once in your lists and connects with the runtime you
+used last; switch runtime from the machine menu. Existing connections remain TUI.
+
+Herdr Core mode needs no Herdcats bridge. It shows desktop spaces and tabs when
+their layout is available, plus **Other terminals** for standalone or ungrouped
+terminals. Panes use the same terminal view, live keys, composer, dictation and
+photos as TUI. Herdr Core has no raw text input, so live typing sends key
+presses and asks you to use Compose for shifted symbols and non-ASCII text.
+Desktop layout changes, native timelines and structured approval/model controls
+are available through the TUI path; Herdr Core uses text snapshots rather than
+a full terminal emulator.
+
+In TUI mode, Herdcats runs the remote `herdr` CLI over SSH.
 Live pane input and reads reuse persistent POSIX shell channels when available,
 with separate channels so output reads do not block typing. This uses stock
 Herdr and SSH without Python, additional host packages, or an installed helper.
@@ -117,7 +131,11 @@ and logo assets with `python3 ios/scripts/generate_logo.py`.
 
 ## Connect to Herdr
 
-1. Install Herdr on your remote machine and start its default session.
+1. Choose **Auto**, **TUI** or **Herdr Core** in Connection Settings. For TUI,
+   install Herdr and start its default session. For Herdr Core, install
+   [Herdr Core](https://github.com/herdrdev/herdr-core) (`hc`) and use its
+   standalone runtime or the Herdr desktop app. Herdr Core mode never falls back
+   to a TUI session.
 2. Enable SSH access. On macOS, enable **System Settings → General → Sharing →
    Remote Login**. Confirm that SSH works with your account.
 3. Connect the phone and machine to the same Tailscale network, or use another
