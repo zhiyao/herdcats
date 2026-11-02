@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Security
 import NIOSSH
 import SwiftUI
@@ -367,16 +368,16 @@ struct PaneSessionStateTests {
         let revision = state.outputRevision
         #expect(state.output == "hello\nworld")
 
-        var fired = false
-        withObservationTracking { _ = state.output } onChange: { fired = true }
+        let fired = OSAllocatedUnfairLock(initialState: false)
+        withObservationTracking { _ = state.output } onChange: { fired.withLock { $0 = true } }
         state.applyRead("hello\nworld")
-        #expect(!fired)
+        #expect(!fired.withLock { $0 })
         state.updateParsedOutput(palette: palette)
         #expect(state.outputRevision == revision)
 
-        withObservationTracking { _ = state.output } onChange: { fired = true }
+        withObservationTracking { _ = state.output } onChange: { fired.withLock { $0 = true } }
         state.applyRead("changed")
-        #expect(fired)
+        #expect(fired.withLock { $0 })
         state.applyRead("hello\nworld")
 
         state.applyRead("hello\nworld!")
