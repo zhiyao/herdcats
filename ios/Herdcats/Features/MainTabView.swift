@@ -412,7 +412,14 @@ struct AgentsScreen: View {
         )
         Group {
             if isRegular {
-                Button { layout.openInFocused(ref(for: item)) } label: { row }
+                Button { layout.openInFocused(ref(for: item)) } label: {
+                    row.paneSlotBadge(layout.badgeSlot(paneID: item.id), focused: layout.focused)
+                }
+                .contextMenu {
+                    ForEach(PaneOpenAction.actions(for: ref(for: item), layout: $layout)) { action in
+                        Button(action: action.perform) { Label(action.title, systemImage: action.systemImage) }
+                    }
+                }
             } else {
                 NavigationLink(value: ref(for: item)) { row }
             }

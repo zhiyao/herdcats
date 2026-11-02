@@ -123,6 +123,8 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
     /// Switching between the split view and the stack rebuilds the detail,
     /// so each open item's sibling pane is remembered here, above both layouts.
     @State private var openPaneMemory = OpenPaneMemory()
+    /// The slot the pane picker is choosing for.
+    @State private var pickerSlot: PaneLayout.Slot?
 
     /// The compact stack's path is the focused pane while it is pushed.
     private var stackPath: Binding<[PaneRef]> {
@@ -152,7 +154,7 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
             } detail: {
                 Group {
                     if layout.left != nil {
-                        TwoPaneDetail(layout: $layout, memory: openPaneMemory, content: detail)
+                        TwoPaneDetail(layout: $layout, memory: openPaneMemory, pick: { pickerSlot = $0 }, content: detail)
                     } else {
                         ContentUnavailableView {
                             Label {
@@ -175,6 +177,9 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
                 .environment(\.showsPaneBackButton, false)
             }
             .navigationSplitViewStyle(.balanced)
+            .sheet(item: $pickerSlot) { slot in
+                PanePickerSheet(slot: slot, layout: $layout)
+            }
             .background {
                 GeometryReader { proxy in
                     Color.clear.onChange(of: proxy.size.width, initial: true) { _, width in totalWidth = width }

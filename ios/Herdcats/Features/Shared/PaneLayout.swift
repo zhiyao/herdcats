@@ -18,6 +18,19 @@ struct PaneLayout: Codable, Equatable {
         var other: Slot { self == .left ? .right : .left }
     }
 
+    /// The slot a list row is open in, shown as an L/R badge. Only while split.
+    func badgeSlot(spaceID: String) -> Slot? {
+        guard isSplit else { return nil }
+        if left?.spaceID == spaceID { return .left }
+        return right?.spaceID == spaceID ? .right : nil
+    }
+
+    func badgeSlot(paneID: String) -> Slot? {
+        guard isSplit else { return nil }
+        if left?.paneID == paneID { return .left }
+        return right?.paneID == paneID ? .right : nil
+    }
+
     var left: PaneRef?
     var right: PaneRef?
     var focused: Slot = .left
@@ -174,4 +187,8 @@ struct PaneLayout: Codable, Equatable {
     init(storageValue: String) {
         self = (try? JSONDecoder().decode(PaneLayout.self, from: Data(storageValue.utf8))) ?? PaneLayout()
     }
+}
+
+extension PaneLayout.Slot: Identifiable {
+    var id: String { rawValue }
 }

@@ -218,6 +218,9 @@ struct SpacesScreen: View {
                 SpaceActionsDrawer(
                     space: space,
                     isWorktreeActionDisabled: model.isPerformingWorktreeAction,
+                    openActions: horizontalSizeClass == .regular
+                        ? PaneOpenAction.actions(for: PaneRef(spaceID: space.id, paneID: nil), layout: $layout)
+                        : [],
                     onSelect: { action in
                         pendingSpaceAction = (action, space)
                         actionsTarget = nil
@@ -426,8 +429,10 @@ struct SpacesScreen: View {
         // be simultaneous so it doesn't consume the NavigationLink's tap.
         let link = Group {
             if horizontalSizeClass == .regular {
-                Button { layout.openInFocused(PaneRef(spaceID: space.id, paneID: nil)) } label: { row() }
-                    .buttonStyle(.plain)
+                Button { layout.openInFocused(PaneRef(spaceID: space.id, paneID: nil)) } label: {
+                    row().paneSlotBadge(layout.badgeSlot(spaceID: space.id), focused: layout.focused)
+                }
+                .buttonStyle(.plain)
             } else {
                 NavigationLink(value: PaneRef(spaceID: space.id, paneID: nil)) { row() }
                     .hidesNavigationIndicator()
@@ -435,7 +440,16 @@ struct SpacesScreen: View {
         }
         .quietListRow()
         if appModel.isCoreMode {
-            link
+            // No actions drawer in Core mode, so the row menu is the way to pick a side.
+            if horizontalSizeClass == .regular {
+                link.contextMenu {
+                    ForEach(PaneOpenAction.actions(for: PaneRef(spaceID: space.id, paneID: nil), layout: $layout)) { action in
+                        Button(action: action.perform) { Label(action.title, systemImage: action.systemImage) }
+                    }
+                }
+            } else {
+                link
+            }
         } else {
             // WhatsApp-style: drag right to left; Close sits at the screen edge.
             link.swipeActions(edge: .trailing, allowsFullSwipe: false) {
