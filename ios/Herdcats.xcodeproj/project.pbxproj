@@ -26,6 +26,7 @@
 		1875AA3FC9948777DD351BB0 /* AgentBridgeClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92640BC7EDFFEEFCA4FB2AB6 /* AgentBridgeClientTests.swift */; };
 		18DF82E95FACCEA21CA4D07D /* ConnectionSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5D074F27B1A73850A67894 /* ConnectionSettingsView.swift */; };
 		198358910198F4D981D8D7BD /* ConnectionSettingsView+Card.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6349F51A9FF576CFF9455B92 /* ConnectionSettingsView+Card.swift */; };
+		1AC2D62A95CF3FC6B0165FB6 /* TwoPaneDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C957C8951A08876AE8630D8 /* TwoPaneDetail.swift */; };
 		1B2CEDABD8B5C45FEE90399C /* HerdcatsTests+QuotaUnavailable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39B10C9183B00C53D29BAEF1 /* HerdcatsTests+QuotaUnavailable.swift */; };
 		1D88518C2243BA6921399473 /* PaneVoiceComposeBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102AB3022C660FF63EDC66C0 /* PaneVoiceComposeBar.swift */; };
 		1DF5F4A426B71B495F0F7C70 /* SettingsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEA995CB2834A1DEFB8B1703 /* SettingsScreen.swift */; };
@@ -184,6 +185,7 @@
 		03D86B705A4E80AB24216844 /* OpenSSHKeyParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenSSHKeyParser.swift; sourceTree = "<group>"; };
 		08F22D067F6E76605909958F /* HerdcatsTests+RefreshGeneration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdcatsTests+RefreshGeneration.swift"; sourceTree = "<group>"; };
 		0B7FDB979853200806B0878B /* Jost-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Jost-Variable.ttf"; sourceTree = "<group>"; };
+		0C957C8951A08876AE8630D8 /* TwoPaneDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwoPaneDetail.swift; sourceTree = "<group>"; };
 		102AB3022C660FF63EDC66C0 /* PaneVoiceComposeBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneVoiceComposeBar.swift; sourceTree = "<group>"; };
 		121986C4CFF47D9ACC6C4E0B /* PlainTextInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlainTextInput.swift; sourceTree = "<group>"; };
 		14D439FDB83BE3A5C49A7E07 /* Silkscreen-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Silkscreen-Bold.ttf"; sourceTree = "<group>"; };
@@ -503,6 +505,7 @@
 				3A291929EC6320E46D933CAF /* PaneLayout.swift */,
 				171E48FFC3DD7A42CE5C7CED /* SelectionSplitView.swift */,
 				74D0965FC03454048E52E616 /* SidebarTabSwitcher.swift */,
+				0C957C8951A08876AE8630D8 /* TwoPaneDetail.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -875,6 +878,7 @@
 				E09AD38403575BEA82C7E9DB /* TimelineActivityViews.swift in Sources */,
 				A85C0F18679FF1BA73DAC863 /* TimelineDiffParser.swift in Sources */,
 				D88366995735A638B5816998 /* TimelineEntryViews.swift in Sources */,
+				1AC2D62A95CF3FC6B0165FB6 /* TwoPaneDetail.swift in Sources */,
 				6FCE23D3A5BDBCE65BAE1B67 /* UserPreferences.swift in Sources */,
 				D207CAF048B6C930676C5ADC /* VoiceWaveform.swift in Sources */,
 			);

@@ -5,6 +5,9 @@ import Foundation
 struct PaneRef: Codable, Hashable {
     let spaceID: String
     let paneID: String?
+
+    /// Keys per-pane memory that must survive a rebuilt detail view.
+    var memoryKey: String { "\(spaceID)|\(paneID ?? "")" }
 }
 
 /// Which panes the regular-width detail column shows, and which one has the input surface.
@@ -96,6 +99,30 @@ struct PaneLayout: Codable, Equatable {
         return result
     }
 
+    // MARK: Compact stack
+
+    /// The compact `NavigationStack` path: the focused pane while it is pushed.
+    var compactPath: [PaneRef] {
+        guard compactDetailVisible, let focusedRef else { return [] }
+        return [focusedRef]
+    }
+
+    /// Applies a path change from the compact stack. Back empties the path
+    /// and leaves the slots alone; a push opens the ref in the focused slot.
+    mutating func setCompactPath(_ path: [PaneRef]) {
+        guard let ref = path.last else {
+            compactDetailVisible = false
+            return
+        }
+        if focusedRef != ref { openInFocused(ref) }
+        compactDetailVisible = true
+    }
+
+    /// Folding to compact keeps the user in the pane they were reading.
+    mutating func enteredCompact() {
+        if left != nil { compactDetailVisible = true }
+    }
+
     private mutating func set(_ ref: PaneRef, in slot: Slot) {
         if slot == .left { left = ref } else { right = ref }
     }
@@ -109,6 +136,14 @@ struct PaneLayout: Codable, Equatable {
             return point
         }
         return clamped
+    }
+
+    /// One accessibility step along ⅓, ½, ⅔.
+    static func steppedRatio(_ ratio: Double, increment: Bool) -> Double {
+        let steps = [1.0 / 3.0, 0.5, 2.0 / 3.0]
+        let epsilon = 0.0001
+        if increment { return steps.first { $0 > ratio + epsilon } ?? steps[2] }
+        return steps.last { $0 < ratio - epsilon } ?? steps[0]
     }
 
     static func listFits(

@@ -34,24 +34,36 @@ struct SelectionSplitViewTests {
         #expect(slot.paneID == nil)
     }
 
-    @Test func closeDetailClearsItsOwnSelection() {
-        let box = SelectionBox("a")
-        CloseDetailAction(selection: box.binding, id: "a")()
-        #expect(box.value == nil)
+    @Test func closeDetailClosesOnlyItsSlot() {
+        let box = LayoutBox(PaneLayout(left: ref("a"), right: ref("b")))
+        CloseDetailAction(layout: box.binding, slot: .left, ref: ref("a"))()
+        #expect(box.value.left == ref("b"))
+        #expect(box.value.right == nil)
     }
 
-    @Test func closeDetailLeavesAnotherSelectionOpen() {
-        // A's close finishing after the user opened B must not close B.
-        let box = SelectionBox("b")
-        CloseDetailAction(selection: box.binding, id: "a")()
-        #expect(box.value == "b")
+    @Test func closeDetailLeavesANewerPaneInTheSlotOpen() {
+        // A's close finishing after the user opened C in A's slot must not close C.
+        let box = LayoutBox(PaneLayout(left: ref("c"), right: ref("b")))
+        CloseDetailAction(layout: box.binding, slot: .left, ref: ref("a"))()
+        #expect(box.value == PaneLayout(left: ref("c"), right: ref("b")))
     }
+
+    @Test func compactCloseAlsoPopsTheStack() {
+        var layout = PaneLayout(left: ref("a"), right: ref("b"))
+        layout.compactDetailVisible = true
+        let box = LayoutBox(layout)
+        CloseDetailAction(layout: box.binding, slot: .left, ref: ref("a"), popsCompactStack: true)()
+        #expect(box.value.left == ref("b"))
+        #expect(!box.value.compactDetailVisible)
+    }
+
+    private func ref(_ id: String) -> PaneRef { PaneRef(spaceID: id, paneID: nil) }
 }
 
-private final class SelectionBox {
-    var value: String?
-    init(_ value: String?) { self.value = value }
-    var binding: Binding<String?> {
+private final class LayoutBox {
+    var value: PaneLayout
+    init(_ value: PaneLayout) { self.value = value }
+    var binding: Binding<PaneLayout> {
         Binding(get: { self.value }, set: { self.value = $0 })
     }
 }

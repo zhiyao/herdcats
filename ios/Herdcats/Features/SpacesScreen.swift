@@ -9,13 +9,13 @@ struct SpacesScreen: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let model: SpacesModel
+    /// The open panes, shared with the Agents tab and by the split view and
+    /// the compact stack, so folding or unfolding keeps the same panes open.
+    @Binding var layout: PaneLayout
 
-    /// Id of the open space. Shared by the split view and the compact stack,
-    /// so folding or unfolding keeps the same space open.
-    @State private var selectedID: String?
-    /// The selected space as last seen in the list, so a refresh that drops
-    /// it doesn't blank the pane mid-read.
-    @State private var lastSeen: Space?
+    /// Open spaces as last seen in the list, so a refresh that drops one
+    /// doesn't blank its pane mid-read.
+    @State private var lastSeen: [String: Space] = [:]
 
     @AppStorage(SpaceSortPreference.storageKey)
     private var sortRaw = SpaceSortPreference.default.rawValue
@@ -80,7 +80,7 @@ struct SpacesScreen: View {
         @Bindable var model = model
 
         return SelectionSplitView(
-            selection: $selectedID,
+            layout: $layout,
             emptyTitle: "Select a space"
         ) {
             Group {
@@ -207,7 +207,7 @@ struct SpacesScreen: View {
                 rememberSelected()
                 autoSelectFirstIfNeeded()
             }
-            .onChange(of: selectedID) { _, _ in rememberSelected() }
+            .onChange(of: layout) { _, _ in rememberSelected() }
             .onAppear { autoSelectFirstIfNeeded() }
             .sheet(item: $actionsTarget, onDismiss: {
                 guard let pending = pendingSpaceAction else { return }
@@ -382,9 +382,9 @@ struct SpacesScreen: View {
                 _ = await (spaces, usage)
             }
             .connectionStatusBanner(appModel: appModel)
-        } detail: { id in
-            if let space = model.spaces.first(where: { $0.id == id }) ?? lastSeen.flatMap({ $0.id == id ? $0 : nil }) {
-                WorkspacePaneView(space: space)
+        } detail: { ref in
+            if let space = model.spaces.first(where: { $0.id == ref.spaceID }) ?? lastSeen[ref.spaceID] {
+                WorkspacePaneView(space: space, initialPaneID: ref.paneID)
                     .environment(appModel)
                     .environment(model)
             } else {
@@ -395,20 +395,25 @@ struct SpacesScreen: View {
     }
 
     private func rememberSelected() {
-        guard let selectedID, let live = model.spaces.first(where: { $0.id == selectedID }) else { return }
-        lastSeen = live
+        for ref in [layout.left, layout.right].compactMap({ $0 }) {
+            if let live = model.spaces.first(where: { $0.id == ref.spaceID }) {
+                lastSeen[ref.spaceID] = live
+            }
+        }
     }
 
     private func autoSelectFirstIfNeeded() {
-        if selectedID == nil, horizontalSizeClass == .regular,
-           ProcessInfo.processInfo.arguments.contains("-hc.select-first") {
-            selectedID = displayedGroups.first?.root.id
+        if layout.left == nil, horizontalSizeClass == .regular,
+           ProcessInfo.processInfo.arguments.contains("-hc.select-first"),
+           let first = displayedGroups.first?.root {
+            layout.openInFocused(PaneRef(spaceID: first.id, paneID: nil))
         }
     }
 
     /// Only the split view's detail column marks a row; a pushed pane covers the list.
     private func isSelected(_ space: Space) -> Bool {
-        horizontalSizeClass == .regular && selectedID == space.id
+        horizontalSizeClass == .regular
+            && (layout.left?.spaceID == space.id || layout.right?.spaceID == space.id)
     }
 
     // MARK: Pieces
@@ -421,10 +426,10 @@ struct SpacesScreen: View {
         // be simultaneous so it doesn't consume the NavigationLink's tap.
         let link = Group {
             if horizontalSizeClass == .regular {
-                Button { selectedID = space.id } label: { row() }
+                Button { layout.openInFocused(PaneRef(spaceID: space.id, paneID: nil)) } label: { row() }
                     .buttonStyle(.plain)
             } else {
-                NavigationLink(value: space.id) { row() }
+                NavigationLink(value: PaneRef(spaceID: space.id, paneID: nil)) { row() }
                     .hidesNavigationIndicator()
             }
         }

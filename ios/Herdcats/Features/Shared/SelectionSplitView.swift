@@ -26,9 +26,9 @@ extension EnvironmentValues {
         set { self[ShowsPaneBackButtonKey.self] = newValue }
     }
 
-    /// Closes the open item by clearing the list selection. The split view's
-    /// detail column has no stack for `dismiss` to pop, so a pane that closes
-    /// itself (workspace closed, last pane killed) uses this instead.
+    /// Closes this pane's slot. The split view's detail column has no stack
+    /// for `dismiss` to pop, so a pane that closes itself (workspace closed,
+    /// last pane killed) uses this instead.
     var closeDetail: CloseDetailAction? {
         get { self[CloseDetailKey.self] }
         set { self[CloseDetailKey.self] = newValue }
@@ -39,12 +39,15 @@ struct CloseDetailAction {
     let action: () -> Void
     func callAsFunction() { action() }
 
-    /// Clears `selection` only while it still names `id`. A pane's close can
-    /// finish after the user has opened another item (the SSH request runs in
-    /// an unstructured task), and it must not close that other item.
-    init(selection: Binding<String?>, id: String) {
+    /// Closes `slot` only while it still holds `ref`. A pane's close can
+    /// finish after the user has opened another pane there (the SSH request
+    /// runs in an unstructured task), and it must not close that other pane.
+    /// In the compact stack, closing also pops back to the list.
+    init(layout: Binding<PaneLayout>, slot: PaneLayout.Slot, ref: PaneRef, popsCompactStack: Bool = false) {
         action = {
-            if selection.wrappedValue == id { selection.wrappedValue = nil }
+            guard layout.wrappedValue.ref(in: slot) == ref else { return }
+            layout.wrappedValue.close(slot)
+            if popsCompactStack { layout.wrappedValue.compactDetailVisible = false }
         }
     }
 }
@@ -55,81 +58,109 @@ private struct CloseDetailKey: EnvironmentKey {
 
 // MARK: - Selection split view
 
-/// A list that opens its items in a second column on regular width and
-/// pushes them on a stack on compact width. Both layouts read one
-/// `selection`, a stable id, so folding or unfolding keeps the user's place:
-/// the stack's path is derived from it, and the split view selects it.
+/// A list that opens its panes in the detail column on regular width (up to
+/// two side by side) and pushes the focused one on a stack on compact width.
+/// Both layouts read one `PaneLayout`, so folding or unfolding keeps the
+/// user's place: the stack's path is derived from it, and the detail column
+/// shows its slots.
 ///
-/// Callers draw rows that set `selection` directly when `horizontalSizeClass`
-/// is regular and use `NavigationLink(value: id)` when compact.
+/// Callers draw rows that call `layout.openInFocused` when `horizontalSizeClass`
+/// is regular and use `NavigationLink(value: PaneRef)` when compact.
 struct SelectionSplitView<Sidebar: View, Detail: View>: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @SceneStorage(SidebarVisibility.storageKey)
     private var visibilityRaw = NavigationSplitViewVisibility.all.storageValue
-    @Binding var selection: String?
+    @Binding var layout: PaneLayout
     let emptyTitle: LocalizedStringKey
     let sidebar: Sidebar
-    let detail: (String) -> Detail
+    let detail: (PaneRef) -> Detail
 
     init(
-        selection: Binding<String?>,
+        layout: Binding<PaneLayout>,
         emptyTitle: LocalizedStringKey,
         @ViewBuilder sidebar: () -> Sidebar,
-        @ViewBuilder detail: @escaping (String) -> Detail
+        @ViewBuilder detail: @escaping (PaneRef) -> Detail
     ) {
-        _selection = selection
+        _layout = layout
         self.emptyTitle = emptyTitle
         self.sidebar = sidebar()
         self.detail = detail
     }
 
+    /// The list column's ideal width, used to decide whether two panes still fit beside it.
+    private static var listColumnWidth: CGFloat { 360 }
+
+    /// Width of the whole split view, to tell whether the list fits beside two panes.
+    @State private var totalWidth: CGFloat = 0
+    /// The list is hidden because two panes would be too narrow with it. It is
+    /// separate from the stored preference, which returns when this clears.
+    @State private var listHiddenForSplit = false
+
+    private var splitNeedsListHidden: Bool {
+        totalWidth > 0 && !PaneLayout.listFits(
+            totalWidth: totalWidth,
+            listWidth: Self.listColumnWidth,
+            isSplit: layout.isSplit
+        )
+    }
+
     private var columnVisibility: Binding<NavigationSplitViewVisibility> {
         Binding(
-            get: { NavigationSplitViewVisibility(storageValue: visibilityRaw) },
-            set: { visibilityRaw = $0.storageValue }
+            get: {
+                listHiddenForSplit ? .detailOnly : NavigationSplitViewVisibility(storageValue: visibilityRaw)
+            },
+            set: { newValue in
+                if listHiddenForSplit {
+                    // The user brought the list in over the split.
+                    guard newValue != .detailOnly else { return }
+                    listHiddenForSplit = false
+                }
+                visibilityRaw = newValue.storageValue
+            }
         )
     }
 
     /// Switching between the split view and the stack rebuilds the detail,
-    /// so the open sibling pane is remembered here, above both layouts.
-    @State private var openPaneMemory = OpenPaneMemory()
+    /// so each slot's open sibling pane is remembered here, above both layouts.
+    @State private var leftMemory = OpenPaneMemory()
+    @State private var rightMemory = OpenPaneMemory()
 
-    /// The stack's path is just the selected id, so Back clears the selection.
-    private var stackPath: Binding<[String]> {
+    private func memory(for slot: PaneLayout.Slot) -> OpenPaneMemory {
+        slot == .left ? leftMemory : rightMemory
+    }
+
+    /// The compact stack's path is the focused pane while it is pushed.
+    private var stackPath: Binding<[PaneRef]> {
         Binding(
-            get: { selection.map { [$0] } ?? [] },
-            set: { selection = $0.last }
+            get: { layout.compactPath },
+            set: { layout.setCompactPath($0) }
         )
     }
 
-    /// Clearing the selection empties the detail column and pops the stack.
-    /// Scoped to the item the detail was built for.
-    private func closeDetail(for id: String) -> CloseDetailAction {
-        CloseDetailAction(selection: $selection, id: id)
-    }
-
     var body: some View {
-        layout
-            .onChange(of: selection) { _, selected in
-                if selected == nil { openPaneMemory.forget() }
+        content(for: horizontalSizeClass)
+            .onChange(of: layout.left) { _, left in
+                if left == nil { leftMemory.forget() }
+            }
+            .onChange(of: layout.right) { _, right in
+                if right == nil { rightMemory.forget() }
+            }
+            .onChange(of: horizontalSizeClass) { old, new in
+                if old == .regular, new == .compact { layout.enteredCompact() }
             }
     }
 
     @ViewBuilder
-    private var layout: some View {
-        if horizontalSizeClass == .regular {
+    private func content(for sizeClass: UserInterfaceSizeClass?) -> some View {
+        if sizeClass == .regular {
             NavigationSplitView(columnVisibility: columnVisibility) {
                 sidebar
                     .safeAreaInset(edge: .bottom, spacing: 0) { SidebarTabSwitcher() }
-                    .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 440)
+                    .navigationSplitViewColumnWidth(min: 320, ideal: Self.listColumnWidth, max: 440)
             } detail: {
                 Group {
-                    if let selection {
-                        detail(selection)
-                            .environment(\.openPaneMemory, OpenPaneSlot(memory: openPaneMemory, selection: selection))
-                            .environment(\.closeDetail, closeDetail(for: selection))
-                            // A new item gets fresh pane state, not the last item's.
-                            .id(selection)
+                    if layout.left != nil {
+                        TwoPaneDetail(layout: $layout, memory: memory(for:), content: detail)
                     } else {
                         ContentUnavailableView {
                             Label {
@@ -152,13 +183,21 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
                 .environment(\.showsPaneBackButton, false)
             }
             .navigationSplitViewStyle(.balanced)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.onChange(of: proxy.size.width, initial: true) { _, width in totalWidth = width }
+                }
+            }
+            .onChange(of: splitNeedsListHidden, initial: true) { _, hidden in listHiddenForSplit = hidden }
         } else {
             NavigationStack(path: stackPath) {
                 sidebar
-                    .navigationDestination(for: String.self) { id in
-                        detail(id)
-                            .environment(\.openPaneMemory, OpenPaneSlot(memory: openPaneMemory, selection: id))
-                            .environment(\.closeDetail, closeDetail(for: id))
+                    .navigationDestination(for: PaneRef.self) { ref in
+                        detail(ref)
+                            .environment(\.openPaneMemory, OpenPaneSlot(memory: memory(for: layout.focused), selection: ref.memoryKey))
+                            .environment(\.closeDetail, CloseDetailAction(
+                                layout: $layout, slot: layout.focused, ref: ref, popsCompactStack: true
+                            ))
                     }
             }
         }

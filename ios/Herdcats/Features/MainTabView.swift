@@ -43,6 +43,16 @@ struct ConnectedTabsView: View {
     @State private var model = SpacesModel()
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Binding var selectedTab: MainTab
+    /// The open panes, per window. Spaces and Agents share one layout, so
+    /// switching tabs keeps the same panes.
+    @SceneStorage("paneLayout") private var paneLayoutRaw = ""
+
+    private var paneLayout: Binding<PaneLayout> {
+        Binding(
+            get: { PaneLayout(storageValue: paneLayoutRaw) },
+            set: { paneLayoutRaw = $0.storageValue }
+        )
+    }
 
     enum MainTab: String, Hashable {
         case spaces
@@ -68,14 +78,14 @@ struct ConnectedTabsView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            SpacesScreen(model: model)
+            SpacesScreen(model: model, layout: paneLayout)
                 .hidesSystemTabBarForSidebarSwitcher(horizontalSizeClass)
                 .tabItem {
                     Label("Spaces", systemImage: "square.grid.3x3")
                 }
                 .tag(MainTab.spaces)
 
-            AgentsScreen(model: model)
+            AgentsScreen(model: model, layout: paneLayout)
                 .hidesSystemTabBarForSidebarSwitcher(horizontalSizeClass)
                 .tabItem {
                     Label("Agents", systemImage: "cpu")
@@ -114,6 +124,15 @@ struct ConnectedTabsView: View {
             await model.refresh(appModel.connection)
             guard !Task.isCancelled else { return }
             model.startAutoRefresh(appModel.connection)
+        }
+        .onChange(of: model.spaces) { _, spaces in
+            // Drop panes whose space is gone. An empty list is left alone: it
+            // is more likely a refresh gap than every space closing at once.
+            guard model.hasLoadedAgentList, !spaces.isEmpty else { return }
+            let ids = Set(spaces.map(\.id))
+            let current = paneLayout.wrappedValue
+            let pruned = current.pruned { ids.contains($0.spaceID) }
+            if pruned != current { paneLayout.wrappedValue = pruned }
         }
         .onChange(of: appModel.phase) { oldPhase, newPhase in
             if case .connected = newPhase, case .offline = oldPhase {
@@ -158,13 +177,13 @@ struct AgentsScreen: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let model: SpacesModel
+    /// The open panes, shared with the Spaces tab and by the split view and
+    /// the compact stack, so folding or unfolding keeps the same panes open.
+    @Binding var layout: PaneLayout
     @State private var raisedCardID: String?
-    /// Pane id of the open agent. Shared by the split view and the compact
-    /// stack, so folding or unfolding keeps the same agent open.
-    @State private var selectedID: String?
-    /// The selected agent as last seen in the list, so a refresh that drops
-    /// it doesn't blank the pane mid-read.
-    @State private var lastSeen: AgentListItem?
+    /// Spaces of the open panes as last seen in the list, so a refresh that
+    /// drops one doesn't blank its pane mid-read.
+    @State private var lastSeen: [String: Space] = [:]
 
     @AppStorage(AgentsSortPreference.storageKey)
     private var sortRaw = AgentsSortPreference.default.rawValue
@@ -206,7 +225,7 @@ struct AgentsScreen: View {
     var body: some View {
         let currentItems = items
         SelectionSplitView(
-            selection: $selectedID,
+            layout: $layout,
             emptyTitle: "Select an agent"
         ) {
             Group {
@@ -275,7 +294,7 @@ struct AgentsScreen: View {
                 rememberSelected()
                 autoSelectFirstIfNeeded()
             }
-            .onChange(of: selectedID) { _, _ in rememberSelected() }
+            .onChange(of: layout) { _, _ in rememberSelected() }
             .onAppear { autoSelectFirstIfNeeded() }
             .overlay(alignment: .bottom) {
                 if let error = model.agentListError,
@@ -296,9 +315,9 @@ struct AgentsScreen: View {
                 await model.refresh(appModel.connection)
             }
             .connectionStatusBanner(appModel: appModel)
-        } detail: { id in
-            if let item = currentItems.first(where: { $0.id == id }) ?? lastSeen.flatMap({ $0.id == id ? $0 : nil }) {
-                WorkspacePaneView(space: item.space, initialPaneID: item.agent.paneId)
+        } detail: { ref in
+            if let space = model.spaces.first(where: { $0.id == ref.spaceID }) ?? lastSeen[ref.spaceID] {
+                WorkspacePaneView(space: space, initialPaneID: ref.paneID)
                     .environment(appModel)
                     .environment(model)
             } else {
@@ -309,15 +328,27 @@ struct AgentsScreen: View {
     }
 
     private func rememberSelected() {
-        guard let selectedID, let live = items.first(where: { $0.id == selectedID }) else { return }
-        lastSeen = live
+        for ref in [layout.left, layout.right].compactMap({ $0 }) {
+            if let live = model.spaces.first(where: { $0.id == ref.spaceID }) {
+                lastSeen[ref.spaceID] = live
+            }
+        }
     }
 
     private func autoSelectFirstIfNeeded() {
-        if selectedID == nil, horizontalSizeClass == .regular,
-           ProcessInfo.processInfo.arguments.contains("-hc.select-first") {
-            selectedID = items.first?.id
+        if layout.left == nil, horizontalSizeClass == .regular,
+           ProcessInfo.processInfo.arguments.contains("-hc.select-first"),
+           let first = items.first {
+            layout.openInFocused(ref(for: first))
         }
+    }
+
+    private func ref(for item: AgentListItem) -> PaneRef {
+        PaneRef(spaceID: item.space.id, paneID: item.agent.paneId)
+    }
+
+    private func isOpen(_ item: AgentListItem) -> Bool {
+        layout.left?.paneID == item.id || layout.right?.paneID == item.id
     }
 
     // MARK: Pieces
@@ -376,14 +407,14 @@ struct AgentsScreen: View {
         let isRegular = horizontalSizeClass == .regular
         let row = AgentListRow(
             item: item,
-            isSelected: isRegular && selectedID == item.id,
+            isSelected: isRegular && isOpen(item),
             lastUpdated: model.lastUpdatedByPaneID[item.agent.paneId]
         )
         Group {
             if isRegular {
-                Button { selectedID = item.id } label: { row }
+                Button { layout.openInFocused(ref(for: item)) } label: { row }
             } else {
-                NavigationLink(value: item.id) { row }
+                NavigationLink(value: ref(for: item)) { row }
             }
         }
         .buttonStyle(.plain)

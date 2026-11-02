@@ -265,4 +265,65 @@ struct PaneLayoutTests {
         #expect(PaneLayout(storageValue: "garbage") == PaneLayout())
         #expect(PaneLayout(storageValue: "{\"left\": 3}") == PaneLayout())
     }
+
+    // MARK: compact stack
+
+    @Test func compactPathIsEmptyUntilTheDetailIsPushed() {
+        var layout = split(a, b, focused: .right)
+        #expect(layout.compactPath.isEmpty)
+        layout.compactDetailVisible = true
+        #expect(layout.compactPath == [b])
+    }
+
+    @Test func compactPathIsEmptyForAnEmptyLayout() {
+        var layout = PaneLayout()
+        layout.compactDetailVisible = true
+        #expect(layout.compactPath.isEmpty)
+    }
+
+    @Test func backingOutOfTheCompactStackKeepsTheSlots() {
+        var layout = split(a, b, focused: .right)
+        layout.compactDetailVisible = true
+        layout.setCompactPath([])
+        #expect(!layout.compactDetailVisible)
+        #expect(layout.left == a)
+        #expect(layout.right == b)
+        #expect(layout.focused == .right)
+    }
+
+    @Test func pushingARefOpensItInTheFocusedSlot() {
+        var layout = split(a, b, focused: .right)
+        layout.setCompactPath([c])
+        #expect(layout.compactDetailVisible)
+        #expect(layout.left == a)
+        #expect(layout.right == c)
+        #expect(layout.compactPath == [c])
+    }
+
+    @Test func pushingTheFocusedRefOnlyShowsTheDetail() {
+        var layout = split(a, b, focused: .left)
+        layout.setCompactPath([a])
+        #expect(layout.compactDetailVisible)
+        #expect(layout == { var l = split(a, b); l.compactDetailVisible = true; return l }())
+    }
+
+    @Test func foldingToCompactPushesTheFocusedPaneOnlyWhenSomethingIsOpen() {
+        var layout = split(a, b)
+        layout.enteredCompact()
+        #expect(layout.compactDetailVisible)
+        var empty = PaneLayout()
+        empty.enteredCompact()
+        #expect(!empty.compactDetailVisible)
+    }
+
+    // MARK: divider steps
+
+    @Test func steppedRatioMovesBetweenThirdsAndHalf() {
+        #expect(PaneLayout.steppedRatio(0.5, increment: true) == 2.0 / 3.0)
+        #expect(PaneLayout.steppedRatio(0.5, increment: false) == 1.0 / 3.0)
+        #expect(PaneLayout.steppedRatio(2.0 / 3.0, increment: true) == 2.0 / 3.0)
+        #expect(PaneLayout.steppedRatio(1.0 / 3.0, increment: false) == 1.0 / 3.0)
+        #expect(PaneLayout.steppedRatio(0.4, increment: true) == 0.5)
+        #expect(PaneLayout.steppedRatio(0.4, increment: false) == 1.0 / 3.0)
+    }
 }
