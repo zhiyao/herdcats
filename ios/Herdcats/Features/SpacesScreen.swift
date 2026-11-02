@@ -430,7 +430,7 @@ struct SpacesScreen: View {
         let link = Group {
             if horizontalSizeClass == .regular {
                 Button { layout.openInFocused(PaneRef(spaceID: space.id, paneID: nil)) } label: {
-                    row().paneSlotBadge(layout.badgeSlot(spaceID: space.id), focused: layout.focused)
+                    row().paneSlotBadge(layout.badgeSlots(spaceID: space.id), focused: layout.focused)
                 }
                 .buttonStyle(.plain)
                 .paneDraggable(PaneRef(spaceID: space.id, paneID: nil), title: space.label, enabled: true)

@@ -26,7 +26,7 @@ struct PendingSpaceRow: View {
 /// A space group's root as a chat-style row: status column, title with the
 /// last-activity time pinned top-right, and a line of tab/pane/agent counts.
 struct SpaceRow: View {
-    @Environment(\.paneRowBadge) private var paneBadge
+    @Environment(\.paneRowBadges) private var paneBadges
     let group: SpaceGroup
     var isHighlighted = false
     /// The row open in the split view's detail column.
@@ -48,7 +48,7 @@ struct SpaceRow: View {
                         FocusedMark()
                     }
                     Spacer(minLength: 8)
-                    if let paneBadge { PaneSlotTag(badge: paneBadge) }
+                    ForEach(paneBadges, id: \.slot) { PaneSlotTag(badge: $0) }
                     RowTimestamp(date: lastUpdated)
                 }
                 .alignmentGuide(.listTitleCenter) { $0[VerticalAlignment.center] }

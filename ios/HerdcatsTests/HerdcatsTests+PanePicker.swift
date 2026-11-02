@@ -110,11 +110,16 @@ struct PanePickerTests {
 
     @Test func badgesOnlyShowWhileSplit() {
         let single = PaneLayout(left: PaneRef(spaceID: "w1", paneID: nil))
-        #expect(single.badgeSlot(spaceID: "w1") == nil)
+        #expect(single.badgeSlots(spaceID: "w1").isEmpty)
         let both = PaneLayout(left: PaneRef(spaceID: "w1", paneID: nil), right: PaneRef(spaceID: "w2", paneID: "p2"))
-        #expect(both.badgeSlot(spaceID: "w1") == .left)
-        #expect(both.badgeSlot(spaceID: "w2") == .right)
-        #expect(both.badgeSlot(spaceID: "w3") == nil)
+        #expect(both.badgeSlots(spaceID: "w1") == [.left])
+        #expect(both.badgeSlots(spaceID: "w2") == [.right])
+        #expect(both.badgeSlots(spaceID: "w3").isEmpty)
+    }
+
+    @Test func aSpaceOpenInBothSlotsShowsBothBadges() {
+        let both = PaneLayout(left: PaneRef(spaceID: "w1", paneID: "p1"), right: PaneRef(spaceID: "w1", paneID: "p2"))
+        #expect(both.badgeSlots(spaceID: "w1") == [.left, .right])
     }
 
     @Test func agentBadgesMatchOnPaneID() {

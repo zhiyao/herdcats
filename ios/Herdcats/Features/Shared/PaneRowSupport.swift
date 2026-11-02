@@ -31,8 +31,12 @@ struct PaneOpenAction: Identifiable {
 extension View {
     /// Marks a list row that is open in a slot while split. The focused
     /// slot's badge is filled.
+    func paneSlotBadge(_ slots: [PaneLayout.Slot], focused: PaneLayout.Slot) -> some View {
+        modifier(PaneSlotBadgeModifier(slots: slots, focused: focused))
+    }
+
     func paneSlotBadge(_ slot: PaneLayout.Slot?, focused: PaneLayout.Slot) -> some View {
-        modifier(PaneSlotBadgeModifier(slot: slot, isFocused: slot == focused))
+        paneSlotBadge(slot.map { [$0] } ?? [], focused: focused)
     }
 }
 
@@ -43,11 +47,11 @@ struct PaneRowBadge: Equatable {
 }
 
 private struct PaneRowBadgeKey: EnvironmentKey {
-    static let defaultValue: PaneRowBadge? = nil
+    static let defaultValue: [PaneRowBadge] = []
 }
 
 extension EnvironmentValues {
-    var paneRowBadge: PaneRowBadge? {
+    var paneRowBadges: [PaneRowBadge] {
         get { self[PaneRowBadgeKey.self] }
         set { self[PaneRowBadgeKey.self] = newValue }
     }
@@ -69,16 +73,16 @@ struct PaneSlotTag: View {
 }
 
 private struct PaneSlotBadgeModifier: ViewModifier {
-    let slot: PaneLayout.Slot?
-    let isFocused: Bool
+    let slots: [PaneLayout.Slot]
+    let focused: PaneLayout.Slot
 
     func body(content: Content) -> some View {
-        if let slot {
+        if slots.isEmpty {
             content
-                .environment(\.paneRowBadge, PaneRowBadge(slot: slot, isFocused: isFocused))
-                .accessibilityValue(slot == .left ? "Open on left" : "Open on right")
         } else {
             content
+                .environment(\.paneRowBadges, slots.map { PaneRowBadge(slot: $0, isFocused: $0 == focused) })
+                .accessibilityValue(slots.count == 2 ? "Open on left and right" : slots[0] == .left ? "Open on left" : "Open on right")
         }
     }
 }

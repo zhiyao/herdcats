@@ -18,11 +18,11 @@ struct PaneLayout: Codable, Equatable {
         var other: Slot { self == .left ? .right : .left }
     }
 
-    /// The slot a list row is open in, shown as an L/R badge. Only while split.
-    func badgeSlot(spaceID: String) -> Slot? {
-        guard isSplit else { return nil }
-        if left?.spaceID == spaceID { return .left }
-        return right?.spaceID == spaceID ? .right : nil
+    /// The slots a list row is open in, shown as L/R badges. Only while split.
+    /// Both slots when two panes of one space are open side by side.
+    func badgeSlots(spaceID: String) -> [Slot] {
+        guard isSplit else { return [] }
+        return [(Slot.left, left), (.right, right)].filter { $0.1?.spaceID == spaceID }.map(\.0)
     }
 
     func badgeSlot(paneID: String) -> Slot? {
