@@ -73,6 +73,19 @@ final class SpacesModel {
 
     var autoRefreshTask: Task<Void, Never>?
     var usageRefreshTask: Task<Void, Never>?
+    enum QuotaContentState: Equatable {
+        case loading, cards, notSetup, empty
+        case error(String)
+    }
+    var hasCompletedUsageRequest = false
+    var quotaContentState: QuotaContentState {
+        if !usageCards.isEmpty { return .cards }
+        if quotaAxiMissing { return .notSetup }
+        if isRefreshingUsage { return .loading }
+        if let message = usageUnavailableMessage { return .error(message) }
+        if usageLastUpdated != nil || hasCompletedUsageRequest { return .empty }
+        return .loading // Initial view mounts before its fetch task starts.
+    }
     var isRefreshingUsage = false
     @ObservationIgnored var quotaRetryFetch: ((String) async throws -> QuotaReport)?
     @ObservationIgnored var quotaReportFetch: (() async throws -> QuotaReport)?

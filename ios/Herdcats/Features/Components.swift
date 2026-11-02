@@ -387,9 +387,101 @@ struct ErrorBanner: View {
 
 // MARK: - Connection status bar
 
+private struct ConnectionRetryActionKey: EnvironmentKey {
+    static var defaultValue: (() -> Void)? { nil }
+}
+
+extension EnvironmentValues {
+    var connectionRetryAction: (() -> Void)? {
+        get { self[ConnectionRetryActionKey.self] }
+        set { self[ConnectionRetryActionKey.self] = newValue }
+    }
+}
+
+struct ConnectionRecoveryLayout {
+    var hasContentRetry = false
+    var topInset: CGFloat = 0
+    var bottomInset: CGFloat = 0
+}
+
+struct ConnectionRecoveryLayoutKey: PreferenceKey {
+    static var defaultValue: ConnectionRecoveryLayout { .init() }
+    static func reduce(value: inout ConnectionRecoveryLayout, nextValue: () -> ConnectionRecoveryLayout) {
+        let next = nextValue()
+        value.hasContentRetry = value.hasContentRetry || next.hasContentRetry
+        value.topInset = max(value.topInset, next.topInset)
+        value.bottomInset = max(value.bottomInset, next.bottomInset)
+    }
+}
+
+/// The session owner supplies recovery beneath the offline explanation.
+/// Reporting this placement suppresses the retained-content recovery card.
+struct ConnectionContentRetryButton: View {
+    @Environment(\.connectionRetryAction) private var retryAction
+
+    var body: some View {
+        if let retryAction {
+            OutlinedConnectionRetryButton(action: retryAction)
+                .preference(key: ConnectionRecoveryLayoutKey.self, value: .init(hasContentRetry: true))
+        }
+    }
+}
+
+private struct OutlinedConnectionRetryButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button("Retry", action: action)
+            .buttonStyle(.herdrSecondary(fullWidth: false))
+            .controlSize(.regular)
+            .accessibilityIdentifier("connection-content-retry")
+    }
+}
+
+/// Retains cached content and supplies recovery when no offline empty state is shown.
+private struct ConnectionRecoveryCard: View {
+    let retryAction: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text("You're offline. Reconnect to bring the cats back.")
+                .font(.jost(.subheadline))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            OutlinedConnectionRetryButton(action: retryAction)
+        }
+        .padding(24)
+        .frame(maxWidth: 360)
+        .modifier(PaneInputGlassSurface(cornerRadius: 24, backgroundOpacity: 0.98))
+        .padding(16)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("connection-offline-recovery")
+    }
+}
+
+/// Keeps recovery within the usable output area even with a tall draft and keyboard.
+struct ConnectionRecoveryViewport<Recovery: View>: View {
+    let recovery: Recovery
+
+    init(@ViewBuilder recovery: () -> Recovery) {
+        self.recovery = recovery()
+    }
+
+    var body: some View {
+        ViewThatFits(in: .vertical) {
+            recovery
+            ScrollView {
+                recovery.frame(maxWidth: .infinity)
+            }
+            .defaultScrollAnchor(.bottom)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
 struct ConnectionStatusBar: View {
     let banner: ConnectionBanner
-    var retryAction: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -402,18 +494,6 @@ struct ConnectionStatusBar: View {
 
             if banner.showsProgress {
                 CircularArcSpinner(size: 13, color: banner.tintColor)
-            } else if banner.canRetry, let retryAction {
-                Button(action: retryAction) {
-                    Text("Retry")
-                        .font(.jost(12, weight: .bold))
-                        .foregroundStyle(banner.tintColor)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 3)
-                        .background(
-                            Capsule().fill(banner.tintColor.opacity(0.18))
-                        )
-                }
-                .buttonStyle(.plain)
             }
         }
         .foregroundStyle(banner.tintColor)
@@ -433,12 +513,22 @@ struct ConnectionStatusBannerModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            .overlayPreferenceValue(ConnectionRecoveryLayoutKey.self) { layout in
+                if !layout.hasContentRetry, banner?.canRetry == true, let retryAction {
+                    ConnectionRecoveryViewport {
+                        ConnectionRecoveryCard(retryAction: retryAction)
+                    }
+                    .padding(.top, layout.topInset)
+                    .padding(.bottom, layout.bottomInset)
+                }
+            }
             .safeAreaInset(edge: .top, spacing: 0) {
                 if let banner {
-                    ConnectionStatusBar(banner: banner, retryAction: retryAction)
+                    ConnectionStatusBar(banner: banner)
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
+            .environment(\.connectionRetryAction, banner?.canRetry == true ? retryAction : nil)
             .animation(.spring(response: 0.35, dampingFraction: 0.8), value: banner)
     }
 }

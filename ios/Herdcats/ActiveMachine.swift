@@ -37,7 +37,7 @@ final class ActiveMachine {
     }
 
     func switchMachine(to entry: RecentConnection, config: ConnectionConfig? = nil, recordConnection: Bool = true) async -> SwitchOutcome {
-        let identity = ConnectionIdentity(host: entry.host, port: entry.port, username: entry.username)
+        let identity = ConnectionIdentity(host: entry.host, port: entry.port, username: entry.username, backend: entry.backend)
         if identity == model.connectionIdentity, case .connected = model.phase {
             // Re-selecting the current machine is the latest choice; drop any switch in flight.
             await cancelSwitch()
@@ -104,7 +104,13 @@ final class ActiveMachine {
             model = candidate
             clearPending()
             do {
-                if recordConnection { try RecentConnectionStore.record(entry, in: RecentConnectionStore.load()) }
+                if recordConnection {
+                    let entries = try RecentConnectionStore.load()
+                    let entry = config.detectsBackend
+                        ? ConnectionSignIn(entry: entry).resolving(candidate.activeConfig?.backend ?? entry.backend, in: entries).entry
+                        : entry
+                    try RecentConnectionStore.record(entry, in: entries)
+                }
             } catch {
                 switchError = "Could not save \(entry.displayName): \(error.localizedDescription)"
             }
@@ -144,7 +150,13 @@ extension ActiveMachine {
     }
 
     private func persistSignIn(_ value: ConnectionSignIn) throws {
-        do { try value.persist(connected: false) }
+        do {
+            if value.detectsBackend, let backend = model.activeConfig?.backend {
+                try value.persistDetected(backend: backend, found: model.detectedBackends, connected: false)
+            } else {
+                try value.persist(connected: false)
+            }
+        }
         catch {
             switchError = "Connected, but could not save sign-in: \(error.localizedDescription)"
             throw error

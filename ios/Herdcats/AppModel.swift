@@ -14,6 +14,26 @@ final class AppModel {
     var phase: Phase = .disconnected
     var hasActiveSession: Bool
     var activeConfig: ConnectionConfig?
+    /// Runtimes the Auto probe found on the last connect; empty when it did not run.
+    var detectedBackends: Set<ConnectionBackend> = []
+    var isCoreMode: Bool { activeConfig?.backend == .core }
+    var isReadyForTerminalInput: Bool {
+        if case .connected = phase { return true }
+        return false
+    }
+    var runtimeRevision: UInt64 = 0
+    var runtimeRefreshTask: Task<Void, Never>?
+
+    func noteRuntimeChange(generation: ConnectionGeneration) {
+        guard ownership.transportGeneration == generation, runtimeRefreshTask == nil else { return }
+        runtimeRefreshTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
+            guard let self else { return }
+            self.runtimeRefreshTask = nil
+            guard self.ownership.transportGeneration == generation else { return }
+            self.runtimeRevision &+= 1
+        }
+    }
     var connectionBanner: ConnectionBanner?
     var lastConnectPassphraseRejected = false
     var lastConnectNeedsSignIn = false

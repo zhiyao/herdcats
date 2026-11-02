@@ -6,33 +6,53 @@ import UniformTypeIdentifiers
 
 struct HerdrSetupGuideView: View {
     @Environment(\.dismiss) private var dismiss
+    let backend: ConnectionBackend
     let onContinue: (() -> Void)?
 
-    init(onContinue: (() -> Void)? = nil) {
+    init(backend: ConnectionBackend = .tui, onContinue: (() -> Void)? = nil) {
+        self.backend = backend
         self.onContinue = onContinue
     }
 
     private let installURL = URL(string: "https://herdr.dev/docs/install/")!
     private let quickStartURL = URL(string: "https://herdr.dev/docs/quick-start/")!
+    private let coreInstallURL = URL(string: "https://github.com/herdrdev/herdr-core#install")!
+    private let coreQuickStartURL = URL(string: "https://github.com/herdrdev/herdr-core#run-it-and-come-back")!
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    Text("Prepare Herdr and SSH on your remote machine.")
+                    Text(backend == .core
+                         ? "Prepare Herdr Core and SSH on your remote machine."
+                         : "Prepare Herdr and SSH on your remote machine.")
                         .font(.jost(.subheadline))
                         .foregroundStyle(.secondary)
 
-                    step(
-                        1, title: "Install Herdr",
-                        detail: "Install on the remote machine. Check with herdr --version.",
-                        url: installURL, linkTitle: "Herdr Install Guide"
-                    )
-                    step(
-                        2, title: "Start the Default Session",
-                        detail: "Run herdr from a project directory on the remote machine.",
-                        url: quickStartURL, linkTitle: "Herdr Quick Start"
-                    )
+                    if backend == .core {
+                        step(
+                            1, title: "Install Herdr Core",
+                            detail: "Install hc on the remote machine and check with hc --version.",
+                            url: coreInstallURL, linkTitle: "Herdr Core Install Guide"
+                        )
+                        step(
+                            2, title: "Check Your Terminals",
+                            detail: "Keep your Herdr desktop app running, or start a program with hc run. "
+                                + "Use hc ls on that machine to check its terminals, then choose Herdr Core in Connection Settings.",
+                            url: coreQuickStartURL, linkTitle: "Herdr Core Quick Start"
+                        )
+                    } else {
+                        step(
+                            1, title: "Install Herdr",
+                            detail: "Install on the remote machine. Check with herdr --version.",
+                            url: installURL, linkTitle: "Herdr Install Guide"
+                        )
+                        step(
+                            2, title: "Start the Default Session",
+                            detail: "Run herdr from a project directory on the remote machine.",
+                            url: quickStartURL, linkTitle: "Herdr Quick Start"
+                        )
+                    }
                     step(
                         3, title: "Enable SSH",
                         detail: "Use a host your iPhone can reach. Tailscale is recommended. "
@@ -115,7 +135,7 @@ struct HerdrSetupGuideView: View {
 ///
 ///     xcrun simctl launch <udid> com.enchantinglabs.herdrcat \
 ///       -hc.autoconnect 1 -hc.host 127.0.0.1 -hc.user alice \
-///       [-hc.password secret | -hc.key /path/to/key]
+///       [-hc.password secret | -hc.key /path/to/key] [-hc.backend tui|core]
 enum AutoConnect {
     /// Release builds never parse launch arguments or environment variables
     /// for SSH credentials; this hook is only compiled into Debug builds.
@@ -144,16 +164,19 @@ enum AutoConnect {
             return nil
         }
         let port = Int(value(after: "-hc.port") ?? "") ?? 22
+        guard let backend = ConnectionBackend(rawValue: value(after: "-hc.backend") ?? "tui") else {
+            return nil
+        }
 
         if let password = value(after: "-hc.password") {
-            return ConnectionConfig(host: host, port: port, username: user, auth: .password(password))
+            return ConnectionConfig(host: host, port: port, username: user, auth: .password(password), backend: backend)
         }
         if let keyPath = value(after: "-hc.key") {
             let pem = (try? String(contentsOfFile: keyPath, encoding: .utf8)) ?? ""
-            return ConnectionConfig(host: host, port: port, username: user, auth: .privateKey(pem))
+            return ConnectionConfig(host: host, port: port, username: user, auth: .privateKey(pem), backend: backend)
         }
         if let keyData = ProcessInfo.processInfo.environment["HC_KEY"], !keyData.isEmpty {
-            return ConnectionConfig(host: host, port: port, username: user, auth: .privateKey(keyData))
+            return ConnectionConfig(host: host, port: port, username: user, auth: .privateKey(keyData), backend: backend)
         }
         return nil
     }

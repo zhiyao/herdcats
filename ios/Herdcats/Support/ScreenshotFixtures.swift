@@ -104,6 +104,7 @@ enum ScreenshotFixtures {
     }
 
     static var terminal: String {
+        if ProcessInfo.processInfo.arguments.contains("-hc.empty-terminal-output") { return "" }
         if ProcessInfo.processInfo.arguments.contains("-hc.long-terminal-selection") {
             return (0..<400).map { index in
                 let marker = String(format: "%04d", index)
@@ -142,6 +143,11 @@ struct ScreenshotRootView: View {
         let app = AppModel(autoConnectOnLaunch: false)
         app.phase = .connected(host: "studio-mac", username: "demo")
         app.hasActiveSession = true
+        if ScreenshotFixtures.screen == "timeline-connecting" { app.phase = .connecting }
+        if ScreenshotFixtures.screen == "timeline-offline" || ScreenshotFixtures.screen.hasPrefix("loading-audit-offline-") {
+            app.phase = .offline(host: "studio-mac", username: "demo")
+            app.connectionBanner = .offline(message: "Offline · Connection lost", canRetry: true)
+        }
         app.connectionIdentity = ConnectionIdentity(host: "studio-mac", port: 22, username: "demo")
         // Keep each capture independent of previous timeline/terminal navigation.
         if ProcessInfo.processInfo.arguments.contains("-hc.capture-surface"), let identity = app.connectionIdentity {
@@ -155,13 +161,25 @@ struct ScreenshotRootView: View {
     }()
     var body: some View {
         Group {
-            if ScreenshotFixtures.screen == "onboarding" {
+            if ScreenshotFixtures.screen.hasPrefix("loading-audit-") {
+                LoadingAuditFixtureView()
+            } else if ScreenshotFixtures.screen == "onboarding" {
                 ConnectView(replay: true)
                     .background(Theme.backgroundGradient)
             } else if ScreenshotFixtures.screen == "pane" || ScreenshotFixtures.screen == "agent-pane" || ["keys", "compose", "voice", "turn-interrupted", "optional-upgrade-menu"].contains(ScreenshotFixtures.screen) || ScreenshotFixtures.screen.hasPrefix("timeline") {
                 NavigationStack {
                     if let pane = try? JSONDecoder().decode(PaneEntry.self, from: Data(ScreenshotFixtures.json(ScreenshotFixtures.panes[0]).utf8)) {
                         PaneDetailView(pane: pane)
+                            .connectionStatusBanner(appModel: model)
+                            .toolbar {
+                                if ScreenshotFixtures.screen == "timeline-offline-transition" {
+                                    Button("Go offline") {
+                                        model.phase = .offline(host: "studio-mac", username: "demo")
+                                        model.connectionBanner = .offline(message: "Offline · Connection lost", canRetry: true)
+                                    }
+                                    .accessibilityIdentifier("fixture-go-offline")
+                                }
+                            }
                     }
                 }
             } else if ScreenshotFixtures.screen == "connect" {
@@ -178,6 +196,114 @@ struct ScreenshotRootView: View {
         .tint(Theme.accent)
         .foregroundStyle(Theme.text)
         .font(.jost(.body))
+        .transformEnvironment(\.dynamicTypeSize) { value in
+            let args = ProcessInfo.processInfo.arguments
+            if args.contains("-hc.accessibility-type-max") {
+                value = .accessibility5
+            } else if args.contains("-hc.accessibility-type") {
+                value = .accessibility3
+            }
+        }
+    }
+}
+/// Static, isolated presentation fixtures. These never dial a host or alter saved machines.
+private struct LoadingAuditFixtureView: View {
+    @Environment(AppModel.self) private var appModel
+    @State private var quota: SpacesModel
+    @State private var retryCount = 0
+    private var screen: String { ScreenshotFixtures.screen }
+
+    init() {
+        let model = SpacesModel()
+        let screen = ScreenshotFixtures.screen
+        // Inject only the fetch boundary. QuotaScreen owns its actual refresh task,
+        // GeometryReader, scroll view, navigation, and recovery UI.
+        model.quotaReportFetch = {
+            if screen.hasSuffix("error") { throw HerdrError.unexpectedResponse("Quota fixture failed") }
+            if screen.hasSuffix("missing") { throw HerdrError.quotaAxiNotFound }
+            if screen.hasSuffix("empty") { throw CancellationError() }
+            // A controlled pending request, canceled with the screen; no host access or timer.
+            let pending = AsyncStream<QuotaReport> { _ in }
+            for await report in pending { return report }
+            throw CancellationError()
+        }
+        if screen.hasSuffix("retained") {
+            model.applyUsageReport(ScreenshotFixtures.quota)
+            model.usageLastUpdated = .distantPast
+        }
+        _quota = State(initialValue: model)
+    }
+
+    var body: some View {
+        if screen.hasPrefix("loading-audit-offline-") {
+            if screen.hasSuffix("action") {
+                NavigationStack {
+                    OfflineHerdView()
+                        .overlay(alignment: .bottom) { Text("Retries: \(retryCount)").accessibilityIdentifier("fixture-retry-count") }
+                        .connectionStatusBanner(banner: .offline(message: "Offline · Connection lost", canRetry: true)) {
+                            retryCount += 1
+                        }
+                }
+            } else {
+                TabView {
+                    Group {
+                        if screen.hasSuffix("agents") { AgentsScreen(model: quota) }
+                        else if screen.hasSuffix("spaces") { SpacesScreen(model: quota) }
+                        else if screen.hasSuffix("quota") { QuotaScreen(model: quota) }
+                        else if screen.hasSuffix("terminal") {
+                            NavigationStack {
+                                PaneOutputScrollView(output: "", outputLines: [], outputRevision: 0,
+                                    outputPointSize: 14, paneScrollBehavior: .holdPosition, keyboardFocused: false,
+                                    isOffline: true, isLoading: false, reservesMarkAsReadSpace: false,
+                                    topOverlayInset: 60, bottomOverlayInset: 100, paneId: "fixture",
+                                    shouldPinToBottom: .constant(false), onUserScroll: {}, onTapOutput: {}, onSelectionChange: { _ in })
+                                    .navigationTitle("Terminal")
+                                    .overlay(alignment: .bottom) { Text("Retries: \(retryCount)").accessibilityIdentifier("fixture-retry-count") }
+                                    .connectionStatusBanner(banner: appModel.connectionBanner) { retryCount += 1 }
+                            }
+                        }
+                        else {
+                            NavigationStack {
+                                Text("Verified retained content")
+                                    .padding(16)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                                    .overlay(alignment: .bottom) { Text("Retries: \(retryCount)").accessibilityIdentifier("fixture-retry-count") }
+                                    .connectionStatusBanner(banner: retryCount == 0 ? appModel.connectionBanner : .connecting(message: "Reconnecting…")) { retryCount += 1 }
+                            }
+                        }
+                    }
+                    .tabItem { Label("Offline", systemImage: "wifi.slash") }
+                }
+                .environment(quota)
+            }
+        } else if screen.contains("quota") {
+            TabView {
+                QuotaScreen(model: quota)
+                    .tabItem { Label("Quota", systemImage: "gauge.with.dots.needle.67percent") }
+                Text("Fixture").tabItem { Label("Spaces", systemImage: "square.grid.3x3") }
+            }
+        } else {
+            NavigationStack {
+                Group {
+                    if screen.contains("worktree") {
+                        if let workspace = try? JSONDecoder().decode(Workspace.self, from: Data(ScreenshotFixtures.json(ScreenshotFixtures.workspaces[0]).utf8)) {
+                            OpenWorktreeDrawer(space: Space(workspace: workspace, agents: []), connection: appModel.connection,
+                                onOpen: { _, _ in }, onCancel: {})
+                        }
+                    } else {
+                        let text = screen.hasSuffix("retained") ? "Verified terminal output" : ""
+                        PaneOutputScrollView(output: text, outputLines: ANSIText.lines(from: text), outputRevision: 0,
+                            outputPointSize: 14, paneScrollBehavior: .holdPosition, keyboardFocused: false,
+                            isOffline: false, isLoading: true, reservesMarkAsReadSpace: false,
+                            topOverlayInset: 60, bottomOverlayInset: 100, paneId: "fixture",
+                            shouldPinToBottom: .constant(false), onUserScroll: {}, onTapOutput: {}, onSelectionChange: { _ in })
+                    }
+                }
+                .background(Theme.background)
+                .navigationTitle(screen.contains("worktree") ? "Open worktree" : "Terminal output")
+                .navigationBarTitleDisplayMode(.inline)
+            }
+        }
     }
 }
 #endif

@@ -5,12 +5,15 @@ import UIKit
 
 extension AgentTimelineView {
     @ViewBuilder var availability: some View {
-        switch timeline.phase {
+        switch timeline.presentationPhase(connection: connectionState, isActive: scenePhase == .active, paneId: paneId, agent: agent) {
         case .loading:
-            HStack {
-                ProgressView()
-                Text("Connecting to timeline…")
-            }.frame(maxWidth: .infinity).padding(.vertical, 32)
+            timelineContentLoading
+        case .suspended:
+            if appModel.isOffline {
+                timelineOfflineState
+            } else if scenePhase == .active {
+                timelineContentLoading
+            }
         case .disconnected:
             ContentUnavailableView {
                 Label("Timeline disconnected", systemImage: "wifi.slash")
@@ -25,7 +28,7 @@ extension AgentTimelineView {
         case .unavailable("transcript_unavailable"):
             // Claude writes its transcript only after the first prompt; the
             // helper keeps polling and swaps in the timeline once it exists.
-            ContentUnavailableView("Send a message to start", systemImage: "text.bubble")
+            ContentUnavailableView("Send a message to start", systemImage: "bubble.left")
         case .unavailable(let code):
             let isCodex = agent == "codex"
             let isSupportedAgent = canPinnedInstallerSupportAgent
@@ -43,7 +46,8 @@ extension AgentTimelineView {
                 : nil
 
             ContentUnavailableView {
-                Label(codexNoSession.map(Self.codexNoSessionTitle) ?? title(code), systemImage: "text.bubble")
+                Label(codexNoSession.map(Self.codexNoSessionTitle) ?? title(code), systemImage: Self.availabilitySymbol(code: code, agent: agent,
+                    capabilities: bridgeCapabilities, codexDaemon: timeline.codexDaemon, bridgeVersion: bridgeVersion))
             } description: {
                 if codexNoSession != nil, let outcome = codexDaemonStopOutcome {
                     Text(outcome.message)
@@ -105,6 +109,59 @@ extension AgentTimelineView {
             }
         case .ready: EmptyView()
         }
+    }
+
+    /// Intrinsic, finite content fits above the floating composer even with the keyboard open.
+    /// The session owner supplies recovery here; the banner keeps its status text.
+    private var timelineOfflineState: some View {
+        ConnectionRecoveryViewport {
+            timelineOfflineCard
+        }
+        .frame(height: max(1, viewportHeight - topOverlayInset - bottomOverlayInset - 32))
+    }
+
+    private var timelineOfflineCard: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "wifi.slash")
+                .font(.jost(.title2))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text("The herd got loose")
+                .font(.jost(.headline))
+            Text("You're offline. Reconnect to bring the cats back.")
+                .font(.jost(.subheadline))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            ConnectionContentRetryButton()
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 16)
+        .frame(maxWidth: 360)
+        .modifier(PaneInputGlassSurface(cornerRadius: 24, backgroundOpacity: 0.98))
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("timeline-offline-state")
+    }
+
+    private var timelineContentLoading: some View {
+        LazyCatLoadingView(message: "Connecting to timeline…")
+            .frame(height: max(200, viewportHeight - topOverlayInset - bottomOverlayInset - 48))
+            .accessibilityIdentifier("timeline-content-loading")
+    }
+
+    static func availabilitySymbol(code: String, agent: String?, capabilities: AgentBridgeCapabilities?,
+                                   codexDaemon: String?, bridgeVersion: String? = nil) -> String {
+        if isNeedsUpgrade(code: code, agent: agent, bridgeVersion: bridgeVersion) { return "bubble.left" }
+        let noSession = ["session_reference_unavailable", "ambiguous_session", "invalid_session_reference"].contains(code)
+        if agent == "codex", noSession {
+            return codexNoSessionAction(agent: agent, code: code, capabilities: capabilities, codexDaemon: codexDaemon) == .waitForSession
+                ? "bubble.left" : "questionmark.bubble"
+        }
+        if (agent == "cursor" && noSession) || (agent == "codex" && code == "session_cwd_mismatch") {
+            return "questionmark.bubble"
+        }
+        return "bubble.left"
     }
 
     func explanation(_ code: String) -> String {
@@ -579,6 +636,7 @@ extension AgentTimelineView {
     /// off, stream re-ran), close it instead of stopping a working server.
     func dismissStaleCodexDaemonConfirm() {
         guard showsCodexDaemonConfirm else { return }
+        guard matchesLiveTimeline else { showsCodexDaemonConfirm = false; return }
         if !Self.canRunCodexDaemonStop(
             phase: timeline.phase,
             agent: agent,
@@ -590,7 +648,8 @@ extension AgentTimelineView {
     }
 
     func disableCodexDaemon() {
-        guard !isDisablingCodexDaemon else { return }
+        guard matchesLiveTimeline, scenePhase == .active, connectionState.isReady,
+              !isDisablingCodexDaemon else { return }
         // The sheet may have stayed open after the pane moved on; revalidate
         // the live state so confirming a stale sheet never stops a server the
         // pane no longer reports as running.

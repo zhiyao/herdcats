@@ -380,6 +380,50 @@ struct QuotaAxiRemoteTests {
     }
 
     @MainActor
+    @Test func cancelledQuotaFetchDoesNotClaimRetryIsRunning() async {
+        let model = SpacesModel()
+        model.quotaReportFetch = { throw CancellationError() }
+        await model.refreshUsage(HerdrConnection(), force: true)
+        #expect(!model.isRefreshingUsage)
+        #expect(model.usageUnavailableMessage == nil)
+        #expect(!model.quotaAxiMissing)
+        #expect(model.quotaContentState == .empty)
+    }
+
+    @MainActor
+    @Test func quotaFetchStatesSettleAndRetryWithoutHidingRetainedCards() async throws {
+        let model = SpacesModel()
+        #expect(model.quotaContentState == .loading)
+        let started = ExternallyReleasedWait<Bool>()
+        let result = ExternallyReleasedWait<QuotaReport>()
+        model.quotaReportFetch = { started.release(true); return try await result.wait() }
+        let fetch = Task { await model.refreshUsage(HerdrConnection(), force: true) }
+        _ = try await started.wait()
+        #expect(model.quotaContentState == .loading)
+        result.fail(HerdrError.unexpectedResponse("Quota test failure"))
+        await fetch.value
+        #expect(model.quotaContentState == .error("Unexpected response from herdr — Quota test failure"))
+        #expect(!model.isRefreshingUsage)
+        model.quotaReportFetch = { try QuotaReport.decode(#"{"providers":[]}"#) }
+        await model.refreshUsage(HerdrConnection(), force: true)
+        // The display projection reserves primary-provider cards even for zero providers.
+        #expect(model.quotaContentState == .cards)
+        model.usageCards = []
+        #expect(model.quotaContentState == .empty)
+        model.quotaReportFetch = { throw HerdrError.quotaAxiNotFound }
+        await model.refreshUsage(HerdrConnection(), force: true)
+        #expect(model.quotaContentState == .notSetup)
+        model.quotaReportFetch = { try QuotaReport.decode(#"{"providers":[{"provider":"codex","windows":[{"id":"weekly","percentRemaining":42}],"state":{"status":"fresh"}}]}"#) }
+        await model.refreshUsage(HerdrConnection(), force: true)
+        #expect(model.quotaContentState == .cards)
+        let prior = model.usageCards
+        model.quotaReportFetch = { throw HerdrError.unexpectedResponse("later failure") }
+        await model.refreshUsage(HerdrConnection(), force: true)
+        #expect(model.quotaContentState == .cards)
+        #expect(model.usageCards.map(\.id) == prior.map(\.id))
+    }
+
+    @MainActor
     @Test func spacesModelTracksQuotaAxiMissingState() throws {
         let model = SpacesModel()
         #expect(!model.quotaAxiMissing)

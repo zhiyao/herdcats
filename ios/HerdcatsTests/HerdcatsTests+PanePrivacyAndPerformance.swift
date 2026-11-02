@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import NIOCore
 import NIOSSH
 import SwiftUI
 import Testing
@@ -135,6 +136,21 @@ struct PerformanceOptimizationTests {
 @Suite("Connection friendly error messages")
 struct FriendlyErrorMessageTests {
     private static let testKeyPEM = OpenSSHParserFixture.pem
+
+    @Test(arguments: [TimeAmount.seconds(10), .seconds(30)])
+    func channelConnectTimeoutShowsConnectionGuidance(timeout: TimeAmount) {
+        let message = HerdrConnection.friendlyMessage(for: ChannelError.connectTimeout(timeout))
+        #expect(message.contains("Timed out"))
+        #expect(message.contains("SSH"))
+        #expect(message.contains("Remote Login"))
+        #expect(!message.contains("Connect timeout ("))
+    }
+
+    @Test
+    func otherChannelErrorsKeepTheirDescription() {
+        let error = ChannelError.ioOnClosedChannel
+        #expect(HerdrConnection.friendlyMessage(for: error) == String(describing: error))
+    }
 
     @Test
     func privateKeyAuthenticationFailureIncludesPublicKeyAndGuidance() {

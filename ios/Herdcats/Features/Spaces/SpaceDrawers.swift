@@ -230,10 +230,11 @@ struct OpenWorktreeDrawer: View {
         VStack(alignment: .leading, spacing: 16) {
             header
 
-            if isLoading {
-                CircularArcSpinner("Loading worktrees…")
+            if isLoading && worktrees.isEmpty {
+                LazyCatLoadingView(message: "Loading worktrees…")
+                    .accessibilityIdentifier("worktree-content-loading")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let errorMessage {
+            } else if let errorMessage, worktrees.isEmpty {
                 VStack(spacing: 14) {
                     ErrorBanner(message: errorMessage, retry: {
                         Task { await loadWorktrees() }
@@ -381,6 +382,15 @@ struct OpenWorktreeDrawer: View {
     }
 
     private func loadWorktrees() async {
+        #if DEBUG && targetEnvironment(simulator)
+        if ScreenshotFixtures.enabled && ScreenshotFixtures.screen.hasPrefix("loading-audit-worktree") {
+            if ScreenshotFixtures.screen.hasSuffix("retained") {
+                worktrees = (try? JSONDecoder().decode([WorktreeEntry].self,
+                    from: Data(#"[{"path":"/fixture/retained","branch":"retained-branch"}]"#.utf8))) ?? []
+            }
+            return // Hold the presentation at a pending request without networking.
+        }
+        #endif
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }

@@ -2,6 +2,279 @@ import XCTest
 import UIKit
 
 final class AgentTimelineUITests: XCTestCase {
+    func testEmptyScreenRecoveryRemainsReachableAtAccessibilitySizes() {
+        for screen in ["loading-audit-offline-agents", "loading-audit-offline-spaces", "loading-audit-offline-quota"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", screen, "-hc.accessibility-type-max", "-hc.light"]
+            launch(app)
+            let retry = app.buttons["connection-content-retry"]
+            XCTAssertTrue(retry.waitForExistence(timeout: 5), screen)
+            XCTAssertEqual(app.buttons.matching(identifier: "connection-content-retry").count, 1, screen)
+            XCTAssertTrue(retry.isHittable, screen)
+            XCTAssertGreaterThanOrEqual(retry.frame.minY, app.navigationBars.firstMatch.frame.maxY, screen)
+            XCTAssertLessThanOrEqual(retry.frame.maxY, app.tabBars.firstMatch.frame.minY, screen)
+            let status = app.descendants(matching: .any)["connection-status-bar"].firstMatch
+            XCTAssertTrue(status.exists, screen)
+            XCTAssertEqual(status.buttons.count, 0, screen)
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = "accessible-recovery-" + screen; shot.lifetime = .keepAlways; add(shot)
+            app.terminate()
+        }
+    }
+
+    func testOfflineRecoveryStaysAboveMultilineComposerWithKeyboard() {
+        for (terminal, empty) in [(false, false), (true, false), (true, true)] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-offline-transition", "-paneShowComposeByDefault", "YES"]
+                + (empty ? ["-hc.empty-terminal-output"] : [])
+            launch(app)
+            XCTAssertTrue(app.staticTexts["Review the connection guidance and make it clearer in light mode."].waitForExistence(timeout: 5))
+            if terminal { app.buttons["Terminal"].tap() }
+            if empty { XCTAssertTrue(app.staticTexts["No output yet"].waitForExistence(timeout: 5)) }
+            let composer = app.textFields[terminal ? "pane-compose-field" : "timeline-compose-field"]
+            XCTAssertTrue(composer.waitForExistence(timeout: 5))
+            composer.tap()
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+            XCTAssertGreaterThanOrEqual(composer.frame.height, 100, "Exercise a tall multiline draft")
+            app.buttons["fixture-go-offline"].tap()
+            let retry = app.buttons["connection-content-retry"]
+            XCTAssertTrue(retry.waitForExistence(timeout: 5))
+            if empty {
+                XCTAssertTrue(app.descendants(matching: .any)["offline-herd"].firstMatch.exists)
+                XCTAssertFalse(app.descendants(matching: .any)["connection-offline-recovery"].firstMatch.exists)
+            }
+            XCTAssertEqual(app.buttons.matching(identifier: "connection-content-retry").count, 1)
+            XCTAssertTrue(retry.isHittable)
+            let dock = app.descendants(matching: .any)["pane-compose-bar"].firstMatch
+            XCTAssertLessThanOrEqual(retry.frame.maxY, dock.frame.minY - 8)
+            XCTAssertTrue(composer.isHittable)
+            let draft = composer.value as? String
+            composer.tap()
+            composer.typeText("Still editable")
+            XCTAssertTrue((composer.value as? String)?.contains("Still editable") == true)
+            // Tapping may place the caret inside the existing draft.
+            XCTAssertEqual((composer.value as? String)?.replacingOccurrences(of: "Still editable", with: ""), draft)
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = "offline-recovery-keyboard-terminal-\(terminal)-empty-\(empty)"; shot.lifetime = .keepAlways; add(shot)
+            app.terminate()
+        }
+    }
+
+    func testOfflineRetrySitsBelowOfflineMessageAndNotInStatusBar() {
+        for screen in ["loading-audit-offline-agents", "loading-audit-offline-spaces", "loading-audit-offline-quota", "timeline-offline", "loading-audit-offline-terminal"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", screen, "-paneShowComposeByDefault", screen == "timeline-offline" ? "YES" : "NO"]
+            launch(app)
+            let retry = app.buttons["connection-content-retry"]
+            XCTAssertTrue(retry.waitForExistence(timeout: 5), screen)
+            if retry.exists {
+                let body = app.staticTexts["You're offline. Reconnect to bring the cats back."]
+                XCTAssertTrue(body.exists)
+                XCTAssertGreaterThanOrEqual(retry.frame.minY, body.frame.maxY)
+                XCTAssertEqual(retry.frame.midX, app.frame.midX, accuracy: 3)
+                XCTAssertTrue(retry.isHittable)
+                XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "Retry")).count, 1)
+                let status = app.descendants(matching: .any)["connection-status-bar"].firstMatch
+                XCTAssertTrue(status.exists)
+                XCTAssertEqual(status.buttons.count, 0)
+                if screen == "timeline-offline" {
+                    let composer = app.descendants(matching: .any)["timeline-compose-field"].firstMatch
+                    XCTAssertLessThanOrEqual(retry.frame.maxY, composer.frame.minY - 8)
+                }
+                if screen.hasSuffix("terminal") {
+                    retry.tap()
+                    XCTAssertEqual(app.staticTexts["fixture-retry-count"].label, "Retries: 1")
+                }
+                let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "centered-retry-" + screen; shot.lifetime = .keepAlways; add(shot)
+            }
+            app.terminate()
+        }
+    }
+
+    func testCenteredOfflineRetryInvokesItsOwnerAndRetainedContentKeepsRecovery() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "loading-audit-offline-action", "-hc.light", "-hc.accessibility-type"]
+        launch(app)
+        let retry = app.buttons["connection-content-retry"]
+        XCTAssertTrue(retry.waitForExistence(timeout: 5))
+        if retry.exists {
+            retry.tap()
+            XCTAssertEqual(app.staticTexts["fixture-retry-count"].label, "Retries: 1")
+            XCTAssertTrue(app.descendants(matching: .any)["connection-status-bar"].firstMatch.exists)
+            XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "Retry")).count, 1)
+            let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "centered-retry-large-text"; shot.lifetime = .keepAlways; add(shot)
+        }
+        app.terminate()
+        for light in [true, false] {
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", "loading-audit-offline-retained"] + (light ? ["-hc.light"] : [])
+            launch(app)
+            XCTAssertTrue(app.staticTexts["Verified retained content"].waitForExistence(timeout: 5))
+            let retainedRetry = app.buttons["connection-content-retry"]
+            XCTAssertTrue(retainedRetry.waitForExistence(timeout: 5))
+            XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "Retry")).count, 1)
+            let status = app.descendants(matching: .any)["connection-status-bar"].firstMatch
+            XCTAssertTrue(status.exists)
+            XCTAssertEqual(status.buttons.count, 0, "The connection banner is status-only, even with retained content")
+            if retainedRetry.exists {
+                let explanation = app.staticTexts["You're offline. Reconnect to bring the cats back."]
+                XCTAssertTrue(explanation.exists)
+                XCTAssertGreaterThanOrEqual(retainedRetry.frame.minY, explanation.frame.maxY)
+                XCTAssertEqual(retainedRetry.frame.midX, app.frame.midX, accuracy: 3)
+                XCTAssertGreaterThanOrEqual(retainedRetry.frame.height, 44)
+                XCTAssertTrue(retainedRetry.isHittable)
+                let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "outlined-retry-retained-light-\(light)"; shot.lifetime = .keepAlways; add(shot)
+                retainedRetry.tap()
+                XCTAssertEqual(app.staticTexts["fixture-retry-count"].label, "Retries: 1")
+                XCTAssertTrue(app.staticTexts["Verified retained content"].exists)
+                XCTAssertEqual(status.label, "Reconnecting…")
+                XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "Retry")).count, 0)
+            }
+            app.terminate()
+        }
+    }
+
+    func testActualQuotaScreenWrapperBoundsAndSettledStates() {
+        for (suffix, expected, large) in [("", "quota-content-loading", false), ("", "quota-content-loading", true),
+            ("-error", "quota-load-error", false), ("-empty", "quota-load-empty", false),
+            ("-missing", "quota-axi-check-button", false), ("-retained", "agy-usage-card", false)] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", "loading-audit-quota" + suffix, "-hc.light"]
+                + (large ? ["-hc.accessibility-type"] : [])
+            launch(app)
+            XCTAssertTrue(app.buttons["quota-options-menu"].waitForExistence(timeout: 5), "Must mount actual QuotaScreen")
+            let tab = app.tabBars.firstMatch
+            XCTAssertTrue(tab.exists)
+            let content = app.descendants(matching: .any)[expected].firstMatch
+            XCTAssertTrue(content.waitForExistence(timeout: 5))
+            if suffix.isEmpty {
+                XCTAssertEqual(content.label, "Loading quota…")
+                XCTAssertGreaterThanOrEqual(content.frame.minY, app.navigationBars.firstMatch.frame.maxY)
+                XCTAssertLessThanOrEqual(content.frame.maxY, tab.frame.minY)
+            } else {
+                XCTAssertFalse(app.descendants(matching: .any)["quota-content-loading"].exists)
+                if suffix == "-error" || suffix == "-empty" { XCTAssertTrue(app.buttons["Retry"].isHittable) }
+            }
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = "actual-quota-wrapper\(suffix)-large-\(large)"; shot.lifetime = .keepAlways; add(shot)
+            app.terminate()
+        }
+    }
+
+    func testApprovedEmptyContentLoadsUseRunningCat() {
+        for (screen, identifier, message) in [
+            ("timeline-loading", "timeline-content-loading", "Connecting to timeline…"),
+            ("loading-audit-worktree", "worktree-content-loading", "Loading worktrees…"),
+            ("loading-audit-quota", "quota-content-loading", "Loading quota…"),
+            ("loading-audit-terminal", "pane-content-loading", "Reading pane…")
+        ] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", screen, "-hc.light", "-paneShowComposeByDefault", "NO"]
+            launch(app)
+            let loader = app.descendants(matching: .any)[identifier].firstMatch
+            XCTAssertTrue(loader.waitForExistence(timeout: 5), screen)
+            XCTAssertEqual(loader.label, message)
+            XCTAssertFalse(app.staticTexts["Timeline disconnected"].exists)
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = screen; shot.lifetime = .keepAlways; add(shot)
+            app.terminate()
+        }
+    }
+
+    func testWorktreeRowsStayVisibleWhileRefreshing() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "loading-audit-worktree-retained", "-hc.light"]
+        launch(app)
+        XCTAssertTrue(app.buttons["Open worktree retained-branch"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.descendants(matching: .any)["worktree-content-loading"].exists)
+        app.terminate()
+    }
+
+
+    func testTimelineForegroundRestorationDoesNotShowDisconnected() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline", "-hc.light", "-paneShowComposeByDefault", "NO"]
+        launch(app)
+        XCTAssertTrue(app.buttons["timeline-tool-tool:read"].waitForExistence(timeout: 5))
+        for _ in 0..<2 {
+            XCUIDevice.shared.press(.home)
+            app.activate()
+            XCTAssertFalse(app.staticTexts["Timeline disconnected"].exists)
+            XCTAssertTrue(app.buttons["timeline-tool-tool:read"].waitForExistence(timeout: 5))
+        }
+        app.terminate()
+    }
+
+    func testUnreadyTimelineIsNeutralAndOfflineBannerOwnsRecovery() {
+        for screen in ["timeline-connecting", "timeline-offline"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", screen, "-hc.light", "-paneShowComposeByDefault", "YES"]
+            launch(app)
+            if screen == "timeline-offline" {
+                XCTAssertTrue(app.descendants(matching: .any)["connection-status-bar"].firstMatch.waitForExistence(timeout: 5))
+                XCTAssertTrue(app.buttons["Retry"].isEnabled)
+                let body = app.staticTexts["You're offline. Reconnect to bring the cats back."]
+                XCTAssertTrue(body.exists)
+                let composer = app.descendants(matching: .any)["timeline-compose-field"].firstMatch
+                XCTAssertTrue(composer.exists)
+                XCTAssertLessThanOrEqual(body.frame.maxY, composer.frame.minY - 8, "Offline information must fit above the keyboard composer")
+            } else {
+                XCTAssertTrue(app.descendants(matching: .any)["timeline-content-loading"].firstMatch.waitForExistence(timeout: 5))
+            }
+            XCTAssertFalse(app.staticTexts["Timeline disconnected"].exists)
+            XCTAssertFalse(app.buttons["timeline-helper-retry"].exists)
+            let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = screen; shot.lifetime = .keepAlways; add(shot)
+            app.terminate()
+        }
+    }
+
+    func testSettledQuotaAndRetainedContentNeverUseCat() {
+        for (screen, expected) in [
+            ("loading-audit-quota-error", "quota-load-error"),
+            ("loading-audit-quota-empty", "quota-load-empty"),
+            ("loading-audit-quota-missing", "quota-axi-check-button"),
+            ("loading-audit-quota-retained", "agy-usage-card"),
+            ("loading-audit-terminal-retained", "pane-output-scroll-view")
+        ] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", screen, "-hc.light"]
+            launch(app)
+            XCTAssertTrue(app.descendants(matching: .any)[expected].firstMatch.waitForExistence(timeout: 5), screen)
+            XCTAssertFalse(app.descendants(matching: .any)["quota-content-loading"].exists)
+            XCTAssertFalse(app.descendants(matching: .any)["pane-content-loading"].exists)
+            let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = screen; shot.lifetime = .keepAlways; add(shot)
+            app.terminate()
+        }
+    }
+
+    func testApprovedSymbolsAndAccessibleLoaderLayouts() {
+        let scenarios: [(String, String, [String])] = [
+            ("timeline-pending", "Send a message to start", ["-hc.light"]),
+            ("timeline-empty", "No messages yet", []),
+            ("timeline-helper-missing", "Set up Timeline", ["-hc.light", "-hc.timeline-suppress-drawer"]),
+            ("timeline-helper-missing", "A clearer view of your agent", ["-hc.light"]),
+            ("timeline-codex-no-session", "Codex session not identified", ["-hc.agent", "codex"]),
+            ("timeline-session-unresolved", "Cursor chat not identified", ["-hc.agent", "cursor", "-hc.light"])
+        ]
+        for (index, scenario) in scenarios.enumerated() {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", scenario.0, "-paneShowComposeByDefault", "NO"] + scenario.2
+            launch(app)
+            XCTAssertTrue(app.staticTexts[scenario.1].firstMatch.waitForExistence(timeout: 5))
+            XCTAssertFalse(app.descendants(matching: .any)["timeline-content-loading"].exists)
+            let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "symbol-\(index)-\(scenario.0)"; shot.lifetime = .keepAlways; add(shot)
+            app.terminate()
+        }
+        for screen in ["timeline-loading", "loading-audit-worktree", "loading-audit-quota", "loading-audit-terminal"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", screen, "-paneShowComposeByDefault", "NO", "-hc.accessibility-type", "-darkThemePalette", "mocha"]
+            launch(app)
+            let label = screen == "timeline-loading" ? "Connecting to timeline…" : screen.contains("worktree") ? "Loading worktrees…" : screen.contains("quota") ? "Loading quota…" : "Reading pane…"
+            XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch.waitForExistence(timeout: 5))
+            let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "accessible-\(screen)"; shot.lifetime = .keepAlways; add(shot)
+            app.terminate()
+        }
+    }
+
     func testTimelineLightAndDarkRenderToolCardsAndKeepTerminalAvailable() {
         for light in [true, false] {
             let app = XCUIApplication()

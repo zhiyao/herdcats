@@ -122,6 +122,9 @@ struct ConnectionConfig: Sendable, Equatable {
     var port: Int
     var username: String
     var auth: AuthMethod
+    var backend: ConnectionBackend = .tui
+    /// Auto: `backend` is a placeholder until the connect probe picks one.
+    var detectsBackend = false
 }
 
 // MARK: - Connection
@@ -151,6 +154,18 @@ struct AgyLoginSession {
 
 actor HerdrConnection {
     var slot = ConnectionClientSlot<SSHClient>()
+    var backend: ConnectionBackend = .tui
+    var coreRPC: CoreRPCClient?
+    var coreOpening: Task<Void, Error>?
+    var coreSessionID: UUID?
+    var coreStartupClosed = false
+    var coreSnapshot: CoreSnapshot?
+    var coreHello: CoreJSON = .null
+    var coreLayouts: [String: CoreJSON] = [:]
+    var earlyCoreNotifications: [CoreJSON] = []
+    var coreDocumentTask: Task<Void, Never>?
+    var coreDocumentsRevision: UInt64 = 0
+    var runtimeChangeHandler: (@Sendable (ConnectionGeneration) -> Void)?
     var disconnectHandler: (@Sendable () -> Void)?
     /// Exclusive remote composer mutations (send, escape).
     let paneInput = PaneInputCoordinator()
@@ -211,6 +226,7 @@ actor HerdrConnection {
     /// Reserves a transport generation before dialing so every teardown path
     /// has an identity. Closes any previous client in the background.
     func reserveConnectGeneration() async -> ConnectionGeneration {
+        closeCore()
         closeAllLiveShells()
         closeAllAgentBridges()
         let (attempt, previous) = slot.beginReplace()
@@ -235,6 +251,7 @@ actor HerdrConnection {
             throw HerdrError.notConnected
         }
 
+        backend = config.backend
         host = config.host
         username = config.username
         port = config.port
@@ -274,6 +291,12 @@ actor HerdrConnection {
         return attempt
     }
 
+    /// Auto mode picks the runtime after SSH is up, before any Herdr query.
+    func adoptBackend(_ backend: ConnectionBackend) {
+        self.backend = backend
+        identity = ConnectionIdentity(host: host, port: port, username: username, backend: backend)
+    }
+
     private func makeAuthenticationMethod(_ config: ConnectionConfig) throws -> SSHAuthenticationMethod {
         switch config.auth {
         case let .password(password):
@@ -301,6 +324,7 @@ actor HerdrConnection {
         case .stale:
             return
         case let .invalidated(oldClient):
+            closeCore()
             closeAllLiveShells()
             closeAllAgentBridges()
             disconnectHandler = nil
@@ -328,6 +352,7 @@ actor HerdrConnection {
         case .stale:
             return
         case let .invalidated(oldClient):
+            closeCore()
             closeAllLiveShells()
             closeAllAgentBridges()
             disconnectHandler = nil
@@ -346,6 +371,7 @@ actor HerdrConnection {
         case .stale:
             return
         case .invalidated:
+            closeCore()
             closeAllLiveShells()
             closeAllAgentBridges()
             let handler = disconnectHandler
@@ -365,6 +391,7 @@ actor HerdrConnection {
         case .stale:
             return
         case let .invalidated(oldClient):
+            closeCore()
             closeAllLiveShells()
             closeAllAgentBridges()
             let handler = notifyDisconnect ? disconnectHandler : nil

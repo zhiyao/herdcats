@@ -12,9 +12,11 @@ extension SpacesModel {
         }
         let generation = usageGate.begin()
         isRefreshingUsage = true
+        usageUnavailableMessage = nil
         defer {
             if usageGate.finishIfCurrent(generation) {
                 isRefreshingUsage = false
+                hasCompletedUsageRequest = true
             }
         }
 
@@ -25,11 +27,15 @@ extension SpacesModel {
             } else {
                 report = try await connection.quotaReport()
             }
+            try Task.checkCancellation()
             guard usageGate.isCurrent(generation) else { return }
             withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
                 applyUsageReport(report)
             }
+        } catch is CancellationError {
+            // Expected view retirement is a settled request, not an active retry/error.
         } catch let error as HerdrError where error == .quotaAxiNotFound {
+            guard !Task.isCancelled else { return }
             guard usageGate.isCurrent(generation) else { return }
             withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
                 usageCards = []
@@ -37,6 +43,7 @@ extension SpacesModel {
                 quotaAxiMissing = true
             }
         } catch {
+            guard !Task.isCancelled else { return }
             guard usageGate.isCurrent(generation) else { return }
             // Keep the last good snapshot; only surface a soft note when empty.
             quotaAxiMissing = false

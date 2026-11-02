@@ -89,22 +89,26 @@ struct AgentTimelineView: View {
     var waitingTaskKey: WaitingTaskKey {
         WaitingTaskKey(hooks: hooksKey, owner: activeOwner, identity: timeline.identity, generation: timeline.generation,
             eligible: PhoneAnswersPresentation.eligible(approvals: bridgeCapabilities?.approvals,
-                ready: timeline.phase == .ready && connectionState.isReady,
+                ready: matchesLiveTimeline && timeline.phase == .ready && connectionState.isReady,
                 blocked: timeline.agentStatus == "blocked", pending: timeline.pendingApproval != nil || showsQuestion,
                 active: scenePhase == .active && appModel.isSceneActive))
     }
     private var showsWaitingRow: Bool { waitingTaskKey.eligible && waitingKey == waitingTaskKey }
     func hooksContextIsCurrent(_ key: PhoneAnswersStore.Key) -> Bool {
-        scenePhase == .active && appModel.isSceneActive && connectionState.isReady
+        matchesLiveTimeline && scenePhase == .active && appModel.isSceneActive && connectionState.isReady
             && setupTarget == key.target && connectionState.generation == key.generation
             && bridgeCapabilities?.approvals == true
     }
+    var matchesLiveTimeline: Bool { timeline.matchesLivePane(paneId: paneId, agent: agent, connection: connectionState) }
+
     var showsApproval: Bool {
-        ApprovalResponseState.isVisible(pending: timeline.pendingApproval, approvals: bridgeCapabilities?.approvals)
+        matchesLiveTimeline && scenePhase == .active && connectionState.isReady && timeline.phase == .ready
+            && ApprovalResponseState.isVisible(pending: timeline.pendingApproval, approvals: bridgeCapabilities?.approvals)
     }
 
     var showsQuestion: Bool {
-        QuestionAnswerState.isVisible(pending: timeline.pendingQuestion, questions: bridgeCapabilities?.questions)
+        matchesLiveTimeline && scenePhase == .active && connectionState.isReady && timeline.phase == .ready
+            && QuestionAnswerState.isVisible(pending: timeline.pendingQuestion, questions: bridgeCapabilities?.questions)
     }
 
     var conversationItems: [TimelineConversationItem] {
@@ -122,7 +126,7 @@ struct AgentTimelineView: View {
         let isActive: Bool
         let retry: Int
     }
-    private var taskKey: TaskKey {
+    var taskKey: TaskKey {
         TaskKey(paneId: paneId, agent: agent, connection: connectionState, isActive: scenePhase == .active, retry: retry)
     }
     var canPinnedInstallerSupportAgent: Bool {
@@ -167,7 +171,7 @@ struct AgentTimelineView: View {
             GeometryReader { viewport in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 16) {
-                        if timeline.phase == .ready {
+                        if timeline.hasSnapshot(for: connectionState, paneId: paneId, agent: agent) {
                             if timeline.hasMore {
                                 Text(isPaging ? "Loading earlier messages…" : (pageError ?? "Pull down to load earlier messages"))
                                     .font(.jost(.caption))
@@ -179,7 +183,7 @@ struct AgentTimelineView: View {
                                     }
                             }
                             if conversationItems.isEmpty {
-                                ContentUnavailableView("No messages yet", systemImage: "text.bubble")
+                                ContentUnavailableView("No messages yet", systemImage: "bubble.left")
                             }
                             ForEach(conversationItems) { item in
                                 let scope = contentScope
@@ -464,7 +468,7 @@ struct AgentTimelineView: View {
                     isCheckingSetup = false
                     setupFeedback = "Reconnect to your SSH host, then check again."
                 }
-            case .loading: break
+            case .loading, .suspended: break
             }
         }
         .onChange(of: connectionState) { _, _ in cancelHelperInstallation() }
@@ -561,14 +565,14 @@ struct AgentTimelineView: View {
         }
     }
     @MainActor func updateTimelineSheet() {
-        sheetState.sync(visible: approvalViewVisible && scenePhase == .active,
+        sheetState.sync(visible: matchesLiveTimeline && approvalViewVisible && scenePhase == .active,
             phone: phoneAnswersSelection != nil, helper: showsSetup, codex: showsCodexDaemonConfirm)
     }
     private var contentScope: String {
         "\(activeOwner?.uuidString ?? "none"):\(timeline.generation ?? 0):\(timeline.identity?.nativeSessionId ?? "")"
     }
     @MainActor private func loadContent(_ reference: String, scope: String) async throws -> Data {
-        guard scope == contentScope, timeline.phase == .ready else { throw AgentBridgeError.closed }
+        guard matchesLiveTimeline, scope == contentScope, timeline.phase == .ready else { throw AgentBridgeError.closed }
         let result = try await contentFiles.data(key: "\(scope):\(reference)") {
             #if DEBUG && targetEnvironment(simulator)
             if ScreenshotFixtures.enabled { return try AgentTimelineScreenshotFixture.content(reference: reference) }
@@ -577,7 +581,7 @@ struct AgentTimelineView: View {
             return try await client.content(reference: reference, generation: generation, identity: identity)
         }
         try Task.checkCancellation()
-        guard scope == contentScope, timeline.phase == .ready else { throw AgentBridgeError.closed }
+        guard matchesLiveTimeline, scope == contentScope, timeline.phase == .ready else { throw AgentBridgeError.closed }
         return result
     }
 

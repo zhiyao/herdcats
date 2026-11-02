@@ -5,7 +5,7 @@ import Observation
 /// cannot restore old transcript data after pane changes or backgrounding.
 @MainActor @Observable final class AgentTimelineState {
     enum Phase: Equatable {
-        case loading, ready
+        case loading, ready, suspended
         case unavailable(String)
         case disconnected
     }
@@ -57,17 +57,64 @@ import Observation
     private var sequence: UInt64 = 0
     private var evictedIds: Set<String> = []
 
-    func begin(owner: UUID, paneId: String) {
-        piClient = nil
-        modelControl.connect(nil, supported: false)
-        promptClient = nil
+    private var connectionScope: AgentTimelineConnectionState?
+    private var agentScope: String?
+
+    /// A scene-only restart can retain verified history, never interactive clients.
+    func begin(owner: UUID, paneId: String, connection: AgentTimelineConnectionState? = nil, isActive: Bool = true, agent: String? = nil) {
+        let retain = self.paneId == paneId && connection != nil
+            && connectionScope == connection && connection?.isReady == true && identity != nil
+            && TimelineAgentAvailability.canonical(identity?.agent) == TimelineAgentAvailability.canonical(agent)
+        retireClients()
         self.owner = owner
         self.paneId = paneId
+        connectionScope = connection
+        agentScope = TimelineAgentAvailability.canonical(agent)
         epoch = nil
         sequence = 0
-        clear()
-        phase = .loading
+        if !retain { clear() }
+        phase = isActive && (connection?.isReady ?? true) ? .loading : .suspended
     }
+
+    /// Check live view inputs too: they can change before a replacement task begins.
+    func matchesLivePane(paneId: String, agent: String?, connection: AgentTimelineConnectionState) -> Bool {
+        connectionScope == connection && self.paneId == paneId
+            && TimelineAgentAvailability.canonical(identity?.agent ?? agentScope) == TimelineAgentAvailability.canonical(agent)
+    }
+
+    func hasSnapshot(for connection: AgentTimelineConnectionState, paneId: String, agent: String?) -> Bool {
+        connection.isReady && connectionScope == connection && identity != nil
+            && identity?.paneId == paneId && matchesLivePane(paneId: paneId, agent: agent, connection: connection)
+    }
+
+    /// View presentation also consults live eligibility before a replacement task runs.
+    func presentationPhase(connection: AgentTimelineConnectionState, isActive: Bool, paneId: String, agent: String?) -> Phase {
+        guard isActive, connection.isReady else { return .suspended }
+        guard matchesLivePane(paneId: paneId, agent: agent, connection: connection),
+              connectionScope == nil || connectionScope == connection else { return .loading }
+        return phase
+    }
+
+    func retire(owner: UUID, preservingContent: Bool = true) {
+        guard self.owner == owner else { return }
+        self.owner = nil
+        retireClients()
+        if !preservingContent { clear() }
+        phase = .suspended
+    }
+
+    private func retireClients() {
+        piClient = nil
+        promptClient = nil
+        modelControl.connect(nil, supported: false)
+        modelControl.reset()
+        pendingQuestion = nil
+        pendingApproval = nil
+        pendingPiDialog = nil
+        isPiActionPending = false
+        piActionError = nil
+    }
+
     func consume(_ frame: AgentBridgeFrame, owner: UUID) throws {
         guard self.owner == owner else { return }
         guard let event = frame.event, let nextEpoch = frame.epoch, let seq = frame.seq, let data = frame.data
@@ -88,7 +135,9 @@ import Observation
             phase = .unavailable(data.code ?? "timeline_unavailable")
         case "timeline.snapshot":
             guard let nextIdentity = data.identity, nextIdentity.paneId == paneId,
-                TimelineAgentAvailability.supports(agent: nextIdentity.agent), let next = data.generation, let rows = data.entries
+                TimelineAgentAvailability.supports(agent: nextIdentity.agent),
+                agentScope == nil || TimelineAgentAvailability.canonical(nextIdentity.agent) == agentScope,
+                let next = data.generation, let rows = data.entries
             else { throw AgentBridgeError.identityMismatch }
             try validate(rows)
             clear()
@@ -206,9 +255,11 @@ import Observation
     }
     func end(owner: UUID, error: AgentBridgeError) {
         guard self.owner == owner else { return }
-        piClient = nil
-        modelControl.connect(nil, supported: false)
-        promptClient = nil
+        guard !Task.isCancelled else {
+            retire(owner: owner)
+            return
+        }
+        retireClients()
         self.owner = nil
         clear()
         phase = error == .closed ? .disconnected : .unavailable(error.code)
