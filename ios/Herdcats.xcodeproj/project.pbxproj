@@ -38,6 +38,7 @@
 		228CA92864B4D7666F38530B /* HerdcatsTests+ConnectionOwnership.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD0542ABC20C507904C8BCD5 /* HerdcatsTests+ConnectionOwnership.swift */; };
 		2368457265E142AA65446CD5 /* PaneLiveInputTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AFE5DFC694EBCD2A7C697D9 /* PaneLiveInputTests.swift */; };
 		2467A07AC426720BEE06D546 /* PaneInputSurfaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D59976F22DF54B5D3736EEF2 /* PaneInputSurfaceTests.swift */; };
+		251C204C6FEC8DC26753388A /* SpacePaneTree.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61C5E7131816C6417DF2C429 /* SpacePaneTree.swift */; };
 		2674C405332F876201ECC16A /* SettingsScreen+Sections.swift in Sources */ = {isa = PBXBuildFile; fileRef = 895293DDBB9E064DE802A838 /* SettingsScreen+Sections.swift */; };
 		2992F1D4BDCFFE34E33D9061 /* ConnectionTimeout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B2050D63FBE492E4583C383 /* ConnectionTimeout.swift */; };
 		2B05910FF68468E1AA32059A /* SettingsScreen+Replay.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECD89630A95BF90AE6214C1A /* SettingsScreen+Replay.swift */; };
@@ -74,9 +75,11 @@
 		6CA7109E04A999EB086B1346 /* PaneCommandHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE9436A90B8BC2CD35E1CDA0 /* PaneCommandHistory.swift */; };
 		6F35258487D002073F2EDE73 /* CodexTimelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 425BF5E146238F8C6215AFA1 /* CodexTimelineTests.swift */; };
 		6FCE23D3A5BDBCE65BAE1B67 /* UserPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71FE57BC0966BCAEB02D563D /* UserPreferences.swift */; };
+		708296C78D01040FCB59842B /* SpacePaneTreeRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88F426490E28DD737E38347D /* SpacePaneTreeRows.swift */; };
 		70F0B1110708E8A8A840511C /* PaneImageEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F245C24A7A231ABFE3D3946 /* PaneImageEncoder.swift */; };
 		7195C57B2E149360F277984A /* QuotaModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BC70F0B4AB3ADF429A92F00 /* QuotaModels.swift */; };
 		71D6C3379E617A45C50CF8C6 /* HerdcatsTests+PaneInputCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6753FF3AF90C184EEA13570 /* HerdcatsTests+PaneInputCoordinator.swift */; };
+		74E50521F40175412BF28C7E /* HerdcatsTests+SpacePaneTree.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C234563294328F2C25F32D /* HerdcatsTests+SpacePaneTree.swift */; };
 		75EDADEF0A8C1036937AC270 /* LicensesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D67B69724707A16FD4618DF /* LicensesView.swift */; };
 		776F879809FF4E220D02A5B1 /* HapticFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 945BC05E891ACD9EC97F059A /* HapticFeedback.swift */; };
 		7D9C0412FD3751EE593CDEB8 /* CodexQuestionInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A4516469F0D486DC64EFF43 /* CodexQuestionInput.swift */; };
@@ -242,6 +245,7 @@
 		58D221D9158228E5593662D7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		59460EB647F68FC33C825D67 /* HerdrConnection+Queries.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdrConnection+Queries.swift"; sourceTree = "<group>"; };
 		5E030A59A32EEE2D37BBF028 /* Herdcats.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Herdcats.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		61C5E7131816C6417DF2C429 /* SpacePaneTree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpacePaneTree.swift; sourceTree = "<group>"; };
 		6349F51A9FF576CFF9455B92 /* ConnectionSettingsView+Card.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionSettingsView+Card.swift"; sourceTree = "<group>"; };
 		690A325C18C2D89D90900F04 /* QuestionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionCard.swift; sourceTree = "<group>"; };
 		691B7C7DD3FA9BD5F5661DEA /* CoreRPCClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreRPCClient.swift; sourceTree = "<group>"; };
@@ -267,10 +271,12 @@
 		82F5142CD1A7B9CCA107A75B /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		82F88C1A65206002EDEAC6DB /* PaneSwitcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneSwitcher.swift; sourceTree = "<group>"; };
 		82FA99D7D65E274174CC0C80 /* HerdcatsTests+PanePreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdcatsTests+PanePreferences.swift"; sourceTree = "<group>"; };
+		83C234563294328F2C25F32D /* HerdcatsTests+SpacePaneTree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdcatsTests+SpacePaneTree.swift"; sourceTree = "<group>"; };
 		85BDAAC12F57BDD3F41B090C /* HerdrModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrModels.swift; sourceTree = "<group>"; };
 		8865B2ACCDE7337BC2481A2D /* HerdcatsTests+RecentConnections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdcatsTests+RecentConnections.swift"; sourceTree = "<group>"; };
 		886F740A14846FCD7291287D /* AgentTimelineView+StreamAndActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AgentTimelineView+StreamAndActions.swift"; sourceTree = "<group>"; };
 		88DBA9853C7313FB0D808A34 /* ApprovalResponseState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalResponseState.swift; sourceTree = "<group>"; };
+		88F426490E28DD737E38347D /* SpacePaneTreeRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpacePaneTreeRows.swift; sourceTree = "<group>"; };
 		895293DDBB9E064DE802A838 /* SettingsScreen+Sections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SettingsScreen+Sections.swift"; sourceTree = "<group>"; };
 		8AA651ECCA572E1B7EA98DD4 /* QuestionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionTests.swift; sourceTree = "<group>"; };
 		8BC70F0B4AB3ADF429A92F00 /* QuotaModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaModels.swift; sourceTree = "<group>"; };
@@ -532,6 +538,8 @@
 			isa = PBXGroup;
 			children = (
 				75470DF8855BD088DC7742DA /* SpaceDrawers.swift */,
+				61C5E7131816C6417DF2C429 /* SpacePaneTree.swift */,
+				88F426490E28DD737E38347D /* SpacePaneTreeRows.swift */,
 				9618C0BCA3AD31945C7F960D /* SpaceRows.swift */,
 				B6A3FE1B5B05D76DF1BE8906 /* SpacesModel.swift */,
 				E348D6EA1DECCC4C70AAD35E /* SpacesModel+UsageAndRefresh.swift */,
@@ -617,6 +625,7 @@
 				08F22D067F6E76605909958F /* HerdcatsTests+RefreshGeneration.swift */,
 				F3CF48B1051365BBB404CD1A /* HerdcatsTests+SelectionSplitView.swift */,
 				EED17C5CD76FB35981A9D96C /* HerdcatsTests+SpaceAndKeyParsing.swift */,
+				83C234563294328F2C25F32D /* HerdcatsTests+SpacePaneTree.swift */,
 				6DC9AC7B0C50E2B028D486ED /* HerdcatsTests+TimeoutAndMachines.swift */,
 				D7130B92FE71B81E8E9BC8B0 /* HerdcatsTests+WorktreeAndRemoteCommands.swift */,
 				D59976F22DF54B5D3736EEF2 /* PaneInputSurfaceTests.swift */,
@@ -896,6 +905,8 @@
 				B09EB200DE3E68C06B5E65D5 /* SidebarTabSwitcher.swift in Sources */,
 				CEC27F8163C92B00CD38EE22 /* SpaceDetailView.swift in Sources */,
 				1F3AC99239EF5BE96412AFF8 /* SpaceDrawers.swift in Sources */,
+				251C204C6FEC8DC26753388A /* SpacePaneTree.swift in Sources */,
+				708296C78D01040FCB59842B /* SpacePaneTreeRows.swift in Sources */,
 				30F4DC79C7DFB353EDA5D119 /* SpaceRows.swift in Sources */,
 				5465CDF25126AD63373F6C5B /* SpacesModel+UsageAndRefresh.swift in Sources */,
 				FCB7B8EADE95FFAEF2CF333D /* SpacesModel.swift in Sources */,
@@ -947,6 +958,7 @@
 				653E60D6AE32FA1FE3ED7C9B /* HerdcatsTests+RefreshGeneration.swift in Sources */,
 				88A6FCE9894896FEACD78820 /* HerdcatsTests+SelectionSplitView.swift in Sources */,
 				03B01A98BE18ECBE68F528C5 /* HerdcatsTests+SpaceAndKeyParsing.swift in Sources */,
+				74E50521F40175412BF28C7E /* HerdcatsTests+SpacePaneTree.swift in Sources */,
 				0EF9EC595D3477407A5B0B7C /* HerdcatsTests+TimeoutAndMachines.swift in Sources */,
 				9B2967A116EC48828EF7B1DE /* HerdcatsTests+WorktreeAndRemoteCommands.swift in Sources */,
 				FE4876BF2B8AA2FC6A56B7EE /* HerdcatsTests.swift in Sources */,

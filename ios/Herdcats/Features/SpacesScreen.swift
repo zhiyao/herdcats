@@ -17,6 +17,12 @@ struct SpacesScreen: View {
     /// doesn't blank its pane mid-read.
     @State private var lastSeen: [String: Space] = [:]
 
+    /// Panes and tabs listed under each expanded space, on regular width.
+    @State private var paneTrees = SpacePaneTreeStore()
+    /// Spaces the user folded or unfolded by hand, per window. Spaces open
+    /// in a slot unfold by themselves unless folded here.
+    @SceneStorage("spacePaneTreeOverrides") private var treeOverridesRaw = ""
+
     @AppStorage(SpaceSortPreference.storageKey)
     private var sortRaw = SpaceSortPreference.default.rawValue
 
@@ -113,8 +119,9 @@ struct SpacesScreen: View {
                                 }
                                 .accessibilityIdentifier("space-row-\(group.root.workspace.number)")
                                 .id(group.id)
+                                paneTreeRows(for: group.root, indent: QuietListMetrics.titleInset)
                                 ForEach(group.worktrees) { space in
-                                    spaceLink(space) {
+                                    spaceLink(space, isWorktree: true) {
                                         WorktreeRow(
                                             space: space,
                                             isHighlighted: model.highlightedWorktreeID == space.id,
@@ -122,6 +129,7 @@ struct SpacesScreen: View {
                                             lastUpdated: model.lastActivity(in: space)
                                         )
                                     }
+                                    paneTreeRows(for: space, indent: QuietListMetrics.titleInset * 2)
                                 }
                                 if let pending = model.pendingWorktreeAction,
                                    pending.sourceSpaceID == group.root.id {
@@ -131,6 +139,9 @@ struct SpacesScreen: View {
                             }
                         }
                         .listStyle(.plain)
+                        .task(id: PaneTreeTrigger(targets: treeTargets, retryTick: paneTrees.retryTick)) {
+                            await paneTrees.sync(treeTargets, connection: appModel.connection)
+                        }
                         .scrollContentBackground(.hidden)
                         .environment(\.defaultMinListRowHeight, 0)
                         .contentMargins(.top, 4, for: .scrollContent)
@@ -414,6 +425,63 @@ struct SpacesScreen: View {
     }
 
     /// Only the split view's detail column marks a row; a pushed pane covers the list.
+    // MARK: Pane tree
+
+    private struct PaneTreeTrigger: Hashable {
+        let targets: [SpacePaneTreeTarget]
+        let retryTick: Int
+    }
+
+    private var treeOverrides: [String: Bool] {
+        get { SpacePaneTree.decode(treeOverridesRaw) }
+        nonmutating set { treeOverridesRaw = SpacePaneTree.encode(newValue) }
+    }
+
+    private func isOpen(_ space: Space) -> Bool {
+        layout.left?.spaceID == space.id || layout.right?.spaceID == space.id
+    }
+
+    private func isTreeExpanded(_ space: Space) -> Bool {
+        horizontalSizeClass == .regular
+            && SpacePaneTree.isExpanded(space.id, overrides: treeOverrides, isOpen: isOpen(space))
+    }
+
+    /// The expanded spaces, as the trees to fetch.
+    private var treeTargets: [SpacePaneTreeTarget] {
+        displayedGroups.flatMap(\.members).filter(isTreeExpanded).map { space in
+            SpacePaneTreeTarget(
+                spaceID: space.id,
+                workspaceID: space.workspace.workspaceId,
+                key: .init(tabCount: space.workspace.tabCount, paneCount: space.workspace.paneCount)
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func paneTreeRows(for space: Space, indent: CGFloat) -> some View {
+        if isTreeExpanded(space) {
+            SpacePaneTreeRows(
+                space: space,
+                load: paneTrees.loads[space.id],
+                indent: indent,
+                layout: $layout,
+                retry: { paneTrees.retry(space.id) }
+            )
+        }
+    }
+
+    private func treePill(for space: Space, trailingInset: CGFloat) -> some View {
+        SpacePaneTreePill(
+            paneCount: space.workspace.paneCount,
+            isExpanded: isTreeExpanded(space)
+        ) {
+            var overrides = treeOverrides
+            SpacePaneTree.toggle(space.id, overrides: &overrides, isOpen: isOpen(space))
+            withAnimation(reduceMotion ? nil : .snappy) { treeOverrides = overrides }
+        }
+        .padding(.trailing, trailingInset)
+    }
+
     private func isSelected(_ space: Space) -> Bool {
         horizontalSizeClass == .regular
             && (layout.left?.spaceID == space.id || layout.right?.spaceID == space.id)
@@ -424,7 +492,11 @@ struct SpacesScreen: View {
     /// Opens a space on tap, its More drawer on long press, and offers
     /// trailing swipe actions: More and Close.
     @ViewBuilder
-    private func spaceLink<Row: View>(_ space: Space, @ViewBuilder row: () -> Row) -> some View {
+    private func spaceLink<Row: View>(
+        _ space: Space,
+        isWorktree: Bool = false,
+        @ViewBuilder row: () -> Row
+    ) -> some View {
         // Keep native cell selection and swipe handling. The long press must
         // be simultaneous so it doesn't consume the NavigationLink's tap.
         let link = Group {
@@ -437,6 +509,13 @@ struct SpacesScreen: View {
             } else {
                 NavigationLink(value: PaneRef(spaceID: space.id, paneID: nil)) { row() }
                     .hidesNavigationIndicator()
+            }
+        }
+        .overlay(alignment: isWorktree ? .trailing : .bottomTrailing) {
+            // Beside the row's own button, so a tap here only folds the tree.
+            if horizontalSizeClass == .regular, space.workspace.paneCount > 0 {
+                // A worktree row's time sits at its trailing edge; the pill goes left of it.
+                treePill(for: space, trailingInset: isWorktree ? 64 : 0)
             }
         }
         .quietListRow()
