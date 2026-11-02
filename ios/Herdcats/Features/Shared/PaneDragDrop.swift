@@ -93,15 +93,32 @@ private struct PaneDropTargetModifier: ViewModifier {
     @Binding var layout: PaneLayout
     @State private var isTargeted = false
     @State private var width: CGFloat = 0
+    /// When the drag last moved over the column. A drag that is cancelled
+    /// (released outside, or off every zone) can leave `isTargeted` stuck, so
+    /// the zones also go away once the drag has been quiet for a moment.
+    @State private var lastActivity = Date()
+
+    private static let quietTimeout: TimeInterval = 1.2
 
     func body(content: Content) -> some View {
         content
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-            .dropDestination(for: String.self) { items, location in
-                let half = PaneDropZone.slot(atX: location.x, width: width)
-                for item in items where layout.drop(item, onHalf: half) { return true }
-                return false
-            } isTargeted: { isTargeted = $0 }
+            .onDrop(of: [.plainText], delegate: PaneDropDelegate(
+                width: width,
+                setTargeted: { isTargeted = $0 },
+                noteActivity: { lastActivity = Date() },
+                accept: { payload, half in layout.drop(payload, onHalf: half) }
+            ))
+            .task(id: isTargeted) {
+                guard isTargeted else { return }
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    if Date().timeIntervalSince(lastActivity) > Self.quietTimeout {
+                        isTargeted = false
+                        return
+                    }
+                }
+            }
             .overlay {
                 if isTargeted {
                     HStack(spacing: 12) {
@@ -122,5 +139,42 @@ private struct PaneDropTargetModifier: ViewModifier {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Theme.accent.opacity(0.08), in: shape)
             .overlay(shape.strokeBorder(Theme.accent, style: StrokeStyle(lineWidth: 2, dash: [6, 4])))
+    }
+}
+
+private struct PaneDropDelegate: DropDelegate {
+    let width: CGFloat
+    let setTargeted: (Bool) -> Void
+    let noteActivity: () -> Void
+    let accept: (String, PaneLayout.Slot) -> Bool
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [.plainText])
+    }
+
+    func dropEntered(info: DropInfo) {
+        noteActivity()
+        setTargeted(true)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        noteActivity()
+        setTargeted(true)
+        return DropProposal(operation: .copy)
+    }
+
+    func dropExited(info: DropInfo) {
+        setTargeted(false)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        setTargeted(false)
+        guard let provider = info.itemProviders(for: [.plainText]).first else { return false }
+        let half = PaneDropZone.slot(atX: info.location.x, width: width)
+        _ = provider.loadObject(ofClass: String.self) { payload, _ in
+            guard let payload else { return }
+            DispatchQueue.main.async { _ = accept(payload, half) }
+        }
+        return true
     }
 }
