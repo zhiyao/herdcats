@@ -8,7 +8,8 @@ struct PanePickerRow: Identifiable, Equatable {
     let status: AgentStatus
     /// The pane already in the target slot.
     let isDisabled: Bool
-    /// The pane open in the other slot: choosing it swaps the sides.
+    /// The pane open in the other slot while the target slot is occupied:
+    /// choosing it swaps the sides.
     let willSwap: Bool
 
     var id: PaneRef { ref }
@@ -62,12 +63,15 @@ enum PanePicker {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
         func row(_ ref: PaneRef, _ title: String, _ status: AgentStatus) -> PanePickerRow {
-            PanePickerRow(
+            let target = layout.ref(in: slot)
+            let isOpenInOther = layout.ref(in: slot.other) == ref
+            return PanePickerRow(
                 ref: ref,
                 title: title,
                 status: status,
-                isDisabled: layout.ref(in: slot) == ref,
-                willSwap: layout.ref(in: slot.other) == ref
+                // Already there, or open in the other slot with nothing to swap with.
+                isDisabled: target == ref || (target == nil && isOpenInOther),
+                willSwap: target != nil && isOpenInOther
             )
         }
 

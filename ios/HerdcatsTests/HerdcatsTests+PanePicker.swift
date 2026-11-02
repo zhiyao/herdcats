@@ -71,6 +71,14 @@ struct PanePickerTests {
         #expect(rows.filter(\.willSwap).count == 1)
     }
 
+    @Test func aPaneAlreadyOpenIsNotOfferedAsASwapWhenTheTargetSlotIsEmpty() {
+        let layout = PaneLayout(left: PaneRef(spaceID: "w1", paneID: "p1"))
+        let row = sections(layout: layout, slot: .right).flatMap(\.rows)
+            .first { $0.ref == PaneRef(spaceID: "w1", paneID: "p1") }
+        #expect(row?.willSwap == false)
+        #expect(row?.isDisabled == true)
+    }
+
     @Test func showAllPanesAddsShellsWithoutDuplicatingAgents() {
         let extra = ["w1": [
             pane("p1", title: "Fix build", workspace: "w1"),
