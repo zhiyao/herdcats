@@ -42,7 +42,7 @@ extension EnvironmentValues {
 /// keeps its own toolbar.
 struct TwoPaneDetail<Content: View>: View {
     @Binding var layout: PaneLayout
-    let memory: (PaneLayout.Slot) -> OpenPaneMemory
+    let memory: OpenPaneMemory
     /// Opens the pane picker for a slot (wired up by the pane-choosing UI).
     var pick: (PaneLayout.Slot) -> Void = { _ in }
     @ViewBuilder let content: (PaneRef) -> Content
@@ -89,7 +89,7 @@ struct TwoPaneDetail<Content: View>: View {
         return NavigationStack {
             content(ref)
                 .environment(\.paneIsFocused, isFocused)
-                .environment(\.openPaneMemory, OpenPaneSlot(memory: memory(slot), selection: ref.memoryKey))
+                .environment(\.openPaneMemory, OpenPaneSlot(memory: memory, selection: ref.memoryKey))
                 .environment(\.closeDetail, CloseDetailAction(layout: $layout, slot: slot, ref: ref))
                 .environment(\.paneSlotActions, PaneSlotActions(
                     slot: slot,

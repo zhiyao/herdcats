@@ -121,13 +121,8 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
     }
 
     /// Switching between the split view and the stack rebuilds the detail,
-    /// so each slot's open sibling pane is remembered here, above both layouts.
-    @State private var leftMemory = OpenPaneMemory()
-    @State private var rightMemory = OpenPaneMemory()
-
-    private func memory(for slot: PaneLayout.Slot) -> OpenPaneMemory {
-        slot == .left ? leftMemory : rightMemory
-    }
+    /// so each open item's sibling pane is remembered here, above both layouts.
+    @State private var openPaneMemory = OpenPaneMemory()
 
     /// The compact stack's path is the focused pane while it is pushed.
     private var stackPath: Binding<[PaneRef]> {
@@ -139,11 +134,8 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
 
     var body: some View {
         content(for: horizontalSizeClass)
-            .onChange(of: layout.left) { _, left in
-                if left == nil { leftMemory.forget() }
-            }
-            .onChange(of: layout.right) { _, right in
-                if right == nil { rightMemory.forget() }
+            .onChange(of: layout) { _, layout in
+                openPaneMemory.retain(Set([layout.left, layout.right].compactMap { $0?.memoryKey }))
             }
             .onChange(of: horizontalSizeClass) { old, new in
                 if old == .regular, new == .compact { layout.enteredCompact() }
@@ -160,7 +152,7 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
             } detail: {
                 Group {
                     if layout.left != nil {
-                        TwoPaneDetail(layout: $layout, memory: memory(for:), content: detail)
+                        TwoPaneDetail(layout: $layout, memory: openPaneMemory, content: detail)
                     } else {
                         ContentUnavailableView {
                             Label {
@@ -194,7 +186,7 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
                 sidebar
                     .navigationDestination(for: PaneRef.self) { ref in
                         detail(ref)
-                            .environment(\.openPaneMemory, OpenPaneSlot(memory: memory(for: layout.focused), selection: ref.memoryKey))
+                            .environment(\.openPaneMemory, OpenPaneSlot(memory: openPaneMemory, selection: ref.memoryKey))
                             .environment(\.closeDetail, CloseDetailAction(
                                 layout: $layout, slot: layout.focused, ref: ref, popsCompactStack: true
                             ))
@@ -204,26 +196,28 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
     }
 }
 
-/// The sibling pane open in the selected item's detail. It is keyed by the
-/// list selection, which survives a size-class change that rebuilds the
-/// detail; unlike the entry pane, the selection can't change underneath it.
-/// Backing out clears it, so opening the item again starts fresh.
+/// The sibling pane open in each open item's detail. It is keyed by the
+/// item's `PaneRef.memoryKey`, which survives a size-class change that
+/// rebuilds the detail and follows the ref when the slots swap. Entries for
+/// items that are no longer open are dropped with `retain`.
 final class OpenPaneMemory {
-    private var selection: String?
-    private var paneID: String?
+    private var paneIDs: [String: String] = [:]
 
     func remember(_ paneID: String, forSelection selection: String) {
-        self.selection = selection
-        self.paneID = paneID
+        paneIDs[selection] = paneID
     }
 
     func paneID(forSelection selection: String) -> String? {
-        self.selection == selection ? paneID : nil
+        paneIDs[selection]
+    }
+
+    /// Keeps only the entries for `selections`.
+    func retain(_ selections: Set<String>) {
+        paneIDs = paneIDs.filter { selections.contains($0.key) }
     }
 
     func forget() {
-        selection = nil
-        paneID = nil
+        paneIDs = [:]
     }
 }
 
