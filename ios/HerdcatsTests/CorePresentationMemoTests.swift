@@ -5,9 +5,6 @@ import Testing
 private extension HerdrConnection {
     func installForTest(_ snapshot: CoreSnapshot) { coreSnapshot = snapshot }
     func setLayoutsForTest(_ layouts: [String: CoreJSON]) { coreLayouts = layouts }
-    func applyForTest(_ message: CoreJSON) throws {
-        if try coreSnapshot?.apply(message) == true { invalidateCorePresentation() }
-    }
     var builds: Int { corePresentationBuilds }
 }
 
@@ -22,7 +19,7 @@ struct CorePresentationMemoTests {
         #expect(await connection.builds == 1)
 
         // A new event advances the snapshot sequence.
-        try await connection.applyForTest(json("{\"method\":\"event\",\"params\":{\"seq\":2,\"type\":\"title\",\"terminal\":\"t1\",\"data\":{\"title\":\"New\"}}}"))
+        try await connection.applyCoreNotification(json("{\"method\":\"event\",\"params\":{\"seq\":2,\"type\":\"title\",\"terminal\":\"t1\",\"data\":{\"title\":\"New\"}}}"))
         let updated = try await connection.cachedCorePresentation()
         #expect(await connection.builds == 2)
         #expect(updated.panes.first?.terminalTitle == "New")
@@ -35,20 +32,29 @@ struct CorePresentationMemoTests {
         #expect(await connection.builds == 3)
     }
 
-    @Test func missedAndNewSubscriptionDropTheMemo() async throws {
+    @Test func missedWithSameSequenceDropsTheMemo() async throws {
         let connection = HerdrConnection()
-        await connection.installForTest(try snapshot(seq: 5))
+        await connection.installForTest(try snapshot(seq: 5, addresses: ["t1"]))
+        let before = try await connection.cachedCorePresentation()
+        #expect(before.panes.map(\.paneId) == ["t1"])
+
+        // `missed` replaces terminals at an equal sequence: the memo key alone would match.
+        let missed = try json("{\"method\":\"missed\",\"params\":{\"seq\":5,\"terminals\":[\(terminal("t2"))]}}")
+        #expect(try await connection.applyCoreNotification(missed))
+        let after = try await connection.cachedCorePresentation()
+        #expect(after.panes.map(\.paneId) == ["t2"])
+    }
+
+    @Test func newSubscriptionWithSameSequenceDropsTheMemo() async throws {
+        let connection = HerdrConnection()
+        await connection.installForTest(try snapshot(seq: 5, addresses: ["t1"]))
         _ = try await connection.cachedCorePresentation()
 
-        // Same sequence number but replaced terminals must not reuse the memo.
-        try await connection.applyForTest(json("{\"method\":\"missed\",\"params\":{\"seq\":9,\"terminals\":[]}}"))
-        let afterMissed = try await connection.cachedCorePresentation()
-        #expect(afterMissed.panes.isEmpty)
-
-        await connection.installForTest(try snapshot(seq: 9))
-        await connection.invalidateCorePresentation()
+        try await connection.replaceCoreSnapshot(
+            subscription: json("{\"seq\":5,\"terminals\":[\(terminal("t3"))]}")
+        )
         let replaced = try await connection.cachedCorePresentation()
-        #expect(replaced.panes.count == 1)
+        #expect(replaced.panes.map(\.paneId) == ["t3"])
     }
 
     @Test func closeCoreClearsTheMemo() async throws {
@@ -62,9 +68,12 @@ struct CorePresentationMemoTests {
         #expect(await connection.builds == 2)
     }
 
-    private func snapshot(seq: Int) throws -> CoreSnapshot {
-        let terminal = "{\"address\":\"t1\",\"title\":\"Terminal\",\"state\":\"live\",\"cwd\":\"/p\",\"created_ms\":1,\"status\":null,\"reported\":false,\"labels\":{}}"
-        return try CoreSnapshot(subscription: json("{\"seq\":\(seq),\"terminals\":[\(terminal)]}"))
+    private func terminal(_ address: String) -> String {
+        "{\"address\":\"\(address)\",\"title\":\"Terminal\",\"state\":\"live\",\"cwd\":\"/p\",\"created_ms\":1,\"status\":null,\"reported\":false,\"labels\":{}}"
+    }
+
+    private func snapshot(seq: Int, addresses: [String] = ["t1"]) throws -> CoreSnapshot {
+        try CoreSnapshot(subscription: json("{\"seq\":\(seq),\"terminals\":[\(addresses.map(terminal).joined(separator: ","))]}"))
     }
 
     private func json(_ value: String) throws -> CoreJSON {

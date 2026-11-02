@@ -129,10 +129,25 @@ extension HerdrConnection {
         try requireGeneration(owned)
         guard coreSessionID == session else { throw HerdrError.notConnected }
         coreHello = hello
-        coreSnapshot = try CoreSnapshot(subscription: value)
-        invalidateCorePresentation()
+        try replaceCoreSnapshot(subscription: value)
         for message in earlyCoreNotifications { _ = try coreSnapshot?.apply(message) }
         earlyCoreNotifications = []
+    }
+
+    /// Installs a fresh subscription snapshot. Its sequence may equal the old
+    /// one's (sequences reset per Core process), so the memo is dropped.
+    func replaceCoreSnapshot(subscription value: CoreJSON) throws {
+        coreSnapshot = try CoreSnapshot(subscription: value)
+        invalidateCorePresentation()
+    }
+
+    /// Applies one event to the snapshot and drops the memo when it asks for
+    /// a refetch (`missed` replacement or a layout document change).
+    @discardableResult
+    func applyCoreNotification(_ value: CoreJSON) throws -> Bool {
+        let refetch = try coreSnapshot?.apply(value) ?? false
+        if refetch { invalidateCorePresentation() }
+        return refetch
     }
 
     private func receiveCoreNotification(_ value: CoreJSON, owned: ConnectionGeneration, session: UUID) throws {
@@ -144,9 +159,8 @@ extension HerdrConnection {
             earlyCoreNotifications.append(value)
             return
         }
-        let refetch = try coreSnapshot?.apply(value) ?? false
+        let refetch = try applyCoreNotification(value)
         if refetch {
-            invalidateCorePresentation()
             coreDocumentsRevision &+= 1
             scheduleCoreDocumentReload(owned: owned, session: session)
         }
