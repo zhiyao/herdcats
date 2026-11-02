@@ -38,6 +38,15 @@ extension EnvironmentValues {
 struct CloseDetailAction {
     let action: () -> Void
     func callAsFunction() { action() }
+
+    /// Clears `selection` only while it still names `id`. A pane's close can
+    /// finish after the user has opened another item (the SSH request runs in
+    /// an unstructured task), and it must not close that other item.
+    init(selection: Binding<String?>, id: String) {
+        action = {
+            if selection.wrappedValue == id { selection.wrappedValue = nil }
+        }
+    }
 }
 
 private struct CloseDetailKey: EnvironmentKey {
@@ -94,9 +103,9 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
     }
 
     /// Clearing the selection empties the detail column and pops the stack.
-    private var closeDetail: CloseDetailAction {
-        let selection = $selection
-        return CloseDetailAction { selection.wrappedValue = nil }
+    /// Scoped to the item the detail was built for.
+    private func closeDetail(for id: String) -> CloseDetailAction {
+        CloseDetailAction(selection: $selection, id: id)
     }
 
     var body: some View {
@@ -118,6 +127,7 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
                     if let selection {
                         detail(selection)
                             .environment(\.openPaneMemory, OpenPaneSlot(memory: openPaneMemory, selection: selection))
+                            .environment(\.closeDetail, closeDetail(for: selection))
                             // A new item gets fresh pane state, not the last item's.
                             .id(selection)
                     } else {
@@ -140,7 +150,6 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
                 .revealsSidebarOnEdgeSwipe(columnVisibility)
                 .environment(\.showsPaneSwitcher, columnVisibility.wrappedValue == .detailOnly)
                 .environment(\.showsPaneBackButton, false)
-                .environment(\.closeDetail, closeDetail)
             }
             .navigationSplitViewStyle(.balanced)
         } else {
@@ -149,7 +158,7 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
                     .navigationDestination(for: String.self) { id in
                         detail(id)
                             .environment(\.openPaneMemory, OpenPaneSlot(memory: openPaneMemory, selection: id))
-                            .environment(\.closeDetail, closeDetail)
+                            .environment(\.closeDetail, closeDetail(for: id))
                     }
             }
         }

@@ -33,4 +33,25 @@ struct SelectionSplitViewTests {
         memory.forget()
         #expect(slot.paneID == nil)
     }
+
+    @Test func closeDetailClearsItsOwnSelection() {
+        let box = SelectionBox("a")
+        CloseDetailAction(selection: box.binding, id: "a")()
+        #expect(box.value == nil)
+    }
+
+    @Test func closeDetailLeavesAnotherSelectionOpen() {
+        // A's close finishing after the user opened B must not close B.
+        let box = SelectionBox("b")
+        CloseDetailAction(selection: box.binding, id: "a")()
+        #expect(box.value == "b")
+    }
+}
+
+private final class SelectionBox {
+    var value: String?
+    init(_ value: String?) { self.value = value }
+    var binding: Binding<String?> {
+        Binding(get: { self.value }, set: { self.value = $0 })
+    }
 }
