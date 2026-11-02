@@ -271,8 +271,12 @@ struct AgentsScreen: View {
                 }
             }
             .toolbarBackground(.hidden, for: .navigationBar)
-            .onChange(of: currentItems) { _, _ in rememberSelected() }
+            .onChange(of: currentItems) { _, _ in
+                rememberSelected()
+                autoSelectFirstIfNeeded()
+            }
             .onChange(of: selectedID) { _, _ in rememberSelected() }
+            .onAppear { autoSelectFirstIfNeeded() }
             .overlay(alignment: .bottom) {
                 if let error = model.agentListError,
                    case .connected = appModel.phase {
@@ -307,6 +311,13 @@ struct AgentsScreen: View {
     private func rememberSelected() {
         guard let selectedID, let live = items.first(where: { $0.id == selectedID }) else { return }
         lastSeen = live
+    }
+
+    private func autoSelectFirstIfNeeded() {
+        if selectedID == nil, horizontalSizeClass == .regular,
+           ProcessInfo.processInfo.arguments.contains("-hc.select-first") {
+            selectedID = items.first?.id
+        }
     }
 
     // MARK: Pieces

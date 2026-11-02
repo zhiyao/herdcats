@@ -203,8 +203,12 @@ struct SpacesScreen: View {
                 }
             }
             .toolbarBackground(.hidden, for: .navigationBar)
-            .onChange(of: model.spaces) { _, _ in rememberSelected() }
+            .onChange(of: model.spaces) { _, _ in
+                rememberSelected()
+                autoSelectFirstIfNeeded()
+            }
             .onChange(of: selectedID) { _, _ in rememberSelected() }
+            .onAppear { autoSelectFirstIfNeeded() }
             .sheet(item: $actionsTarget, onDismiss: {
                 guard let pending = pendingSpaceAction else { return }
                 pendingSpaceAction = nil
@@ -393,6 +397,13 @@ struct SpacesScreen: View {
     private func rememberSelected() {
         guard let selectedID, let live = model.spaces.first(where: { $0.id == selectedID }) else { return }
         lastSeen = live
+    }
+
+    private func autoSelectFirstIfNeeded() {
+        if selectedID == nil, horizontalSizeClass == .regular,
+           ProcessInfo.processInfo.arguments.contains("-hc.select-first") {
+            selectedID = displayedGroups.first?.root.id
+        }
     }
 
     /// Only the split view's detail column marks a row; a pushed pane covers the list.
