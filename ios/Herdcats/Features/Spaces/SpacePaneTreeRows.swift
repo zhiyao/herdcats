@@ -138,19 +138,12 @@ struct SpacePaneTreeRows: View {
             .quietListRow()
         case let .loaded(_, tabs):
             let shown = shownPanes(in: tabs.flatMap(\.panes))
-            ForEach(tabs) { tab in
-                if tab.showsHeader {
-                    Text(tab.headerTitle)
-                        .font(.jost(11, weight: .medium))
-                        .textCase(.uppercase)
-                        .tracking(0.6)
-                        .foregroundStyle(.tertiary)
-                        .padding(.leading, indent)
-                        .padding(.top, 8)
-                        .padding(.bottom, 2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            ForEach(Array(tabs.enumerated()), id: \.element.id) { index, tab in
+                if index > 0 {
+                    // A line between the space's tabs, instead of their names.
+                    QuietListDivider(leadingInset: indent)
+                        .padding(.vertical, 3)
                         .quietListRow()
-                        .accessibilityAddTraits(.isHeader)
                 }
                 ForEach(tab.panes) { pane in
                     paneRow(pane, shown: shown)

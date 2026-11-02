@@ -1,14 +1,10 @@
 import Foundation
 
-/// One tab of a space with its panes, for the Spaces list's tree.
+/// One tab of a space with its panes, for the Spaces list's tree. The list
+/// separates tabs with a divider, so a tab's name isn't shown.
 struct SpacePaneTab: Identifiable, Equatable {
     let id: String
-    let title: String
     let panes: [PaneEntry]
-    /// A lone pane in a lone tab needs no header above it.
-    let showsHeader: Bool
-
-    var headerTitle: String { "\(title) · \(panes.count)" }
 }
 
 /// The pure logic behind the panes and tabs listed under a space's row.
@@ -17,17 +13,15 @@ enum SpacePaneTree {
     /// panes of a tab the list doesn't know still show up.
     static func tabs(tabs: [TabEntry], panes: [PaneEntry]) -> [SpacePaneTab] {
         let byTab = Dictionary(grouping: panes, by: \.tabId)
-        var groups = tabs.sorted { $0.number < $1.number }.compactMap { tab -> (String, String, [PaneEntry])? in
+        var groups = tabs.sorted { $0.number < $1.number }.compactMap { tab -> SpacePaneTab? in
             guard let panes = byTab[tab.tabId], !panes.isEmpty else { return nil }
-            return (tab.tabId, tab.label, panes)
+            return SpacePaneTab(id: tab.tabId, panes: panes)
         }
         let known = Set(tabs.map(\.tabId))
-        for tabID in panes.map(\.tabId) where !known.contains(tabID) && !groups.contains(where: { $0.0 == tabID }) {
-            groups.append((tabID, "Tab", byTab[tabID] ?? []))
+        for tabID in panes.map(\.tabId) where !known.contains(tabID) && !groups.contains(where: { $0.id == tabID }) {
+            groups.append(SpacePaneTab(id: tabID, panes: byTab[tabID] ?? []))
         }
-        return groups.map { id, label, panes in
-            SpacePaneTab(id: id, title: label, panes: panes, showsHeader: groups.count > 1 || panes.count > 1)
-        }
+        return groups
     }
 
     // MARK: which pane a slot shows

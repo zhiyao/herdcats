@@ -25,18 +25,6 @@ struct SpacePaneTreeTests {
         #expect(result[1].panes.map(\.paneId) == ["p2"])
     }
 
-    @Test func headersShowOnlyWhenTheyAddInformation() {
-        let one = SpacePaneTree.tabs(tabs: [tab("t1", "main", number: 1)], panes: [pane("p1", tab: "t1")])
-        #expect(!one[0].showsHeader)
-        let manyPanes = SpacePaneTree.tabs(tabs: [tab("t1", "main", number: 1)], panes: [pane("p1", tab: "t1"), pane("p2", tab: "t1")])
-        #expect(manyPanes[0].showsHeader)
-        let manyTabs = SpacePaneTree.tabs(
-            tabs: [tab("t1", "main", number: 1), tab("t2", "logs", number: 2)],
-            panes: [pane("p1", tab: "t1"), pane("p2", tab: "t2")]
-        )
-        #expect(manyTabs.allSatisfy { $0.showsHeader })
-    }
-
     @Test func emptyTabsAreDropped() {
         let result = SpacePaneTree.tabs(
             tabs: [tab("t1", "main", number: 1), tab("t2", "empty", number: 2)],
@@ -49,11 +37,6 @@ struct SpacePaneTreeTests {
         let result = SpacePaneTree.tabs(tabs: [], panes: [pane("p1", tab: "gone")])
         #expect(result.count == 1)
         #expect(result[0].panes.map(\.paneId) == ["p1"])
-    }
-
-    @Test func headerTitleCarriesThePaneCount() {
-        let result = SpacePaneTree.tabs(tabs: [tab("t1", "main", number: 1)], panes: [pane("p1", tab: "t1"), pane("p2", tab: "t1")])
-        #expect(result[0].headerTitle == "main · 2")
     }
 
     // MARK: expansion
