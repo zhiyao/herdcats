@@ -105,8 +105,8 @@ private struct PaneDropTargetModifier: ViewModifier {
             .overlay {
                 if isTargeted {
                     HStack(spacing: 12) {
-                        zone("Open on left")
-                        zone("Open on right")
+                        zone("Left")
+                        zone("Right")
                     }
                     .padding(12)
                     .allowsHitTesting(false)
