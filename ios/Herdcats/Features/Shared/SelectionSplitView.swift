@@ -134,6 +134,12 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
         )
     }
 
+    /// The other slot's pane while split, for the folded pane switcher's partner tile.
+    private var compactPartner: PanePartner? {
+        guard layout.isSplit, let partner = layout.ref(in: layout.focused.other) else { return nil }
+        return PanePartner(ref: partner, focus: { layout.focus(layout.focused.other) })
+    }
+
     var body: some View {
         content(for: horizontalSizeClass)
             .onChange(of: layout) { _, layout in
@@ -172,6 +178,7 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
                             .background(Theme.backgroundGradient.ignoresSafeArea())
                     }
                 }
+                .paneDropTarget(layout: $layout)
                 .revealsSidebarOnEdgeSwipe(columnVisibility)
                 .environment(\.showsPaneSwitcher, columnVisibility.wrappedValue == .detailOnly)
                 .environment(\.showsPaneBackButton, false)
@@ -195,6 +202,7 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
                             .environment(\.closeDetail, CloseDetailAction(
                                 layout: $layout, slot: layout.focused, ref: ref, popsCompactStack: true
                             ))
+                            .environment(\.panePartner, compactPartner)
                     }
             }
         }

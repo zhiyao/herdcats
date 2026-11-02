@@ -21,6 +21,7 @@ struct PaneDetailView: View {
     @Environment(\.openPaneMemory) private var openPaneMemory
     @Environment(\.closeDetail) private var closeDetail
     @Environment(\.paneSlotActions) private var slotActions
+    @Environment(\.panePartner) private var panePartner
     @State private var siblings: [PaneEntry]
     @State private var tabs: [TabEntry] = []
     @State private var selectedPaneID: String
@@ -205,6 +206,12 @@ struct PaneDetailView: View {
                     pendingPane: creatingPane,
                     isAddDisabled: isPerformingAction,
                     allowsMutations: !appModel.isCoreMode,
+                    partnerTile: panePartner.map { partner in
+                        PanePartnerTile(
+                            title: partner.ref.displayTitle(in: spacesModel?.spaces ?? []),
+                            focus: partner.focus
+                        )
+                    },
                     onAdd: {
                         isShowingAddPane = true
                     },

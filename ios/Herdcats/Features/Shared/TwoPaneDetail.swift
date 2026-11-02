@@ -23,7 +23,24 @@ struct PaneSlotActions {
     let focus: () -> Void
 }
 
+/// In the compact stack while split: the pane that is open in the other slot,
+/// and how to bring it forward. Lets the pane switcher offer it without
+/// knowing about `PaneLayout`.
+struct PanePartner {
+    let ref: PaneRef
+    let focus: () -> Void
+}
+
+private struct PanePartnerKey: EnvironmentKey {
+    static let defaultValue: PanePartner? = nil
+}
+
 extension EnvironmentValues {
+    var panePartner: PanePartner? {
+        get { self[PanePartnerKey.self] }
+        set { self[PanePartnerKey.self] = newValue }
+    }
+
     /// Whether this pane owns the input surface. Only one split slot does;
     /// a lone pane, or one outside the split view, is always focused.
     var paneIsFocused: Bool {
@@ -82,6 +99,24 @@ struct TwoPaneDetail<Content: View>: View {
                         .frame(width: usable - leftWidth)
                 }
             }
+            .background { focusShortcuts(enabled: isSplit) }
+        }
+    }
+
+    /// ⌘[ and ⌘] move typing between the panes. They are plain buttons, so the
+    /// live keyboard (which only claims unmodified keys) doesn't swallow them.
+    @ViewBuilder
+    private func focusShortcuts(enabled: Bool) -> some View {
+        if enabled {
+            ZStack {
+                Button("Focus Left Pane") { layout.focus(.left) }
+                    .keyboardShortcut("[", modifiers: .command)
+                Button("Focus Right Pane") { layout.focus(.right) }
+                    .keyboardShortcut("]", modifiers: .command)
+            }
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
         }
     }
 

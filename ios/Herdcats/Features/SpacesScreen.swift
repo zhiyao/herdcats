@@ -433,6 +433,7 @@ struct SpacesScreen: View {
                     row().paneSlotBadge(layout.badgeSlot(spaceID: space.id), focused: layout.focused)
                 }
                 .buttonStyle(.plain)
+                .paneDraggable(PaneRef(spaceID: space.id, paneID: nil), title: space.label, enabled: true)
             } else {
                 NavigationLink(value: PaneRef(spaceID: space.id, paneID: nil)) { row() }
                     .hidesNavigationIndicator()

@@ -420,6 +420,7 @@ struct AgentsScreen: View {
                         Button(action: action.perform) { Label(action.title, systemImage: action.systemImage) }
                     }
                 }
+                .paneDraggable(ref(for: item), title: item.title, enabled: true)
             } else {
                 NavigationLink(value: ref(for: item)) { row }
             }
