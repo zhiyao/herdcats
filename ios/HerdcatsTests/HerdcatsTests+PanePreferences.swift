@@ -365,15 +365,29 @@ struct PaneSessionStateTests {
     @Test @MainActor func reloadShowsLoadingOnlyWhileOutputIsEmpty() async throws {
         let state = try makeState()
         var loadingDuringFirstRead = false
-        await state.reload { loadingDuringFirstRead = state.isLoading; return "hello" }
+        var readingDuringFirstRead = false
+        await state.reload {
+            loadingDuringFirstRead = state.isLoading
+            readingDuringFirstRead = state.isReading
+            return "hello"
+        }
         #expect(loadingDuringFirstRead)
+        #expect(readingDuringFirstRead)
         #expect(!state.isLoading)
+        #expect(!state.isReading)
         #expect(state.output == "hello")
 
         var loadingDuringSecondRead = true
-        await state.reload { loadingDuringSecondRead = state.isLoading; return "hello" }
+        var readingDuringSecondRead = false
+        await state.reload {
+            loadingDuringSecondRead = state.isLoading
+            readingDuringSecondRead = state.isReading
+            return "hello"
+        }
         #expect(!loadingDuringSecondRead)
+        #expect(readingDuringSecondRead)
         #expect(!state.isLoading)
+        #expect(!state.isReading)
     }
 
     @Test func textViewRendersOnlyWhenRevisionOrFontChanges() {

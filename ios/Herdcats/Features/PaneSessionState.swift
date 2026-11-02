@@ -12,6 +12,9 @@ final class PaneSessionState {
 
     private(set) var output: String = ""
     private(set) var isLoading = false
+    /// In-flight read guard for rapid live pacing; ignored by observation so
+    /// background reads don't invalidate UI observers.
+    @ObservationIgnored private(set) var isReading = false
     private(set) var isSending = false
     private(set) var errorMessage: String?
 
@@ -69,11 +72,13 @@ final class PaneSessionState {
     func reload(read: () async throws -> String) async {
         reloadGeneration += 1
         let generation = reloadGeneration
+        isReading = true
         let wasEmpty = output.isEmpty
         if wasEmpty { isLoading = true }
         defer {
             if reloadGeneration == generation {
                 isLoading = false
+                isReading = false
             }
         }
         do {
