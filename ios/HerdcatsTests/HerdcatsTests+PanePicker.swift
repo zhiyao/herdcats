@@ -115,4 +115,34 @@ struct PanePickerTests {
         #expect(both.badgeSlot(paneID: "p2") == .right)
         #expect(both.badgeSlot(paneID: "p9") == nil)
     }
+
+    // MARK: Show all panes
+
+    @Test func loadedPanesAreFilteredToTheirWorkspace() {
+        let result = PanePickerLoad.resolve(
+            .success([pane("a", title: "A", workspace: "w1"), pane("b", title: "B", workspace: "w2")]),
+            workspaceID: "w1"
+        )
+        #expect(result == .loaded([pane("a", title: "A", workspace: "w1")]))
+    }
+
+    @Test func aFailedLoadCarriesTheFriendlyMessage() {
+        let error = HerdrError.unexpectedResponse("quota-axi returned empty output")
+        #expect(
+            PanePickerLoad.resolve(.failure(error), workspaceID: "w1")
+                == .failed(HerdrConnection.friendlyMessage(for: error))
+        )
+    }
+
+    @Test func aCancelledLoadShowsNothing() {
+        #expect(PanePickerLoad.resolve(.failure(CancellationError()), workspaceID: "w1") == nil)
+    }
+
+    @Test func onlyLoadedPanesFeedTheSections() {
+        let loads: [String: PanePickerLoad] = [
+            "w1": .loaded([pane("s1", title: "zsh", workspace: "w1")]),
+            "w2": .failed("offline"),
+        ]
+        #expect(PanePickerLoad.panes(from: loads).keys.sorted() == ["w1"])
+    }
 }

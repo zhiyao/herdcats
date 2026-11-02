@@ -22,6 +22,29 @@ struct PanePickerSection: Identifiable, Equatable {
     var id: String { spaceID }
 }
 
+/// The state of one space's "Show all panes…" request.
+enum PanePickerLoad: Equatable {
+    case loading
+    case loaded([PaneEntry])
+    case failed(String)
+
+    /// A finished request. A cancelled one (the sheet closed) shows nothing.
+    static func resolve(_ result: Result<[PaneEntry], Error>, workspaceID: String) -> PanePickerLoad? {
+        switch result {
+        case let .success(panes):
+            return .loaded(panes.filter { $0.workspaceId == workspaceID })
+        case let .failure(error):
+            if error is CancellationError { return nil }
+            return .failed(HerdrConnection.friendlyMessage(for: error))
+        }
+    }
+
+    /// The loaded pane lists by space id.
+    static func panes(from loads: [String: PanePickerLoad]) -> [String: [PaneEntry]] {
+        loads.compactMapValues { if case let .loaded(panes) = $0 { panes } else { nil } }
+    }
+}
+
 enum PanePicker {
     static let wholeSpaceTitle = "Whole space"
 
@@ -83,13 +106,12 @@ struct PanePickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     /// Full pane lists loaded on demand, by space id.
-    @State private var allPanes: [String: [PaneEntry]] = [:]
-    @State private var loading: Set<String> = []
+    @State private var loads: [String: PanePickerLoad] = [:]
 
     private var sections: [PanePickerSection] {
         PanePicker.sections(
             spaces: spacesModel?.spaces ?? [],
-            extraPanes: allPanes,
+            extraPanes: PanePickerLoad.panes(from: loads),
             layout: layout,
             slot: slot,
             query: query
@@ -110,18 +132,7 @@ struct PanePickerSheet: View {
                             }
                             .disabled(row.isDisabled)
                         }
-                        if allPanes[section.spaceID] == nil {
-                            Button {
-                                Task { await loadAll(spaceID: section.spaceID) }
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Text("Show all panes…")
-                                    if loading.contains(section.spaceID) { CircularArcSpinner(size: 12) }
-                                }
-                                .font(.jost(.footnote))
-                            }
-                            .disabled(loading.contains(section.spaceID))
-                        }
+                        showAllRow(for: section.spaceID)
                     }
                 }
             }
@@ -138,6 +149,33 @@ struct PanePickerSheet: View {
             }
         }
         .accessibilityIdentifier("pane-picker")
+    }
+
+    @ViewBuilder
+    private func showAllRow(for spaceID: String) -> some View {
+        switch loads[spaceID] {
+        case .loaded:
+            EmptyView()
+        case .loading:
+            HStack(spacing: 8) {
+                Text("Show all panes…")
+                CircularArcSpinner(size: 12)
+            }
+            .font(.jost(.footnote))
+            .foregroundStyle(.secondary)
+        case let .failed(message):
+            VStack(alignment: .leading, spacing: 6) {
+                Text(message)
+                    .font(.jost(.footnote))
+                    .foregroundStyle(Theme.destructive)
+                Button("Retry") { Task { await loadAll(spaceID: spaceID) } }
+                    .font(.jost(.footnote, weight: .semibold))
+                    .accessibilityIdentifier("pane-picker-retry")
+            }
+        case nil:
+            Button("Show all panes…") { Task { await loadAll(spaceID: spaceID) } }
+                .font(.jost(.footnote))
+        }
     }
 
     private func rowLabel(_ row: PanePickerRow) -> some View {
@@ -158,11 +196,14 @@ struct PanePickerSheet: View {
 
     private func loadAll(spaceID: String) async {
         guard let space = spacesModel?.spaces.first(where: { $0.id == spaceID }) else { return }
-        loading.insert(spaceID)
-        defer { loading.remove(spaceID) }
         let workspaceID = space.workspace.workspaceId
-        if let panes = try? await appModel.connection.paneList(workspaceId: workspaceID) {
-            allPanes[spaceID] = panes.filter { $0.workspaceId == workspaceID }
+        loads[spaceID] = .loading
+        let result: Result<[PaneEntry], Error>
+        do {
+            result = .success(try await appModel.connection.paneList(workspaceId: workspaceID))
+        } catch {
+            result = .failure(error)
         }
+        loads[spaceID] = PanePickerLoad.resolve(result, workspaceID: workspaceID)
     }
 }
