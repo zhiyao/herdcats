@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - Sidebar tabs
 
@@ -40,6 +41,15 @@ extension ConnectedTabsView.MainTab {
     }
 
     static let displayOrder: [ConnectedTabsView.MainTab] = [.spaces, .agents, .quota, .settings]
+}
+
+/// Whether the tab switcher moves into the sidebar. Regular-width iPhones
+/// (the Duo unfolded) keep the system tab bar across the bottom; the sidebar
+/// pill is for iPad, whose system bar would float over the detail column.
+enum SidebarTabLayout {
+    static func usesSidebarSwitcher(_ sizeClass: UserInterfaceSizeClass?) -> Bool {
+        sizeClass == .regular && UIDevice.current.userInterfaceIdiom != .phone
+    }
 }
 
 /// Column visibility is shared by every tab, so collapsing the sidebar in one
@@ -190,7 +200,9 @@ struct TabSplitView<Content: View>: View {
     }
 
     var body: some View {
-        if horizontalSizeClass == .regular {
+        // The sidebar holds only the tab switcher, so without it there is
+        // nothing to split.
+        if SidebarTabLayout.usesSidebarSwitcher(horizontalSizeClass) {
             NavigationSplitView(columnVisibility: columnVisibility) {
                 Text(hint)
                     .font(.jost(.footnote))
@@ -215,9 +227,9 @@ struct TabSplitView<Content: View>: View {
 }
 
 extension View {
-    /// The sidebar's tab switcher replaces the system tab bar on regular width.
-    func hidesSystemTabBarWhenRegular(_ sizeClass: UserInterfaceSizeClass?) -> some View {
-        modifier(HidesSystemTabBar(isHidden: sizeClass == .regular))
+    /// The sidebar's tab switcher replaces the system tab bar where it is used.
+    func hidesSystemTabBarForSidebarSwitcher(_ sizeClass: UserInterfaceSizeClass?) -> some View {
+        modifier(HidesSystemTabBar(isHidden: SidebarTabLayout.usesSidebarSwitcher(sizeClass)))
     }
 }
 
