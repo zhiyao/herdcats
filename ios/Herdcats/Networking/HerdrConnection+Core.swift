@@ -232,6 +232,13 @@ extension HerdrConnection {
         if let old { Task { await old.close() } }
     }
 
+    /// True while Core mode has a live event subscription: snapshot installed
+    /// and startup finished. Events then drive refreshes through
+    /// `runtimeChangeHandler`.
+    var coreEventsOpen: Bool {
+        backend == .core && coreSessionID != nil && coreOpening == nil && coreSnapshot != nil
+    }
+
     func corePresentation() async throws -> CoreHierarchy {
         _ = try await startCore()
         guard let coreSnapshot else { throw HerdrError.notConnected }

@@ -92,14 +92,22 @@ extension SpacesModel {
     func startAutoRefresh(_ connection: HerdrConnection) {
         stopAutoRefresh()
         autoRefreshTask = Task { [weak self] in
+            var elapsed: TimeInterval = 0
             while !Task.isCancelled {
                 do {
-                    try await Task.sleep(for: .seconds(5))
+                    try await Task.sleep(for: .seconds(SpacesRefreshPolicy.tick))
                 } catch {
                     return
                 }
+                elapsed += SpacesRefreshPolicy.tick
                 guard let self else { return }
                 guard self.autoRefreshEnabled, self.isSceneActive else { continue }
+                let interval = await SpacesRefreshPolicy.interval(
+                    isCoreMode: connection.backend == .core,
+                    eventsOpen: connection.coreEventsOpen
+                )
+                guard SpacesRefreshPolicy.isDue(elapsed: elapsed, interval: interval) else { continue }
+                elapsed = 0
                 await self.refresh(connection)
             }
         }
@@ -190,5 +198,23 @@ enum SpacePresentationOverlay {
     static func unconfirmed(_ pending: [Space], after spaces: [Space]) -> [Space] {
         let listedIDs = Set(spaces.map(\.id))
         return pending.filter { !listedIDs.contains($0.id) }
+    }
+}
+
+/// Cadence of the Spaces auto-refresh loop. Core pushes events that already
+/// trigger refreshes, so while its subscription is open the loop only runs a
+/// slow safety refresh.
+enum SpacesRefreshPolicy {
+    /// Wake-up granularity of the loop.
+    static let tick: TimeInterval = 5
+    static let tuiInterval: TimeInterval = 5
+    static let coreSafetyInterval: TimeInterval = 60
+
+    static func interval(isCoreMode: Bool, eventsOpen: Bool) -> TimeInterval {
+        isCoreMode && eventsOpen ? coreSafetyInterval : tuiInterval
+    }
+
+    static func isDue(elapsed: TimeInterval, interval: TimeInterval) -> Bool {
+        elapsed >= interval
     }
 }
