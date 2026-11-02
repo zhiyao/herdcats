@@ -19,6 +19,7 @@ struct PaneDetailView: View {
     @Environment(\.showsPaneSwitcher) private var showsPaneSwitcher
     @Environment(\.showsPaneBackButton) private var showsPaneBackButton
     @Environment(\.openPaneMemory) private var openPaneMemory
+    @Environment(\.closeDetail) private var closeDetail
     @State private var siblings: [PaneEntry]
     @State private var tabs: [TabEntry] = []
     @State private var selectedPaneID: String
@@ -122,6 +123,45 @@ struct PaneDetailView: View {
         .id(sessionIdentity)
     }
 
+    /// What the hidden switcher strip offers: pick a sibling pane, and add,
+    /// rename or kill one.
+    @ViewBuilder
+    private var paneMenuSection: some View {
+        if siblings.count > 1 {
+            Picker(selection: $selectedPaneID) {
+                ForEach(siblings) { sibling in
+                    Text(sibling.displayTitle).tag(sibling.id)
+                }
+            } label: {
+                Label("Switch Pane", systemImage: "rectangle.stack")
+            }
+            .pickerStyle(.menu)
+            .accessibilityIdentifier("pane-menu-switch")
+        }
+        if !appModel.isCoreMode {
+            Button {
+                isShowingAddPane = true
+            } label: {
+                Label("Add Pane", systemImage: "plus")
+            }
+            .accessibilityIdentifier("pane-menu-add")
+
+            Button {
+                beginRename(selectedPane)
+            } label: {
+                Label("Rename Pane", systemImage: "pencil")
+            }
+            .accessibilityIdentifier("pane-menu-rename")
+
+            Button(role: .destructive) {
+                beginKill(selectedPane)
+            } label: {
+                Label("Kill Pane", systemImage: "xmark.square")
+            }
+            .accessibilityIdentifier("pane-menu-kill")
+        }
+    }
+
     var body: some View {
         selectedPaneSession
         .overlay(alignment: .top) {
@@ -158,7 +198,7 @@ struct PaneDetailView: View {
             if showsPaneBackButton {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
-                        dismiss()
+                        leave()
                     } label: {
                         Label("Back", systemImage: "chevron.backward")
                     }
@@ -196,6 +236,12 @@ struct PaneDetailView: View {
                             Label("Upgrade Herdcats Bridge", systemImage: "arrow.up.circle")
                         }
                         .accessibilityIdentifier("timeline-upgrade-menu-button")
+                        Divider()
+                    }
+                    // The switcher strip is hidden while the list column shows,
+                    // so its pane switching and actions move into this menu.
+                    if !showsPaneSwitcher {
+                        paneMenuSection
                         Divider()
                     }
                     if !appModel.isCoreMode {
@@ -384,12 +430,22 @@ struct PaneDetailView: View {
         }
     }
 
+    /// Leaves the pane: clears the list selection when shown from a list,
+    /// so the split view's detail column empties too, else pops the stack.
+    private func leave() {
+        if let closeDetail {
+            closeDetail()
+        } else {
+            dismiss()
+        }
+    }
+
     private func refreshPeersAndTabs() async {
         if let latest = try? await appModel.connection.paneList(workspaceId: pane.workspaceId),
            !Task.isCancelled {
             switch PanePeerRefresh.outcome(peers: latest, selectedPaneID: selectedPaneID) {
             case .dismiss:
-                dismiss()
+                leave()
             case let .apply(peers, nextSelected):
                 siblings = peers
                 lastUpdatedByPaneID = PaneLastUpdatedStore.observe(peers, scope: connectionScope)
@@ -443,14 +499,14 @@ struct PaneDetailView: View {
                 )
             case let (.close(target), .close):
                 try await appModel.connection.workspaceClose(workspaceId: target.workspaceId)
-                dismiss()
+                leave()
             case let (.deleteWorktree(target), .deleteWorktree(force, trustRepository)):
                 try await appModel.connection.worktreeRemove(
                     workspaceId: target.workspaceId,
                     force: force,
                     trustRepository: trustRepository
                 )
-                dismiss()
+                leave()
             default:
                 return
             }
@@ -484,7 +540,7 @@ struct PaneDetailView: View {
             let remaining = siblings.filter { $0.id != paneToKill.id }
             siblings = remaining
             if remaining.isEmpty {
-                dismiss()
+                leave()
             } else {
                 if selectedPaneID == paneToKill.id {
                     selectedPaneID = remaining[0].id
@@ -494,7 +550,7 @@ struct PaneDetailView: View {
                 siblings = latest
                 lastUpdatedByPaneID = PaneLastUpdatedStore.observe(latest, scope: connectionScope)
                 if latest.isEmpty {
-                    dismiss()
+                    leave()
                 } else if !latest.contains(where: { $0.id == selectedPaneID }) {
                     selectedPaneID = latest[0].id
                 }

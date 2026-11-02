@@ -25,6 +25,23 @@ extension EnvironmentValues {
         get { self[ShowsPaneBackButtonKey.self] }
         set { self[ShowsPaneBackButtonKey.self] = newValue }
     }
+
+    /// Closes the open item by clearing the list selection. The split view's
+    /// detail column has no stack for `dismiss` to pop, so a pane that closes
+    /// itself (workspace closed, last pane killed) uses this instead.
+    var closeDetail: CloseDetailAction? {
+        get { self[CloseDetailKey.self] }
+        set { self[CloseDetailKey.self] = newValue }
+    }
+}
+
+struct CloseDetailAction {
+    let action: () -> Void
+    func callAsFunction() { action() }
+}
+
+private struct CloseDetailKey: EnvironmentKey {
+    static let defaultValue: CloseDetailAction? = nil
 }
 
 // MARK: - Selection split view
@@ -76,6 +93,12 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
         )
     }
 
+    /// Clearing the selection empties the detail column and pops the stack.
+    private var closeDetail: CloseDetailAction {
+        let selection = $selection
+        return CloseDetailAction { selection.wrappedValue = nil }
+    }
+
     var body: some View {
         layout
             .onChange(of: selection) { _, selected in
@@ -117,6 +140,7 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
                 .revealsSidebarOnEdgeSwipe(columnVisibility)
                 .environment(\.showsPaneSwitcher, columnVisibility.wrappedValue == .detailOnly)
                 .environment(\.showsPaneBackButton, false)
+                .environment(\.closeDetail, closeDetail)
             }
             .navigationSplitViewStyle(.balanced)
         } else {
@@ -125,6 +149,7 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
                     .navigationDestination(for: String.self) { id in
                         detail(id)
                             .environment(\.openPaneMemory, OpenPaneSlot(memory: openPaneMemory, selection: id))
+                            .environment(\.closeDetail, closeDetail)
                     }
             }
         }
