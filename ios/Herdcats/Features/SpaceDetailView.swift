@@ -220,15 +220,13 @@ struct PaneDetailView: View {
         .background(Theme.backgroundGradient.ignoresSafeArea())
         .navigationTitle(selectedPane.displayTitle)
         .navigationBarTitleDisplayMode(.inline)
-        // Hiding the system back control also disables UIKit's edge-swipe pop,
-        // so pushed panes get their own leading-edge swipe back.
-        .navigationBarBackButtonHidden(true)
-        // Runs alongside the content's own gestures, so scrolling and text
-        // selection that start near the edge still reach the pane.
-        .simultaneousGesture(edgeSwipeBack, including: allowsEdgeSwipeBack ? .all : .subviews)
+        // On iPhone the system back button stays, which keeps the native
+        // interactive swipe-back. Hiding it would disable that gesture.
+        .navigationBarBackButtonHidden(!usesSystemBackButton)
+        .toolbarRole(.editor)
         .toolbar {
             // The split view's detail column has no stack to pop.
-            if showsPaneBackButton {
+            if showsPaneBackButton, !usesSystemBackButton {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
                         leave()
@@ -464,21 +462,10 @@ struct PaneDetailView: View {
     }
 
     /// iPhone only: iPad and the Duo inner screen use the split view.
-    private var allowsEdgeSwipeBack: Bool {
+    private var usesSystemBackButton: Bool {
         showsPaneBackButton
             && UIDevice.current.userInterfaceIdiom == .phone
             && horizontalSizeClass == .compact
-    }
-
-    /// A rightward drag that starts at the leading screen edge leaves the pane.
-    private var edgeSwipeBack: some Gesture {
-        DragGesture(minimumDistance: 24, coordinateSpace: .global)
-            .onEnded { drag in
-                guard drag.startLocation.x < 24,
-                      drag.translation.width > 80,
-                      abs(drag.translation.height) < drag.translation.width / 2 else { return }
-                leave()
-            }
     }
 
     /// Leaves the pane: clears the list selection when shown from a list,
