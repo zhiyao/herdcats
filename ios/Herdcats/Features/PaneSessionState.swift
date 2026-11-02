@@ -18,6 +18,8 @@ final class PaneSessionState {
     /// Trimmed ANSI lines for the pane scroll view (no role translation).
     private(set) var outputLines: [ANSIText.Line] = []
     private(set) var outputRevision: UInt64 = 0
+    /// Selectable text with diff tint, rebuilt once per `outputRevision`.
+    private(set) var selectableOutput = AttributedString()
 
     private var lastParsedOutput: String?
     private var lastParsedPalette: TerminalPalette?
@@ -48,7 +50,15 @@ final class PaneSessionState {
             from: output,
             palette: palette
         )
+        selectableOutput = PaneOutputPresentation.selectableText(from: outputLines)
         outputRevision &+= 1
+    }
+
+    /// Stores a pane read; identical text leaves `output` untouched so
+    /// observers are not invalidated.
+    func applyRead(_ text: String) {
+        guard text != output else { return }
+        output = text
     }
 
     func reload(_ connection: HerdrConnection) async {
@@ -63,7 +73,7 @@ final class PaneSessionState {
         do {
             let text = try await connection.paneReadText(paneId: pane.paneId)
             guard reloadGeneration == generation else { return }
-            output = text
+            applyRead(text)
             errorMessage = nil
         } catch {
             guard reloadGeneration == generation else { return }

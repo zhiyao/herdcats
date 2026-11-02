@@ -350,6 +350,93 @@ struct PaneSessionStateTests {
         state.updateParsedOutput(palette: TerminalPalette(palette: .solarizedDark, dark: true))
         #expect(state.outputRevision == mochaRevision + 1)
     }
+
+    @Test @MainActor func identicalReadDoesNotBumpRevisionOrReparse() throws {
+        let json = """
+        {"pane_id":"w1:p1","tab_id":"w1:t1","workspace_id":"w1","label":null,\
+        "agent":"claude","agent_status":"idle","cwd":null,\
+        "terminal_title":null,"terminal_title_stripped":null,"focused":false,"revision":1}
+        """
+        let pane = try JSONDecoder().decode(PaneEntry.self, from: Data(json.utf8))
+        let scope = ConnectionIdentity(host: "a.local", port: 22, username: "bob")
+        let state = PaneSessionState(pane: pane, connectionScope: scope)
+        let palette = TerminalPalette(palette: .moonlit, dark: true)
+
+        state.applyRead("hello\nworld")
+        state.updateParsedOutput(palette: palette)
+        let revision = state.outputRevision
+        #expect(state.output == "hello\nworld")
+
+        var fired = false
+        withObservationTracking { _ = state.output } onChange: { fired = true }
+        state.applyRead("hello\nworld")
+        #expect(!fired)
+        state.updateParsedOutput(palette: palette)
+        #expect(state.outputRevision == revision)
+
+        withObservationTracking { _ = state.output } onChange: { fired = true }
+        state.applyRead("changed")
+        #expect(fired)
+        state.applyRead("hello\nworld")
+
+        state.applyRead("hello\nworld!")
+        state.updateParsedOutput(palette: palette)
+        #expect(state.outputRevision == revision + 1)
+    }
+
+    @MainActor private func makeScrollView(output: String, isLoading: Bool) -> PaneOutputScrollView {
+        PaneOutputScrollView(
+            output: output, selectableText: AttributedString(output), outputRevision: 1,
+            outputPointSize: 14, paneScrollBehavior: .holdPosition, keyboardFocused: false,
+            isOffline: false, isLoading: isLoading, reservesMarkAsReadSpace: false,
+            topOverlayInset: 0, bottomOverlayInset: 0, paneId: "p",
+            shouldPinToBottom: .constant(false), onUserScroll: {}, onTapOutput: {}, onSelectionChange: { _ in }
+        )
+    }
+
+    @Test @MainActor func scrollViewEqualityIgnoresLoadingOnlyWhenOutputPresent() {
+        #expect(makeScrollView(output: "text", isLoading: true) == makeScrollView(output: "text", isLoading: false))
+        #expect(makeScrollView(output: "", isLoading: true) != makeScrollView(output: "", isLoading: false))
+    }
+
+    @Test @MainActor func selectableTextMatchesLegacyConstruction() throws {
+        let text = "intro\n@@ -1,2 +1,2 @@\n- old\n+ new\n context\n+++ file\nafter"
+        let lines = PaneOutputPresentation.trimmedLines(
+            from: text, palette: TerminalPalette(palette: .moonlit, dark: true)
+        )
+        var expected = AttributedString()
+        var oldHunk = 0
+        var newHunk = 0
+        for (index, line) in lines.enumerated() {
+            if index > 0 { expected.append(AttributedString("\n")) }
+            var attributed = line.attributed
+            let tint = PaneOutputPresentation.diffTint(
+                for: line.plain, oldHunkLines: &oldHunk, newHunkLines: &newHunk
+            )
+            if let tint {
+                var background = AttributeContainer()
+                background.backgroundColor = tint == .addition
+                    ? Theme.diffAdditionBackground : Theme.diffDeletionBackground
+                attributed.mergeAttributes(background, mergePolicy: .keepCurrent)
+            }
+            expected.append(attributed)
+        }
+        #expect(PaneOutputPresentation.selectableText(from: lines) == expected)
+        #expect(expected.runs.contains { $0.backgroundColor == Theme.diffAdditionBackground })
+        #expect(expected.runs.contains { $0.backgroundColor == Theme.diffDeletionBackground })
+
+        let pane = try JSONDecoder().decode(PaneEntry.self, from: Data("""
+        {"pane_id":"w1:p1","tab_id":"w1:t1","workspace_id":"w1","label":null,"agent":null,\
+        "agent_status":"idle","cwd":null,"terminal_title":null,"terminal_title_stripped":null,\
+        "focused":false,"revision":1}
+        """.utf8))
+        let state = PaneSessionState(
+            pane: pane, connectionScope: ConnectionIdentity(host: "a.local", port: 22, username: "bob")
+        )
+        state.applyRead(text)
+        state.updateParsedOutput(palette: TerminalPalette(palette: .moonlit, dark: true))
+        #expect(state.selectableOutput == expected)
+    }
 }
 
 // MARK: - Audit regression: timeout race, ownership, persistence
