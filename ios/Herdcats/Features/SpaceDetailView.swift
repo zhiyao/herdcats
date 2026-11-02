@@ -219,12 +219,24 @@ struct PaneDetailView: View {
         .background(Theme.backgroundGradient.ignoresSafeArea())
         .navigationTitle(selectedPane.displayTitle)
         .navigationBarTitleDisplayMode(.inline)
-        // Hiding the system back control also disables the edge-swipe pop,
-        // so `InteractivePopGestureEnabler` restores it for pushed panes.
+        // Hiding the system back control also disables UIKit's edge-swipe pop,
+        // so pushed panes get their own leading-edge swipe back.
         .navigationBarBackButtonHidden(true)
-        .background {
+        .overlay(alignment: .leading) {
             if showsPaneBackButton {
-                InteractivePopGestureEnabler()
+                Color.clear
+                    .frame(width: 24)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 24)
+                            .onEnded { drag in
+                                if drag.translation.width > 80,
+                                   abs(drag.translation.height) < drag.translation.width / 2 {
+                                    leave()
+                                }
+                            }
+                    )
+                    .accessibilityHidden(true)
             }
         }
         .toolbar {
@@ -654,27 +666,6 @@ struct PaneDetailView: View {
                 siblings = latest
                 lastUpdatedByPaneID = PaneLastUpdatedStore.observe(latest, scope: connectionScope)
             }
-        }
-    }
-}
-
-/// Re-enables the navigation controller's edge-swipe-to-pop gesture, which
-/// UIKit turns off when the back button is hidden.
-private struct InteractivePopGestureEnabler: UIViewControllerRepresentable {
-    func makeUIViewController(context: Context) -> Probe { Probe() }
-    func updateUIViewController(_ probe: Probe, context: Context) {}
-
-    final class Probe: UIViewController, UIGestureRecognizerDelegate {
-        override func viewDidAppear(_ animated: Bool) {
-            super.viewDidAppear(animated)
-            guard let nav = navigationController,
-                  let pop = nav.interactivePopGestureRecognizer else { return }
-            pop.delegate = self
-            pop.isEnabled = true
-        }
-
-        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-            (navigationController?.viewControllers.count ?? 0) > 1
         }
     }
 }
