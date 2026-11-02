@@ -15,8 +15,6 @@ final class PaneSessionState {
     private(set) var isSending = false
     private(set) var errorMessage: String?
 
-    /// Trimmed ANSI lines for the pane scroll view (no role translation).
-    private(set) var outputLines: [ANSIText.Line] = []
     private(set) var outputRevision: UInt64 = 0
     /// Selectable text with diff tint, rebuilt once per `outputRevision`.
     private(set) var selectableOutput = AttributedString()
@@ -46,7 +44,7 @@ final class PaneSessionState {
         }
         lastParsedOutput = output
         lastParsedPalette = palette
-        outputLines = PaneOutputPresentation.trimmedLines(
+        let outputLines = PaneOutputPresentation.trimmedLines(
             from: output,
             palette: palette
         )
@@ -62,16 +60,24 @@ final class PaneSessionState {
     }
 
     func reload(_ connection: HerdrConnection) async {
+        await reload { try await connection.paneReadText(paneId: self.pane.paneId) }
+    }
+
+    /// Reloads pane text using a custom reader (test seam). Only marks
+    /// `isLoading = true` when output is initially empty so non-empty views
+    /// avoid two redraws per read.
+    func reload(read: () async throws -> String) async {
         reloadGeneration += 1
         let generation = reloadGeneration
-        isLoading = true
+        let wasEmpty = output.isEmpty
+        if wasEmpty { isLoading = true }
         defer {
             if reloadGeneration == generation {
                 isLoading = false
             }
         }
         do {
-            let text = try await connection.paneReadText(paneId: pane.paneId)
+            let text = try await read()
             guard reloadGeneration == generation else { return }
             applyRead(text)
             errorMessage = nil

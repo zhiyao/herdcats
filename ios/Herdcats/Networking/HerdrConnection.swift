@@ -168,7 +168,10 @@ actor HerdrConnection {
     var coreLayoutsRevision: UInt64 = 0
     var corePresentationMemo: (seq: UInt64, layoutsRevision: UInt64, value: CoreHierarchy)?
     /// How many times the hierarchy was actually built (memo misses).
+    #if DEBUG
+    /// How many times the hierarchy was actually built (memo misses). Test seam.
     var corePresentationBuilds = 0
+    #endif
     var earlyCoreNotifications: [CoreJSON] = []
     var coreDocumentTask: Task<Void, Never>?
     var coreDocumentsRevision: UInt64 = 0

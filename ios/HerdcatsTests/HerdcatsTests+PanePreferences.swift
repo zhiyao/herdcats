@@ -327,7 +327,7 @@ struct PaneSessionStateTests {
         let scope = ConnectionIdentity(host: "a.local", port: 22, username: "bob")
         let state = PaneSessionState(pane: idle, connectionScope: scope)
 
-        #expect(state.outputLines.isEmpty)
+        #expect(state.selectableOutput.characters.isEmpty)
         #expect(state.outputRevision == 0)
 
         state.updateParsedOutput(palette: TerminalPalette(palette: .moonlit, dark: true))
@@ -350,6 +350,39 @@ struct PaneSessionStateTests {
         #expect(state.outputRevision == mochaRevision)
         state.updateParsedOutput(palette: TerminalPalette(palette: .solarizedDark, dark: true))
         #expect(state.outputRevision == mochaRevision + 1)
+    }
+
+    @MainActor private func makeState() throws -> PaneSessionState {
+        let json = """
+        {"pane_id":"w1:p1","tab_id":"w1:t1","workspace_id":"w1","label":null,\
+        "agent":"claude","agent_status":"idle","cwd":null,\
+        "terminal_title":null,"terminal_title_stripped":null,"focused":false,"revision":1}
+        """
+        let pane = try JSONDecoder().decode(PaneEntry.self, from: Data(json.utf8))
+        return PaneSessionState(pane: pane, connectionScope: ConnectionIdentity(host: "a.local", port: 22, username: "bob"))
+    }
+
+    @Test @MainActor func reloadShowsLoadingOnlyWhileOutputIsEmpty() async throws {
+        let state = try makeState()
+        var loadingDuringFirstRead = false
+        await state.reload { loadingDuringFirstRead = state.isLoading; return "hello" }
+        #expect(loadingDuringFirstRead)
+        #expect(!state.isLoading)
+        #expect(state.output == "hello")
+
+        var loadingDuringSecondRead = true
+        await state.reload { loadingDuringSecondRead = state.isLoading; return "hello" }
+        #expect(!loadingDuringSecondRead)
+        #expect(!state.isLoading)
+    }
+
+    @Test func textViewRendersOnlyWhenRevisionOrFontChanges() {
+        let font = UIFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+        let larger = UIFont.monospacedSystemFont(ofSize: 16, weight: .regular)
+        #expect(SelectablePaneOutput.Coordinator.shouldRender(lastRevision: nil, lastFont: nil, revision: 0, font: font))
+        #expect(!SelectablePaneOutput.Coordinator.shouldRender(lastRevision: 3, lastFont: font, revision: 3, font: font))
+        #expect(SelectablePaneOutput.Coordinator.shouldRender(lastRevision: 3, lastFont: font, revision: 4, font: font))
+        #expect(SelectablePaneOutput.Coordinator.shouldRender(lastRevision: 3, lastFont: font, revision: 3, font: larger))
     }
 
     @Test @MainActor func identicalReadDoesNotBumpRevisionOrReparse() throws {
@@ -423,8 +456,15 @@ struct PaneSessionStateTests {
             expected.append(attributed)
         }
         #expect(PaneOutputPresentation.selectableText(from: lines) == expected)
-        #expect(expected.runs.contains { $0.backgroundColor == Theme.diffAdditionBackground })
-        #expect(expected.runs.contains { $0.backgroundColor == Theme.diffDeletionBackground })
+        // Hard-coded expectation, independent of the legacy algorithm above.
+        func hunkLines(withBackground color: Color) -> [String] {
+            expected.runs.filter { $0.backgroundColor == color }
+                .map { String(expected[$0.range].characters) }
+        }
+        #expect(hunkLines(withBackground: Theme.diffAdditionBackground) == ["+ new"])
+        #expect(hunkLines(withBackground: Theme.diffDeletionBackground) == ["- old"])
+        #expect(expected.runs.filter { $0.backgroundColor != nil }.count == 2)
+        #expect(String(expected.characters) == text)
 
         let pane = try JSONDecoder().decode(PaneEntry.self, from: Data("""
         {"pane_id":"w1:p1","tab_id":"w1:t1","workspace_id":"w1","label":null,"agent":null,\

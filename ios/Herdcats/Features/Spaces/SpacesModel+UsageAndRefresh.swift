@@ -92,8 +92,7 @@ extension SpacesModel {
     func startAutoRefresh(_ connection: HerdrConnection) {
         stopAutoRefresh()
         autoRefreshTask = Task { [weak self] in
-            var elapsed: TimeInterval = 0
-            var seenEpoch = self?.refreshEpoch ?? 0
+            var clock = SpacesAutoRefreshClock(epoch: self?.refreshEpoch ?? 0)
             while !Task.isCancelled {
                 do {
                     try await Task.sleep(for: .seconds(SpacesRefreshPolicy.tick))
@@ -101,19 +100,16 @@ extension SpacesModel {
                     return
                 }
                 guard let self else { return }
-                // Another refresh (Core event, pull, foreground) restarts the interval.
-                if self.refreshEpoch != seenEpoch { elapsed = 0 }
-                seenEpoch = self.refreshEpoch
-                elapsed += SpacesRefreshPolicy.tick
+                clock.advance(epoch: self.refreshEpoch)
                 guard self.autoRefreshEnabled, self.isSceneActive else { continue }
                 let interval = await SpacesRefreshPolicy.interval(
                     isCoreMode: connection.backend == .core,
                     eventsOpen: connection.coreEventsOpen
                 )
-                guard SpacesRefreshPolicy.isDue(elapsed: elapsed, interval: interval) else { continue }
-                elapsed = 0
+                guard clock.isDue(interval: interval) else { continue }
+                clock.didRefresh(epoch: self.refreshEpoch)
                 await self.refresh(connection)
-                seenEpoch = self.refreshEpoch
+                clock.seenEpoch = self.refreshEpoch
             }
         }
         // Quota changes slowly; poll independently so the 5s herdr loop stays light.
@@ -203,6 +199,36 @@ enum SpacePresentationOverlay {
     static func unconfirmed(_ pending: [Space], after spaces: [Space]) -> [Space] {
         let listedIDs = Set(spaces.map(\.id))
         return pending.filter { !listedIDs.contains($0.id) }
+    }
+}
+
+/// State machine tracking elapsed auto-refresh time and resets from
+/// out-of-band refreshes (Core events, foreground returns, manual pulls).
+struct SpacesAutoRefreshClock: Equatable {
+    var elapsed: TimeInterval = 0
+    var seenEpoch: Int
+    let tick: TimeInterval
+
+    init(epoch: Int, tick: TimeInterval = SpacesRefreshPolicy.tick) {
+        self.seenEpoch = epoch
+        self.tick = tick
+    }
+
+    mutating func advance(epoch: Int) {
+        if epoch != seenEpoch {
+            elapsed = 0
+        }
+        seenEpoch = epoch
+        elapsed += tick
+    }
+
+    func isDue(interval: TimeInterval) -> Bool {
+        SpacesRefreshPolicy.isDue(elapsed: elapsed, interval: interval)
+    }
+
+    mutating func didRefresh(epoch: Int) {
+        elapsed = 0
+        seenEpoch = epoch
     }
 }
 

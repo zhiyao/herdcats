@@ -130,7 +130,7 @@ extension HerdrConnection {
         guard coreSessionID == session else { throw HerdrError.notConnected }
         coreHello = hello
         try replaceCoreSnapshot(subscription: value)
-        for message in earlyCoreNotifications { _ = try coreSnapshot?.apply(message) }
+        for message in earlyCoreNotifications { try applyCoreNotification(message) }
         earlyCoreNotifications = []
     }
 
@@ -270,7 +270,9 @@ extension HerdrConnection {
             return memo.value
         }
         let value = coreSnapshot.presentation(layout: coreLayouts[""], remoteLayouts: coreLayouts.filter { !$0.key.isEmpty })
+        #if DEBUG
         corePresentationBuilds += 1
+        #endif
         corePresentationMemo = (coreSnapshot.seq, coreLayoutsRevision, value)
         return value
     }

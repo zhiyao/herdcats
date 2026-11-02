@@ -323,6 +323,15 @@ struct SelectablePaneOutput: UIViewRepresentable {
     final class Coordinator {
         var lastRevision: UInt64?
         var lastFont: UIFont?
+
+        static func shouldRender(
+            lastRevision: UInt64?,
+            lastFont: UIFont?,
+            revision: UInt64,
+            font: UIFont
+        ) -> Bool {
+            lastRevision != revision || lastFont != font
+        }
     }
 
     let text: AttributedString
@@ -363,7 +372,12 @@ struct SelectablePaneOutput: UIViewRepresentable {
     func updateUIView(_ view: PaneOutputTextView, context: Context) {
         view.onSelectionFocusChange = onSelectionFocusChange
         let font = UIFont.monospacedSystemFont(ofSize: pointSize, weight: .regular)
-        guard context.coordinator.lastRevision != revision || context.coordinator.lastFont != font else { return }
+        guard Coordinator.shouldRender(
+            lastRevision: context.coordinator.lastRevision,
+            lastFont: context.coordinator.lastFont,
+            revision: revision,
+            font: font
+        ) else { return }
         // Keep the selected snapshot stable until the reader leaves selection.
         guard !selectionActive || view.selectedRange.length == 0 else { return }
         context.coordinator.lastRevision = revision
