@@ -1,0 +1,142 @@
+import CoreGraphics
+import Foundation
+
+/// A pane a split slot can show. `paneID == nil` means the space's default pane.
+struct PaneRef: Codable, Hashable {
+    let spaceID: String
+    let paneID: String?
+}
+
+/// Which panes the regular-width detail column shows, and which one has the input surface.
+struct PaneLayout: Codable, Equatable {
+    enum Slot: String, Codable {
+        case left, right
+
+        var other: Slot { self == .left ? .right : .left }
+    }
+
+    var left: PaneRef?
+    var right: PaneRef?
+    var focused: Slot = .left
+    var ratio: Double = 0.5
+    /// Compact stack: is the focused pane pushed?
+    var compactDetailVisible = false
+
+    var isSplit: Bool { left != nil && right != nil }
+
+    var focusedRef: PaneRef? {
+        focused == .right ? (right ?? left) : left
+    }
+
+    func ref(in slot: Slot) -> PaneRef? {
+        slot == .left ? left : right
+    }
+
+    mutating func open(_ ref: PaneRef, in slot: Slot) {
+        // Normalise: the right slot is only used next to a left pane.
+        let target: Slot = (slot == .right && left == nil) ? .left : slot
+        if self.ref(in: target) == ref {
+            focused = target
+        } else if self.ref(in: target.other) == ref {
+            if self.ref(in: target) == nil {
+                // Nothing to swap with: the pane is already open, just keep it.
+                focused = target.other
+            } else {
+                swap()
+                focused = target
+            }
+        } else {
+            set(ref, in: target)
+            focused = target
+        }
+    }
+
+    /// A list tap: the focused slot when split, otherwise the left slot.
+    mutating func openInFocused(_ ref: PaneRef) {
+        open(ref, in: isSplit ? focused : .left)
+    }
+
+    mutating func close(_ slot: Slot) {
+        switch slot {
+        case .left:
+            left = right
+            right = nil
+        case .right:
+            right = nil
+        }
+        focused = .left
+        ratio = 0.5
+        if left == nil { compactDetailVisible = false }
+    }
+
+    mutating func swap() {
+        guard isSplit else { return }
+        Swift.swap(&left, &right)
+        focused = focused.other
+    }
+
+    mutating func fullWidth(_ slot: Slot) {
+        guard let kept = ref(in: slot) else { return }
+        left = kept
+        right = nil
+        focused = .left
+        ratio = 0.5
+    }
+
+    mutating func focus(_ slot: Slot) {
+        guard ref(in: slot) != nil else { return }
+        focused = slot
+    }
+
+    /// Drops refs that no longer exist; a survivor moves to the left slot.
+    func pruned(keeping: (PaneRef) -> Bool) -> PaneLayout {
+        var result = self
+        if let right = result.right, !keeping(right) { result.close(.right) }
+        if let left = result.left, !keeping(left) { result.close(.left) }
+        return result
+    }
+
+    private mutating func set(_ ref: PaneRef, in slot: Slot) {
+        if slot == .left { left = ref } else { right = ref }
+    }
+
+    // MARK: Ratio and width
+
+    static func snappedRatio(_ raw: Double) -> Double {
+        let clamped = min(max(raw, 0.25), 0.75)
+        let snapPoints = [1.0 / 3.0, 0.5, 2.0 / 3.0]
+        for point in snapPoints where abs(clamped - point) <= 0.04 {
+            return point
+        }
+        return clamped
+    }
+
+    static func listFits(
+        totalWidth: CGFloat,
+        listWidth: CGFloat,
+        isSplit: Bool,
+        minPaneWidth: CGFloat = 260,
+        dividerWidth: CGFloat = 12
+    ) -> Bool {
+        guard isSplit else { return true }
+        return (totalWidth - listWidth - dividerWidth) / 2 >= minPaneWidth
+    }
+
+    // MARK: Scene storage
+
+    var storageValue: String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(self) else { return "" }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    init(left: PaneRef? = nil, right: PaneRef? = nil) {
+        self.left = left
+        self.right = right
+    }
+
+    init(storageValue: String) {
+        self = (try? JSONDecoder().decode(PaneLayout.self, from: Data(storageValue.utf8))) ?? PaneLayout()
+    }
+}
