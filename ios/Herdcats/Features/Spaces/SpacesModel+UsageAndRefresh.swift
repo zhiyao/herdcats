@@ -93,14 +93,18 @@ extension SpacesModel {
         stopAutoRefresh()
         autoRefreshTask = Task { [weak self] in
             var elapsed: TimeInterval = 0
+            var seenEpoch = self?.refreshEpoch ?? 0
             while !Task.isCancelled {
                 do {
                     try await Task.sleep(for: .seconds(SpacesRefreshPolicy.tick))
                 } catch {
                     return
                 }
-                elapsed += SpacesRefreshPolicy.tick
                 guard let self else { return }
+                // Another refresh (Core event, pull, foreground) restarts the interval.
+                if self.refreshEpoch != seenEpoch { elapsed = 0 }
+                seenEpoch = self.refreshEpoch
+                elapsed += SpacesRefreshPolicy.tick
                 guard self.autoRefreshEnabled, self.isSceneActive else { continue }
                 let interval = await SpacesRefreshPolicy.interval(
                     isCoreMode: connection.backend == .core,
@@ -109,6 +113,7 @@ extension SpacesModel {
                 guard SpacesRefreshPolicy.isDue(elapsed: elapsed, interval: interval) else { continue }
                 elapsed = 0
                 await self.refresh(connection)
+                seenEpoch = self.refreshEpoch
             }
         }
         // Quota changes slowly; poll independently so the 5s herdr loop stays light.
