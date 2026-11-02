@@ -7,7 +7,15 @@ struct SpacesScreen: View {
     @Environment(AppModel.self) private var appModel
     @Environment(ActiveMachine.self) private var activeMachine: ActiveMachine?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let model: SpacesModel
+
+    /// Id of the open space. Shared by the split view and the compact stack,
+    /// so folding or unfolding keeps the same space open.
+    @State private var selectedID: String?
+    /// The selected space as last seen in the list, so a refresh that drops
+    /// it doesn't blank the pane mid-read.
+    @State private var lastSeen: Space?
 
     @AppStorage(SpaceSortPreference.storageKey)
     private var sortRaw = SpaceSortPreference.default.rawValue
@@ -46,12 +54,16 @@ struct SpacesScreen: View {
     }
 
     private var displayedGroups: [SpaceGroup] {
+        let ordered: [SpaceGroup]
         switch sort {
         case .workspaceOrder:
-            model.visibleSpaceGroups
+            ordered = model.visibleSpaceGroups
         case .priority:
-            model.visibleSpaceGroups.sorted(by: SpaceGroup.attentionOrder)
+            ordered = model.visibleSpaceGroups.sorted(by: SpaceGroup.attentionOrder)
         }
+        guard appModel.isCoreMode else { return ordered }
+        return ordered.filter { $0.id != CoreHierarchy.otherWorkspaceID }
+            + ordered.filter { $0.id == CoreHierarchy.otherWorkspaceID }
     }
 
     private var cardOrder: [ReorderingCard] {
@@ -67,14 +79,17 @@ struct SpacesScreen: View {
     var body: some View {
         @Bindable var model = model
 
-        return NavigationStack {
+        return SelectionSplitView(
+            selection: $selectedID,
+            emptyTitle: "Select a space"
+        ) {
             Group {
                 if model.spaces.isEmpty && model.unconfirmedSpaces.isEmpty
                     && model.pendingSpaceCreationTitle == nil {
                     if appModel.isOffline {
                         OfflineHerdView()
                     } else if model.isLoading {
-                        LazyCatLoadingView(message: "Loading spaces…")
+                        LazyCatLoadingView(message: appModel.isCoreMode ? "Loading terminals…" : "Loading spaces…")
                     } else {
                         emptyState
                     }
@@ -92,6 +107,7 @@ struct SpacesScreen: View {
                                     SpaceRow(
                                         group: group,
                                         isHighlighted: model.highlightedWorktreeID == group.root.id,
+                                        isSelected: isSelected(group.root),
                                         lastUpdated: model.lastActivity(in: group.root)
                                     )
                                 }
@@ -102,6 +118,7 @@ struct SpacesScreen: View {
                                         WorktreeRow(
                                             space: space,
                                             isHighlighted: model.highlightedWorktreeID == space.id,
+                                            isSelected: isSelected(space),
                                             lastUpdated: model.lastActivity(in: space)
                                         )
                                     }
@@ -158,15 +175,17 @@ struct SpacesScreen: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        Button {
-                            isShowingCreateSpace = true
-                        } label: {
-                            Label("New Space", systemImage: "plus")
-                        }
-                        .disabled(model.isCreatingSpace)
-                        .accessibilityIdentifier("space-create-button")
+                        if !appModel.isCoreMode {
+                            Button {
+                                isShowingCreateSpace = true
+                            } label: {
+                                Label("New Space", systemImage: "plus")
+                            }
+                            .disabled(model.isCreatingSpace)
+                            .accessibilityIdentifier("space-create-button")
 
-                        Divider()
+                            Divider()
+                        }
 
                         Picker("Sort", selection: sortSelection) {
                             ForEach(SpaceSortPreference.allCases) { preference in
@@ -184,14 +203,16 @@ struct SpacesScreen: View {
                 }
             }
             .toolbarBackground(.hidden, for: .navigationBar)
-            .navigationDestination(for: Space.self) { space in
-                WorkspacePaneView(space: space)
-                    .environment(appModel)
-                    .environment(model)
+            .onChange(of: model.spaces) { _, _ in
+                rememberSelected()
+                autoSelectFirstIfNeeded()
             }
+            .onChange(of: selectedID) { _, _ in rememberSelected() }
+            .onAppear { autoSelectFirstIfNeeded() }
             .sheet(item: $actionsTarget, onDismiss: {
                 guard let pending = pendingSpaceAction else { return }
                 pendingSpaceAction = nil
+                guard !appModel.isCoreMode else { return }
                 perform(pending.action, on: pending.space)
             }) { space in
                 SpaceActionsDrawer(
@@ -213,6 +234,7 @@ struct SpacesScreen: View {
             .sheet(isPresented: $isShowingCreateSpace, onDismiss: {
                 guard let request = pendingCreateSpace else { return }
                 pendingCreateSpace = nil
+                guard !appModel.isCoreMode else { return }
                 Task { await model.createSpace(basedOn: request.base, appModel.connection) }
             }) {
                 CreateSpaceDrawer(
@@ -233,6 +255,7 @@ struct SpacesScreen: View {
             .sheet(item: $openWorktreeTarget, onDismiss: {
                 guard let request = pendingOpenWorktree else { return }
                 pendingOpenWorktree = nil
+                guard !appModel.isCoreMode else { return }
                 Task {
                     await model.openWorktree(
                         in: request.space,
@@ -261,6 +284,7 @@ struct SpacesScreen: View {
             .sheet(item: $createWorktreeTarget, onDismiss: {
                 guard let request = pendingCreateWorktree else { return }
                 pendingCreateWorktree = nil
+                guard !appModel.isCoreMode else { return }
                 Task {
                     await model.createWorktree(
                         in: request.space,
@@ -298,7 +322,7 @@ struct SpacesScreen: View {
                     let target = renameTarget
                     let name = renameText
                     renameTarget = nil
-                    guard let target else { return }
+                    guard let target, !appModel.isCoreMode else { return }
                     Task {
                         await model.renameSpace(target, to: name, appModel.connection)
                     }
@@ -318,7 +342,7 @@ struct SpacesScreen: View {
                 Button("Close Space", role: .destructive) {
                     let target = closeTarget
                     closeTarget = nil
-                    guard let target else { return }
+                    guard let target, !appModel.isCoreMode else { return }
                     Task {
                         await model.closeSpace(target, appModel.connection)
                     }
@@ -358,33 +382,69 @@ struct SpacesScreen: View {
                 _ = await (spaces, usage)
             }
             .connectionStatusBanner(appModel: appModel)
+        } detail: { id in
+            if let space = model.spaces.first(where: { $0.id == id }) ?? lastSeen.flatMap({ $0.id == id ? $0 : nil }) {
+                WorkspacePaneView(space: space)
+                    .environment(appModel)
+                    .environment(model)
+            } else {
+                ContentUnavailableView("Space unavailable", systemImage: "square.grid.3x3",
+                                       description: Text("This space may have closed."))
+            }
         }
+    }
+
+    private func rememberSelected() {
+        guard let selectedID, let live = model.spaces.first(where: { $0.id == selectedID }) else { return }
+        lastSeen = live
+    }
+
+    private func autoSelectFirstIfNeeded() {
+        if selectedID == nil, horizontalSizeClass == .regular,
+           ProcessInfo.processInfo.arguments.contains("-hc.select-first") {
+            selectedID = displayedGroups.first?.root.id
+        }
+    }
+
+    /// Only the split view's detail column marks a row; a pushed pane covers the list.
+    private func isSelected(_ space: Space) -> Bool {
+        horizontalSizeClass == .regular && selectedID == space.id
     }
 
     // MARK: Pieces
 
     /// Opens a space on tap, its More drawer on long press, and offers
     /// trailing swipe actions: More and Close.
+    @ViewBuilder
     private func spaceLink<Row: View>(_ space: Space, @ViewBuilder row: () -> Row) -> some View {
         // Keep native cell selection and swipe handling. The long press must
         // be simultaneous so it doesn't consume the NavigationLink's tap.
-        NavigationLink(value: space) {
-            row()
+        let link = Group {
+            if horizontalSizeClass == .regular {
+                Button { selectedID = space.id } label: { row() }
+                    .buttonStyle(.plain)
+            } else {
+                NavigationLink(value: space.id) { row() }
+                    .hidesNavigationIndicator()
+            }
         }
-        .hidesNavigationIndicator()
         .quietListRow()
-        // WhatsApp-style: drag right to left; Close sits at the screen edge.
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            swipeCloseButton(space)
-            swipeMoreButton(space)
-        }
-        .simultaneousGesture(
-            LongPressGesture().onEnded { _ in
+        if appModel.isCoreMode {
+            link
+        } else {
+            // WhatsApp-style: drag right to left; Close sits at the screen edge.
+            link.swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                swipeCloseButton(space)
+                swipeMoreButton(space)
+            }
+            .simultaneousGesture(
+                LongPressGesture().onEnded { _ in
+                    actionsTarget = space
+                }
+            )
+            .accessibilityAction(named: "More") {
                 actionsTarget = space
             }
-        )
-        .accessibilityAction(named: "More") {
-            actionsTarget = space
         }
     }
 
@@ -413,6 +473,7 @@ struct SpacesScreen: View {
     }
 
     private func perform(_ action: SpaceAction, on space: Space) {
+        guard !appModel.isCoreMode else { return }
         switch action {
         case .openWorktree:
             openWorktreeTarget = model.defaultSpace(for: space)
@@ -433,9 +494,11 @@ struct SpacesScreen: View {
             Image(systemName: "square.grid.3x3")
                 .font(.jost(42, weight: .light))
                 .foregroundStyle(.tertiary)
-            Text("No Spaces Yet")
+            Text(appModel.isCoreMode ? "No terminals" : "No Spaces Yet")
                 .font(.jost(.title3, weight: .semibold))
-            Text("Start herdr on your remote machine and create a workspace,\nor tap ⋯ to create one from here.")
+            Text(appModel.isCoreMode
+                 ? "Start a program with Herdr Core on the connected machine. Its terminal will appear here."
+                 : "Start herdr on your remote machine and create a workspace,\nor tap ⋯ to create one from here.")
                 .font(.jost(.footnote))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

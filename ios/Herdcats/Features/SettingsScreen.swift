@@ -140,6 +140,12 @@ struct SettingsScreen: View {
     }
 
     var body: some View {
+        TabSplitView(hint: "Settings appear on the right.") {
+            screen
+        }
+    }
+
+    private var screen: some View {
         NavigationStack {
             Form {
                 #if DEBUG
@@ -158,11 +164,12 @@ struct SettingsScreen: View {
                 soundSection
                 launchSection
                 connectionSection
-                phoneAnswersSection
+                if !appModel.isCoreMode { phoneAnswersSection }
                 versionSection
 
             }
             .scrollContentBackground(.hidden)
+            .regularWidthReadable()
             .background(Theme.listBackground.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
