@@ -514,6 +514,7 @@ struct AgentListItem: Identifiable, Hashable {
 // MARK: - Agent list row
 
 struct AgentListRow: View {
+    @Environment(\.paneRowBadge) private var paneBadge
     let item: AgentListItem
     /// The row open in the split view's detail column.
     var isSelected = false
@@ -537,6 +538,7 @@ struct AgentListRow: View {
                             .accessibilityLabel("Focused")
                     }
                     Spacer(minLength: 8)
+                    if let paneBadge { PaneSlotTag(badge: paneBadge) }
                     RowTimestamp(date: lastUpdated)
                 }
                 .alignmentGuide(.listTitleCenter) { $0[VerticalAlignment.center] }

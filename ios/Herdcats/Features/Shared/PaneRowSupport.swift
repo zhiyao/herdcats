@@ -36,6 +36,38 @@ extension View {
     }
 }
 
+/// The slot a row is open in, for the row to draw left of its timestamp.
+struct PaneRowBadge: Equatable {
+    let slot: PaneLayout.Slot
+    let isFocused: Bool
+}
+
+private struct PaneRowBadgeKey: EnvironmentKey {
+    static let defaultValue: PaneRowBadge? = nil
+}
+
+extension EnvironmentValues {
+    var paneRowBadge: PaneRowBadge? {
+        get { self[PaneRowBadgeKey.self] }
+        set { self[PaneRowBadgeKey.self] = newValue }
+    }
+}
+
+/// The small L or R tag. The focused slot's tag is filled.
+struct PaneSlotTag: View {
+    let badge: PaneRowBadge
+
+    var body: some View {
+        Text(badge.slot == .left ? "L" : "R")
+            .font(.jost(10, weight: .bold))
+            .foregroundStyle(badge.isFocused ? Theme.onPrimary : Theme.accent)
+            .frame(width: 16, height: 16)
+            .background(badge.isFocused ? Theme.accent : Color.clear, in: RoundedRectangle(cornerRadius: 4))
+            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.accent, lineWidth: 1))
+            .accessibilityHidden(true)
+    }
+}
+
 private struct PaneSlotBadgeModifier: ViewModifier {
     let slot: PaneLayout.Slot?
     let isFocused: Bool
@@ -43,16 +75,7 @@ private struct PaneSlotBadgeModifier: ViewModifier {
     func body(content: Content) -> some View {
         if let slot {
             content
-                .overlay(alignment: .topTrailing) {
-                    Text(slot == .left ? "L" : "R")
-                        .font(.jost(10, weight: .bold))
-                        .foregroundStyle(isFocused ? Theme.onPrimary : Theme.accent)
-                        .frame(width: 16, height: 16)
-                        .background(isFocused ? Theme.accent : Color.clear, in: RoundedRectangle(cornerRadius: 4))
-                        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.accent, lineWidth: 1))
-                        .offset(y: -4)
-                        .accessibilityHidden(true)
-                }
+                .environment(\.paneRowBadge, PaneRowBadge(slot: slot, isFocused: isFocused))
                 .accessibilityValue(slot == .left ? "Open on left" : "Open on right")
         } else {
             content

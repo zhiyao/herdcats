@@ -485,9 +485,6 @@ struct PaneSessionView: View {
                     }
                     voiceComposeBar
                         .environment(\.colorScheme, showsTimeline ? colorScheme : .dark)
-                } else {
-                    // The dock height below follows whichever is shown.
-                    PaneOutputOnlyStrip()
                 }
             }
             // Track the rendered dock directly, including multiline drafts,
@@ -496,7 +493,8 @@ struct PaneSessionView: View {
             .onGeometryChange(for: CGFloat.self) { geometry in
                 geometry.size.height
             } action: { height in
-                if height > 0 { bottomDockHeight = height }
+                // An unfocused slot shows no dock, so its height is really zero.
+                if height > 0 || !paneIsFocused { bottomDockHeight = height }
             }
         }
         .onChange(of: showsTimeline) { _, _ in
