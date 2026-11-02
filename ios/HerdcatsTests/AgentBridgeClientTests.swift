@@ -1040,7 +1040,11 @@ struct TimelineHistoryClientTests {
     @Test @MainActor
     func cancelledRefreshWaiterStillMergesTheLatePageAndCoalescesPulls() async throws {
         let wire = BridgeTestWire()
-        let client = AgentBridgeClient(write: { await wire.write($0) }, close: { await wire.close() }, onEvent: { _ in })
+        let requestWritten = ExternallyReleasedWait<Void>()
+        let client = AgentBridgeClient(write: {
+            await wire.write($0)
+            requestWritten.release(())
+        }, close: { await wire.close() }, onEvent: { _ in })
         let loader = TimelineHistoryLoader()
         let state = AgentTimelineState()
         let owner = UUID()
@@ -1056,16 +1060,23 @@ struct TimelineHistoryClientTests {
                     let page = try await client.request(.history, params: AgentBridgeParams(generation: 1, before: "current"))
                     try Task.checkCancellation()
                     try state.mergeHistory(page, owner: owner, generation: 1)
-                } catch { Issue.record("Owned page load failed: \(error)") }
+                } catch {
+                    requestWritten.fail(error)
+                    Issue.record("Owned page load failed: \(error)")
+                }
             }
         }
-        try await wait(wire, count: 1)
+        // Coordinate with the actual write, rather than a short polling budget
+        // that can expire before the writer runs on a busy CI simulator.
+        try await requestWritten.wait()
         let id = try await wire.requestId()
         refresh.cancel()
+        let concurrentPullStarted = ExternallyReleasedWait<Void>()
         let concurrentPull = Task {
+            concurrentPullStarted.release(())
             await loader.load { Issue.record("A second pull started a duplicate page request") }
         }
-        await Task.yield()
+        try await concurrentPullStarted.wait()
         #expect(await wire.closes == 0)
         let response: [String: Any] = ["id": id, "result": ["identity": identity, "generation": 1, "has_more": false,
             "entries": [["id": "earlier", "kind": "message", "text": "Earlier", "truncated": false]]]]

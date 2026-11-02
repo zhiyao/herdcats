@@ -24,16 +24,19 @@ struct QuotaScreen: View {
                 if appModel.isOffline && model.usageCards.isEmpty {
                     OfflineHerdView()
                 } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 10) {
-                            QuotaCardsView(model: model)
-                            if let updated = model.usageLastUpdated, !model.usageCards.isEmpty {
-                                QuotaLastUpdatedView(date: updated)
+                    GeometryReader { viewport in
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 10) {
+                                QuotaCardsView(model: model)
+                                    .frame(minHeight: model.quotaContentState == .loading ? max(260, viewport.size.height - 32) : nil)
+                                if let updated = model.usageLastUpdated, !model.usageCards.isEmpty {
+                                    QuotaLastUpdatedView(date: updated)
+                                }
                             }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 4)
+                            .padding(.bottom, 28)
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 4)
-                        .padding(.bottom, 28)
                     }
                 }
             }
@@ -127,62 +130,35 @@ struct QuotaCardsView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            if !model.usageCards.isEmpty {
+            switch model.quotaContentState {
+            case .cards:
                 cardsRow
-                    .id("cardsRow")
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.98, anchor: .top)),
-                        removal: .opacity
-                    ))
-            } else if model.quotaAxiMissing {
+            case .notSetup:
                 QuotaAxiNotSetupView(model: model)
-                    .id("quotaAxiNotSetupView")
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.98, anchor: .top)),
-                        removal: .opacity
-                    ))
-            } else {
+            case .loading:
                 usageStatusCard
-                    .id("usageStatusCard")
-                    .transition(.asymmetric(
-                        insertion: .opacity,
-                        removal: .opacity.combined(with: .scale(scale: 0.98, anchor: .top))
-                    ))
+            case .error(let message):
+                ErrorBanner(message: message, retry: {
+                    Task { await model.refreshUsage(appModel.connection, force: true) }
+                })
+                .accessibilityIdentifier("quota-load-error")
+            case .empty:
+                VStack(spacing: 12) {
+                    ContentUnavailableView("No quota data available", systemImage: "gauge.with.dots.needle.67percent")
+                    Button("Retry") { Task { await model.refreshUsage(appModel.connection, force: true) } }
+                        .buttonStyle(.herdrSecondary(fullWidth: false))
+                }
+                .accessibilityIdentifier("quota-load-empty")
             }
         }
         .animation(.spring(response: 0.38, dampingFraction: 0.82), value: model.usageCards.isEmpty)
         .animation(.spring(response: 0.38, dampingFraction: 0.82), value: model.quotaAxiMissing)
     }
 
-    private var statusMessage: String {
-        if model.quotaAxiMissing {
-            return "quota-axi not found on the remote machine. Install with npm i -g quota-axi."
-        }
-        if let message = model.usageUnavailableMessage {
-            return message
-        }
-        return "Loading quota…"
-    }
-
     private var usageStatusCard: some View {
-        HStack(spacing: 10) {
-            CircularArcSpinner(size: 16)
-
-            Text(statusMessage)
-                .font(.jost(13, weight: .medium))
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-        .herdrCard(cornerRadius: DesignSystem.CornerRadius.lg, showsBorder: false)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(statusMessage)
-        .accessibilityIdentifier("agent-usage-status-card")
+        LazyCatLoadingView(message: "Loading quota…")
+            .frame(minHeight: 260)
+            .accessibilityIdentifier("quota-content-loading")
     }
 
     private var cardsRow: some View {

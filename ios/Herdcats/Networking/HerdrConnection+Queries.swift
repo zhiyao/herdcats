@@ -53,6 +53,7 @@ extension HerdrConnection {
         timeoutPolicy: HerdrCommandTimeoutPolicy = .teardownAndNotify,
         expectedGeneration: ConnectionGeneration? = nil
     ) async throws -> String {
+        try requireTUIFeature()
 #if DEBUG && targetEnvironment(simulator)
         if ScreenshotFixtures.enabled { return try ScreenshotFixtures.response(args) }
 #endif
@@ -99,13 +100,18 @@ extension HerdrConnection {
     func serverVersion(
         timeoutPolicy: HerdrCommandTimeoutPolicy = .teardownAndNotify
     ) async throws -> String {
-        try await runHerdr("--version", timeoutPolicy: timeoutPolicy)
+        if backend == .core {
+            _ = try await startCore()
+            return "Herdr Core \(coreHello["version"].stringValue ?? "unknown")"
+        }
+        return try await runHerdr("--version", timeoutPolicy: timeoutPolicy)
     }
 
     func workspaceList(
         timeoutPolicy: HerdrCommandTimeoutPolicy = .teardownAndNotify
     ) async throws -> [Workspace] {
-        try await fetch(
+        if backend == .core { return try await corePresentation().workspaces }
+        return try await fetch(
             WorkspaceListResult.self, args: "workspace list",
             timeoutPolicy: timeoutPolicy
         ).workspaces

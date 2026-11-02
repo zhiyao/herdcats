@@ -112,6 +112,10 @@ struct ConnectedTabsView: View {
                 }
             }
         }
+        .onChange(of: appModel.runtimeRevision) { _, _ in
+            guard appModel.isCoreMode, appModel.isSceneActive, !appModel.isOffline else { return }
+            Task { await model.refresh(appModel.connection) }
+        }
         .onChange(of: scenePhase) { _, phase in
             let active = phase == .active
             model.isSceneActive = active
@@ -348,7 +352,9 @@ struct AgentsScreen: View {
                 .foregroundStyle(.tertiary)
             Text("No agents running")
                 .font(.jost(.title3, weight: .semibold))
-            Text("Launch an agent inside a herdr space —\nit will show up here on the next refresh.")
+            Text(appModel.isCoreMode
+                 ? "Run a status-reporting agent in Herdr Core. You can browse every terminal in Spaces."
+                 : "Launch an agent inside a herdr space —\nit will show up here on the next refresh.")
                 .font(.jost(.footnote))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -473,11 +479,26 @@ struct HerdrcatBrandMark: View {
     }
 
     private func identity(_ connection: RecentConnection) -> ConnectionIdentity {
-        ConnectionIdentity(host: connection.host, port: connection.port, username: connection.username)
+        ConnectionIdentity(host: connection.host, port: connection.port, username: connection.username,
+            backend: connection.backend)
     }
 
     private var activeConnection: RecentConnection? {
         connections.first { identity($0) == appModel.connectionIdentity }
+    }
+
+    private func select(_ connection: RecentConnection) {
+        guard let active else { return }
+        Task {
+            if await active.switchMachine(to: connection) == .needsCredentials {
+                selectedConnection = connection
+            }
+        }
+    }
+
+    /// Servers in list order; a server saved with both runtimes gets a row for each.
+    private var rows: [RecentConnection] {
+        RecentConnectionStore.servers(connections).flatMap { RecentConnectionStore.savedRuntimes(of: $0, in: connections) }
     }
 
     private var shortHost: String {
@@ -512,15 +533,10 @@ struct HerdrcatBrandMark: View {
             if let host {
                 Menu {
                     // The checkmark marks the current machine, so no host header.
-                    ForEach(connections) { connection in
+                    ForEach(rows) { connection in
                         let label = connection.shortDisplayName(among: connections)
                         Button {
-                            guard let active else { return }
-                            Task {
-                                if await active.switchMachine(to: connection) == .needsCredentials {
-                                    selectedConnection = connection
-                                }
-                            }
+                            select(connection)
                         } label: {
                             HStack {
                                 Text(label)

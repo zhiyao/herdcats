@@ -65,11 +65,11 @@ extension HerdrConnection {
     }
 
     private static func friendlyTransportMessage(for error: Error, config: ConnectionConfig?) -> String {
-        let description = String(describing: error)
-        if description.contains("connectTimeout") {
+        if let channelError = error as? ChannelError, case .connectTimeout = channelError {
             return "Timed out reaching the host — check the IP address and that SSH "
                 + "(Remote Login) is enabled on the machine."
         }
+        let description = String(describing: error)
         if description.contains("Connection refused")
             || description.contains("connectFailed")
             || description.contains("ECONNREFUSED") {
