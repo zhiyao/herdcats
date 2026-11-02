@@ -18,6 +18,9 @@ struct PaneSessionView: View {
     @Environment(AppModel.self) var appModel
     @Environment(SpacesModel.self) var spacesModel: SpacesModel?
     @Environment(\.colorScheme) var colorScheme
+    /// False for the output-only slot of a split: no input surface, no Live
+    /// session, no rapid reads, no implicit mark-as-seen.
+    @Environment(\.paneIsFocused) var paneIsFocused
     @State var session: PaneSessionState
     /// Pane text is held in view state and synchronously persisted through the
     /// privacy policy so a cleared session cannot restore stale values.
@@ -471,16 +474,21 @@ struct PaneSessionView: View {
         }
         .overlay(alignment: .bottom) {
             VStack(spacing: 0) {
-                if showsTimeline {
-                    if let sessionError {
-                        Text(sessionError).font(.jost(.caption)).foregroundStyle(Theme.destructive)
-                            .padding(.horizontal, 16)
+                if paneIsFocused {
+                    if showsTimeline {
+                        if let sessionError {
+                            Text(sessionError).font(.jost(.caption)).foregroundStyle(Theme.destructive)
+                                .padding(.horizontal, 16)
+                        }
+                    } else {
+                        liveStatusRow
                     }
+                    voiceComposeBar
+                        .environment(\.colorScheme, showsTimeline ? colorScheme : .dark)
                 } else {
-                    liveStatusRow
+                    // The dock height below follows whichever is shown.
+                    PaneOutputOnlyStrip()
                 }
-                voiceComposeBar
-                    .environment(\.colorScheme, showsTimeline ? colorScheme : .dark)
             }
             // Track the rendered dock directly, including multiline drafts,
             // attachments and keyboard-driven layout changes. Scroll controls
@@ -521,7 +529,7 @@ struct PaneSessionView: View {
             }
         .task(id: liveSessionTaskKey) {
             var retryDelay = 2.0
-            while !Task.isCancelled && !appModel.isOffline && appModel.isSceneActive {
+            while !Task.isCancelled && paneIsFocused && !appModel.isOffline && appModel.isSceneActive {
                 guard !liveInputEnabled else { return }
                 if liveSession == nil || liveQueueState == .needsResync {
                     await resumeLiveInput()
@@ -597,6 +605,13 @@ struct PaneSessionView: View {
         .onChange(of: pane) { _, newPane in
             handlePaneChange(newPane)
         }
+        .onChange(of: paneIsFocused) { wasFocused, isFocused in
+            let effects = PaneFocusPolicy.effects(wasFocused: wasFocused, isFocused: isFocused)
+            if effects.releasesInput { releaseInputFocus() }
+            if effects.marksSeen { Task { await considerImplicitMarkSeen() } }
+        }
+        // Only the focused pane makes room for the software keyboard.
+        .ignoresSafeArea(.keyboard, edges: paneIsFocused ? [] : .bottom)
         .onChange(of: session.output) { _, _ in
             updateSessionParsedOutput()
         }

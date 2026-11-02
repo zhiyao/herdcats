@@ -47,6 +47,7 @@
 		3192AA326E7D86AEE41625D1 /* OpenSSHKeyParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03D86B705A4E80AB24216844 /* OpenSSHKeyParser.swift */; };
 		33945CD1938637387DD78ADF /* Silkscreen-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A8104B7E702235B8CE7A5518 /* Silkscreen-Regular.ttf */; };
 		388443991E3C846836009F4C /* HerdrConnection+AgyAndPanes.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDC8A986ECD954E87C90B196 /* HerdrConnection+AgyAndPanes.swift */; };
+		3A78D67D5D6A955ED5DB4479 /* PaneOutputOnlyStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31D62840B8B70277A41A95F /* PaneOutputOnlyStrip.swift */; };
 		424A7E2D237F3DD78BD7DFB8 /* LaunchCatOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DAD4982D3C8C19D0E3723C5 /* LaunchCatOverlay.swift */; };
 		432F1172CA742211722777FC /* Jost-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 0B7FDB979853200806B0878B /* Jost-Variable.ttf */; };
 		435D80316CFAB773C4827855 /* HerdcatsUITests+Connections.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E597E391503ECB4F82A34B /* HerdcatsUITests+Connections.swift */; };
@@ -156,6 +157,7 @@
 		F4E543BCE0EB82138CDBE6EF /* CoreHierarchy.swift in Sources */ = {isa = PBXBuildFile; fileRef = D64D46122C07DAB12636EDD6 /* CoreHierarchy.swift */; };
 		F55899A6B73E66CCFE51730F /* PlainTextInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 121986C4CFF47D9ACC6C4E0B /* PlainTextInput.swift */; };
 		F62E23A79F938096405DD200 /* QuestionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AA651ECCA572E1B7EA98DD4 /* QuestionTests.swift */; };
+		F9E7EC88C87F0ACF0D7796B8 /* HerdcatsTests+PaneFocus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9422049155E82CD3C6F881CB /* HerdcatsTests+PaneFocus.swift */; };
 		FB535ABF635C97B3647543CF /* QuestionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 690A325C18C2D89D90900F04 /* QuestionCard.swift */; };
 		FC0FAD0E7DC7F9C68F88EB34 /* HerdrConnection+PaneInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCCA0CEF6A22B0EBA75E8922 /* HerdrConnection+PaneInput.swift */; };
 		FCB7B8EADE95FFAEF2CF333D /* SpacesModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6A3FE1B5B05D76DF1BE8906 /* SpacesModel.swift */; };
@@ -271,6 +273,7 @@
 		902C762017C8EEFB00E85C2F /* ConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectView.swift; sourceTree = "<group>"; };
 		918242BF9E28295626135C98 /* CorePresentationMemoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorePresentationMemoTests.swift; sourceTree = "<group>"; };
 		92640BC7EDFFEEFCA4FB2AB6 /* AgentBridgeClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentBridgeClientTests.swift; sourceTree = "<group>"; };
+		9422049155E82CD3C6F881CB /* HerdcatsTests+PaneFocus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdcatsTests+PaneFocus.swift"; sourceTree = "<group>"; };
 		945BC05E891ACD9EC97F059A /* HapticFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticFeedback.swift; sourceTree = "<group>"; };
 		960C17FAAD7D9802E6C317C3 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		96136F1C1C246A3CD0F8CB15 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
@@ -281,6 +284,7 @@
 		9CC8A4387368F9C508CA1733 /* PhoneAnswersState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneAnswersState.swift; sourceTree = "<group>"; };
 		9F498D4E1BC8C714630308B5 /* TimelineDiffParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineDiffParser.swift; sourceTree = "<group>"; };
 		A0B450F19759740A5C938D45 /* SpacesScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpacesScreen.swift; sourceTree = "<group>"; };
+		A31D62840B8B70277A41A95F /* PaneOutputOnlyStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneOutputOnlyStrip.swift; sourceTree = "<group>"; };
 		A5F4DBD6070394B2FB68B8F5 /* CoreWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreWire.swift; sourceTree = "<group>"; };
 		A8104B7E702235B8CE7A5518 /* Silkscreen-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Silkscreen-Regular.ttf"; sourceTree = "<group>"; };
 		A914BA288B0E47F5DBB7675C /* PaneScrollDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneScrollDiagnostics.swift; sourceTree = "<group>"; };
@@ -358,6 +362,7 @@
 			children = (
 				2EEF703BF74FD93DEF242E75 /* PaneDrawers.swift */,
 				CFA2F0F5808532EFF68325C7 /* PaneInputSurfaceModel.swift */,
+				A31D62840B8B70277A41A95F /* PaneOutputOnlyStrip.swift */,
 				E8E71594C60B5C8C5087748C /* PaneOutputScrollView.swift */,
 				02E13CEE155B9581892D6C37 /* PaneSessionView.swift */,
 				F996691B62CAF36EEBB12D8A /* PaneSessionView+LiveAndActions.swift */,
@@ -585,6 +590,7 @@
 				28803B5BCDAAF690E04DE5FF /* HerdcatsTests+MachineSwitching.swift */,
 				C7D8691E59345CB8F559F5BB /* HerdcatsTests+ModelDecoding.swift */,
 				2F13BDB183FEA9BA4E3B3340 /* HerdcatsTests+OnboardingAndHostKeys.swift */,
+				9422049155E82CD3C6F881CB /* HerdcatsTests+PaneFocus.swift */,
 				E6753FF3AF90C184EEA13570 /* HerdcatsTests+PaneInputCoordinator.swift */,
 				3D91CF390920CF62B4D122D9 /* HerdcatsTests+PaneLayout.swift */,
 				565E52FF93633CC2CB6D65E5 /* HerdcatsTests+PaneLiveInput.swift */,
@@ -845,6 +851,7 @@
 				C82FE02A63F71FEEF9DF666C /* PaneLiveInputQueue.swift in Sources */,
 				A456A860FAF5DEFD0C85DFC8 /* PaneLiveInputView.swift in Sources */,
 				6198DBFF79330F4B794A210B /* PaneLiveModifierComposer.swift in Sources */,
+				3A78D67D5D6A955ED5DB4479 /* PaneOutputOnlyStrip.swift in Sources */,
 				996191EBA63FC3C161AA45C3 /* PaneOutputPresentation.swift in Sources */,
 				C37D89BCE8A6047C70E9A374 /* PaneOutputScrollView.swift in Sources */,
 				7F6AC3D0D020273FCEE052D2 /* PanePersistentShell.swift in Sources */,
@@ -908,6 +915,7 @@
 				B80AB9F9F584F6A8694D96A7 /* HerdcatsTests+MachineSwitching.swift in Sources */,
 				66A6D27875DD944D947DFC86 /* HerdcatsTests+ModelDecoding.swift in Sources */,
 				07B6DC3D2E655393132F1045 /* HerdcatsTests+OnboardingAndHostKeys.swift in Sources */,
+				F9E7EC88C87F0ACF0D7796B8 /* HerdcatsTests+PaneFocus.swift in Sources */,
 				71D6C3379E617A45C50CF8C6 /* HerdcatsTests+PaneInputCoordinator.swift in Sources */,
 				EBB5BA3402E062ECA64217EF /* HerdcatsTests+PaneLayout.swift in Sources */,
 				D9236D424B2DBFF26A50E066 /* HerdcatsTests+PaneLiveInput.swift in Sources */,

@@ -19,6 +19,8 @@ struct PaneSlotActions {
     let swap: () -> Void
     let fullWidth: () -> Void
     let close: () -> Void
+    /// Moves focus (and typing) to this slot.
+    let focus: () -> Void
 }
 
 extension EnvironmentValues {
@@ -98,7 +100,8 @@ struct TwoPaneDetail<Content: View>: View {
                     replace: { pick(slot) },
                     swap: { layout.swap() },
                     fullWidth: { layout.fullWidth(slot) },
-                    close: { layout.close(slot) }
+                    close: { layout.close(slot) },
+                    focus: { layout.focus(slot) }
                 ))
                 .overlay(alignment: .top) {
                     // Sits on the bottom edge of the navigation bar.
