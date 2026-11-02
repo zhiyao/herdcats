@@ -18,6 +18,7 @@ struct PaneDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.showsPaneSwitcher) private var showsPaneSwitcher
     @Environment(\.showsPaneBackButton) private var showsPaneBackButton
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.openPaneMemory) private var openPaneMemory
     @Environment(\.closeDetail) private var closeDetail
     @State private var siblings: [PaneEntry]
@@ -223,7 +224,10 @@ struct PaneDetailView: View {
         // so pushed panes get their own leading-edge swipe back.
         .navigationBarBackButtonHidden(true)
         .overlay(alignment: .leading) {
-            if showsPaneBackButton {
+            // iPhone only: iPad and the Duo inner screen use the split view.
+            if showsPaneBackButton,
+               UIDevice.current.userInterfaceIdiom == .phone,
+               horizontalSizeClass == .compact {
                 Color.clear
                     .frame(width: 24)
                     .contentShape(Rectangle())
