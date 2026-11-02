@@ -130,6 +130,7 @@ extension HerdrConnection {
         guard coreSessionID == session else { throw HerdrError.notConnected }
         coreHello = hello
         coreSnapshot = try CoreSnapshot(subscription: value)
+        invalidateCorePresentation()
         for message in earlyCoreNotifications { _ = try coreSnapshot?.apply(message) }
         earlyCoreNotifications = []
     }
@@ -145,6 +146,7 @@ extension HerdrConnection {
         }
         let refetch = try coreSnapshot?.apply(value) ?? false
         if refetch {
+            invalidateCorePresentation()
             coreDocumentsRevision &+= 1
             scheduleCoreDocumentReload(owned: owned, session: session)
         }
@@ -226,6 +228,7 @@ extension HerdrConnection {
         let old = coreRPC
         coreRPC = nil
         coreSnapshot = nil
+        invalidateCorePresentation()
         coreHello = .null
         coreLayouts = [:]
         earlyCoreNotifications = []
@@ -241,8 +244,27 @@ extension HerdrConnection {
 
     func corePresentation() async throws -> CoreHierarchy {
         _ = try await startCore()
+        return try cachedCorePresentation()
+    }
+
+    /// Builds the hierarchy at most once per snapshot sequence and layouts
+    /// revision, so one refresh's workspace/agent/tab/pane queries share it.
+    func cachedCorePresentation() throws -> CoreHierarchy {
         guard let coreSnapshot else { throw HerdrError.notConnected }
-        return coreSnapshot.presentation(layout: coreLayouts[""], remoteLayouts: coreLayouts.filter { !$0.key.isEmpty })
+        if let memo = corePresentationMemo,
+           memo.seq == coreSnapshot.seq, memo.layoutsRevision == coreLayoutsRevision {
+            return memo.value
+        }
+        let value = coreSnapshot.presentation(layout: coreLayouts[""], remoteLayouts: coreLayouts.filter { !$0.key.isEmpty })
+        corePresentationBuilds += 1
+        corePresentationMemo = (coreSnapshot.seq, coreLayoutsRevision, value)
+        return value
+    }
+
+    /// The snapshot was replaced (new subscription, `missed`, close) or a
+    /// document changed, so a same-sequence memo can no longer be trusted.
+    func invalidateCorePresentation() {
+        corePresentationMemo = nil
     }
 
     func coreRequest(_ method: String, params: [String: CoreJSON], timeout: TimeInterval = 15,

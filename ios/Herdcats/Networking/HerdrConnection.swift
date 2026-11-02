@@ -161,7 +161,14 @@ actor HerdrConnection {
     var coreStartupClosed = false
     var coreSnapshot: CoreSnapshot?
     var coreHello: CoreJSON = .null
-    var coreLayouts: [String: CoreJSON] = [:]
+    var coreLayouts: [String: CoreJSON] = [:] {
+        didSet { coreLayoutsRevision &+= 1 }
+    }
+    /// Bumped whenever `coreLayouts` is assigned; part of the presentation memo key.
+    var coreLayoutsRevision: UInt64 = 0
+    var corePresentationMemo: (seq: UInt64, layoutsRevision: UInt64, value: CoreHierarchy)?
+    /// How many times the hierarchy was actually built (memo misses).
+    var corePresentationBuilds = 0
     var earlyCoreNotifications: [CoreJSON] = []
     var coreDocumentTask: Task<Void, Never>?
     var coreDocumentsRevision: UInt64 = 0

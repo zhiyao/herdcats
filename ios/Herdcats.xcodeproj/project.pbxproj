@@ -129,6 +129,7 @@
 		D207CAF048B6C930676C5ADC /* VoiceWaveform.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F47756B075A75A4323C2A2D /* VoiceWaveform.swift */; };
 		D42BA0884EABA9E4B3C98943 /* HerdrModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85BDAAC12F57BDD3F41B090C /* HerdrModels.swift */; };
 		D7674EDD0035DCAEAD07B942 /* HerdcatsTests+KeyboardOverlap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EC9B3BD3B7237EE2679CE65 /* HerdcatsTests+KeyboardOverlap.swift */; };
+		D7B0DBB7299B1F2ABD9F066C /* CorePresentationMemoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 918242BF9E28295626135C98 /* CorePresentationMemoTests.swift */; };
 		D82A1C06AA4BDA852E848F59 /* PaneLiveModifierComposerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 217943F1848BADFC038A2932 /* PaneLiveModifierComposerTests.swift */; };
 		D88366995735A638B5816998 /* TimelineEntryViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 420F85D2A36D8492474B19DF /* TimelineEntryViews.swift */; };
 		D9236D424B2DBFF26A50E066 /* HerdcatsTests+PaneLiveInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 565E52FF93633CC2CB6D65E5 /* HerdcatsTests+PaneLiveInput.swift */; };
@@ -262,6 +263,7 @@
 		8D67B69724707A16FD4618DF /* LicensesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicensesView.swift; sourceTree = "<group>"; };
 		8F47756B075A75A4323C2A2D /* VoiceWaveform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceWaveform.swift; sourceTree = "<group>"; };
 		902C762017C8EEFB00E85C2F /* ConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectView.swift; sourceTree = "<group>"; };
+		918242BF9E28295626135C98 /* CorePresentationMemoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorePresentationMemoTests.swift; sourceTree = "<group>"; };
 		92640BC7EDFFEEFCA4FB2AB6 /* AgentBridgeClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentBridgeClientTests.swift; sourceTree = "<group>"; };
 		945BC05E891ACD9EC97F059A /* HapticFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticFeedback.swift; sourceTree = "<group>"; };
 		960C17FAAD7D9802E6C317C3 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
@@ -565,6 +567,7 @@
 				EE7FC195CD26B119EDA12468 /* CoreConnectionProfileTests.swift */,
 				2E10C64E9E413CFD1DE700E0 /* CoreHierarchyTests.swift */,
 				BF4BF7D92B520025AA546FF8 /* CoreLiveSSHTests.swift */,
+				918242BF9E28295626135C98 /* CorePresentationMemoTests.swift */,
 				461647873FA54DF5C9603AE0 /* CoreWireTests.swift */,
 				A9F59CB2840187527B1A6D5D /* HerdcatsTests.swift */,
 				AD0542ABC20C507904C8BCD5 /* HerdcatsTests+ConnectionOwnership.swift */,
@@ -885,6 +888,7 @@
 				4D7260E97231EDCE9FF59833 /* CoreConnectionProfileTests.swift in Sources */,
 				9886C0141861BE1F45965DF3 /* CoreHierarchyTests.swift in Sources */,
 				817905FB6843FD83D2AF3F5F /* CoreLiveSSHTests.swift in Sources */,
+				D7B0DBB7299B1F2ABD9F066C /* CorePresentationMemoTests.swift in Sources */,
 				55FFDFEAD0D4F0F1FB6FE74E /* CoreWireTests.swift in Sources */,
 				228CA92864B4D7666F38530B /* HerdcatsTests+ConnectionOwnership.swift in Sources */,
 				85480D39459046813F07E9E7 /* HerdcatsTests+CredentialMigration.swift in Sources */,
