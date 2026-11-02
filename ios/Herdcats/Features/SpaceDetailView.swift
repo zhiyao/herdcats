@@ -223,26 +223,9 @@ struct PaneDetailView: View {
         // Hiding the system back control also disables UIKit's edge-swipe pop,
         // so pushed panes get their own leading-edge swipe back.
         .navigationBarBackButtonHidden(true)
-        .overlay(alignment: .leading) {
-            // iPhone only: iPad and the Duo inner screen use the split view.
-            if showsPaneBackButton,
-               UIDevice.current.userInterfaceIdiom == .phone,
-               horizontalSizeClass == .compact {
-                Color.clear
-                    .frame(width: 24)
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 24)
-                            .onEnded { drag in
-                                if drag.translation.width > 80,
-                                   abs(drag.translation.height) < drag.translation.width / 2 {
-                                    leave()
-                                }
-                            }
-                    )
-                    .accessibilityHidden(true)
-            }
-        }
+        // Runs alongside the content's own gestures, so scrolling and text
+        // selection that start near the edge still reach the pane.
+        .simultaneousGesture(edgeSwipeBack, including: allowsEdgeSwipeBack ? .all : .subviews)
         .toolbar {
             // The split view's detail column has no stack to pop.
             if showsPaneBackButton {
@@ -478,6 +461,24 @@ struct PaneDetailView: View {
                 await refreshPeersAndTabs()
             }
         }
+    }
+
+    /// iPhone only: iPad and the Duo inner screen use the split view.
+    private var allowsEdgeSwipeBack: Bool {
+        showsPaneBackButton
+            && UIDevice.current.userInterfaceIdiom == .phone
+            && horizontalSizeClass == .compact
+    }
+
+    /// A rightward drag that starts at the leading screen edge leaves the pane.
+    private var edgeSwipeBack: some Gesture {
+        DragGesture(minimumDistance: 24, coordinateSpace: .global)
+            .onEnded { drag in
+                guard drag.startLocation.x < 24,
+                      drag.translation.width > 80,
+                      abs(drag.translation.height) < drag.translation.width / 2 else { return }
+                leave()
+            }
     }
 
     /// Leaves the pane: clears the list selection when shown from a list,
