@@ -356,7 +356,7 @@ struct PaneDetailView: View {
                     agent: selectedPane.agent,
                     slot: slotActions.slot,
                     isFocused: paneIsFocused,
-                    toggleSidebar: slotActions.slot == .left ? sidebarToggle : nil
+                    toggleSidebar: slotActions.slot == .left && sidebarToggle?.isListShowing == false ? sidebarToggle : nil
                 ) {
                     if supportsTimelineToggle { timelineToggleButton }
                     paneOptionsMenu

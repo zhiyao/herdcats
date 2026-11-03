@@ -10,6 +10,8 @@ private struct ShowsPaneSwitcherKey: EnvironmentKey {
 /// Shows or hides the list column. A split pane's own header carries the button,
 /// because the system toolbar that normally holds it is hidden while split.
 struct SidebarToggleAction {
+    /// While the list shows, its own toolbar has the button, so a pane's header leaves it out.
+    let isListShowing: Bool
     let action: () -> Void
     func callAsFunction() { action() }
 }
@@ -199,7 +201,7 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
                 .paneDropTarget(layout: $layout, memory: openPaneMemory)
                 .revealsSidebarOnEdgeSwipe(columnVisibility)
                 .environment(\.showsPaneBackButton, false)
-                .environment(\.sidebarToggle, SidebarToggleAction {
+                .environment(\.sidebarToggle, SidebarToggleAction(isListShowing: columnVisibility.wrappedValue != .detailOnly) {
                     withAnimation {
                         columnVisibility.wrappedValue = columnVisibility.wrappedValue == .detailOnly ? .all : .detailOnly
                     }
