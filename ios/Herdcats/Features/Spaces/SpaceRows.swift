@@ -145,10 +145,9 @@ struct RowHighlight: View {
     var body: some View {
         let shape = RoundedRectangle.continuous(DesignSystem.CornerRadius.md)
         if isSelected {
-            // Open in the detail column: a deeper accent tint with a thin accent outline.
+            // Open in the detail column: a deeper accent tint, without an outline.
             shape
                 .fill(Theme.accent.opacity(0.16))
-                .overlay { shape.strokeBorder(Theme.accent.opacity(0.7), lineWidth: 0.5) }
                 .padding(.horizontal, -8)
         } else if isActive {
             shape
