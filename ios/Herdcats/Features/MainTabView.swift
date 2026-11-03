@@ -367,7 +367,7 @@ struct AgentsScreen: View {
 
     private func isOpen(_ item: AgentListItem) -> Bool {
         let shown = OpenPaneMemory.resolver(paneMemory)
-        return [layout.left, layout.right].contains { $0.map(shown) == item.id }
+        return [layout.left, layout.right].contains { $0.flatMap(shown) == item.id }
     }
 
     // MARK: Pieces
