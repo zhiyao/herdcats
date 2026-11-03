@@ -36,15 +36,15 @@ extension PaneLayout {
     /// a split, the half's pane is replaced. Returns false for a payload that
     /// isn't a row.
     @discardableResult
-    mutating func drop(_ payload: String, onHalf half: Slot) -> Bool {
+    mutating func drop(_ payload: String, onHalf half: Slot, shown: Resolver = PaneLayout.namedPane) -> Bool {
         guard let ref = PaneDragPayload.decode(payload) else { return false }
-        if half == .left, !isSplit, let existing = left, existing != ref {
+        if half == .left, !isSplit, let existing = left, !PaneLayout.isSamePane(existing, ref, shown: shown) {
             // Splitting on the left: the open pane moves right, then the drop takes the left.
             right = existing
             left = ref
             focused = .left
         } else {
-            open(ref, in: half)
+            open(ref, in: half, shown: shown)
         }
         return true
     }
@@ -65,8 +65,8 @@ extension PaneRef {
 
 extension View {
     /// Accepts dragged rows on the detail column, with a zone per half.
-    func paneDropTarget(layout: Binding<PaneLayout>) -> some View {
-        modifier(PaneDropTargetModifier(layout: layout))
+    func paneDropTarget(layout: Binding<PaneLayout>, memory: OpenPaneMemory? = nil) -> some View {
+        modifier(PaneDropTargetModifier(layout: layout, memory: memory))
     }
 
     /// A row's drag handle on regular width.
@@ -100,6 +100,7 @@ private struct PaneDragPreview: View {
 
 private struct PaneDropTargetModifier: ViewModifier {
     @Binding var layout: PaneLayout
+    let memory: OpenPaneMemory?
     @State private var isTargeted = false
     @State private var width: CGFloat = 0
     /// When the drag last moved over the column. A drag that is cancelled
@@ -116,7 +117,7 @@ private struct PaneDropTargetModifier: ViewModifier {
                 width: width,
                 setTargeted: { isTargeted = $0 },
                 noteActivity: { lastActivity = Date() },
-                accept: { payload, half in layout.drop(payload, onHalf: half) }
+                accept: { payload, half in layout.drop(payload, onHalf: half, shown: OpenPaneMemory.resolver(memory)) }
             ))
             .task(id: isTargeted) {
                 guard isTargeted else { return }

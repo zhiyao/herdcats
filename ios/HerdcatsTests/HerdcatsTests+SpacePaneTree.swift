@@ -91,10 +91,18 @@ struct SpacePaneTreeTests {
 
     @Test func aPaneRefShowsItsOwnPane() {
         let shown = SpacePaneTree.shownPaneID(
-            of: PaneRef(spaceID: "w", paneID: "p2"), remembered: "p1",
+            of: PaneRef(spaceID: "w", paneID: "p2"), remembered: nil,
             panes: [pane("p1", tab: "t1", focused: true)], activeTabID: "t1"
         )
         #expect(shown == "p2")
+    }
+
+    @Test func aSiblingSwitchedToInASlotBeatsTheRefsOwnPane() {
+        let panes = [pane("p1", tab: "t1", focused: true), pane("p2", tab: "t1", focused: false)]
+        let ref = PaneRef(spaceID: "w", paneID: "p1")
+        #expect(SpacePaneTree.shownPaneID(of: ref, remembered: "p2", panes: panes, activeTabID: "t1") == "p2")
+        // A remembered pane that has since closed falls back to the ref's own.
+        #expect(SpacePaneTree.shownPaneID(of: ref, remembered: "gone", panes: panes, activeTabID: "t1") == "p1")
     }
 
     @Test func aSpaceRefShowsTheRememberedSiblingWhenItStillExists() {
@@ -112,5 +120,64 @@ struct SpacePaneTreeTests {
         #expect(SpacePaneTree.shownPaneID(of: ref, remembered: nil, panes: none, activeTabID: "t2") == "p2")
         #expect(SpacePaneTree.shownPaneID(of: ref, remembered: nil, panes: none, activeTabID: "zz") == "p1")
         #expect(SpacePaneTree.shownPaneID(of: ref, remembered: nil, panes: [], activeTabID: "t1") == nil)
+    }
+}
+
+@Suite("Space pane tree store")
+@MainActor
+struct SpacePaneTreeStoreTests {
+    private func target(_ id: String) -> SpacePaneTreeTarget {
+        SpacePaneTreeTarget(spaceID: id, workspaceID: "w-\(id)", key: .init(tabCount: 1, paneCount: 1))
+    }
+
+    private func isLoaded(_ load: SpacePaneTreeStore.Load?) -> Bool {
+        if case .loaded = load { return true }
+        return false
+    }
+
+    @Test func aSupersededRunDoesNotLeaveItsSpaceStuckLoading() async {
+        let store = SpacePaneTreeStore()
+        let first = Task { @MainActor in
+            await store.sync([target("a")]) { _ in
+                try await Task.sleep(for: .seconds(60))
+                return []
+            }
+        }
+        // Let the first run start its fetch, then supersede it with a run for two spaces.
+        while store.loads["a"] == nil { await Task.yield() }
+        first.cancel()
+        await first.value
+        await store.sync([target("a"), target("b")]) { _ in [] }
+        #expect(isLoaded(store.loads["a"]))
+        #expect(isLoaded(store.loads["b"]))
+    }
+
+    @Test func aRunThatStartsWhileAnotherIsMidFetchStillLoadsThatSpace() async {
+        let store = SpacePaneTreeStore()
+        let first = Task { @MainActor in
+            await store.sync([target("a")]) { _ in
+                try await Task.sleep(for: .seconds(60))
+                return []
+            }
+        }
+        while store.loads["a"] == nil { await Task.yield() }
+        // The new run starts before the old one has seen its cancellation.
+        first.cancel()
+        await store.sync([target("a"), target("b")]) { _ in [] }
+        await first.value
+        #expect(isLoaded(store.loads["a"]))
+        #expect(isLoaded(store.loads["b"]))
+    }
+
+    @Test func aFailedFetchShowsTheFriendlyMessageAndWaitsForRetry() async {
+        let store = SpacePaneTreeStore()
+        struct Boom: Error {}
+        await store.sync([target("a")]) { _ in throw Boom() }
+        guard case .failed = store.loads["a"] else { Issue.record("expected failed"); return }
+        await store.sync([target("a")]) { _ in [] }
+        guard case .failed = store.loads["a"] else { Issue.record("a failure waits for Retry"); return }
+        store.retry("a")
+        await store.sync([target("a")]) { _ in [] }
+        #expect(isLoaded(store.loads["a"]))
     }
 }

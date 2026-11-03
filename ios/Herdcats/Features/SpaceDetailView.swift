@@ -421,6 +421,9 @@ struct PaneDetailView: View {
             bridgeUpgrade.bridgeVersion = nil
             openPaneMemory?.remember(selected)
         }
+        // Record the pane a whole-space ref resolved to, so the lists can tell
+        // when another row would open the same pane.
+        .onAppear { openPaneMemory?.remember(selectedPaneID) }
         // Pushed panes hide the tab bar; in the detail column it stays so tabs can still switch.
         .toolbar(showsPaneBackButton ? .hidden : .automatic, for: .tabBar)
         .onDisappear {

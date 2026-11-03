@@ -5,6 +5,7 @@ import SwiftUI
 
 struct SpacesScreen: View {
     @Environment(AppModel.self) private var appModel
+    @Environment(\.paneMemoryStore) private var paneMemory
     @Environment(ActiveMachine.self) private var activeMachine: ActiveMachine?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -230,7 +231,7 @@ struct SpacesScreen: View {
                     space: space,
                     isWorktreeActionDisabled: model.isPerformingWorktreeAction,
                     openActions: horizontalSizeClass == .regular
-                        ? PaneOpenAction.actions(for: PaneRef(spaceID: space.id, paneID: nil), layout: $layout)
+                        ? PaneOpenAction.actions(for: PaneRef(spaceID: space.id, paneID: nil), layout: $layout, memory: paneMemory)
                         : [],
                     onSelect: { action in
                         pendingSpaceAction = (action, space)
@@ -501,7 +502,7 @@ struct SpacesScreen: View {
         // be simultaneous so it doesn't consume the NavigationLink's tap.
         let link = Group {
             if horizontalSizeClass == .regular {
-                Button { layout.openInFocused(PaneRef(spaceID: space.id, paneID: nil)) } label: {
+                Button { layout.openInFocused(PaneRef(spaceID: space.id, paneID: nil), shown: OpenPaneMemory.resolver(paneMemory)) } label: {
                     row().paneSlotBadge(layout.badgeSlots(spaceID: space.id), focused: layout.focused)
                 }
                 .buttonStyle(.plain)
@@ -523,7 +524,7 @@ struct SpacesScreen: View {
             // No actions drawer in Core mode, so the row menu is the way to pick a side.
             if horizontalSizeClass == .regular {
                 link.contextMenu {
-                    ForEach(PaneOpenAction.actions(for: PaneRef(spaceID: space.id, paneID: nil), layout: $layout)) { action in
+                    ForEach(PaneOpenAction.actions(for: PaneRef(spaceID: space.id, paneID: nil), layout: $layout, memory: paneMemory)) { action in
                         Button(action: action.perform) { Label(action.title, systemImage: action.systemImage) }
                     }
                 }

@@ -159,10 +159,12 @@ struct TwoPaneDetail<Content: View>: View {
             // even while a pane is still loading and has none.
             .toolbar(isSplit ? .hidden : .automatic, for: .navigationBar)
         .id(ref)
+        // `.subviews` switches off only this added tap; `.none` would switch off
+        // every gesture inside the pane too.
         // Simultaneous, so scrolling and text selection in the pane still work.
         .simultaneousGesture(
             TapGesture().onEnded { layout.focus(slot) },
-            including: isSplit && !isFocused ? .all : .none
+            including: isSplit && !isFocused ? .all : .subviews
         )
     }
 }
@@ -172,11 +174,18 @@ struct TwoPaneDetail<Content: View>: View {
 private struct PaneSplitDivider: View {
     let ratio: Double
     let usableWidth: CGFloat
-    let onDrag: (Double) -> Void
+    /// The live ratio while dragging, nil when the drag ends or is cancelled.
+    let onDrag: (Double?) -> Void
     let onCommit: (Double) -> Void
     let onStep: (Bool) -> Void
 
-    @State private var startRatio: Double?
+    /// A GestureState resets when the drag is cancelled, which `onEnded` never reports.
+    private struct Drag: Equatable {
+        let start: Double
+        var current: Double
+    }
+
+    @GestureState private var drag: Drag?
 
     var body: some View {
         ZStack {
@@ -189,19 +198,19 @@ private struct PaneSplitDivider: View {
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                .onChanged { value in
-                    let start = startRatio ?? ratio
-                    startRatio = start
+                .updating($drag) { value, state, _ in
                     guard usableWidth > 0 else { return }
-                    onDrag(min(max(start + value.translation.width / usableWidth, 0.25), 0.75))
+                    let start = state?.start ?? ratio
+                    let live = min(max(start + value.translation.width / usableWidth, 0.25), 0.75)
+                    state = Drag(start: start, current: live)
                 }
-                .onEnded { value in
-                    let start = startRatio ?? ratio
-                    startRatio = nil
+                .onEnded { _ in
+                    // `ratio` is the live value the last change reported.
                     guard usableWidth > 0 else { return }
-                    onCommit(start + value.translation.width / usableWidth)
+                    onCommit(ratio)
                 }
         )
+        .onChange(of: drag) { _, drag in onDrag(drag?.current) }
         .accessibilityElement()
         .accessibilityLabel("Resize panes")
         .accessibilityValue("\(Int((ratio * 100).rounded())) percent left")

@@ -174,6 +174,7 @@ struct ConnectedTabsView: View {
 /// Tapping a row opens that agent's pane directly.
 struct AgentsScreen: View {
     @Environment(AppModel.self) private var appModel
+    @Environment(\.paneMemoryStore) private var paneMemory
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let model: SpacesModel
@@ -348,7 +349,8 @@ struct AgentsScreen: View {
     }
 
     private func isOpen(_ item: AgentListItem) -> Bool {
-        layout.left?.paneID == item.id || layout.right?.paneID == item.id
+        let shown = OpenPaneMemory.resolver(paneMemory)
+        return [layout.left, layout.right].contains { $0.map(shown) == item.id }
     }
 
     // MARK: Pieces
@@ -412,11 +414,11 @@ struct AgentsScreen: View {
         )
         Group {
             if isRegular {
-                Button { layout.openInFocused(ref(for: item)) } label: {
-                    row.paneSlotBadge(layout.badgeSlot(paneID: item.id), focused: layout.focused)
+                Button { layout.openInFocused(ref(for: item), shown: OpenPaneMemory.resolver(paneMemory)) } label: {
+                    row.paneSlotBadge(layout.badgeSlot(paneID: item.id, shown: OpenPaneMemory.resolver(paneMemory)), focused: layout.focused)
                 }
                 .contextMenu {
-                    ForEach(PaneOpenAction.actions(for: ref(for: item), layout: $layout)) { action in
+                    ForEach(PaneOpenAction.actions(for: ref(for: item), layout: $layout, memory: paneMemory)) { action in
                         Button(action: action.perform) { Label(action.title, systemImage: action.systemImage) }
                     }
                 }

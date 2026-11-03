@@ -326,4 +326,48 @@ struct PaneLayoutTests {
         #expect(PaneLayout.steppedRatio(0.4, increment: true) == 0.5)
         #expect(PaneLayout.steppedRatio(0.4, increment: false) == 1.0 / 3.0)
     }
+
+    // MARK: Same pane under different refs
+
+    /// `a` (the whole space) is showing its pane p1, as the open detail reports it.
+    private let shownP1: PaneLayout.Resolver = { $0.paneID ?? "p1" }
+
+    @Test func openingTheSamePaneByAnotherRefDoesNotOpenItTwice() {
+        let named = PaneRef(spaceID: "a", paneID: "p1")
+        var layout = PaneLayout(left: a)
+        layout.open(named, in: .right, shown: shownP1)
+        #expect(layout.left == a)
+        #expect(layout.right == nil)
+        #expect(layout.focused == .left)
+    }
+
+    @Test func aDifferentPaneOfTheSameSpaceStillOpensBeside() {
+        var layout = PaneLayout(left: a)
+        layout.open(PaneRef(spaceID: "a", paneID: "p2"), in: .right, shown: shownP1)
+        #expect(layout.right == PaneRef(spaceID: "a", paneID: "p2"))
+    }
+
+    @Test func aDuplicateUnderAnotherRefSwapsLikeAnyOpenPane() {
+        let named = PaneRef(spaceID: "a", paneID: "p1")
+        var layout = split(a, b)
+        layout.open(named, in: .right, shown: shownP1)
+        #expect(layout.left == b)
+        #expect(layout.right == a)
+    }
+
+    @Test func droppingAnOpenPaneUnderAnotherRefDoesNotSplit() {
+        var layout = PaneLayout(left: a)
+        let payload = PaneDragPayload.encode(PaneRef(spaceID: "a", paneID: "p1"))
+        let accepted = layout.drop(payload, onHalf: .left, shown: shownP1)
+        #expect(accepted)
+        #expect(!layout.isSplit)
+    }
+
+    @Test func badgesFollowThePaneEachSlotShows() {
+        let layout = split(PaneRef(spaceID: "a", paneID: "p1"), b)
+        // The left slot's sibling switcher moved it to p2.
+        let shown: PaneLayout.Resolver = { $0.spaceID == "a" ? "p2" : $0.paneID }
+        #expect(layout.badgeSlot(paneID: "p2", shown: shown) == .left)
+        #expect(layout.badgeSlot(paneID: "p1", shown: shown) == nil)
+    }
 }

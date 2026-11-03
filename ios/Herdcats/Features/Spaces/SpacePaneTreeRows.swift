@@ -30,7 +30,9 @@ final class SpacePaneTreeStore {
     private func needsLoad(_ target: SpacePaneTreeTarget) -> Bool {
         switch loads[target.spaceID] {
         case nil: true
-        case .loading: false
+        // A run that was superseded mid-fetch leaves `.loading` behind for the
+        // next run to pick up; runs never overlap, so it is never in flight here.
+        case .loading: true
         case let .loaded(key, _): SpacePaneTree.needsReload(loaded: key, current: target.key)
         // A failure waits for Retry, so a flaky host isn't hammered.
         case let .failed(key, _): SpacePaneTree.needsReload(loaded: key, current: target.key)
@@ -39,19 +41,28 @@ final class SpacePaneTreeStore {
 
     /// Fetches the tree for every target that is new or whose counts moved.
     func sync(_ targets: [SpacePaneTreeTarget], connection: HerdrConnection) async {
+        await sync(targets) { workspaceID in
+            async let tabs = connection.tabList(workspaceId: workspaceID)
+            async let panes = connection.paneList(workspaceId: workspaceID)
+            return SpacePaneTree.tabs(tabs: try await tabs, panes: try await panes)
+        }
+    }
+
+    func sync(
+        _ targets: [SpacePaneTreeTarget],
+        fetch: (String) async throws -> [SpacePaneTab]
+    ) async {
         for target in targets where needsLoad(target) {
             let previous = loads[target.spaceID]
             // Keep showing the old tree while a refresh runs.
             if case .loaded = previous {} else { loads[target.spaceID] = .loading }
             do {
-                async let tabs = connection.tabList(workspaceId: target.workspaceID)
-                async let panes = connection.paneList(workspaceId: target.workspaceID)
-                let tree = SpacePaneTree.tabs(tabs: try await tabs, panes: try await panes)
-                loads[target.spaceID] = .loaded(target.key, tree)
+                loads[target.spaceID] = .loaded(target.key, try await fetch(target.workspaceID))
             } catch {
                 if Task.isCancelled || error is CancellationError {
                     // Superseded: let the next run start from what was there.
-                    loads[target.spaceID] = previous
+                    // Leave the slot alone if a newer run has already filled it.
+                    if case .loading = loads[target.spaceID] { loads[target.spaceID] = previous }
                     return
                 }
                 loads[target.spaceID] = .failed(target.key, HerdrConnection.friendlyMessage(for: error))
@@ -155,7 +166,7 @@ struct SpacePaneTreeRows: View {
     private func paneRow(_ pane: PaneEntry, shown: [(slot: PaneLayout.Slot, paneID: String)]) -> some View {
         let ref = PaneRef(spaceID: space.id, paneID: pane.paneId)
         let slots = shown.filter { $0.paneID == pane.paneId }.map(\.slot)
-        return Button { layout.openInFocused(ref) } label: {
+        return Button { layout.openInFocused(ref, shown: OpenPaneMemory.resolver(memory)) } label: {
             PaneTreeRow(pane: pane, indent: indent, isSelected: !slots.isEmpty)
                 // Tags only while split, like the space rows.
                 .paneSlotBadge(layout.isSplit ? slots : [], focused: layout.focused)
@@ -163,7 +174,7 @@ struct SpacePaneTreeRows: View {
         .buttonStyle(.plain)
         .paneDraggable(ref, title: pane.displayTitle, enabled: true)
         .contextMenu {
-            ForEach(PaneOpenAction.actions(for: ref, layout: $layout)) { action in
+            ForEach(PaneOpenAction.actions(for: ref, layout: $layout, memory: memory)) { action in
                 Button(action: action.perform) { Label(action.title, systemImage: action.systemImage) }
             }
         }

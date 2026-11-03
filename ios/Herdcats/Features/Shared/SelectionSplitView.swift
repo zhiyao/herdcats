@@ -179,13 +179,13 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
                             .background(Theme.backgroundGradient.ignoresSafeArea())
                     }
                 }
-                .paneDropTarget(layout: $layout)
+                .paneDropTarget(layout: $layout, memory: openPaneMemory)
                 .revealsSidebarOnEdgeSwipe(columnVisibility)
                 .environment(\.showsPaneBackButton, false)
             }
             .navigationSplitViewStyle(.balanced)
             .sheet(item: $pickerSlot) { slot in
-                PanePickerSheet(slot: slot, layout: $layout)
+                PanePickerSheet(slot: slot, layout: $layout, memory: openPaneMemory)
             }
             .background {
                 GeometryReader { proxy in
@@ -228,6 +228,16 @@ final class OpenPaneMemory {
     /// Keeps only the entries for `selections`.
     func retain(_ selections: Set<String>) {
         paneIDs = paneIDs.filter { selections.contains($0.key) }
+    }
+
+    /// Resolves refs to the pane they show, for telling when two rows open the same pane.
+    static func resolver(_ memory: OpenPaneMemory?) -> PaneLayout.Resolver {
+        { memory?.shownPaneID(of: $0) ?? $0.paneID }
+    }
+
+    /// The pane an open ref shows: the sibling remembered for it, else the one it names.
+    func shownPaneID(of ref: PaneRef) -> String? {
+        paneIDs[ref.memoryKey] ?? ref.paneID
     }
 
     func forget() {

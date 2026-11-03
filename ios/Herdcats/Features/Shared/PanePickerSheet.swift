@@ -104,6 +104,7 @@ enum PanePicker {
 struct PanePickerSheet: View {
     let slot: PaneLayout.Slot
     @Binding var layout: PaneLayout
+    var memory: OpenPaneMemory?
 
     @Environment(AppModel.self) private var appModel
     @Environment(SpacesModel.self) private var spacesModel: SpacesModel?
@@ -129,7 +130,7 @@ struct PanePickerSheet: View {
                     Section(section.title) {
                         ForEach(section.rows) { row in
                             Button {
-                                layout.open(row.ref, in: slot)
+                                layout.open(row.ref, in: slot, shown: OpenPaneMemory.resolver(memory))
                                 dismiss()
                             } label: {
                                 rowLabel(row)

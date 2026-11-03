@@ -25,10 +25,26 @@ struct PaneLayout: Codable, Equatable {
         return [(Slot.left, left), (.right, right)].filter { $0.1?.spaceID == spaceID }.map(\.0)
     }
 
-    func badgeSlot(paneID: String) -> Slot? {
+    /// The slot showing pane `paneID`, judged by the pane each ref ends up
+    /// showing (`shown`), not by the ref alone.
+    func badgeSlot(paneID: String, shown: Resolver = PaneLayout.namedPane) -> Slot? {
         guard isSplit else { return nil }
-        if left?.paneID == paneID { return .left }
-        return right?.paneID == paneID ? .right : nil
+        if let left, shown(left) == paneID { return .left }
+        if let right, shown(right) == paneID { return .right }
+        return nil
+    }
+
+    /// The pane a ref shows, when that is known.
+    typealias Resolver = (PaneRef) -> String?
+
+    /// The pane a ref names, which is all that is known without the open pane's memory.
+    static let namedPane: Resolver = { $0.paneID }
+
+    /// Whether two refs show the same pane: equal, or the same space showing the same pane.
+    static func isSamePane(_ a: PaneRef, _ b: PaneRef, shown: Resolver) -> Bool {
+        if a == b { return true }
+        guard a.spaceID == b.spaceID, let x = shown(a), let y = shown(b) else { return false }
+        return x == y
     }
 
     var left: PaneRef?
@@ -48,12 +64,15 @@ struct PaneLayout: Codable, Equatable {
         slot == .left ? left : right
     }
 
-    mutating func open(_ ref: PaneRef, in slot: Slot) {
+    mutating func open(_ ref: PaneRef, in slot: Slot, shown: Resolver = PaneLayout.namedPane) {
         // Normalise: the right slot is only used next to a left pane.
         let target: Slot = (slot == .right && left == nil) ? .left : slot
-        if self.ref(in: target) == ref {
+        func isOpen(in slot: Slot) -> Bool {
+            self.ref(in: slot).map { PaneLayout.isSamePane($0, ref, shown: shown) } ?? false
+        }
+        if isOpen(in: target) {
             focused = target
-        } else if self.ref(in: target.other) == ref {
+        } else if isOpen(in: target.other) {
             if self.ref(in: target) == nil {
                 // Nothing to swap with: the pane is already open, just keep it.
                 focused = target.other
@@ -68,8 +87,8 @@ struct PaneLayout: Codable, Equatable {
     }
 
     /// A list tap: the focused slot when split, otherwise the left slot.
-    mutating func openInFocused(_ ref: PaneRef) {
-        open(ref, in: isSplit ? focused : .left)
+    mutating func openInFocused(_ ref: PaneRef, shown: Resolver = PaneLayout.namedPane) {
+        open(ref, in: isSplit ? focused : .left, shown: shown)
     }
 
     mutating func close(_ slot: Slot) {

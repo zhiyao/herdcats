@@ -11,16 +11,17 @@ struct PaneOpenAction: Identifiable {
 
     var id: String { identifier }
 
-    static func actions(for ref: PaneRef, layout: Binding<PaneLayout>) -> [PaneOpenAction] {
-        [
+    static func actions(for ref: PaneRef, layout: Binding<PaneLayout>, memory: OpenPaneMemory? = nil) -> [PaneOpenAction] {
+        let shown = OpenPaneMemory.resolver(memory)
+        return [
             PaneOpenAction(title: "Open on Left", systemImage: "rectangle.lefthalf.filled", identifier: "open-left") {
-                layout.wrappedValue.open(ref, in: .left)
+                layout.wrappedValue.open(ref, in: .left, shown: shown)
             },
             PaneOpenAction(title: "Open on Right", systemImage: "rectangle.righthalf.filled", identifier: "open-right") {
-                layout.wrappedValue.open(ref, in: .right)
+                layout.wrappedValue.open(ref, in: .right, shown: shown)
             },
             PaneOpenAction(title: "Replace Focused Pane", systemImage: "arrow.left.arrow.right", identifier: "open-replace") {
-                layout.wrappedValue.openInFocused(ref)
+                layout.wrappedValue.openInFocused(ref, shown: shown)
             },
         ]
     }

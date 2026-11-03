@@ -26,12 +26,13 @@ enum SpacePaneTree {
 
     // MARK: which pane a slot shows
 
-    /// The pane a slot's ref ends up showing. A ref that names no pane opens
-    /// the space's remembered sibling, else its focused pane, else the one in
-    /// its active tab, else the first, as the detail view resolves it.
+    /// The pane a slot's ref ends up showing. The sibling the user switched to
+    /// in the slot wins while it still exists, then the pane the ref names. A
+    /// ref that names none opens the space's focused pane, else the one in its
+    /// active tab, else the first, as the detail view resolves it.
     static func shownPaneID(of ref: PaneRef, remembered: String?, panes: [PaneEntry], activeTabID: String) -> String? {
-        if let paneID = ref.paneID { return paneID }
         if let remembered, panes.contains(where: { $0.paneId == remembered }) { return remembered }
+        if let paneID = ref.paneID { return paneID }
         return (panes.first(where: \.focused) ?? panes.first { $0.tabId == activeTabID } ?? panes.first)?.paneId
     }
 
