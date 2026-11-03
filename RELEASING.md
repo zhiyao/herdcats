@@ -11,6 +11,9 @@ needs no Apple credentials. Start from a clean checkout:
 # Or omit the version to see a suggestion and enter one interactively.
 ```
 
+Before the first app tag, you can keep the version already in `project.yml`;
+the build number still increases. Once app tags exist, choose a higher version.
+
 This fetches `origin/main` and tags, creates `release/0.9.0`, generates
 TestFlight notes through HEAD, and asks you to review them. Set `EDITOR` to an
 editor executable or edit the displayed file in another terminal. Notes are

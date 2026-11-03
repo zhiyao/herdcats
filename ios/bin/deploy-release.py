@@ -74,10 +74,16 @@ def prepare(version):
         require(git('merge-base', 'origin/main', 'HEAD', capture=True) != git('rev-parse', 'HEAD', capture=True),
                 'This release is already on main. Use publish with its PR number.')
     else:
-        require(not git('tag', '--list', f'herdrcat-v{version}', capture=True), 'Version already tagged.')
+        app_tags = git('tag', '--list', 'herdrcat-v*', capture=True).splitlines()
+        require(f'herdrcat-v{version}' not in app_tags, 'Version already tagged.')
         old_version = version_at('origin/main')
-        require(tuple(map(int, version.split('.'))) > tuple(map(int, old_version.split('.'))),
-                f'Choose a version higher than {old_version}.')
+        requested = tuple(map(int, version.split('.')))
+        previous = tuple(map(int, old_version.split('.')))
+        # next-version retains project.yml's version for an untagged first release.
+        # The release helper still increments the build number in this case.
+        require(requested > previous or (requested == previous and not app_tags),
+                f'Choose a version higher than {old_version} '
+                '(the current version is allowed only before the first app tag).')
         confirm(f'Create {branch} from origin/main and prepare {version}?')
         git('switch', '-c', branch, 'origin/main')
         # Use the previous app version's tag when available; otherwise the nearest

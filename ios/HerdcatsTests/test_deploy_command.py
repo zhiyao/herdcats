@@ -73,6 +73,49 @@ class DeployTests(unittest.TestCase):
             self.assertIn(('switch', '-c', 'release/0.9.0', 'origin/main'), calls)
             self.assertTrue(any(c[:3] == ('gh', 'pr', 'create') for c in calls))
 
+    def test_interactive_first_release_accepts_current_version_without_tags(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'ios').mkdir()
+            def fake_git(*args, **kwargs):
+                if args[:2] == ('branch', '--show-current'):
+                    return 'main'
+                if args[:1] == ('log',):
+                    return 'Initial iOS app'
+                return ''
+            with patch.object(deploy, 'ROOT', root), patch.object(deploy, 'clean'), \
+                 patch.object(deploy, 'version_at', return_value='0.8.0'), \
+                 patch.object(deploy, 'confirm'), patch('builtins.input', return_value='0.8.0'), \
+                 patch.dict(deploy.os.environ, EDITOR=''), \
+                 patch.object(deploy, 'git', side_effect=fake_git) as git, \
+                 patch.object(deploy, 'run', return_value='[]') as run:
+                deploy.prepare(None)
+                git.assert_any_call('switch', '-c', 'release/0.8.0', 'origin/main')
+                run.assert_any_call(str(root / 'ios/bin/release'), '0.8.0')
+                self.assertTrue(any(c.args[:3] == ('gh', 'pr', 'create')
+                                    for c in run.call_args_list))
+                self.assertEqual((root / 'ios/releases/0.8.0.txt').read_text(), 'Initial iOS app\n')
+
+    def test_version_validation_still_rejects_downgrades_and_tagged_reuse(self):
+        for version, tags in [('0.7.0', ''), ('0.8.0', 'herdrcat-v0.7.0'),
+                              ('0.8.0', 'herdrcat-v0.8.0')]:
+            def fake_git(*args, **kwargs):
+                if args[:2] == ('branch', '--show-current'):
+                    return 'main'
+                if args[:2] == ('tag', '--list'):
+                    # Both the old exact-tag check and new all-app-tags lookup.
+                    return tags if args[2] in ('herdrcat-v*', tags) else ''
+                return ''
+            with self.subTest(version=version, tags=tags), \
+                 patch.object(deploy, 'clean'), \
+                 patch.object(deploy, 'version_at', return_value='0.8.0'), \
+                 patch.object(deploy, 'git', side_effect=fake_git) as git, \
+                 patch.object(deploy, 'run') as run:
+                with self.assertRaises(RuntimeError):
+                    deploy.prepare(version)
+                self.assertFalse(any(c.args[:1] == ('switch',) for c in git.call_args_list))
+                run.assert_not_called()
+
     def test_prepared_branch_retry_does_not_bump_or_duplicate_pr(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
