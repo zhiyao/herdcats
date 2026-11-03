@@ -152,7 +152,7 @@ struct PanePickerSheet: View {
             pickerRow(ref) {
                 AgentListRow(
                     item: item,
-                    isSelected: [layout.left, layout.right].contains { $0.map(OpenPaneMemory.resolver(memory)) == item.id },
+                    isSelected: [layout.left, layout.right].contains { $0.flatMap(OpenPaneMemory.resolver(memory)) == item.id },
                     lastUpdated: spacesModel?.lastUpdatedByPaneID[item.id]
                 )
                 .paneSlotBadge(badge, focused: layout.focused)
