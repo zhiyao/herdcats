@@ -5,8 +5,6 @@ import SwiftUI
 
 struct SpacesScreen: View {
     @Environment(AppModel.self) private var appModel
-    /// Each open item's sibling pane, kept above both layouts so a rebuilt detail restores it.
-    @State private var paneMemory = OpenPaneMemory()
     @Environment(ActiveMachine.self) private var activeMachine: ActiveMachine?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -14,6 +12,8 @@ struct SpacesScreen: View {
     /// The open panes, shared with the Agents tab and by the split view and
     /// the compact stack, so folding or unfolding keeps the same panes open.
     @Binding var layout: PaneLayout
+    /// Each open item's sibling pane, owned above both tabs so a rebuilt detail restores it.
+    var paneMemory = OpenPaneMemory()
 
     /// Open spaces as last seen in the list, so a refresh that drops one
     /// doesn't blank its pane mid-read.

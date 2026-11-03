@@ -46,6 +46,12 @@ struct ConnectedTabsView: View {
     /// The open panes, per window. Spaces and Agents share one layout, so
     /// switching tabs keeps the same panes.
     @SceneStorage("paneLayout") private var paneLayoutRaw = ""
+    /// The machine `paneLayout` belongs to. Pane IDs are host-local, so a
+    /// layout from another machine must not open anything on this one.
+    @SceneStorage("paneLayoutMachine") private var paneLayoutMachine = ""
+    /// Each open item's sibling pane, shared by both tabs so a sibling picked
+    /// in one shows in the other.
+    @State private var paneMemory = OpenPaneMemory()
 
     private var paneLayout: Binding<PaneLayout> {
         Binding(
@@ -78,14 +84,14 @@ struct ConnectedTabsView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            SpacesScreen(model: model, layout: paneLayout)
+            SpacesScreen(model: model, layout: paneLayout, paneMemory: paneMemory)
                 .hidesSystemTabBarForSidebarSwitcher(horizontalSizeClass)
                 .tabItem {
                     Label("Spaces", systemImage: "square.grid.3x3")
                 }
                 .tag(MainTab.spaces)
 
-            AgentsScreen(model: model, layout: paneLayout)
+            AgentsScreen(model: model, layout: paneLayout, paneMemory: paneMemory)
                 .hidesSystemTabBarForSidebarSwitcher(horizontalSizeClass)
                 .tabItem {
                     Label("Agents", systemImage: "cpu")
@@ -124,6 +130,15 @@ struct ConnectedTabsView: View {
             await model.refresh(appModel.connection)
             guard !Task.isCancelled else { return }
             model.startAutoRefresh(appModel.connection)
+        }
+        .onChange(of: appModel.connectionIdentity, initial: true) { _, identity in
+            // A failed reconnect clears the identity; keep the layout for the same machine's return.
+            guard let key = identity?.storageKey else { return }
+            if !paneLayoutMachine.isEmpty, paneLayoutMachine != key {
+                paneLayout.wrappedValue = PaneLayout()
+                paneMemory.forget()
+            }
+            paneLayoutMachine = key
         }
         .onChange(of: model.spaces) { _, spaces in
             // Drop panes whose space is gone. An empty list is left alone: it
@@ -174,14 +189,14 @@ struct ConnectedTabsView: View {
 /// Tapping a row opens that agent's pane directly.
 struct AgentsScreen: View {
     @Environment(AppModel.self) private var appModel
-    /// Each open item's sibling pane, kept above both layouts so a rebuilt detail restores it.
-    @State private var paneMemory = OpenPaneMemory()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let model: SpacesModel
     /// The open panes, shared with the Spaces tab and by the split view and
     /// the compact stack, so folding or unfolding keeps the same panes open.
     @Binding var layout: PaneLayout
+    /// Each open item's sibling pane, owned above both tabs so a rebuilt detail restores it.
+    var paneMemory = OpenPaneMemory()
     @State private var raisedCardID: String?
     /// Spaces of the open panes as last seen in the list, so a refresh that
     /// drops one doesn't blank its pane mid-read.
