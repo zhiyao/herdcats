@@ -24,6 +24,16 @@ enum SpacePaneTree {
         return groups
     }
 
+    /// The tabs' panes whose title matches `query`; tabs left empty are dropped.
+    /// An empty query keeps everything.
+    static func filter(_ tabs: [SpacePaneTab], query: String) -> [SpacePaneTab] {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return tabs }
+        return tabs.compactMap { tab in
+            let panes = tab.panes.filter { PanePicker.matches($0.displayTitle, query: query) }
+            return panes.isEmpty ? nil : SpacePaneTab(id: tab.id, panes: panes)
+        }
+    }
+
     // MARK: which pane a slot shows
 
     /// The pane a slot's ref ends up showing. The sibling the user switched to

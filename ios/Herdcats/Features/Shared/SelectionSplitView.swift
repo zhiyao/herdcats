@@ -91,6 +91,8 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
     @Binding var layout: PaneLayout
     /// Owned by the screen, so its list rows can read it as well as the sidebar.
     let openPaneMemory: OpenPaneMemory
+    /// Which list the pane picker mirrors.
+    let pickerKind: PanePickerKind
     let emptyTitle: LocalizedStringKey
     let sidebar: Sidebar
     let detail: (PaneRef) -> Detail
@@ -98,12 +100,14 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
     init(
         layout: Binding<PaneLayout>,
         memory: OpenPaneMemory,
+        pickerKind: PanePickerKind,
         emptyTitle: LocalizedStringKey,
         @ViewBuilder sidebar: () -> Sidebar,
         @ViewBuilder detail: @escaping (PaneRef) -> Detail
     ) {
         _layout = layout
         openPaneMemory = memory
+        self.pickerKind = pickerKind
         self.emptyTitle = emptyTitle
         self.sidebar = sidebar()
         self.detail = detail
@@ -209,7 +213,7 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
             }
             .navigationSplitViewStyle(.balanced)
             .sheet(item: $pickerSlot) { slot in
-                PanePickerSheet(slot: slot, layout: $layout, memory: openPaneMemory)
+                PanePickerSheet(slot: slot, kind: pickerKind, layout: $layout, memory: openPaneMemory)
             }
             .background {
                 GeometryReader { proxy in

@@ -39,6 +39,18 @@ struct SpacePaneTreeTests {
         #expect(result[0].panes.map(\.paneId) == ["p1"])
     }
 
+    @Test func searchKeepsMatchingPanesAndDropsEmptyTabs() {
+        let tabs = [
+            SpacePaneTab(id: "t1", panes: [pane("p1", tab: "t1", title: "Fix build"), pane("p2", tab: "t1", title: "zsh")]),
+            SpacePaneTab(id: "t2", panes: [pane("p3", tab: "t2", title: "Write docs")]),
+        ]
+        let result = SpacePaneTree.filter(tabs, query: " FIX ")
+        #expect(result.map(\.id) == ["t1"])
+        #expect(result[0].panes.map(\.paneId) == ["p1"])
+        #expect(SpacePaneTree.filter(tabs, query: "") == tabs)
+        #expect(SpacePaneTree.filter(tabs, query: "nope").isEmpty)
+    }
+
     // MARK: expansion
 
     @Test func openSpacesUnfoldByDefault() {

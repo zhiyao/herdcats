@@ -112,6 +112,11 @@ struct SpacePaneTreeRows: View {
     let indent: CGFloat
     @Binding var layout: PaneLayout
     let retry: () -> Void
+    /// Keeps only the panes whose title matches (the picker's search).
+    var query = ""
+    /// Set by the pane picker: a tap hands the pane over instead of opening it
+    /// in the focused slot, and rows are neither draggable nor given a menu.
+    var onOpen: ((PaneRef) -> Void)?
 
     @Environment(\.paneMemoryStore) private var memory
 
@@ -153,7 +158,8 @@ struct SpacePaneTreeRows: View {
             .padding(.leading, indent)
             .padding(.vertical, 8)
             .quietListRow()
-        case let .loaded(_, tabs):
+        case let .loaded(_, loadedTabs):
+            let tabs = SpacePaneTree.filter(loadedTabs, query: query)
             let shown = shownPanes(in: tabs.flatMap(\.panes))
             ForEach(Array(tabs.enumerated()), id: \.element.id) { index, tab in
                 if index > 0 {
@@ -172,16 +178,20 @@ struct SpacePaneTreeRows: View {
     private func paneRow(_ pane: PaneEntry, shown: [(slot: PaneLayout.Slot, paneID: String)]) -> some View {
         let ref = PaneRef(spaceID: space.id, paneID: pane.paneId)
         let slots = shown.filter { $0.paneID == pane.paneId }.map(\.slot)
-        return Button { layout.openInFocused(ref, shown: OpenPaneMemory.resolver(memory)) } label: {
+        return Button {
+            if let onOpen { onOpen(ref) } else { layout.openInFocused(ref, shown: OpenPaneMemory.resolver(memory)) }
+        } label: {
             PaneTreeRow(pane: pane, indent: indent, isSelected: !slots.isEmpty)
                 // Tags only while split, like the space rows.
                 .paneSlotBadge(layout.isSplit ? slots : [], focused: layout.focused)
         }
         .buttonStyle(.plain)
-        .paneDraggable(ref, title: pane.displayTitle, enabled: true)
+        .paneDraggable(ref, title: pane.displayTitle, enabled: onOpen == nil)
         .contextMenu {
-            ForEach(PaneOpenAction.actions(for: ref, layout: $layout, memory: memory)) { action in
-                Button(action: action.perform) { Label(action.title, systemImage: action.systemImage) }
+            if onOpen == nil {
+                ForEach(PaneOpenAction.actions(for: ref, layout: $layout, memory: memory)) { action in
+                    Button(action: action.perform) { Label(action.title, systemImage: action.systemImage) }
+                }
             }
         }
         .quietListRow()

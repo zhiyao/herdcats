@@ -90,6 +90,7 @@ struct SpacesScreen: View {
         return SelectionSplitView(
             layout: $layout,
             memory: paneMemory,
+            pickerKind: .spaces,
             emptyTitle: "Select a space"
         ) {
             Group {

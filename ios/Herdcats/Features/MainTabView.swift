@@ -244,6 +244,7 @@ struct AgentsScreen: View {
         SelectionSplitView(
             layout: $layout,
             memory: paneMemory,
+            pickerKind: .agents,
             emptyTitle: "Select an agent"
         ) {
             Group {
