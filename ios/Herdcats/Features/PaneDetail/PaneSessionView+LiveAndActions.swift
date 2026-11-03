@@ -290,10 +290,15 @@ extension PaneSessionView {
                   handoffAt: keyboardHandoff?.stampedAt,
                   now: ProcessInfo.processInfo.systemUptime
               ) else { return }
+        if surfaceModel.isLiveKeyboardSurface, !liveInputEnabled {
+            // Live input is still starting. Keep the stamp: `onChange(of: liveInputEnabled)`
+            // calls this again once it is ready, while the handoff window lasts.
+            return
+        }
         keyboardHandoff?.stampedAt = nil
         if surfaceModel.isComposeSurface {
             composeFieldFocused = true
-        } else if liveInputEnabled, surfaceModel.isLiveKeyboardSurface {
+        } else if surfaceModel.isLiveKeyboardSurface {
             liveInputFocused = true
         }
     }

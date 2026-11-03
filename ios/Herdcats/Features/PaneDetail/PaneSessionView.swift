@@ -612,6 +612,10 @@ struct PaneSessionView: View {
                 Task { await takeOverKeyboard() }
             }
         }
+        .onChange(of: liveInputEnabled) { _, enabled in
+            // A slot that gained focus before its Live session was ready finishes the keyboard handoff now.
+            if enabled, paneIsFocused { Task { await takeOverKeyboard() } }
+        }
         // Only the focused pane makes room for the software keyboard.
         .ignoresSafeArea(.keyboard, edges: paneIsFocused ? [] : .bottom)
         .onChange(of: session.output) { _, _ in
