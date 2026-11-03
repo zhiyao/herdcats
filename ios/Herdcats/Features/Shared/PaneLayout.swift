@@ -141,12 +141,12 @@ struct PaneLayout: Codable, Equatable {
 
     /// Applies a path change from the compact stack. Back empties the path
     /// and leaves the slots alone; a push opens the ref in the focused slot.
-    mutating func setCompactPath(_ path: [PaneRef]) {
+    mutating func setCompactPath(_ path: [PaneRef], shown: Resolver = PaneLayout.namedPane) {
         guard let ref = path.last else {
             compactDetailVisible = false
             return
         }
-        if focusedRef != ref { openInFocused(ref) }
+        if focusedRef != ref { openInFocused(ref, shown: shown) }
         compactDetailVisible = true
     }
 

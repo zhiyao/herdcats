@@ -300,6 +300,17 @@ struct PaneLayoutTests {
         #expect(layout.compactPath == [c])
     }
 
+    @Test func pushingAPaneAnotherSlotAlreadyShowsSwapsInsteadOfDuplicating() {
+        // The left slot is the whole space `a`, showing its pane p1; the right slot shows b.
+        let p1 = PaneRef(spaceID: "a", paneID: "p1")
+        let shown: PaneLayout.Resolver = { $0.paneID ?? ($0.spaceID == "a" ? "p1" : nil) }
+        var layout = split(a, b, focused: .right)
+        layout.setCompactPath([p1], shown: shown)
+        #expect(layout.left == b)
+        #expect(layout.right == a)
+        #expect(layout.compactDetailVisible)
+    }
+
     @Test func pushingTheFocusedRefOnlyShowsTheDetail() {
         var layout = split(a, b, focused: .left)
         layout.setCompactPath([a])

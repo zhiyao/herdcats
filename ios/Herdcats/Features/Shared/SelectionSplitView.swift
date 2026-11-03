@@ -153,7 +153,7 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
     private var stackPath: Binding<[PaneRef]> {
         Binding(
             get: { layout.compactPath },
-            set: { layout.setCompactPath($0) }
+            set: { layout.setCompactPath($0, shown: OpenPaneMemory.resolver(openPaneMemory)) }
         )
     }
 
