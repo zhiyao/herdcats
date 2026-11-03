@@ -120,6 +120,7 @@ struct PaneSwitcher: View {
     var onAdd: () -> Void
     var onRename: (PaneEntry) -> Void = { _ in }
     var onKill: (PaneEntry) -> Void = { _ in }
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @ScaledMetric(relativeTo: .subheadline) private var cardHeight = 100
     @ScaledMetric(relativeTo: .caption) private var chipHeight = 30
     /// Vertical translation while the strip follows a drag; nil otherwise.
@@ -299,6 +300,7 @@ struct PaneSwitcher: View {
                             }
                             .buttonStyle(.herdrCard)
                             .contextMenu { paneMenu(for: pane) }
+                            .paneDraggable(dragRef(for: pane), title: pane.displayTitle, enabled: horizontalSizeClass == .regular)
                             .accessibilityLabel(paneAccessibilityLabel(for: pane))
                             .accessibilityAddTraits(selection == pane.id ? .isSelected : [])
                             .id(pane.id)
@@ -484,9 +486,15 @@ struct PaneSwitcher: View {
         }
         .buttonStyle(.herdrCard)
         .contextMenu { paneMenu(for: pane) }
+        .paneDraggable(dragRef(for: pane), title: pane.displayTitle, enabled: horizontalSizeClass == .regular)
         .accessibilityLabel(paneAccessibilityLabel(for: pane))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .id(pane.id)
+    }
+
+    /// What a dragged card or chip opens in the split view's detail column.
+    private func dragRef(for pane: PaneEntry) -> PaneRef {
+        PaneRef(spaceID: pane.workspaceId, paneID: pane.paneId)
     }
 
     /// Non-interactive stand-in for a pane that Herdr is still creating.
