@@ -10,10 +10,24 @@ struct PaneHeaderBar<Trailing: View>: View {
     var agent: String?
     let slot: PaneLayout.Slot
     let isFocused: Bool
+    /// Set on the leftmost pane, whose header holds the list column's button.
+    var toggleSidebar: SidebarToggleAction?
     @ViewBuilder let trailing: () -> Trailing
 
     var body: some View {
         HStack(spacing: 10) {
+            if let toggleSidebar {
+                Button(action: toggleSidebar.callAsFunction) {
+                    Image(systemName: "sidebar.left")
+                        .font(.jost(16, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Toggle sidebar")
+                .accessibilityIdentifier("pane-sidebar-toggle")
+            }
             Text(slot == .left ? "L" : "R")
                 .font(.jost(10, weight: .bold))
                 .foregroundStyle(isFocused ? Theme.onPrimary : Theme.accent)

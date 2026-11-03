@@ -7,6 +7,17 @@ private struct ShowsPaneSwitcherKey: EnvironmentKey {
     static let defaultValue = true
 }
 
+/// Shows or hides the list column. A split pane's own header carries the button,
+/// because the system toolbar that normally holds it is hidden while split.
+struct SidebarToggleAction {
+    let action: () -> Void
+    func callAsFunction() { action() }
+}
+
+private struct SidebarToggleKey: EnvironmentKey {
+    static let defaultValue: SidebarToggleAction? = nil
+}
+
 private struct ShowsPaneBackButtonKey: EnvironmentKey {
     static let defaultValue = true
 }
@@ -24,6 +35,11 @@ extension EnvironmentValues {
     var showsPaneBackButton: Bool {
         get { self[ShowsPaneBackButtonKey.self] }
         set { self[ShowsPaneBackButtonKey.self] = newValue }
+    }
+
+    var sidebarToggle: SidebarToggleAction? {
+        get { self[SidebarToggleKey.self] }
+        set { self[SidebarToggleKey.self] = newValue }
     }
 
     /// Closes this pane's slot. The split view's detail column has no stack
@@ -183,6 +199,11 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
                 .paneDropTarget(layout: $layout, memory: openPaneMemory)
                 .revealsSidebarOnEdgeSwipe(columnVisibility)
                 .environment(\.showsPaneBackButton, false)
+                .environment(\.sidebarToggle, SidebarToggleAction {
+                    withAnimation {
+                        columnVisibility.wrappedValue = columnVisibility.wrappedValue == .detailOnly ? .all : .detailOnly
+                    }
+                })
             }
             .navigationSplitViewStyle(.balanced)
             .sheet(item: $pickerSlot) { slot in

@@ -21,6 +21,7 @@ struct PaneDetailView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.openPaneMemory) private var openPaneMemory
     @Environment(\.closeDetail) private var closeDetail
+    @Environment(\.sidebarToggle) private var sidebarToggle
     @Environment(\.paneSlotActions) private var slotActions
     @Environment(\.panePartner) private var panePartner
     @Environment(\.paneIsFocused) private var paneIsFocused
@@ -354,7 +355,8 @@ struct PaneDetailView: View {
                     subtitle: selectedPane.shortCwd.isEmpty ? nil : selectedPane.shortCwd,
                     agent: selectedPane.agent,
                     slot: slotActions.slot,
-                    isFocused: paneIsFocused
+                    isFocused: paneIsFocused,
+                    toggleSidebar: slotActions.slot == .left ? sidebarToggle : nil
                 ) {
                     if supportsTimelineToggle { timelineToggleButton }
                     paneOptionsMenu
