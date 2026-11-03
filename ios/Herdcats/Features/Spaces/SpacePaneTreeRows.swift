@@ -31,7 +31,7 @@ final class SpacePaneTreeStore {
         switch loads[target.spaceID] {
         case nil: true
         // A run that was superseded mid-fetch leaves `.loading` behind for the
-        // next run to pick up; runs never overlap, so it is never in flight here.
+        // next run to pick up.
         case .loading: true
         case let .loaded(key, _): SpacePaneTree.needsReload(loaded: key, current: target.key)
         // A failure waits for Retry, so a flaky host isn't hammered.
@@ -57,7 +57,13 @@ final class SpacePaneTreeStore {
             // Keep showing the old tree while a refresh runs.
             if case .loaded = previous {} else { loads[target.spaceID] = .loading }
             do {
-                loads[target.spaceID] = .loaded(target.key, try await fetch(target.workspaceID))
+                let tree = try await fetch(target.workspaceID)
+                // A superseded run must not write over what the newer run loaded.
+                guard !Task.isCancelled else {
+                    if case .loading = loads[target.spaceID] { loads[target.spaceID] = previous }
+                    return
+                }
+                loads[target.spaceID] = .loaded(target.key, tree)
             } catch {
                 if Task.isCancelled || error is CancellationError {
                     // Superseded: let the next run start from what was there.

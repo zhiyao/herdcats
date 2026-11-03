@@ -5,7 +5,8 @@ import SwiftUI
 
 struct SpacesScreen: View {
     @Environment(AppModel.self) private var appModel
-    @Environment(\.paneMemoryStore) private var paneMemory
+    /// Each open item's sibling pane, kept above both layouts so a rebuilt detail restores it.
+    @State private var paneMemory = OpenPaneMemory()
     @Environment(ActiveMachine.self) private var activeMachine: ActiveMachine?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -88,6 +89,7 @@ struct SpacesScreen: View {
 
         return SelectionSplitView(
             layout: $layout,
+            memory: paneMemory,
             emptyTitle: "Select a space"
         ) {
             Group {

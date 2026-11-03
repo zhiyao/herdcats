@@ -174,7 +174,8 @@ struct ConnectedTabsView: View {
 /// Tapping a row opens that agent's pane directly.
 struct AgentsScreen: View {
     @Environment(AppModel.self) private var appModel
-    @Environment(\.paneMemoryStore) private var paneMemory
+    /// Each open item's sibling pane, kept above both layouts so a rebuilt detail restores it.
+    @State private var paneMemory = OpenPaneMemory()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let model: SpacesModel
@@ -227,6 +228,7 @@ struct AgentsScreen: View {
         let currentItems = items
         SelectionSplitView(
             layout: $layout,
+            memory: paneMemory,
             emptyTitle: "Select an agent"
         ) {
             Group {

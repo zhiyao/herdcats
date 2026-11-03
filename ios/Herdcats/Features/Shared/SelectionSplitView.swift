@@ -71,17 +71,21 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
     @SceneStorage(SidebarVisibility.storageKey)
     private var visibilityRaw = NavigationSplitViewVisibility.all.storageValue
     @Binding var layout: PaneLayout
+    /// Owned by the screen, so its list rows can read it as well as the sidebar.
+    let openPaneMemory: OpenPaneMemory
     let emptyTitle: LocalizedStringKey
     let sidebar: Sidebar
     let detail: (PaneRef) -> Detail
 
     init(
         layout: Binding<PaneLayout>,
+        memory: OpenPaneMemory,
         emptyTitle: LocalizedStringKey,
         @ViewBuilder sidebar: () -> Sidebar,
         @ViewBuilder detail: @escaping (PaneRef) -> Detail
     ) {
         _layout = layout
+        openPaneMemory = memory
         self.emptyTitle = emptyTitle
         self.sidebar = sidebar()
         self.detail = detail
@@ -120,9 +124,6 @@ struct SelectionSplitView<Sidebar: View, Detail: View>: View {
         )
     }
 
-    /// Switching between the split view and the stack rebuilds the detail,
-    /// so each open item's sibling pane is remembered here, above both layouts.
-    @State private var openPaneMemory = OpenPaneMemory()
     /// The slot the pane picker is choosing for.
     @State private var pickerSlot: PaneLayout.Slot?
 
