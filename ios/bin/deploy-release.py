@@ -62,7 +62,7 @@ def prepare(version):
     clean()
     git('fetch', 'origin', 'main', '--tags')
     if not version:
-        run(str(ROOT / 'ios/bin/next-version'))
+        run(str(ROOT / 'ios/bin/next-version'), 'origin/main')
         version = input('Release version (MAJOR.MINOR.PATCH): ').strip()
     require(re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version), 'Invalid release version.')
     branch = f'release/{version}'

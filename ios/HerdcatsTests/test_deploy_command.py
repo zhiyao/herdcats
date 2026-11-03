@@ -2,6 +2,8 @@
 import importlib.util
 from pathlib import Path
 import tempfile
+import subprocess
+import shutil
 import unittest
 from unittest.mock import patch
 
@@ -90,6 +92,61 @@ class DeployTests(unittest.TestCase):
                 deploy.prepare('1.0.0')
                 self.assertEqual(run.call_count, 1)
                 self.assertEqual(run.call_args.args[:3], ('gh', 'pr', 'list'))
+
+    def test_interactive_prepare_suggests_from_fetched_main_before_prompt(self):
+        with patch.object(deploy, 'clean'), patch.object(deploy, 'git') as git, \
+             patch.object(deploy, 'run') as run, \
+             patch('builtins.input', side_effect=EOFError) as prompt:
+            with self.assertRaises(EOFError):
+                deploy.prepare(None)
+            git.assert_called_once_with('fetch', 'origin', 'main', '--tags')
+            run.assert_called_once_with(str(deploy.ROOT / 'ios/bin/next-version'), 'origin/main')
+            prompt.assert_called_once()
+
+    def test_next_version_uses_fetched_main_with_outdated_checkout(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            def git(*args):
+                return subprocess.check_output(['git', '-C', temp, *args], text=True,
+                                               stderr=subprocess.DEVNULL).strip()
+            git('init', '-b', 'main')
+            git('config', 'user.name', 'Release Test')
+            git('config', 'user.email', 'release-test@example.invalid')
+            git('config', 'core.hooksPath', str(root / 'no-hooks'))
+            (root / 'ios/bin').mkdir(parents=True)
+            shutil.copy2(SCRIPT.parent / 'next-version', root / 'ios/bin/next-version')
+            project = root / 'ios/project.yml'
+            project.write_text('CFBundleShortVersionString: "0.8.0"\n')
+            git('add', '.')
+            git('commit', '-m', 'initial release')
+            git('tag', 'herdrcat-v0.8.0')
+            old_head = git('rev-parse', 'HEAD')
+            project.write_text('CFBundleShortVersionString: "0.8.0"\n# new feature\n')
+            git('add', '.')
+            git('commit', '-m', 'feat(ios): add a feature')
+            git('update-ref', 'refs/remotes/origin/main', 'HEAD')
+            git('checkout', '--detach', old_head)
+            def suggest(*args):
+                return subprocess.run(['bash', str(root / 'ios/bin/next-version'), *args],
+                                      text=True, capture_output=True)
+            self.assertNotEqual(suggest().returncode, 0)  # stale HEAD has no changes
+            result = suggest('origin/main')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('Suggested next version: 0.9.0', result.stdout)
+            self.assertEqual(git('rev-parse', 'HEAD'), old_head)
+            self.assertEqual(git('status', '--porcelain'), '')
+            # Without tags, read the source ref's project version, not the stale file.
+            git('tag', '-d', 'herdrcat-v0.8.0')
+            git('checkout', 'main')
+            project.write_text('CFBundleShortVersionString: "0.9.0"\n')
+            git('add', '.')
+            git('commit', '-m', 'version fixture')
+            git('update-ref', 'refs/remotes/origin/main', 'HEAD')
+            git('checkout', '--detach', old_head)
+            result = suggest('origin/main')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('Suggested next version: 0.9.0', result.stdout)
+            self.assertEqual(git('rev-parse', 'HEAD'), old_head)
 
     def test_failed_ci_never_creates_checkout_or_uploads(self):
         import json
