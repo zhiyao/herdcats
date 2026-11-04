@@ -358,7 +358,7 @@ struct OpenSSHKeyParserTests {
         #expect(!locked.needsSecret)
         #expect(locked.needsPassphrase)
         #expect(!locked.isReady)
-        try KeychainStore.save("phrase", account: entry.secretAccount + ".passphrase", using: keychain)
+        try KeychainStore.save("phrase", account: entry.passphraseAccount, using: keychain)
         #expect(try ConnectionSignIn.load(entry, using: keychain).isReady)
     }
 
@@ -371,12 +371,34 @@ struct OpenSSHKeyParserTests {
         let keychain = FakeKeychainOperations()
         var value = ConnectionSignIn(entry: entry, secret: Self.encrypted64, passphrase: "phrase")
         try value.persist(defaults: defaults, using: keychain)
-        #expect(try KeychainStore.load(account: entry.secretAccount + ".passphrase", using: keychain) == nil)
+        #expect(try KeychainStore.load(account: entry.passphraseAccount, using: keychain) == nil)
         value.savePassphrase = true
         try value.persist(defaults: defaults, using: keychain)
-        #expect(try KeychainStore.load(account: entry.secretAccount + ".passphrase", using: keychain) == "phrase")
+        #expect(try KeychainStore.load(account: entry.passphraseAccount, using: keychain) == "phrase")
         #expect(try RecentConnectionStore.load(defaults: defaults, using: keychain).map(\.id) == [entry.id])
         #expect(try RecentConnectionStore.load(defaults: defaults, using: keychain).first?.lastConnectedAt != nil)
+    }
+
+    @MainActor @Test func savedKeyAndPassphraseSurvivePasswordAuthentication() throws {
+        let suite = "InactiveKeyPassphrase.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        let keyed = RecentConnection(host: "fixture.example", port: 22, username: "tester", authMode: "privateKey", remember: true)
+        try ConnectionSignIn(entry: keyed, secret: Self.encrypted64, passphrase: "saved-phrase", savePassphrase: true)
+            .persist(defaults: defaults, using: keychain)
+        var passwordEntry = keyed
+        passwordEntry.authMode = "password"
+        try ConnectionSignIn(entry: passwordEntry, secret: "password", passphrase: "saved-phrase", savePassphrase: true)
+            .persist(defaults: defaults, using: keychain, connected: false)
+        let form = ConnectionSettingsView(connection: passwordEntry, defaults: defaults, using: keychain)
+        #expect(form.password == "password")
+        #expect(form.keyPEM == Self.encrypted64)
+        #expect(form.keyPassphrase == "saved-phrase")
+        #expect(form.rememberPassphrase)
+        let reopened = try ConnectionSignIn.load(keyed, using: keychain)
+        #expect(reopened.secret == Self.encrypted64)
+        #expect(reopened.passphrase == "saved-phrase")
     }
 
     @MainActor
@@ -387,14 +409,14 @@ struct OpenSSHKeyParserTests {
         try KeychainStore.save(Self.encrypted64, account: entry.secretAccount)
         defer {
             try? KeychainStore.delete(account: entry.secretAccount)
-            try? KeychainStore.delete(account: entry.secretAccount + ".passphrase")
+            try? KeychainStore.delete(account: entry.passphraseAccount)
         }
         let lockedForm = ConnectionSettingsView(connection: entry)
         #expect(lockedForm.keyValidationError == nil)
         #expect(lockedForm.derivedPublicKey != nil)
         #expect(!lockedForm.canConnect)
         // Passphrase verification belongs to the connection attempt, not rendering.
-        try KeychainStore.save("wrong", account: entry.secretAccount + ".passphrase")
+        try KeychainStore.save("wrong", account: entry.passphraseAccount)
         let readyForm = ConnectionSettingsView(connection: entry)
         #expect(readyForm.keyValidationError == nil)
         #expect(readyForm.derivedPublicKey != nil)
@@ -472,7 +494,7 @@ struct OpenSSHKeyParserTests {
         let keychain = FakeKeychainOperations()
         keychain.items[entry.secretAccount] = Data(Self.encrypted64.utf8)
         #expect(LaunchPreference.autoConnectConfig(defaults: defaults, keychain: keychain) == nil)
-        keychain.items[entry.secretAccount + ".passphrase"] = Data("herdcats-test-passphrase".utf8)
+        keychain.items[entry.passphraseAccount] = Data("herdcats-test-passphrase".utf8)
         let config = try #require(LaunchPreference.autoConnectConfig(defaults: defaults, keychain: keychain))
         guard case let .privateKey(pem, passphrase) = config.auth else {
             Issue.record("Expected private key authentication")
@@ -481,7 +503,7 @@ struct OpenSSHKeyParserTests {
         #expect(pem == Self.encrypted64)
         #expect(passphrase == "herdcats-test-passphrase")
         keychain.items[entry.secretAccount] = Data(Self.unencryptedPEM.utf8)
-        keychain.items.removeValue(forKey: entry.secretAccount + ".passphrase")
+        keychain.items.removeValue(forKey: entry.passphraseAccount)
         #expect(LaunchPreference.autoConnectConfig(defaults: defaults, keychain: keychain) != nil)
     }
 

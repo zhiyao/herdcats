@@ -176,7 +176,22 @@ struct RecentConnection: Codable, Identifiable, Equatable {
         return String(host.split(separator: ".").first ?? Substring(host))
     }
 
-    var secretAccount: String { "connection.\(id.uuidString).secret" }
+    var legacySecretAccount: String { "connection.\(id.uuidString).secret" }
+    var secretAccount: String { credentialAccount(for: authMode) }
+    var passphraseAccount: String { legacySecretAccount + ".passphrase" }
+
+    func credentialAccount(for authMode: String) -> String {
+        legacySecretAccount + (authMode == "privateKey" ? ".privateKey" : ".password")
+    }
+
+    /// Forget and disabling storage remove every authentication method, including old versions' slots.
+    var credentialAccounts: [String] {
+        [credentialAccount(for: "password"), credentialAccount(for: "privateKey"), passphraseAccount, legacySecretAccount]
+    }
+
+    func deleteCredentials(using keychain: KeychainOperations) throws {
+        for account in credentialAccounts { try KeychainStore.delete(account: account, using: keychain) }
+    }
 }
 
 extension RecentConnection {
@@ -262,7 +277,23 @@ enum RecentConnectionStore {
     private struct PendingMigration: Codable {
         let sourceAccount: String
         let entry: RecentConnection
-        var destinationAccount: String { entry.secretAccount }
+        let destinationAccount: String
+
+        init(sourceAccount: String, entry: RecentConnection) {
+            self.sourceAccount = sourceAccount
+            self.entry = entry
+            destinationAccount = entry.secretAccount
+        }
+
+        private enum CodingKeys: String, CodingKey { case sourceAccount, entry, destinationAccount }
+
+        init(from decoder: Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            sourceAccount = try values.decode(String.self, forKey: .sourceAccount)
+            entry = try values.decode(RecentConnection.self, forKey: .entry)
+            // A journal must resume against the account used when its copy was created.
+            destinationAccount = try values.decodeIfPresent(String.self, forKey: .destinationAccount) ?? entry.legacySecretAccount
+        }
     }
 
     static func config(
@@ -364,8 +395,7 @@ enum RecentConnectionStore {
         updated = updated.indices.filter { !removed.contains($0) }.map { updated[$0] }
         try persist(updated, defaults: defaults)
         for duplicate in removedEntries where duplicate.id != entry.id {
-            try KeychainStore.delete(account: duplicate.secretAccount, using: keychain)
-            try KeychainStore.delete(account: duplicate.secretAccount + ".passphrase", using: keychain)
+            try duplicate.deleteCredentials(using: keychain)
         }
         return updated
     }
@@ -430,8 +460,7 @@ enum RecentConnectionStore {
             // Match Forget's fail-closed deletion order: a failure keeps metadata
             // visible and the draft open for retry. Surviving secrets are untouched.
             for entry in current where deletedIDs.contains(entry.id) {
-                try KeychainStore.delete(account: entry.secretAccount, using: keychain)
-                try KeychainStore.delete(account: entry.secretAccount + ".passphrase", using: keychain)
+                try entry.deleteCredentials(using: keychain)
             }
             try RecentConnectionStore.persist(updated, defaults: defaults)
             return updated
@@ -463,8 +492,7 @@ enum RecentConnectionStore {
         _ entry: RecentConnection, defaults: UserDefaults = .standard,
         using keychain: KeychainOperations = KeychainStore.operations
     ) throws -> [RecentConnection] {
-        try KeychainStore.delete(account: entry.secretAccount, using: keychain)
-        try KeychainStore.delete(account: entry.secretAccount + ".passphrase", using: keychain)
+        try entry.deleteCredentials(using: keychain)
         let updated = try load(defaults: defaults, using: keychain).filter { $0.id != entry.id }
         try persist(updated, defaults: defaults)
         return updated
@@ -644,6 +672,8 @@ struct ConnectionSignIn: Identifiable {
     var savePassphrase = false
     /// Auto: connect detects the runtime; `entry.backend` is a placeholder until then.
     var detectsBackend = false
+    /// Forms submit both fields, including explicit empty values. Other sign-in callers leave the inactive field alone.
+    var otherSecret: String?
     var id: UUID { entry.id }
     var isKey: Bool { entry.authMode == "privateKey" }
     var encrypted: Bool { isKey && (try? OpenSSHEd25519.isEncrypted(pem: secret)) == true }
@@ -676,41 +706,59 @@ struct ConnectionSignIn: Identifiable {
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    static func sameDestination(_ lhs: RecentConnection, _ rhs: RecentConnection) -> Bool {
-        lhs.host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            == rhs.host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            && lhs.port == rhs.port && lhs.username == rhs.username && lhs.authMode == rhs.authMode
+    /// Older profiles used one slot whose type was defined by their saved auth mode.
+    /// Keep that interpretation while copying to a mode-specific slot; never infer it from edited settings.
+    private static func loadSecret(_ entry: RecentConnection, using keychain: KeychainOperations, readOnly: Bool) throws -> String {
+        var secret = try KeychainStore.load(account: entry.secretAccount, using: keychain, readOnly: readOnly)
+        if let legacy = try KeychainStore.load(account: entry.legacySecretAccount, using: keychain, readOnly: readOnly) {
+            if readOnly { return secret ?? legacy }
+            if secret == nil {
+                try KeychainStore.save(legacy, account: entry.secretAccount, using: keychain)
+                secret = try KeychainStore.load(account: entry.secretAccount, using: keychain)
+                guard secret == legacy else { throw KeychainStore.StoreError(status: errSecDecode) }
+            }
+            // A different canonical value may be a newer edit. Prefer it and leave the source until an explicit save.
+            if secret == legacy { try KeychainStore.delete(account: entry.legacySecretAccount, using: keychain) }
+        }
+        return secret ?? ""
     }
 
     static func load(_ entry: RecentConnection, using keychain: KeychainOperations = KeychainStore.operations, readOnly: Bool = false) throws -> Self {
         guard entry.remember else { return Self(entry: entry) }
-        let secret = try KeychainStore.load(account: entry.secretAccount, using: keychain, readOnly: readOnly) ?? ""
-        let phrase = try KeychainStore.load(account: entry.secretAccount + ".passphrase", using: keychain, readOnly: readOnly) ?? ""
-        return Self(entry: entry, secret: secret, passphrase: phrase, savePassphrase: !phrase.isEmpty)
+        let secret = try loadSecret(entry, using: keychain, readOnly: readOnly)
+        let otherMode = entry.authMode == "privateKey" ? "password" : "privateKey"
+        let other = try KeychainStore.load(account: entry.credentialAccount(for: otherMode), using: keychain, readOnly: readOnly) ?? ""
+        let phrase = try KeychainStore.load(account: entry.passphraseAccount, using: keychain, readOnly: readOnly) ?? ""
+        return Self(entry: entry, secret: secret, passphrase: phrase, savePassphrase: !phrase.isEmpty, otherSecret: other)
     }
 
     /// Explicit saves may clear credentials; failed connection attempts never save replacements.
     func persist(defaults: UserDefaults = .standard, using keychain: KeychainOperations = KeychainStore.operations,
                  connected: Bool = true, updateName: Bool = false) throws {
         let entries = try RecentConnectionStore.load(defaults: defaults, using: keychain)
-        if let previous = entries.first(where: { $0.id == entry.id }),
-           !Self.sameDestination(previous, entry) {
-            // Remove the old destination's credentials before changing its metadata.
-            // If any write fails, no old credential can be used at the new destination.
-            try KeychainStore.delete(account: entry.secretAccount, using: keychain)
-            try KeychainStore.delete(account: entry.secretAccount + ".passphrase", using: keychain)
-            _ = try RecentConnectionStore.record(entry, in: entries, defaults: defaults, stampConnected: false,
-                updateName: updateName, using: keychain)
-        }
-        if entry.remember && !secret.isEmpty {
-            try KeychainStore.save(secret, account: entry.secretAccount, using: keychain)
+        if entry.remember {
+            if let previous = entries.first(where: { $0.id == entry.id }) {
+                _ = try Self.loadSecret(previous, using: keychain, readOnly: false)
+            }
+            // Retire the ambiguous slot before explicit clearing, so it can never restore a removed value.
+            try KeychainStore.delete(account: entry.legacySecretAccount, using: keychain)
+            if secret.isEmpty { try KeychainStore.delete(account: entry.secretAccount, using: keychain) }
+            else { try KeychainStore.save(secret, account: entry.secretAccount, using: keychain) }
+            if let otherSecret {
+                let account = entry.credentialAccount(for: isKey ? "password" : "privateKey")
+                if otherSecret.isEmpty { try KeychainStore.delete(account: account, using: keychain) }
+                else { try KeychainStore.save(otherSecret, account: account, using: keychain) }
+            }
+            // The passphrase belongs to the private key even while Password is selected.
+            if isKey || otherSecret != nil || savePassphrase || !passphrase.isEmpty {
+                if savePassphrase && !passphrase.isEmpty {
+                    try KeychainStore.save(passphrase, account: entry.passphraseAccount, using: keychain)
+                } else {
+                    try KeychainStore.delete(account: entry.passphraseAccount, using: keychain)
+                }
+            }
         } else {
-            try KeychainStore.delete(account: entry.secretAccount, using: keychain)
-        }
-        if entry.remember && encrypted && savePassphrase && !passphrase.isEmpty {
-            try KeychainStore.save(passphrase, account: entry.secretAccount + ".passphrase", using: keychain)
-        } else {
-            try KeychainStore.delete(account: entry.secretAccount + ".passphrase", using: keychain)
+            try entry.deleteCredentials(using: keychain)
         }
         _ = try RecentConnectionStore.record(entry,
             in: RecentConnectionStore.load(defaults: defaults, using: keychain), defaults: defaults,
@@ -777,8 +825,7 @@ struct ConnectionSignIn: Identifiable {
 
     func prepareAttempt(defaults: UserDefaults = .standard, using keychain: KeychainOperations = KeychainStore.operations) throws {
         if !entry.remember {
-            try KeychainStore.delete(account: entry.secretAccount, using: keychain)
-            try KeychainStore.delete(account: entry.secretAccount + ".passphrase", using: keychain)
+            try entry.deleteCredentials(using: keychain)
             try RecentConnectionStore.disableRemembering(entry, defaults: defaults, using: keychain)
         }
     }

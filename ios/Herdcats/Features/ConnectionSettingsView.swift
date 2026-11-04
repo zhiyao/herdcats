@@ -95,8 +95,8 @@ struct ConnectionSettingsView: View {
         _remember = State(initialValue: connection.remember)
         do {
             let loaded = try ConnectionSignIn.load(connection, using: keychain, readOnly: isReplay)
-            _password = State(initialValue: connection.authMode == "password" ? loaded.secret : "")
-            _keyPEM = State(initialValue: connection.authMode == "privateKey" ? loaded.secret : "")
+            _password = State(initialValue: connection.authMode == "privateKey" ? loaded.otherSecret ?? "" : loaded.secret)
+            _keyPEM = State(initialValue: connection.authMode == "privateKey" ? loaded.secret : loaded.otherSecret ?? "")
             _keyPassphrase = State(initialValue: loaded.passphrase)
             _rememberPassphrase = State(initialValue: loaded.savePassphrase)
         } catch {
@@ -225,15 +225,6 @@ struct ConnectionSettingsView: View {
         .sheet(isPresented: $showingSetupGuide) {
             HerdrSetupGuideView(backend: backend ?? .tui)
         }
-        .onChange(of: destination) { old, new in
-            guard old.host.lowercased() != new.host.lowercased()
-                || old.port != new.port || old.username != new.username else { return }
-            // Destination changes require fresh, intentional credential entry.
-            password = ""
-            keyPEM = ""
-            keyPassphrase = ""
-            rememberPassphrase = false
-        }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(isConnecting)
@@ -318,7 +309,8 @@ struct ConnectionSettingsView: View {
             }
         }
         return ConnectionSignIn(entry: entry, secret: authMode == .password ? password : keyPEM,
-            passphrase: keyPassphrase, savePassphrase: rememberPassphrase, detectsBackend: backend == nil)
+            passphrase: keyPassphrase, savePassphrase: rememberPassphrase, detectsBackend: backend == nil,
+            otherSecret: authMode == .password ? keyPEM : password)
     }
 
     var nameWasEdited: Bool { name != (original.name ?? "") }

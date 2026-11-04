@@ -175,8 +175,6 @@ extension ConnectionSettingsView {
                 }
                 .onChange(of: keyPEM) { _, _ in
                     importErrorMessage = nil
-                    keyPassphrase = ""
-                    rememberPassphrase = false
                 }
             }
 
