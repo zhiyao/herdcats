@@ -308,9 +308,13 @@ struct ConnectionSettingsView: View {
                 entry.lastConnectedAt = sibling.lastConnectedAt
             }
         }
+        let inactiveSecret = authMode == .password ? keyPEM : password
+        // A new form can resolve to a saved profile it never loaded. Its empty
+        // inactive field must not clear that profile's credential or passphrase.
+        let editsInactiveSecret = editing || entry.id == original.id || !inactiveSecret.isEmpty
         return ConnectionSignIn(entry: entry, secret: authMode == .password ? password : keyPEM,
             passphrase: keyPassphrase, savePassphrase: rememberPassphrase, detectsBackend: backend == nil,
-            otherSecret: authMode == .password ? keyPEM : password)
+            otherSecret: editsInactiveSecret ? inactiveSecret : nil)
     }
 
     var nameWasEdited: Bool { name != (original.name ?? "") }

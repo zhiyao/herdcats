@@ -672,7 +672,7 @@ struct ConnectionSignIn: Identifiable {
     var savePassphrase = false
     /// Auto: connect detects the runtime; `entry.backend` is a placeholder until then.
     var detectsBackend = false
-    /// Forms submit both fields, including explicit empty values. Other sign-in callers leave the inactive field alone.
+    /// A supplied value edits the inactive credential; "" explicitly clears it. nil leaves it untouched.
     var otherSecret: String?
     var id: UUID { entry.id }
     var isKey: Bool { entry.authMode == "privateKey" }

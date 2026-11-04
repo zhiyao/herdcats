@@ -434,6 +434,34 @@ struct OpenSSHKeyParserTests {
         #expect(reopenedKey.needsPassphrase == (submission == "settings"))
     }
 
+    @MainActor @Test(arguments: ["password", "privateKey"])
+    func newFormReusingSavedDestinationPreservesUnloadedCredentials(authMode: String) throws {
+        let suite = "NewFormExistingCredentials.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        let savedMode = authMode == "password" ? "privateKey" : "password"
+        let saved = RecentConnection(host: "fixture.example", port: 22, username: "tester", authMode: savedMode, remember: true)
+        try ConnectionSignIn(entry: saved, secret: savedMode == "password" ? "saved-password" : Self.encrypted64,
+            passphrase: savedMode == "privateKey" ? "saved-phrase" : "", savePassphrase: savedMode == "privateKey")
+            .persist(defaults: defaults, using: keychain)
+        // A new form has its own ID and has never loaded the matching saved profile's fields.
+        let enteredDestination = RecentConnection(host: saved.host, port: saved.port, username: saved.username,
+            authMode: authMode, remember: true)
+        let form = ConnectionSettingsView(connection: enteredDestination, defaults: defaults, using: keychain)
+        #expect(form.password.isEmpty && form.keyPEM.isEmpty && form.keyPassphrase.isEmpty)
+        var submitted = try form.signIn(defaults: defaults, using: keychain)
+        #expect(submitted.entry.id == saved.id)
+        // Supply the selected credential, leaving the inactive form field unhydrated.
+        submitted.secret = authMode == "password" ? "new-password" : Self.unencryptedPEM
+        try submitted.persist(defaults: defaults, using: keychain)
+        let reopened = ConnectionSettingsView(connection: submitted.entry, editing: true, defaults: defaults, using: keychain)
+        #expect(reopened.password == (authMode == "password" ? "new-password" : "saved-password"))
+        #expect(reopened.keyPEM == (authMode == "privateKey" ? Self.unencryptedPEM : Self.encrypted64))
+        #expect(reopened.keyPassphrase == (authMode == "password" ? "saved-phrase" : ""))
+        #expect(reopened.rememberPassphrase == (authMode == "password"))
+    }
+
     @MainActor
     @Test
     func connectionFormInspectsEncryptedKeysWithoutDecrypting() throws {
