@@ -247,6 +247,17 @@ struct OpenSSHKeyParserTests {
     b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABA67fmC6c588ccWKTA+gjakAAAAIAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIGQrPTgKc2Tjmng/nP1vdbdEG1R97z6O8gsc+bO1lHoWAAAAoHplRLWrpysjRVDkBaZSvn+5etGE2KV7W0HRbLtyHkB+ikdsAD0xhIbdIzeV31ckY055SDLBqiUb9oOQbzAxrHlcdc2ydF/nWc/vv/VckXWwDxCqIbr+8dxqt0aZ0FNNwtbpiEcorhvhz1KET+O0lqVWSrMhAU0l26S0PoqtFWOFnJKyZ8Vxu/EFNhOJJHpX4Ks7Giyw1bVlMi3xrN8lrhI=
     -----END OPENSSH PRIVATE KEY-----
     """
+    /// encrypted64 re-encrypted with a different passphrase; its public key is unchanged.
+    private static let reencrypted64 = """
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABAsedH76b
+    l2rp2g2PjB0emZAAAAEAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIEHiHx4Brcpqh9OW
+    lY7YKkM3HN1yOFbJNYbUClrT7q+MAAAAoMoEdE2pfeGlVMQiqomAI3eMqgp+6/mT8DNZDA
+    XipTHK48vdkReqHSaPFC9D1PWuEpHgwkVFGRHdI2gEDnUj36U5XETaGZmRmw+ML4I8vIhv
+    k+Twu5T6RBXBVLiFQgSuyAh/JAUESuYIi0QdMVTAi115InelAeetviVnsfjyAHFxH8SMUS
+    zVVodm/6GIRyPBubRLr8zsy8rRuANhShpnX5k=
+    -----END OPENSSH PRIVATE KEY-----
+    """
     private static let encrypted256 = """
     -----BEGIN OPENSSH PRIVATE KEY-----
     b3BlbnNzaC1rZXktdjEAAAAACmFlczEyOC1jdHIAAAAGYmNyeXB0AAAAGAAAABCAZBE4rD
@@ -658,6 +669,107 @@ struct OpenSSHKeyParserTests {
             #expect(submitted.passphrase == phrase)
             #expect(submitted.savePassphrase)
         }
+    }
+
+    @MainActor @Test(arguments: ["selected", "server", "resolved", "sibling", "detected"], ["different", "same", "formatting", "reencrypted", "provided"])
+    func runtimeKeyReplacementPreservesOnlyAssociatedPassphrase(path: String, scenario: String) throws {
+        let suite = "RuntimeKeyAssociation.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        let tui = RecentConnection(host: "fixture.example", port: 22, username: "tester", authMode: "privateKey", remember: true)
+        let core = RecentConnection(host: tui.host, port: tui.port, username: tui.username, authMode: "privateKey", remember: true, backend: .core)
+        let targetKey: String
+        switch scenario {
+        case "same": targetKey = Self.encrypted64
+        case "formatting": targetKey = "\n  " + Self.encrypted64.replacingOccurrences(of: "\n", with: "\r\n  ") + "\r\n"
+        case "reencrypted":
+            targetKey = Self.reencrypted64
+            #expect(try OpenSSHEd25519.parsePublicKey(pem: targetKey) == OpenSSHEd25519.parsePublicKey(pem: Self.encrypted64))
+        default: targetKey = Self.encrypted32
+        }
+        try ConnectionSignIn(entry: tui, secret: Self.encrypted64,
+            passphrase: scenario == "provided" ? "source-phrase" : "", savePassphrase: scenario == "provided")
+            .persist(defaults: defaults, using: keychain)
+        try ConnectionSignIn(entry: core, secret: targetKey, passphrase: "target-phrase", savePassphrase: true)
+            .persist(defaults: defaults, using: keychain)
+        var submitted = try ConnectionSettingsView(connection: tui, editing: true, defaults: defaults, using: keychain)
+            .signIn(defaults: defaults, using: keychain)
+        switch path {
+        case "selected":
+            submitted.entry.id = core.id
+            submitted.entry.backend = .core
+            try submitted.persist(defaults: defaults, using: keychain, connected: false)
+        case "server": try submitted.persistServer(from: tui, defaults: defaults, using: keychain, updateName: false)
+        case "resolved": try submitted.resolving(.core, in: [tui, core]).persist(defaults: defaults, using: keychain)
+        case "sibling": try submitted.persistSibling(.core, defaults: defaults, using: keychain)
+        default: try submitted.persistDetected(backend: .core, found: [.tui, .core], defaults: defaults, using: keychain)
+        }
+        #expect(try KeychainStore.load(account: core.secretAccount, using: keychain) == Self.encrypted64)
+        let expectedPhrase = ["same", "formatting"].contains(scenario) ? "target-phrase" : scenario == "provided" ? "source-phrase" : nil
+        #expect(try KeychainStore.load(account: core.passphraseAccount, using: keychain) == expectedPhrase)
+    }
+
+    @MainActor @Test(arguments: ["owner-active", "owner-inactive", "sibling-inactive"], ["encrypted", "formatted-encrypted", "plaintext", "provided"])
+    func editedKeyReplacementRejectsInheritedPassphrase(context: String, replacement: String) throws {
+        let suite = "EditedKeyAssociation.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        let active = context == "owner-active"
+        let tui = RecentConnection(host: "fixture.example", port: 22, username: "tester", authMode: active ? "privateKey" : "password", remember: true)
+        let core = RecentConnection(host: tui.host, port: tui.port, username: tui.username, authMode: tui.authMode, remember: true, backend: .core)
+        for runtime in [tui, core] {
+            try ConnectionSignIn(entry: runtime, secret: active ? Self.encrypted64 : "password",
+                passphrase: "inherited-phrase", savePassphrase: true, otherSecret: active ? "password" : Self.encrypted64)
+                .persist(defaults: defaults, using: keychain)
+        }
+        var submitted = try ConnectionSettingsView(connection: tui, editing: true, defaults: defaults, using: keychain)
+            .signIn(defaults: defaults, using: keychain)
+        let newKey = replacement == "plaintext" ? Self.unencryptedPEM
+            : replacement == "formatted-encrypted" ? Self.encrypted32.replacingOccurrences(of: "\n", with: "\r\n") : Self.encrypted32
+        if active { submitted.secret = newKey } else { submitted.otherSecret = newKey }
+        submitted.credentialEdits?.privateKey = true
+        if replacement == "provided" {
+            submitted.passphrase = "replacement-phrase"
+            submitted.credentialEdits?.passphrase = true
+        }
+        let target = context == "sibling-inactive" ? core : tui
+        if context == "sibling-inactive" { try submitted.persistSibling(.core, defaults: defaults, using: keychain) }
+        else { try submitted.persist(defaults: defaults, using: keychain, connected: false) }
+        #expect(try KeychainStore.load(account: target.credentialAccount(for: "privateKey"), using: keychain) == newKey)
+        #expect(try KeychainStore.load(account: target.passphraseAccount, using: keychain) == (replacement == "provided" ? "replacement-phrase" : nil))
+        #expect(submitted.passphrase == (replacement == "provided" ? "replacement-phrase" : "inherited-phrase"))
+        #expect(submitted.savePassphrase)
+    }
+
+    @MainActor @Test(arguments: ["text", "broken-plaintext"])
+    func unfinishedInactiveKeyRetainsPassphraseDraftAcrossSave(kind: String) throws {
+        let suite = "UnfinishedInactiveKey.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        let entry = RecentConnection(host: "fixture.example", port: 22, username: "tester", authMode: "password", remember: true)
+        try ConnectionSignIn(entry: entry, secret: "password", passphrase: "saved-phrase", savePassphrase: true, otherSecret: Self.encrypted64)
+            .persist(defaults: defaults, using: keychain)
+        var submitted = try ConnectionSettingsView(connection: entry, editing: true, defaults: defaults, using: keychain)
+            .signIn(defaults: defaults, using: keychain)
+        let draft: String
+        if kind == "broken-plaintext" {
+            let body = Self.unencryptedPEM.split(separator: "\n").filter { !$0.hasPrefix("-----") }.joined()
+            let bytes = try #require(Data(base64Encoded: body))
+            draft = "-----BEGIN OPENSSH PRIVATE KEY-----\n" + bytes.dropLast(16).base64EncodedString() + "\n-----END OPENSSH PRIVATE KEY-----"
+            _ = try OpenSSHEd25519.parsePublicKey(pem: draft)
+            #expect(throws: OpenSSHKeyError.self) { try OpenSSHEd25519.parseRawPrivateKey(pem: draft) }
+        } else { draft = "-----BEGIN OPENSSH PRIVATE KEY-----\nunfinished key edit" }
+        submitted.otherSecret = draft
+        submitted.credentialEdits?.privateKey = true
+        try submitted.persist(defaults: defaults, using: keychain, connected: false)
+        let reopened = ConnectionSettingsView(connection: entry, editing: true, defaults: defaults, using: keychain)
+        #expect(reopened.password == "password")
+        #expect(reopened.keyPEM == draft)
+        #expect(reopened.keyPassphrase == "saved-phrase")
+        #expect(reopened.rememberPassphrase)
     }
 
     @MainActor @Test func detectedRuntimeReceivesWorkingEncryptedKeyAndSavedPassphrase() throws {

@@ -31,6 +31,7 @@ struct ConnectionSettingsView: View {
     @State var privateKeyWasEdited = false
     @State var passphraseWasEdited = false
     @State var rememberWasEdited = false
+    private let loadedPrivateKey: String?
 
     var passwordInput: Binding<String> {
         Binding(get: { password }, set: { password = $0; passwordWasEdited = true })
@@ -113,15 +114,18 @@ struct ConnectionSettingsView: View {
         let runtimes = RecentConnectionStore.savedRuntimes(of: connection, in: RecentConnectionStore.snapshot(defaults: defaults))
         _backend = State(initialValue: connection.host.isEmpty || runtimes.count > 1 ? nil : connection.backend)
         _remember = State(initialValue: connection.remember)
+        var loadedPrivateKey: String?
         do {
             let loaded = try ConnectionSignIn.load(connection, using: keychain, readOnly: isReplay, includingInactiveCredentials: true)
             _password = State(initialValue: connection.authMode == "privateKey" ? loaded.otherSecret ?? "" : loaded.secret)
-            _keyPEM = State(initialValue: connection.authMode == "privateKey" ? loaded.secret : loaded.otherSecret ?? "")
+            loadedPrivateKey = connection.authMode == "privateKey" ? loaded.secret : loaded.otherSecret ?? ""
+            _keyPEM = State(initialValue: loadedPrivateKey ?? "")
             _keyPassphrase = State(initialValue: loaded.passphrase)
             _rememberPassphrase = State(initialValue: loaded.savePassphrase)
         } catch {
             _credentialLoadError = State(initialValue: error.localizedDescription)
         }
+        self.loadedPrivateKey = loadedPrivateKey
     }
 
     enum AuthMode: String, CaseIterable, Identifiable {
@@ -338,7 +342,7 @@ struct ConnectionSettingsView: View {
             passphrase: keyPassphrase, savePassphrase: rememberPassphrase, detectsBackend: backend == nil,
             otherSecret: editsInactiveSecret ? inactiveSecret : nil,
             credentialEdits: .init(ownerID: original.id, password: passwordWasEdited, privateKey: privateKeyWasEdited,
-                passphrase: passphraseWasEdited, remember: rememberWasEdited))
+                passphrase: passphraseWasEdited, remember: rememberWasEdited, passphraseKey: loadedPrivateKey))
     }
 
     var nameWasEdited: Bool { name != (original.name ?? "") }

@@ -683,6 +683,8 @@ struct ConnectionSignIn: Identifiable {
         var privateKey = false
         var passphrase = false
         var remember = false
+        /// The key loaded alongside the phrase, before any key edits.
+        var passphraseKey: String?
 
         func secret(for mode: String) -> Bool { mode == "privateKey" ? privateKey : password }
     }
@@ -764,6 +766,20 @@ struct ConnectionSignIn: Identifiable {
         return destination
     }
 
+    private static func samePrivateKeyData(_ lhs: String?, _ rhs: String?) -> Bool {
+        guard let lhs, let rhs else { return lhs == rhs }
+        if lhs == rhs { return true }
+        func container(_ pem: String) -> Data? {
+            let lines = pem.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            guard lines.first == "-----BEGIN OPENSSH PRIVATE KEY-----",
+                  lines.last == "-----END OPENSSH PRIVATE KEY-----" else { return nil }
+            return Data(base64Encoded: lines.dropFirst().dropLast().joined())
+        }
+        guard let left = container(lhs), let right = container(rhs) else { return false }
+        return left == right
+    }
+
     /// Explicit saves may clear credentials; failed connection attempts never save replacements.
     func persist(defaults: UserDefaults = .standard, using keychain: KeychainOperations = KeychainStore.operations,
                  connected: Bool = true, updateName: Bool = false) throws {
@@ -775,16 +791,36 @@ struct ConnectionSignIn: Identifiable {
             if let previous = entries.first(where: { $0.id == entry.id }) {
                 _ = try Self.loadSecret(previous, using: keychain, readOnly: false)
             }
+            let writesSelectedSecret = !secret.isEmpty || ownsCredentials || credentialEdits?.secret(for: entry.authMode) == true
+            let otherMode = isKey ? "password" : "privateKey"
+            let writesOtherSecret = otherSecret != nil && (ownsCredentials || credentialEdits?.secret(for: otherMode) == true)
+            let writtenKey: String? = isKey ? (writesSelectedSecret ? secret : nil) : (writesOtherSecret ? otherSecret : nil)
+            var previousKey: String?
+            if writtenKey != nil {
+                previousKey = try KeychainStore.load(account: entry.credentialAccount(for: "privateKey"), using: keychain)
+            }
+            let keyEncryption: Bool? = writtenKey.flatMap { key in
+                let normalized = key.split(whereSeparator: \.isNewline).joined(separator: "\n")
+                guard (try? OpenSSHEd25519.parsePublicKey(pem: normalized)) != nil,
+                      let encrypted = try? OpenSSHEd25519.isEncrypted(pem: normalized) else { return nil }
+                if !encrypted && (try? OpenSSHEd25519.parseRawPrivateKey(pem: normalized)) == nil { return nil }
+                return encrypted
+            }
+            let replacedKey = keyEncryption != nil && !Self.samePrivateKeyData(writtenKey, previousKey)
+            let plaintextKey = keyEncryption == false
+            // Keep unfinished drafts intact; a recognized replacement must have
+            // its own phrase or an explicit phrase edit before saving that phrase.
+            let associatedPassphrase = credentialEdits == nil || credentialEdits?.passphrase == true
+                || keyEncryption == nil || Self.samePrivateKeyData(writtenKey, credentialEdits?.passphraseKey)
             // Retire the ambiguous slot before explicit clearing, so it can never restore a removed value.
             try KeychainStore.delete(account: entry.legacySecretAccount, using: keychain)
             // A working selected credential can refresh every runtime. An empty
             // field from a different runtime cannot silently erase its sign-in.
             if !secret.isEmpty { try KeychainStore.save(secret, account: entry.secretAccount, using: keychain) }
-            else if ownsCredentials || credentialEdits?.secret(for: entry.authMode) == true {
+            else if writesSelectedSecret {
                 try KeychainStore.delete(account: entry.secretAccount, using: keychain)
             }
-            let otherMode = isKey ? "password" : "privateKey"
-            if let otherSecret, ownsCredentials || credentialEdits?.secret(for: otherMode) == true {
+            if let otherSecret, writesOtherSecret {
                 let account = entry.credentialAccount(for: otherMode)
                 if otherSecret.isEmpty { try KeychainStore.delete(account: account, using: keychain) }
                 else { try KeychainStore.save(otherSecret, account: account, using: keychain) }
@@ -794,10 +830,11 @@ struct ConnectionSignIn: Identifiable {
             let editsPassphrase = ownsCredentials || credentialEdits?.passphrase == true || clearedKey
                 || (isKey && !secret.isEmpty && !encrypted)
                 || (isKey && savePassphrase && !passphrase.isEmpty)
-            if editsPassphrase && (isKey || otherSecret != nil || savePassphrase || !passphrase.isEmpty) {
+            let updatesPassphrase = (editsPassphrase && associatedPassphrase) || replacedKey || plaintextKey || clearedKey
+            if updatesPassphrase && (isKey || otherSecret != nil || savePassphrase || !passphrase.isEmpty) {
                 // Removing the key removes its persisted phrase even when the
                 // form retains a passphrase draft for further editing.
-                if !clearedKey && savePassphrase && !passphrase.isEmpty {
+                if !clearedKey && !plaintextKey && associatedPassphrase && savePassphrase && !passphrase.isEmpty {
                     try KeychainStore.save(passphrase, account: entry.passphraseAccount, using: keychain)
                 } else {
                     try KeychainStore.delete(account: entry.passphraseAccount, using: keychain)
