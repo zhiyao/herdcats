@@ -795,7 +795,9 @@ struct ConnectionSignIn: Identifiable {
                 || (isKey && !secret.isEmpty && !encrypted)
                 || (isKey && savePassphrase && !passphrase.isEmpty)
             if editsPassphrase && (isKey || otherSecret != nil || savePassphrase || !passphrase.isEmpty) {
-                if savePassphrase && !passphrase.isEmpty {
+                // Removing the key removes its persisted phrase even when the
+                // form retains a passphrase draft for further editing.
+                if !clearedKey && savePassphrase && !passphrase.isEmpty {
                     try KeychainStore.save(passphrase, account: entry.passphraseAccount, using: keychain)
                 } else {
                     try KeychainStore.delete(account: entry.passphraseAccount, using: keychain)
