@@ -672,8 +672,21 @@ struct ConnectionSignIn: Identifiable {
     var savePassphrase = false
     /// Auto: connect detects the runtime; `entry.backend` is a placeholder until then.
     var detectsBackend = false
-    /// A supplied value edits the inactive credential; "" explicitly clears it. nil leaves it untouched.
+    /// nil leaves the inactive credential untouched. A supplied value edits it,
+    /// subject to settings' credential ownership and explicit edit intent below.
     var otherSecret: String?
+    /// Settings values belong to one runtime. Only deliberate edits may clear or
+    /// replace another saved runtime's inactive fields or storage preferences.
+    struct CredentialEdits {
+        let ownerID: UUID
+        var password = false
+        var privateKey = false
+        var passphrase = false
+        var remember = false
+
+        func secret(for mode: String) -> Bool { mode == "privateKey" ? privateKey : password }
+    }
+    var credentialEdits: CredentialEdits?
     var id: UUID { entry.id }
     var isKey: Bool { entry.authMode == "privateKey" }
     var encrypted: Bool { isKey && (try? OpenSSHEd25519.isEncrypted(pem: secret)) == true }
@@ -742,25 +755,46 @@ struct ConnectionSignIn: Identifiable {
         return Self(entry: entry, secret: secret, passphrase: phrase, savePassphrase: !phrase.isEmpty, otherSecret: other)
     }
 
+    private func preservingStoragePreference(in entries: [RecentConnection]) -> RecentConnection {
+        var destination = entry
+        if let credentialEdits, credentialEdits.ownerID != entry.id, !credentialEdits.remember,
+           let saved = entries.first(where: { $0.id == entry.id }) {
+            destination.remember = saved.remember
+        }
+        return destination
+    }
+
     /// Explicit saves may clear credentials; failed connection attempts never save replacements.
     func persist(defaults: UserDefaults = .standard, using keychain: KeychainOperations = KeychainStore.operations,
                  connected: Bool = true, updateName: Bool = false) throws {
         let entries = try RecentConnectionStore.load(defaults: defaults, using: keychain)
+        let entry = preservingStoragePreference(in: entries)
+        let ownsCredentials = credentialEdits == nil || credentialEdits?.ownerID == entry.id
+            || !entries.contains(where: { $0.id == entry.id })
         if entry.remember {
             if let previous = entries.first(where: { $0.id == entry.id }) {
                 _ = try Self.loadSecret(previous, using: keychain, readOnly: false)
             }
             // Retire the ambiguous slot before explicit clearing, so it can never restore a removed value.
             try KeychainStore.delete(account: entry.legacySecretAccount, using: keychain)
-            if secret.isEmpty { try KeychainStore.delete(account: entry.secretAccount, using: keychain) }
-            else { try KeychainStore.save(secret, account: entry.secretAccount, using: keychain) }
-            if let otherSecret {
-                let account = entry.credentialAccount(for: isKey ? "password" : "privateKey")
+            // A working selected credential can refresh every runtime. An empty
+            // field from a different runtime cannot silently erase its sign-in.
+            if !secret.isEmpty { try KeychainStore.save(secret, account: entry.secretAccount, using: keychain) }
+            else if ownsCredentials || credentialEdits?.secret(for: entry.authMode) == true {
+                try KeychainStore.delete(account: entry.secretAccount, using: keychain)
+            }
+            let otherMode = isKey ? "password" : "privateKey"
+            if let otherSecret, ownsCredentials || credentialEdits?.secret(for: otherMode) == true {
+                let account = entry.credentialAccount(for: otherMode)
                 if otherSecret.isEmpty { try KeychainStore.delete(account: account, using: keychain) }
                 else { try KeychainStore.save(otherSecret, account: account, using: keychain) }
             }
             // The passphrase belongs to the private key even while Password is selected.
-            if isKey || otherSecret != nil || savePassphrase || !passphrase.isEmpty {
+            let clearedKey = credentialEdits?.privateKey == true && (isKey ? secret.isEmpty : otherSecret == "")
+            let editsPassphrase = ownsCredentials || credentialEdits?.passphrase == true || clearedKey
+                || (isKey && !secret.isEmpty && !encrypted)
+                || (isKey && savePassphrase && !passphrase.isEmpty)
+            if editsPassphrase && (isKey || otherSecret != nil || savePassphrase || !passphrase.isEmpty) {
                 if savePassphrase && !passphrase.isEmpty {
                     try KeychainStore.save(passphrase, account: entry.passphraseAccount, using: keychain)
                 } else {
@@ -835,6 +869,11 @@ struct ConnectionSignIn: Identifiable {
 
     func prepareAttempt(defaults: UserDefaults = .standard, using keychain: KeychainOperations = KeychainStore.operations) throws {
         if !entry.remember {
+            var entry = entry
+            if let credentialEdits, credentialEdits.ownerID != entry.id, !credentialEdits.remember {
+                entry = try preservingStoragePreference(in: RecentConnectionStore.load(defaults: defaults, using: keychain))
+            }
+            guard !entry.remember else { return }
             try entry.deleteCredentials(using: keychain)
             try RecentConnectionStore.disableRemembering(entry, defaults: defaults, using: keychain)
         }
