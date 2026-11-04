@@ -723,12 +723,22 @@ struct ConnectionSignIn: Identifiable {
         return secret ?? ""
     }
 
-    static func load(_ entry: RecentConnection, using keychain: KeychainOperations = KeychainStore.operations, readOnly: Bool = false) throws -> Self {
+    /// Saved-card sign-ins edit only the selected method. Settings explicitly opt into editing inactive fields too.
+    static func load(_ entry: RecentConnection, using keychain: KeychainOperations = KeychainStore.operations,
+                     readOnly: Bool = false, includingInactiveCredentials: Bool = false) throws -> Self {
         guard entry.remember else { return Self(entry: entry) }
         let secret = try loadSecret(entry, using: keychain, readOnly: readOnly)
-        let otherMode = entry.authMode == "privateKey" ? "password" : "privateKey"
-        let other = try KeychainStore.load(account: entry.credentialAccount(for: otherMode), using: keychain, readOnly: readOnly) ?? ""
-        let phrase = try KeychainStore.load(account: entry.passphraseAccount, using: keychain, readOnly: readOnly) ?? ""
+        var other: String?
+        if includingInactiveCredentials {
+            let otherMode = entry.authMode == "privateKey" ? "password" : "privateKey"
+            other = try KeychainStore.load(account: entry.credentialAccount(for: otherMode), using: keychain, readOnly: readOnly) ?? ""
+        }
+        let phrase: String
+        if entry.authMode == "privateKey" || includingInactiveCredentials {
+            phrase = try KeychainStore.load(account: entry.passphraseAccount, using: keychain, readOnly: readOnly) ?? ""
+        } else {
+            phrase = ""
+        }
         return Self(entry: entry, secret: secret, passphrase: phrase, savePassphrase: !phrase.isEmpty, otherSecret: other)
     }
 

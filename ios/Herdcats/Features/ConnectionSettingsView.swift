@@ -94,7 +94,7 @@ struct ConnectionSettingsView: View {
         _backend = State(initialValue: connection.host.isEmpty || runtimes.count > 1 ? nil : connection.backend)
         _remember = State(initialValue: connection.remember)
         do {
-            let loaded = try ConnectionSignIn.load(connection, using: keychain, readOnly: isReplay)
+            let loaded = try ConnectionSignIn.load(connection, using: keychain, readOnly: isReplay, includingInactiveCredentials: true)
             _password = State(initialValue: connection.authMode == "privateKey" ? loaded.otherSecret ?? "" : loaded.secret)
             _keyPEM = State(initialValue: connection.authMode == "privateKey" ? loaded.secret : loaded.otherSecret ?? "")
             _keyPassphrase = State(initialValue: loaded.passphrase)

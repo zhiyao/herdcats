@@ -401,6 +401,39 @@ struct OpenSSHKeyParserTests {
         #expect(reopened.passphrase == "saved-phrase")
     }
 
+    @MainActor @Test(arguments: ["saved-card", "settings"])
+    func passwordRecoveryPreservesInactivePassphraseUnlessSettingsExplicitlyClearIt(submission: String) throws {
+        let suite = "PasswordRecoveryPassphrase.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = FakeKeychainOperations()
+        let keyed = RecentConnection(host: "fixture.example", port: 22, username: "tester", authMode: "privateKey", remember: true)
+        try ConnectionSignIn(entry: keyed, secret: Self.encrypted64, passphrase: "saved-phrase", savePassphrase: true)
+            .persist(defaults: defaults, using: keychain)
+        var passwordEntry = keyed
+        passwordEntry.authMode = "password"
+        try ConnectionSignIn(entry: passwordEntry, secret: "rejected-password")
+            .persist(defaults: defaults, using: keychain, connected: false)
+        var recovery: ConnectionSignIn
+        if submission == "settings" {
+            recovery = try ConnectionSettingsView(connection: passwordEntry, editing: true, defaults: defaults, using: keychain)
+                .signIn(defaults: defaults, using: keychain)
+        } else {
+            recovery = try ConnectionSignIn.load(passwordEntry, using: keychain)
+        }
+        // SavedConnectionSignInView resets these fields when a rejected password is edited.
+        // In settings, the same values represent an explicit passphrase removal and opt-out.
+        recovery.secret = "corrected-password"
+        recovery.passphrase = ""
+        recovery.savePassphrase = false
+        try recovery.persist(defaults: defaults, using: keychain)
+        #expect(try ConnectionSignIn.load(passwordEntry, using: keychain).secret == "corrected-password")
+        let reopenedKey = try ConnectionSignIn.load(keyed, using: keychain)
+        #expect(reopenedKey.secret == Self.encrypted64)
+        #expect(reopenedKey.passphrase == (submission == "settings" ? "" : "saved-phrase"))
+        #expect(reopenedKey.needsPassphrase == (submission == "settings"))
+    }
+
     @MainActor
     @Test
     func connectionFormInspectsEncryptedKeysWithoutDecrypting() throws {
