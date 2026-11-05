@@ -119,6 +119,31 @@ struct PerformanceOptimizationTests {
         }
     }
 
+    @Test func imageEncoderMaxInputBytesConstant() {
+        #expect(PaneImageEncoder.maxInputBytes == 40 * 1024 * 1024)
+    }
+
+    @Test func imageEncoderRejectsOversizedRawData() {
+        let oversizedData = Data(count: PaneImageEncoder.maxInputBytes + 1)
+        #expect(throws: PaneImageEncodingError.tooLarge) {
+            _ = try PaneImageEncoder.encode(rawData: oversizedData, prefersPNG: false)
+        }
+    }
+
+    @Test func imagePreparedForUploadAlwaysRedrawsThroughRenderer() {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 100, height: 100))
+        let smallImage = renderer.image { ctx in
+            UIColor.red.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 100, height: 100))
+        }
+        #expect(smallImage.imageOrientation == .up)
+        #expect(max(smallImage.size.width, smallImage.size.height) <= 2048)
+
+        let prepared = smallImage.preparedForUpload(maxDimension: 2048)
+        #expect(prepared !== smallImage)
+        #expect(prepared.size == smallImage.size)
+    }
+
     @Test func ansiLinesChunkNewlineHandling() {
         let raw = "\u{1B}[32mLine 1\nLine 2\nLine 3\u{1B}[0m\nLine 4"
         let lines = ANSIText.lines(from: raw)

@@ -3,7 +3,7 @@ use crate::codex_config;
 use serde_json::{Value, json};
 use std::{
     fs,
-    io::{self, BufRead, Write},
+    io::{self, BufRead, Read, Write},
     path::{Path, PathBuf},
 };
 
@@ -198,6 +198,7 @@ fn spool_files(agent: Agent, dir: &Path) -> io::Result<Vec<PathBuf>> {
         let entry = entry?;
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
+        let path = entry.path();
         if let Some(session) = name
             .strip_prefix(&prefix)
             .and_then(|s| s.strip_suffix(".jsonl"))
@@ -206,23 +207,54 @@ fn spool_files(agent: Agent, dir: &Path) -> io::Result<Vec<PathBuf>> {
                 && session
                     .bytes()
                     .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
-                && entry.file_type()?.is_file()
             {
-                files.push(entry.path());
+                if let Ok(meta) = fs::symlink_metadata(&path) {
+                    if !meta.file_type().is_symlink() && meta.is_file() {
+                        files.push(path);
+                    }
+                }
             }
         }
     }
     Ok(files)
 }
 fn spool_confirmed(agent: Agent, dir: &Path) -> bool {
+    #[cfg(unix)]
+    use std::os::unix::fs::OpenOptionsExt;
+
     spool_files(agent, dir)
         .unwrap_or_default()
         .iter()
         .any(|path| {
-            let Ok(file) = fs::File::open(path) else {
+            #[cfg(unix)]
+            let file = fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+                .open(path);
+            #[cfg(not(unix))]
+            let file = fs::OpenOptions::new().read(true).open(path);
+
+            let Ok(file) = file else {
                 return false;
             };
-            io::BufReader::new(file)
+            let Ok(metadata) = file.metadata() else {
+                return false;
+            };
+            if !metadata.is_file() || metadata.len() > crate::spool::BYTE_LIMIT {
+                return false;
+            }
+            let mut bytes = Vec::new();
+            if file
+                .take(crate::spool::BYTE_LIMIT + 1)
+                .read_to_end(&mut bytes)
+                .is_err()
+            {
+                return false;
+            }
+            if bytes.len() as u64 > crate::spool::BYTE_LIMIT {
+                return false;
+            }
+            io::BufReader::new(&bytes[..])
                 .lines()
                 .map_while(std::result::Result::ok)
                 .any(|line| {
@@ -730,4 +762,87 @@ fn write_bytes_document(
         return Err("hooks_verification_failed");
     }
     Ok(backup)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TempDir(PathBuf);
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let p = std::env::temp_dir().join(format!(
+                "herdcats-hooks-test-{name}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            fs::create_dir_all(&p).unwrap();
+            Self(p)
+        }
+    }
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn spool_refuses_symlinks_and_confirms_valid_files() {
+        let temp = TempDir::new("spool-symlink");
+        let spool_dir = temp.0.join("spool");
+        fs::create_dir_all(&spool_dir).unwrap();
+
+        // Target real file outside spool
+        let real_target = temp.0.join("external-target.jsonl");
+        fs::write(
+            &real_target,
+            serde_json::to_string(&json!({"agent": "claude", "event": "PermissionRequest"})).unwrap() + "\n",
+        ).unwrap();
+
+        // Symlink pointing to the external file
+        let symlink_path = spool_dir.join("claude-symlink.jsonl");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real_target, &symlink_path).unwrap();
+
+        // spool_files must reject the symlink
+        let files = spool_files(Agent::Claude, &spool_dir).unwrap();
+        assert!(files.is_empty(), "spool_files should ignore symlinks");
+
+        // spool_confirmed must return false
+        assert!(!spool_confirmed(Agent::Claude, &spool_dir), "spool_confirmed should not confirm via symlink");
+
+        // Now create a legitimate regular spool file
+        let valid_path = spool_dir.join("claude-valid.jsonl");
+        fs::write(
+            &valid_path,
+            serde_json::to_string(&json!({"agent": "claude", "event": "PermissionRequest"})).unwrap() + "\n",
+        ).unwrap();
+
+        let files = spool_files(Agent::Claude, &spool_dir).unwrap();
+        assert_eq!(files, vec![valid_path]);
+        assert!(spool_confirmed(Agent::Claude, &spool_dir), "spool_confirmed should confirm valid regular file");
+    }
+
+    #[test]
+    fn spool_refuses_oversized_spool_files() {
+        let temp = TempDir::new("spool-oversized");
+        let spool_dir = temp.0.join("spool");
+        fs::create_dir_all(&spool_dir).unwrap();
+
+        // Create an oversized spool file exceeding BYTE_LIMIT
+        let oversized_path = spool_dir.join("claude-oversized.jsonl");
+        let valid_record = serde_json::to_string(&json!({"agent": "claude", "event": "PermissionRequest"})).unwrap() + "\n";
+        let mut data = valid_record.into_bytes();
+        let target_len = (crate::spool::BYTE_LIMIT as usize) + 1024;
+        data.resize(target_len, b' ');
+        fs::write(&oversized_path, &data).unwrap();
+
+        // spool_files finds the regular file, but spool_confirmed must reject it due to size > BYTE_LIMIT
+        let files = spool_files(Agent::Claude, &spool_dir).unwrap();
+        assert_eq!(files, vec![oversized_path]);
+        assert!(!spool_confirmed(Agent::Claude, &spool_dir), "oversized spool file must not be confirmed");
+    }
 }
