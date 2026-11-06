@@ -70,16 +70,71 @@ fn read_saved_catalog(path: &std::path::Path, version: &str, now: u64) -> Option
 
 /// Best effort: a failed write only means the next session scans again.
 fn write_saved_catalog(path: &std::path::Path, version: &str, scanned_at: u64, labels: &[String]) {
-    use std::{io::Write, os::unix::fs::{DirBuilderExt, OpenOptionsExt}};
+    use std::io::Write;
+    #[cfg(unix)]
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+
     let Some(dir) = path.parent() else { return };
-    if std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir).is_err() {
+
+    // Before creating or writing inside dir, verify that neither dir nor its parent (if existing)
+    // nor path (if existing) is a symlink.
+    if let Some(parent) = dir.parent() {
+        if let Ok(m) = std::fs::symlink_metadata(parent) {
+            if m.file_type().is_symlink() {
+                return;
+            }
+        }
+    }
+    if let Ok(m) = std::fs::symlink_metadata(dir) {
+        if m.file_type().is_symlink() || !m.is_dir() {
+            return;
+        }
+    }
+    if let Ok(m) = std::fs::symlink_metadata(path) {
+        if m.file_type().is_symlink() {
+            return;
+        }
+    }
+
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    builder.mode(0o700);
+    if builder.create(dir).is_err() {
         return;
     }
+
+    let Ok(dir_meta) = std::fs::symlink_metadata(dir) else {
+        return;
+    };
+    if dir_meta.file_type().is_symlink() || !dir_meta.is_dir() {
+        return;
+    }
+
+    #[cfg(unix)]
+    if std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).is_err() {
+        return;
+    }
+
     let tmp = path.with_extension(format!("tmp{}", std::process::id()));
     let body = json!({"version":version,"scannedAt":scanned_at,"labels":labels}).to_string();
-    let written = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&tmp)
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    let written = options.open(&tmp)
         .and_then(|mut f| f.write_all(body.as_bytes()).and_then(|()| f.sync_all()));
-    if written.is_err() || std::fs::rename(&tmp, path).is_err() {
+    if written.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+        return;
+    }
+    if let Ok(m) = std::fs::symlink_metadata(path) {
+        if m.file_type().is_symlink() {
+            let _ = std::fs::remove_file(&tmp);
+            return;
+        }
+    }
+    if std::fs::rename(&tmp, path).is_err() {
         let _ = std::fs::remove_file(&tmp);
     }
 }
@@ -641,5 +696,100 @@ impl Service {
             && state.label == target.label
             && target_effort.is_none_or(|e| state.effort == Some(e));
         Ok(applied(&state, &fresh, confirmed, error.or(if confirmed { None } else { Some("confirm_timeout") })))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    struct TempDir(PathBuf);
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let p = std::env::temp_dir().join(format!(
+                "herdcats-cursor-catalog-test-{name}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&p).unwrap();
+            Self(p)
+        }
+    }
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn write_saved_catalog_refuses_symlinked_cache_dirs() {
+        let temp = TempDir::new("symlinked-dir");
+        let real_cache = temp.0.join("real_cache");
+        std::fs::create_dir_all(&real_cache).unwrap();
+
+        // 1. dir itself is a symlink
+        let symlinked_dir = temp.0.join("symlinked_cache");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real_cache, &symlinked_dir).unwrap();
+
+        let catalog_path = symlinked_dir.join("cursor-model-catalog.json");
+        let labels = vec!["claude-3-5-sonnet".to_string()];
+        write_saved_catalog(&catalog_path, "0.45.0", 1234567, &labels);
+
+        assert!(
+            !catalog_path.exists() && !real_cache.join("cursor-model-catalog.json").exists(),
+            "write_saved_catalog must refuse symlinked cache dir"
+        );
+
+        // 2. dir's parent is a symlink
+        let parent_target = temp.0.join("parent_target");
+        std::fs::create_dir_all(&parent_target).unwrap();
+        let parent_symlink = temp.0.join("parent_symlink");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&parent_target, &parent_symlink).unwrap();
+
+        let catalog_in_nested = parent_symlink.join("herdcats").join("cursor-model-catalog.json");
+        write_saved_catalog(&catalog_in_nested, "0.45.0", 1234567, &labels);
+        assert!(
+            !catalog_in_nested.exists() && !parent_target.join("herdcats").exists(),
+            "write_saved_catalog must refuse when parent dir is a symlink"
+        );
+    }
+
+    #[test]
+    fn write_saved_catalog_refuses_symlinked_catalog_files() {
+        let temp = TempDir::new("symlinked-file");
+        let cache_dir = temp.0.join("herdcats");
+        std::fs::create_dir_all(&cache_dir).unwrap();
+
+        // External target file
+        let external_target = temp.0.join("external_secret.json");
+        std::fs::write(&external_target, "keep me untouched").unwrap();
+
+        let catalog_path = cache_dir.join("cursor-model-catalog.json");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&external_target, &catalog_path).unwrap();
+
+        let labels = vec!["claude-3-5-sonnet".to_string()];
+        write_saved_catalog(&catalog_path, "0.45.0", 1234567, &labels);
+
+        let content = std::fs::read_to_string(&external_target).unwrap();
+        assert_eq!(content, "keep me untouched", "write_saved_catalog must not overwrite symlinked target");
+
+        // And verify that for a normal path without symlinks, it writes and sets 0o700 mode
+        let valid_dir = temp.0.join("valid_cache");
+        let valid_path = valid_dir.join("cursor-model-catalog.json");
+        write_saved_catalog(&valid_path, "0.45.0", 1234567, &labels);
+        assert!(valid_path.is_file(), "write_saved_catalog should succeed on regular path");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let dir_mode = std::fs::metadata(&valid_dir).unwrap().permissions().mode() & 0o777;
+            assert_eq!(dir_mode, 0o700, "cache dir must have mode 0o700");
+        }
     }
 }

@@ -66,6 +66,18 @@ test('malformed targets return 400 and later requests still succeed', () => {
     assert.equal(request('/api/health').statusCode, 200);
 });
 
+test('security headers include Referrer-Policy strict-origin-when-cross-origin', () => {
+    const res = request('/');
+    assert.equal(res.headers['Referrer-Policy'], 'strict-origin-when-cross-origin');
+    assert.equal(res.headers['X-Content-Type-Options'], 'nosniff');
+    assert.equal(res.headers['X-Frame-Options'], 'SAMEORIGIN');
+
+    const health = request('/api/health');
+    assert.equal(health.headers['Referrer-Policy'], 'strict-origin-when-cross-origin');
+    assert.equal(health.headers['X-Content-Type-Options'], 'nosniff');
+    assert.equal(health.headers['X-Frame-Options'], 'SAMEORIGIN');
+});
+
 test('exported route directories resolve to their index.html', async () => {
     const privacy = await requestAsync('/privacy');
     assert.equal(privacy.statusCode, 200);

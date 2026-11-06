@@ -107,9 +107,6 @@ extension AppModel {
         lastConnectNeedsSignIn = false
         hostKeyChallenge = nil
         hostKeyVerificationBlocked = false
-        #if DEBUG
-        print("[HC] connect start \(config.host):\(config.port)")
-        #endif
         activeConfig = config
         detectedBackends = []
         await connection.setRuntimeChangeHandler { [weak self] generation in
@@ -161,7 +158,6 @@ extension AppModel {
         #if DEBUG
         print("[HC] connect failed: \(error)")
         #endif
-        logPrivateKeyDiagnostics(config)
         switch ownership.fail(for: attempt) {
         case .stale:
             return
@@ -220,23 +216,6 @@ extension AppModel {
                 phase = .disconnected
             }
         }
-    }
-
-    private func logPrivateKeyDiagnostics(_ config: ConnectionConfig) {
-        #if DEBUG
-        if case let .privateKey(pem, _) = config.auth,
-           let pubKey = try? OpenSSHEd25519.parseOpenSSHPublicKeyString(pem: pem),
-           let fingerprint = try? OpenSSHEd25519.parseFingerprint(pem: pem) {
-            print("[HC] [DEBUG] Auth method: ed25519 private key")
-            print("[HC] [DEBUG] Target: \(config.username)@\(config.host):\(config.port)")
-            print("[HC] [DEBUG] Key fingerprint: \(fingerprint)")
-            print("[HC] [DEBUG] Public key: \(pubKey)")
-            print(
-                "[HC] [DEBUG] Check: verify that '\(pubKey)' is in ~/.ssh/authorized_keys "
-                    + "on '\(config.host)' for user '\(config.username)'."
-            )
-        }
-        #endif
     }
 
     static func needsSignIn(after error: Error) -> Bool {
