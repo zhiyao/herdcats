@@ -24,14 +24,15 @@ json.dump({"openrouter": {"type": "api_key", "key": key}}, sys.stdout)
 
 fly sftp put "$review_auth" "$review_remote_upload" \
     --app "$review_app" --user review --mode 0600
-fly ssh console --app "$review_app" -C "
-set -eu
-for p in /data/home/review /data/home/review/.pi /data/home/review/.pi/agent '$review_remote_upload' /data/home/review/.pi/agent/auth.json; do
+# Fly runs -C without a shell, so invoke /bin/sh explicitly. The script below
+# contains no single quotes, so it can be wrapped in one safely.
+review_remote_script="set -eu
+for p in /data/home/review /data/home/review/.pi /data/home/review/.pi/agent \"$review_remote_upload\" \"$review_remote_auth\"; do
     if [ -L \"\$p\" ]; then
-        printf 'Refusing symlink: %s\n' \"\$p\" >&2
+        echo \"Refusing symlink: \$p\" >&2
         exit 1
     fi
 done
-runuser -u review -- mv -f '$review_remote_upload' '$review_remote_auth'
-"
+runuser -u review -- mv -f \"$review_remote_upload\" \"$review_remote_auth\""
+fly ssh console --app "$review_app" -C "/bin/sh -c '$review_remote_script'"
 printf 'OpenRouter key installed for Pi on %s.\n' "$review_app"
