@@ -12,7 +12,7 @@ use std::{
 };
 
 const INPUT_LIMIT: usize = 1024 * 1024;
-const BYTE_LIMIT: usize = 256 * 1024;
+pub const BYTE_LIMIT: u64 = 256 * 1024;
 const RECORD_LIMIT: usize = 64;
 
 fn valid_session_id(session: &str) -> bool {
@@ -40,12 +40,12 @@ pub fn read_session(dir: &Path, agent: Agent, session_id: &str) -> Vec<Value> {
         }
         let file = options.open(dir.join(format!("{}-{session_id}.jsonl", agent.name())))?;
         let metadata = file.metadata()?;
-        if !metadata.is_file() || metadata.len() > BYTE_LIMIT as u64 {
+        if !metadata.is_file() || metadata.len() > BYTE_LIMIT {
             return Ok(Vec::new());
         }
         let mut bytes = Vec::new();
-        file.take((BYTE_LIMIT + 1) as u64).read_to_end(&mut bytes)?;
-        if bytes.len() > BYTE_LIMIT {
+        file.take(BYTE_LIMIT + 1).read_to_end(&mut bytes)?;
+        if bytes.len() as u64 > BYTE_LIMIT {
             return Ok(Vec::new());
         }
         let mut records = std::collections::VecDeque::new();
@@ -155,13 +155,13 @@ pub fn record_in_dir(
         "agent":agent.name(), "event":event, "session_id":session, "pane":pane, "payload":payload
     });
     let mut line = serde_json::to_vec(&record)?;
-    if line.len() + 1 > BYTE_LIMIT {
+    if (line.len() + 1) as u64 > BYTE_LIMIT {
         // A single input can be below the stdin cap and still exceed the file
         // budget. Keep the newest request as a marker rather than evicting it.
         record["payload"] = json!({"truncated":true});
         line = serde_json::to_vec(&record)?;
     }
-    if line.len() + 1 > BYTE_LIMIT {
+    if (line.len() + 1) as u64 > BYTE_LIMIT {
         return Ok(());
     }
     line.push(b'\n');
@@ -300,10 +300,10 @@ fn open_file(path: &Path, create_new: bool) -> io::Result<File> {
 fn trim(dir: &Path, path: &Path, file: &mut File) -> io::Result<()> {
     let len = file.metadata()?.len();
     // Inspect only a bounded tail even if an existing file is unexpectedly huge.
-    let start = len.saturating_sub((BYTE_LIMIT + 1) as u64);
+    let start = len.saturating_sub(BYTE_LIMIT + 1);
     file.seek(SeekFrom::Start(start))?;
     let mut tail = Vec::new();
-    file.take((BYTE_LIMIT + 1) as u64).read_to_end(&mut tail)?;
+    file.take(BYTE_LIMIT + 1).read_to_end(&mut tail)?;
     let mut begin = if start > 0 {
         match tail.iter().position(|b| *b == b'\n') {
             Some(n) => n + 1,
@@ -313,11 +313,11 @@ fn trim(dir: &Path, path: &Path, file: &mut File) -> io::Result<()> {
         0
     };
     let count = tail[begin..].iter().filter(|b| **b == b'\n').count();
-    if start == 0 && len <= BYTE_LIMIT as u64 && count <= RECORD_LIMIT {
+    if start == 0 && len <= BYTE_LIMIT && count <= RECORD_LIMIT {
         return Ok(());
     }
     let mut remaining = count;
-    while remaining > RECORD_LIMIT || tail.len() - begin > BYTE_LIMIT {
+    while remaining > RECORD_LIMIT || (tail.len() - begin) as u64 > BYTE_LIMIT {
         let Some(n) = tail[begin..].iter().position(|b| *b == b'\n') else {
             begin = tail.len();
             break;

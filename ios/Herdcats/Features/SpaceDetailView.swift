@@ -19,6 +19,7 @@ struct PaneDetailView: View {
     @Environment(\.showsPaneSwitcher) private var showsPaneSwitcher
     @Environment(\.showsPaneBackButton) private var showsPaneBackButton
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.openPaneMemory) private var openPaneMemory
     @Environment(\.closeDetail) private var closeDetail
     @Environment(\.sidebarToggle) private var sidebarToggle
@@ -420,7 +421,12 @@ struct PaneDetailView: View {
         }
         // Split panes draw their own header, since the detail column has one system bar.
         .toolbar(isSplit ? .hidden : .automatic, for: .navigationBar)
-        .toolbarBackground(.hidden, for: .navigationBar)
+        // Terminal output stays dark even in light mode. Keep navigation
+        // chrome tied to the app appearance rather than the content beneath
+        // it. An explicit toolbar scheme needs a visible bar background.
+        .toolbarBackground(Theme.background, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .onChange(of: selectedPaneID) { _, selected in
             bridgeUpgrade.bridgeVersion = nil
             openPaneMemory?.remember(selected)
