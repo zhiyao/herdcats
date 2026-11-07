@@ -223,9 +223,24 @@ struct TimelineActivityDrawer: View {
                                 .foregroundStyle(entry.status == "failed" ? Theme.destructive : Theme.textMuted)
                                 .accessibilityLabel(entry.status == "failed" ? "Failed or interrupted" : "Tool activity")
                                 .accessibilityIdentifier("timeline-activity-icon-\(entry.id)")
-                            Text(TimelineActivitySummary.purpose(entry))
-                                .font(.jost(.body, weight: .medium))
-                                .fixedSize(horizontal: false, vertical: true)
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(TimelineActivitySummary.purpose(entry))
+                                    .font(.jost(.body, weight: .medium))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                if entry.toolName == "Tool definitions" {
+                                    DisclosureGroup("Definitions") {
+                                        Text(entry.text)
+                                            .font(.system(.caption, design: .monospaced))
+                                            .textSelection(.enabled)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        if entry.truncated {
+                                            Text("Preview shortened.")
+                                                .font(.jost(.caption)).foregroundStyle(Theme.textMuted)
+                                        }
+                                    }
+                                    .font(.jost(.caption))
+                                }
+                            }
                         }
                         .foregroundStyle(Theme.text)
                         .frame(maxWidth: .infinity, alignment: .leading)
