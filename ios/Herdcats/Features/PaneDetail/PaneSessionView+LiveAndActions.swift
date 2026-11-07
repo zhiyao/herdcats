@@ -539,10 +539,12 @@ extension PaneSessionView {
                 sessionError = "Could not load that image."
                 return
             }
+            guard rawData.count <= PaneImageEncoder.maxInputBytes else {
+                throw PaneImageEncodingError.tooLarge
+            }
             let prefersPNG = item.supportedContentTypes.contains { $0.identifier == "public.png" }
-            guard let encoded = await Task.detached(priority: .userInitiated, operation: { () -> PaneImageEncoder.EncodedImage? in
-                guard let image = UIImage(data: rawData) else { return nil }
-                return PaneImageEncoder.encode(image, prefersPNG: prefersPNG)
+            guard let encoded = try await Task.detached(priority: .userInitiated, operation: { () throws -> PaneImageEncoder.EncodedImage? in
+                try PaneImageEncoder.encode(rawData: rawData, prefersPNG: prefersPNG)
             }).value else {
                 sessionError = "Could not encode that image."
                 return

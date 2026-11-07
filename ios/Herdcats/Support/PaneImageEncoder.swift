@@ -1,9 +1,21 @@
 import UIKit
 
+enum PaneImageEncodingError: LocalizedError, Equatable {
+    case tooLarge
+
+    var errorDescription: String? {
+        switch self {
+        case .tooLarge:
+            return "Image exceeds maximum allowed size."
+        }
+    }
+}
+
 /// Prepares a photo-library image for SFTP upload: normalize orientation,
 /// strip location metadata (via UIImage re-encode), prefer PNG for screenshots
 /// / transparency and JPEG for photos, and downscale large images.
 enum PaneImageEncoder {
+    static let maxInputBytes = 40 * 1024 * 1024
     private static let maxDimension: CGFloat = 2048
     private static let jpegQuality: CGFloat = 0.82
 
@@ -27,9 +39,17 @@ enum PaneImageEncoder {
         }
         return nil
     }
+
+    static func encode(rawData: Data, prefersPNG: Bool) throws -> EncodedImage? {
+        guard rawData.count <= maxInputBytes else {
+            throw PaneImageEncodingError.tooLarge
+        }
+        guard let image = UIImage(data: rawData) else { return nil }
+        return encode(image, prefersPNG: prefersPNG)
+    }
 }
 
-private extension UIImage {
+extension UIImage {
     func preparedForUpload(maxDimension: CGFloat) -> UIImage {
         let longest = max(size.width, size.height)
         let targetSize: CGSize
@@ -39,10 +59,8 @@ private extension UIImage {
                 width: max(1, (size.width * scaleRatio).rounded()),
                 height: max(1, (size.height * scaleRatio).rounded())
             )
-        } else if imageOrientation != .up {
-            targetSize = size
         } else {
-            return self
+            targetSize = size
         }
 
         let format = UIGraphicsImageRendererFormat.default()
