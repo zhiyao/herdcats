@@ -926,6 +926,46 @@ fn preserve_codex_record_unfamiliar_record_creates_bounded_bubble() {
 }
 
 #[test]
+fn additional_tools_appear_as_completed_tool_setup_activity() {
+    let temp = Temp::new();
+    let file_path = temp.0.join("rollout-tools.jsonl");
+    let records = [
+        json!({"type": "session_meta", "payload": {"id": THREAD_ID, "cwd": "/test/cwd"}}),
+        json!({"timestamp": "2026-11-07T02:27:12.126Z", "ordinal": 2, "type": "response_item", "payload": {
+            "type": "additional_tools", "id": "at-tools", "role": "developer",
+            "tools": [{"type": "namespace", "name": "functions", "description": "", "tools": [
+                {"type": "custom", "name": "exec", "description": "Run JavaScript code to orchestrate tool calls"}
+            ]}]
+        }}),
+        json!({"type": "response_item", "payload": {
+            "type": "message", "id": "msg-visible", "role": "assistant",
+            "content": [{"type": "output_text", "text": "Ready to help"}]
+        }}),
+    ];
+    let content: String = records.iter().map(|record| format!("{record}\n")).collect();
+    fs::write(&file_path, content).unwrap();
+
+    for mut follower in [
+        Follower::for_agent(AgentType::Codex),
+        Follower::with_content_for_agent(AgentType::Codex),
+    ] {
+        assert!(follower.refresh(&file_path, THREAD_ID).unwrap());
+        assert_eq!(follower.transcript.entries.len(), 2);
+        let setup = &follower.transcript.entries[0];
+        assert_eq!(setup.id, "tool_definitions:at-tools");
+        assert_eq!(setup.kind, "tool");
+        assert_eq!(setup.tool_name.as_deref(), Some("Tool definitions"));
+        assert_eq!(setup.status.as_deref(), Some("completed"));
+        let definitions: serde_json::Value = serde_json::from_str(&setup.text).unwrap();
+        assert_eq!(definitions[0]["name"], "functions");
+        assert_eq!(definitions[0]["tools"][0]["name"], "exec");
+        assert_eq!(follower.transcript.entries[1].kind, "message");
+        assert_eq!(follower.transcript.entries[1].text, "Ready to help");
+        assert_eq!(follower.transcript.unknown_records, 0);
+    }
+}
+
+#[test]
 fn synthetic_rollout_skips_routine_records_and_preserves_only_agent_message_and_unknown() {
     let temp = Temp::new();
     let file_path = temp.0.join("rollout.jsonl");
