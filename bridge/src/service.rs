@@ -534,7 +534,7 @@ impl Service {
         let (session, file, pi_state) = if adapter.name() == "pi" {
             let (session, file, path) = adapter.resolve_pi_live(pane)?;
             let state = self.pi_request(&session, "state", json!({}))?;
-            if state["version"] != "1.4.0" || state["session_id"].as_str() != Some(session.as_str())
+            if state["protocol"].as_u64() != Some(1) || state["session_id"].as_str() != Some(session.as_str())
                 || state["instance_id"].as_str().is_none_or(|v| v.is_empty() || v.len() > 128)
                 || !state["entries"].is_array()
             { return Err("invalid_pi_response"); }
@@ -1352,10 +1352,6 @@ impl Service {
             "model":pair.as_ref().map(|(id,_)|json!({"id":id,"label":catalog.iter().find(|m|m.id==*id).map(|m|m.label.as_str()).unwrap_or(id)})),
             "effort":pair.as_ref().and_then(|(_,e)|e.as_deref())},"confirmed":confirmed,"error":error});
         if target.id==*current_id && current_effort.as_deref()==Some(target_effort) { return Ok(result(true,None,current)); }
-        // Refuse changed installed versions even if a previous catalog is cached.
-        let executable = self.agy_executable.borrow().clone().ok_or("agy_unavailable")?;
-        let version=crate::agy::query_executable(&executable, &["--version"], Instant::now() + crate::agy::CATALOG_TIMEOUT)?;
-        if !model_control::agy_supported_version(&version) {return Err("agy_unsupported_version");}
         self.composer_clear(identity,"agy")?;
         let before=self.client.read_visible(&identity.pane_id)?;
         if model_control::agy_composer_state(&before, &catalog)!=model_control::Composer::Empty {return Err("composer_not_empty");}
@@ -2760,7 +2756,7 @@ impl Service {
                         json!({
                             "identity":self.watch.as_ref().and_then(|w|w.identity.clone()),"generation":self.generation,"agent":"pi",
                             "model":s["model"],"effort":s["model"]["effort"],"models":s["models"],
-                            "efforts":efforts,"catalog":{"source":"extension","fresh":true,"complete":true,"cliVersion":"1.4.0"}
+                            "efforts":efforts,"catalog":{"source":"extension","fresh":true,"complete":true,"cliVersion":s["version"]}
                         })
                     }).ok_or("pi_extension_unavailable")
                 } else { self.model_status() };

@@ -74,11 +74,6 @@ pub struct AgyModel {
     pub label: String,
 }
 
-/// Only this installed version has verified live slash-command semantics.
-pub fn agy_supported_version(version: &str) -> bool {
-    version.trim() == "1.4.7"
-}
-
 /// The supported catalog comes from `agy models`, never a static model table.
 /// Ambiguous or malformed catalog rows fail closed.
 pub fn parse_agy_models(text: &str) -> Vec<AgyModel> {
@@ -1318,8 +1313,6 @@ mod tests {
         assert_eq!(models[0].label, "Gemini 3.8 Flash (Low)");
         assert!(parse_agy_models("bad id\tBad\n").is_empty());
         assert!(parse_agy_models("a\tA\na\tOther\n").is_empty());
-        assert!(agy_supported_version("1.4.7\n"));
-        assert!(!agy_supported_version("1.4.8"));
         assert!(known_effort("agy", "medium"));
         assert!(!known_effort("agy", "max"));
     }

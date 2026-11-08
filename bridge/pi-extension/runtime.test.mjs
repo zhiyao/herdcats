@@ -13,7 +13,7 @@ function fixture() {
   const ui = { getEditorText:()=>'', notify:()=>{}, select:(title,options,opts)=>new Promise(resolve=>{ original.select=resolve; opts?.signal?.addEventListener('abort',()=>resolve(undefined)); }), confirm:(title,message,opts)=>new Promise(resolve=>{original.confirm=resolve; opts?.signal?.addEventListener('abort',()=>resolve(false));}), input:(title,value,opts)=>new Promise(resolve=>{ original.input=resolve; opts?.signal?.addEventListener('abort',()=>resolve(undefined));}), editor:()=>new Promise(resolve=>{original.editor=resolve;}), custom:()=>new Promise(resolve=>{original.custom=resolve;}) };
   const ctx = {mode:'tui',hasUI:true,ui,sessionManager:{getSessionId:()=>sid,getSessionFile:()=>'/fixture/session.jsonl',getBranch:()=>[]},modelRegistry:{getAvailable:()=>[model,{provider:'other',id:'model',name:'Other'}]},get model(){return model;},isIdle:()=>true,isProjectTrusted:()=>true,hasPendingMessages:()=>false,abort:()=>{aborted++;}};
   const pi = {on:(event,fn)=>hooks.set(event,fn),sendUserMessage:text=>sent.push(text),getThinkingLevel:()=>effort,setThinkingLevel:value=>{effort=value;},setModel:async value=>{model=value; return true;}};
-  const integration=createIntegration(pi,{getSupportedThinkingLevels:()=>['off','low','high']});
+  const integration=createIntegration(pi,{version:'1.5.0',getSupportedThinkingLevels:()=>['off','low','high']});
   return {integration,ctx,pi,hooks,sent,original,get aborted(){return aborted;}};
 }
 async function started(t) { const f=fixture(); const root=await mkdtemp(join(testTmp,'hpi-')); t.after(()=>rm(root,{recursive:true,force:true})); await f.integration.start(f.ctx,{directory:join(root,'control')}); t.after(()=>f.integration.stop()); return f; }
@@ -107,4 +107,24 @@ test('ambiguous, null-byte and excessive selection schemas remain Terminal-only'
   const dialog = f.ctx.ui.select('Choose', options);
   assert.deepEqual((await f.integration.request('state')).pending.options, options);
   f.original.select(undefined); await dialog;
+});
+
+test('state reports the actual Pi version and integration protocol', async t => {
+  const f = await started(t);
+  const state = await f.integration.request('state');
+  assert.equal(state.protocol, 1);
+  assert.equal(state.version, '1.5.0');
+});
+
+test('missing required Pi APIs refuse startup before publishing a control socket', async t => {
+  for (const remove of [f => delete f.ctx.isProjectTrusted, f => delete f.ctx.ui.confirm, f => delete f.pi.setModel]) {
+    const f = fixture();
+    remove(f);
+    const root = await mkdtemp(join(testTmp, 'hpi-api-'));
+    t.after(() => rm(root, {recursive:true, force:true}));
+    t.after(() => f.integration.stop());
+    await assert.rejects(f.integration.start(f.ctx, {directory:join(root, 'control')}), /pi_api_unavailable/);
+    assert.equal(f.integration.socketPath, undefined);
+    assert.deepEqual(f.sent, []);
+  }
 });

@@ -97,7 +97,7 @@ struct AgentBridgeSetupView: View {
                         Text("Tapping Install downloads the pinned Herdcats Bridge release and verifies its checksum before running the installer. No sudo, background service, or agent hooks are required.")
                             .font(.jost(.subheadline)).foregroundStyle(Theme.textMuted)
                         if agent == "pi" {
-                            Text("Pi also requires the Herdcats Pi extension in this pane’s Pi 1.4.0 TUI. The bridge installer does not install or enable the extension.")
+                            Text("Pi also requires the Herdcats Pi extension in this pane’s Pi TUI. The bridge installer does not install or enable the extension.")
                                 .font(.jost(.subheadline)).foregroundStyle(Theme.textMuted)
                             Link("Pi extension setup", destination: URL(string: "https://github.com/zhiyao/herdcats/releases/tag/herdcats-bridge-v\(pinnedVersion)")!)
                                 .font(.jost(.subheadline))
