@@ -483,7 +483,7 @@ extension AgentTimelineView {
         if let canonical = TimelineAgentAvailability.canonical(agent), capabilityErrors[canonical] == code,
            HostHelperProbe.isAtLeastMinimum(installedVersion) {
             if canonical == "pi" {
-                return "Herdcats Bridge could not open this host’s Pi session directory. Check its permissions, start Pi 1.4.0 and load the Herdcats Pi extension in this pane, then check again. You can continue in Terminal."
+                return "Herdcats Bridge could not open this host’s Pi session directory. Check its permissions, start Pi and load the Herdcats Pi extension in this pane, then check again. You can continue in Terminal."
             }
             let name = TimelineAgentAvailability.displayName(for: canonical)
             return "Herdcats Bridge could not open this host’s \(name) session directory. Start \(name) on this SSH computer and check the directory permissions, then check again. You can continue in Terminal."
@@ -491,7 +491,7 @@ extension AgentTimelineView {
         if agent == "pi" {
             if ["helper_missing", "helper_update_required", "unsupported_agent", "pi_bridge_required"].contains(code) {
                 if canPinnedInstallerSupport(agent: agent, supportedAgents: supportedAgents) {
-                    return "Install or upgrade Herdcats Bridge to \(pinnedVersion), then load the Herdcats Pi extension in this pane’s Pi 1.4.0 TUI and check again. The bridge installer does not install the Pi extension. You can continue in Terminal."
+                    return "Install or upgrade Herdcats Bridge to \(pinnedVersion), then load the Herdcats Pi extension in this pane’s Pi TUI and check again. The bridge installer does not install the Pi extension. You can continue in Terminal."
                 }
                 return "Pi conversations require a source build of Herdcats Bridge and the Herdcats Pi extension. The published \(pinnedVersion) installer supports Claude and Codex. Set up Pi on this SSH computer, then check again. You can continue in Terminal."
             }
@@ -502,13 +502,13 @@ extension AgentTimelineView {
                 return "Herdcats could not verify this pane's Pi session file. Check the Pi session and bridge agent directory, then check again."
             }
             if code == "pi_extension_unavailable" {
-                return "Install the Herdcats extension on this SSH host, then load it in the Pi 1.4.0 TUI for this pane. Copy `bridge/pi-extension/index.ts` and `runtime.mjs` to `~/.pi/agent/extensions/herdcats/` (or `$PI_CODING_AGENT_DIR/extensions/herdcats/`), then run `/reload` in this same TUI and tap Check again."
+                return "Install the Herdcats extension on this SSH host, then load it in the Pi TUI for this pane. Copy `bridge/pi-extension/index.ts` and `runtime.mjs` to `~/.pi/agent/extensions/herdcats/` (or `$PI_CODING_AGENT_DIR/extensions/herdcats/`), then run `/reload` in this same TUI and tap Check again."
             }
             if code == "invalid_pi_response" {
                 return "The Herdcats extension returned an unrecognized response. Check that this Pi TUI has the extension version from the same source checkout, then run `/reload` and check again."
             }
             if code.hasPrefix("pi_") {
-                return "Load the Herdcats extension in the existing Pi TUI, using Pi 1.4.0, then check again. No second Pi process is started. Use Terminal to continue."
+                return "Load the Herdcats extension in the existing Pi TUI, then check again. No second Pi process is started. Use Terminal to continue."
             }
         }
         if TimelineAgentAvailability.canonical(agent) == "antigravity_cli",

@@ -660,6 +660,10 @@ pub(crate) enum CodexRecordAction<'a> {
         id: &'a str,
     },
     Skip,
+    ToolDefinitions {
+        id: Option<&'a str>,
+        definitions: String,
+    },
     Message {
         id: &'a str,
         role: &'a str,
@@ -763,6 +767,11 @@ pub(crate) fn classify_codex_record(record: &Value) -> Result<CodexRecordAction<
             let item_type = payload["type"].as_str().unwrap_or("");
             match item_type {
                 "compaction" => Ok(CodexRecordAction::Skip),
+                "additional_tools" => Ok(CodexRecordAction::ToolDefinitions {
+                    id: optional_entry_key_part(&payload["id"])?,
+                    definitions: serde_json::to_string_pretty(&payload["tools"])
+                        .map_err(|_| "invalid_transcript")?,
+                }),
                 "reasoning" => {
                     if !has_visible_summary_text(&payload["summary"]) {
                         Ok(CodexRecordAction::Skip)
@@ -884,6 +893,13 @@ fn error_entry_id(id: Option<&str>, offset: usize) -> Result<String> {
     }
 }
 
+fn tool_definitions_entry_id(id: Option<&str>, offset: usize) -> Result<String> {
+    match id {
+        Some(id) => entry_id("tool_definitions", id),
+        None => entry_id("tool_definitions", &offset.to_string()),
+    }
+}
+
 impl Transcript {
     pub fn apply_codex(&mut self, record: &Value, thread_id: &str, offset: usize) -> Result<()> {
         let action = classify_codex_record(record)?;
@@ -895,6 +911,21 @@ impl Transcript {
                 Ok(())
             }
             CodexRecordAction::Skip => Ok(()),
+            CodexRecordAction::ToolDefinitions { id, definitions } => {
+                let (text, truncated) = bounded(&definitions);
+                self.upsert(Entry {
+                    id: tool_definitions_entry_id(id, offset)?,
+                    kind: "tool".into(),
+                    text,
+                    role: None,
+                    tool_name: Some("Tool definitions".into()),
+                    status: Some("completed".into()),
+                    details: None,
+                    truncated,
+                    content_ref: None,
+                    record_refs: Vec::new(),
+                })
+            }
             CodexRecordAction::Message { id, role, text } => {
                 if !text.is_empty() {
                     let (text, truncated) = bounded(&text);
@@ -1085,6 +1116,11 @@ impl Transcript {
         let reference = format!("source:{offset}:{}", part.len());
         match action {
             CodexRecordAction::SessionMeta { .. } | CodexRecordAction::Skip => Ok(()),
+            CodexRecordAction::ToolDefinitions { id, .. } => {
+                let key = tool_definitions_entry_id(id, offset)?;
+                self.attach_record(&key, &reference);
+                Ok(())
+            }
             CodexRecordAction::Message { id, .. } => {
                 let key = entry_id("message", id)?;
                 if !self.attach_record(&key, &reference) {

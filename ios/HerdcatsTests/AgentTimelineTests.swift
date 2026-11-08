@@ -404,6 +404,17 @@ struct TimelineActivityTests {
         #expect(TimelineActivitySummary.purpose(entry("b", name: "Read", details: #"{"file_path":"/project/README.md"}"#)) == "Read README.md")
         #expect(TimelineActivitySummary.purpose(entry("c", details: "incomplete JSON")) == "Run a shell command")
     }
+    @Test func toolDefinitionsJoinActivityWithoutCountingAsAnExecutedTool() {
+        let definitions = entry("definitions", name: "Tool definitions")
+        #expect(TimelineActivitySummary.title([definitions]) == "Loaded tool definitions")
+        #expect(TimelineActivitySummary.title([definitions, entry("read", name: "Read")])
+                == "Used a tool · Loaded tool definitions")
+        #expect(TimelineActivitySummary.purpose(definitions) == "Loaded tool definitions")
+        #expect(!TimelineActivitySummary.isRunning(definitions))
+        let grouped = TimelineConversationItem.group([definitions, entry("read", name: "Read")])
+        #expect(grouped.count == 1)
+        #expect(grouped[0].isActivity)
+    }
 }
 
 @Suite("Recorded code changes")
@@ -1009,7 +1020,7 @@ struct ModelCatalogProvenanceTests {
         let guidance = view.explanation("pi_extension_unavailable")
         #expect(guidance.contains("~/.pi/agent/extensions/herdcats"))
         #expect(guidance.contains("/reload"))
-        #expect(guidance.contains("Pi 1.4.0"))
+        #expect(guidance.contains("Pi TUI"))
         let invalidResponse = view.explanation("invalid_pi_response")
         #expect(invalidResponse.contains("unrecognized response"))
         #expect(!invalidResponse.contains("~/.pi/agent/extensions/herdcats"))

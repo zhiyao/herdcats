@@ -63,17 +63,17 @@ fn executable_resolution_supports_restricted_path_without_global_environment_cha
     );
 }
 #[test]
-fn catalog_discovery_reports_version_empty_malformed_and_missing_errors() {
+fn catalog_discovery_validates_data_without_a_version_query() {
     let _guard = CLI_FIXTURE_LOCK.lock().unwrap();
     let temp = Temp::new();
     for (body, error) in [
-        ("printf '1.4.8\\n'", "agy_unsupported_version"),
+        ("printf '1.5.0\\n'", "agy_catalog_invalid"),
         (
-            "if [ \"$1\" = --version ]; then printf '1.4.7\\n'; fi",
+            "if [ \"$1\" = --version ]; then printf '1.5.0\\n'; fi",
             "agy_catalog_empty",
         ),
         (
-            "if [ \"$1\" = --version ]; then printf '1.4.7\\n'; else printf 'broken catalog\\n'; fi",
+            "if [ \"$1\" = --version ]; then printf '1.5.0\\n'; else printf 'broken catalog\\n'; fi",
             "agy_catalog_invalid",
         ),
     ] {
@@ -92,17 +92,17 @@ fn catalog_discovery_reports_version_empty_malformed_and_missing_errors() {
         .unwrap_err(),
         "agy_unavailable"
     );
-    let executable=temp.cli("if [ \"$1\" = --version ]; then printf '1.4.7\\n'; else printf 'gemini-3.8-flash-low\\tGemini 3.8 Flash (Low)\\n'; fi");
+    let executable=temp.cli("if [ \"$1\" = --version ]; then printf '1.5.0\\n'; else printf 'gemini-3.8-flash-low\\tGemini 3.8 Flash (Low)\\n'; fi");
     assert_eq!(
         agy::discover_catalog(&executable, Instant::now() + Duration::from_secs(1)).unwrap()[0].id,
         "gemini-3.8-flash-low"
     );
 }
 #[test]
-fn version_and_models_share_one_deadline_and_output_is_bounded() {
+fn model_discovery_deadline_and_output_are_bounded() {
     let _guard = CLI_FIXTURE_LOCK.lock().unwrap();
     let temp = Temp::new();
-    let executable=temp.cli("/bin/sleep 0.09\nif [ \"$1\" = --version ]; then printf '1.4.7\\n'; else printf 'gemini-3.8-flash-low\\tGemini 3.8 Flash (Low)\\n'; fi");
+    let executable=temp.cli("/bin/sleep 0.3\nif [ \"$1\" = --version ]; then printf '1.5.0\\n'; else printf 'gemini-3.8-flash-low\\tGemini 3.8 Flash (Low)\\n'; fi");
     let start = Instant::now();
     assert_eq!(
         agy::discover_catalog(&executable, start + Duration::from_millis(140)).unwrap_err(),
