@@ -1,6 +1,6 @@
 # Pi live conversation extension
 
-This opt-in extension runs inside the existing Pi TUI. It does not launch Pi, attach RPC to a TUI, resume a session, change permission policies, or install a bridge binary. The implementation is gated to **@earendil-works/pi-coding-agent 1.4.0**, verified against that installed package's public extension APIs and a disposable TUI probe.
+This opt-in extension runs inside the existing Pi TUI. It does not launch Pi, attach RPC to a TUI, resume a session, change permission policies, or install a bridge binary. The implementation validates the required public extension APIs at startup rather than restricting the Pi CLI version. The bridge requires Herdcats extension protocol `1` and validates session identity and response data. Pi 1.4.0 was the original live-tested release; newer versions are accepted when the same contracts hold.
 
 Start a new Pi session with this source extension explicitly enabled:
 
@@ -38,7 +38,7 @@ Frames are newline-delimited JSON capped at 1 MiB. State retains at most the mos
 
 Request: `{ "method": "state", "params": {} }`. Response: `{ "result": ... }` or `{ "error": { "code": "stale" } }`.
 
-State returns `protocol: 1`, verified `version`, native `session_id` and `session_file`, `instance_id`, `revision`, `status`, `model`, `models`, native `entries`, `pending`, and explicit `capabilities`. Models use `provider/id` identities; each catalog item includes `efforts: [{id,label}]`.
+State returns `protocol: 1`, actual Pi CLI `version`, native `session_id` and `session_file`, `instance_id`, `revision`, `status`, `model`, `models`, native `entries`, `pending`, and explicit `capabilities`. Models use `provider/id` identities; each catalog item includes `efforts: [{id,label}]`.
 
 Mutations require `params.expect: {session_id,instance_id,revision}`:
 
@@ -59,7 +59,7 @@ node --test bridge/pi-extension/runtime.test.mjs
 
 The suite uses disposable synthetic contexts and Unix sockets: identity/revision guards, exact permission scopes, terminal abort, provider disambiguation, thinking validation, unknown custom/editor fallback, private endpoint modes, duplicate-session ownership, local draft invalidation, streaming, bounded frames, and project trust. Socket tests require an environment that permits local Unix socket binding.
 
-A reproducible real Pi 1.4.0 TUI probe uses isolated configuration, a synthetic command, and an entirely local synthetic model provider:
+A reproducible real Pi TUI probe uses isolated configuration, a synthetic command, and an entirely local synthetic model provider:
 
 ```sh
 python3 bridge/pi-extension/tui-probe.py \

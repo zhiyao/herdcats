@@ -1009,7 +1009,7 @@ struct ModelCatalogProvenanceTests {
         let guidance = view.explanation("pi_extension_unavailable")
         #expect(guidance.contains("~/.pi/agent/extensions/herdcats"))
         #expect(guidance.contains("/reload"))
-        #expect(guidance.contains("Pi 1.4.0"))
+        #expect(guidance.contains("Pi TUI"))
         let invalidResponse = view.explanation("invalid_pi_response")
         #expect(invalidResponse.contains("unrecognized response"))
         #expect(!invalidResponse.contains("~/.pi/agent/extensions/herdcats"))
