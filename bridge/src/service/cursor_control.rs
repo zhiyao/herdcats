@@ -144,18 +144,14 @@ const STEP_WAIT: Duration = Duration::from_millis(1500);
 const POLL: Duration = Duration::from_millis(40);
 
 impl Service {
-    /// The running session's version, read from its own process, must be the
-    /// verified build. The symlink and `--version` can already name a newer
-    /// build after an auto-update while an older session keeps running.
+    /// Read the running build for catalog cache identity, not compatibility.
+    /// The installed executable can already point to a different build.
     pub(super) fn cursor_version(&self, identity: &Identity) -> Result<String> {
         let lines = self
             .client
             .process_command_lines(&identity.pane_id)
             .map_err(|_| "cursor_version_unverified")?;
         let version = cm::session_version(lines.iter().map(String::as_str))?;
-        if version != cm::TESTED_VERSION {
-            return Err("cursor_unsupported_version");
-        }
         Ok(version)
     }
 

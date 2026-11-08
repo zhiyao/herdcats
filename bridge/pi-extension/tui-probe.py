@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Disposable Pi 1.4.0 TUI integration probe; synthetic local provider only.
+"""Disposable Pi TUI integration probe; synthetic local provider only.
 
 Does not inspect existing sessions, use provider credentials, or control active panes.
 """
@@ -10,7 +10,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--pi-package', default=str(Path.home()/'.bun/install/global/node_modules/@earendil-works/pi-coding-agent'))
 args = parser.parse_args()
 pi_package = Path(args.pi_package).resolve()
-assert json.loads((pi_package/'package.json').read_text())['version'] == '1.4.0', 'Pi 1.4.0 required'
+pi_version = json.loads((pi_package/'package.json').read_text())['version']
 root=tempfile.mkdtemp(prefix='hpt-',dir='/private/tmp' if Path('/private/tmp').is_dir() else '/tmp')
 repo=str(Path(__file__).resolve().parents[2])
 probe=root+'/probe.ts'
@@ -50,7 +50,7 @@ try:
   if p.poll()!=None:raise RuntimeError('Pi exited '+str(p.returncode)+' '+output.decode(errors='replace')[-4000:])
   time.sleep(.1)
  else:raise RuntimeError('No socket: '+output.decode(errors='replace')[-4000:])
- state=req(paths[0],'state');print('STATE',json.dumps({key:state[key] for key in ['protocol','version','session_id','instance_id','status','capabilities']}))
+ state=req(paths[0],'state');assert state['protocol'] == 1 and state['version'] == pi_version;print('STATE',json.dumps({key:state[key] for key in ['protocol','version','session_id','instance_id','status','capabilities']}))
  os.write(master,b'/hc-probe\r')
  for i in range(60):
   drain();state=req(paths[0],'state')

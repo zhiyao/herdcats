@@ -153,7 +153,7 @@ new published assets are verified.
    report. Smoke-test installation in a temporary directory on the target host.
    The Pi archive is platform-independent and comes from the arm64 Mac job;
    verify its checksum, extract it into a chosen directory, and explicitly enable
-   its `herdcats/index.ts` inside Pi 1.4.0. The binary installer does not enable it.
+   its `herdcats/index.ts` inside the existing Pi TUI. The binary installer does not enable it.
 5. After publication and verification, prepare a separate iOS pin update with the
    actual released installer SHA-256, version and supported-agent list together.
    Record platform/checksum/CI evidence under `compatibility/release/`; do not
@@ -161,6 +161,7 @@ new published assets are verified.
 
 The release workflow builds macOS arm64/x86_64 and Linux arm64/x86_64 natively.
 macOS binaries are unsigned/unnotarized; Linux requires glibc 2.35 or later.
-Cursor model controls are verified only on build `2026.10.22-27dcf5f`; Pi native
-controls require the opt-in extension and verified Pi `1.4.0`. Terminal fallback
+CLI releases are not exact-version gated. Cursor and Agy controls validate live
+catalogs and terminal screens; Pi requires the opt-in extension with compatible
+public APIs and Herdcats extension protocol `1`. Terminal fallback
 and each integration's existing guards still apply.
