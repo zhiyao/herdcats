@@ -25,7 +25,7 @@ async function privateDirectory(path) {
   if (stat.uid !== process.getuid?.()) fail('unsafe_control_directory');
   await chmod(path, 0o700);
 }
-export function createIntegration(pi, {getSupportedThinkingLevels}) {
+export function createIntegration(pi, {getSupportedThinkingLevels, version}) {
   let ctx, server, socketPath, instance = randomUUID(), revision = 1, pending = [], live, liveID, prompting = false, changing = false, fingerprint = '', restores = [], closed = false;
   let serialized = Promise.resolve();
   const bump = () => { revision++; };
@@ -44,7 +44,7 @@ export function createIntegration(pi, {getSupportedThinkingLevels}) {
     fingerprint = authoritative;
     const entries = branch.slice(-MAX_ENTRIES);
     if (live) entries.push({type:'message',id:liveID, message:live});
-    return {protocol:1,version:'1.4.0',session_id:current(),session_file:ctx.sessionManager.getSessionFile() ?? null,instance_id:instance,revision,status:pending.length ? 'blocked' : (ctx.isIdle() && !changing && !prompting ? 'idle' : 'working'),model:ctx.model ? {id:key(ctx.model),label:`${ctx.model.name || ctx.model.id} (${ctx.model.provider})`,effort:pi.getThinkingLevel()} : null,models:models.map(({native,...model})=>model),entries,pending:pending.at(-1)?.public ?? null,capabilities:{prompts:true,cancel:true,model_control:true,dialogs:true,dialog_kinds:['confirm','select','input'],editor:false,custom:false}};
+    return {protocol:1,version,session_id:current(),session_file:ctx.sessionManager.getSessionFile() ?? null,instance_id:instance,revision,status:pending.length ? 'blocked' : (ctx.isIdle() && !changing && !prompting ? 'idle' : 'working'),model:ctx.model ? {id:key(ctx.model),label:`${ctx.model.name || ctx.model.id} (${ctx.model.provider})`,effort:pi.getThinkingLevel()} : null,models:models.map(({native,...model})=>model),entries,pending:pending.at(-1)?.public ?? null,capabilities:{prompts:true,cancel:true,model_control:true,dialogs:true,dialog_kinds:['confirm','select','input'],editor:false,custom:false}};
   }
   function check(expect) {
     const now=state();
@@ -139,6 +139,18 @@ export function createIntegration(pi, {getSupportedThinkingLevels}) {
   async function start(context,{directory=join(homedir(),'.pi','agent','herdcats')}={}) {
     if(server)await stop();ctx=context;closed=false;instance=randomUUID();revision=1;fingerprint='';live=undefined;prompting=false;pending=[];
     if(ctx.mode!=='tui'||!ctx.hasUI)fail('pi_tui_required');
+    // Validate the public API contract, not the Pi release number.
+    for (const [object, methods] of [
+      [ctx, ['isIdle','isProjectTrusted','hasPendingMessages','abort']],
+      [ctx.sessionManager, ['getSessionId','getSessionFile','getBranch']],
+      [ctx.modelRegistry, ['getAvailable']],
+      [ctx.ui, ['getEditorText','confirm','select','input','custom','editor']],
+      [pi, ['sendUserMessage','getThinkingLevel','setModel','setThinkingLevel']],
+      [{getSupportedThinkingLevels}, ['getSupportedThinkingLevels']],
+    ]) {
+      if (methods.some(method => typeof object?.[method] !== 'function')) fail('pi_api_unavailable');
+    }
+    state(); // Check readable session/model data before exposing controls.
     const id=current();if(!UUID.test(id))fail('invalid_session_reference');
     await privateDirectory(directory);const candidate=join(directory,`${id}.sock`);
     // Never unlink another live or stale process's endpoint automatically.

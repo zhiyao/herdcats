@@ -1225,7 +1225,7 @@ struct PublishedAgentBridgeSetupTests {
     @Test func piSetupExplainsThatExtensionIsSeparateFromBridgeInstaller() {
         let explanation = AgentTimelineView.explanation("pi_bridge_required", agent: "pi")
         #expect(explanation.contains("0.5.0"))
-        #expect(explanation.contains("Pi 1.4.0"))
+        #expect(explanation.contains("Pi TUI"))
         #expect(explanation.contains("does not install the Pi extension"))
     }
     @Test func currentBridgeWithUnavailableAgentDataOffersRetryInsteadOfUpgrade() {
