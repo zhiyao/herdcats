@@ -160,6 +160,25 @@ struct AppRootView: View {
     @Environment(ActiveMachine.self) private var active
     private var appModel: AppModel { active.model }
     @State private var hasHandedOff = false
+    @Environment(\.scenePhase) private var scenePhase
+
+    /// Identifies one probe of the active host's installed bridge.
+    private struct BridgeProbeKey: Equatable {
+        let host: ConnectionIdentity?
+        let generation: ConnectionGeneration?
+        let isConnected: Bool
+        let isForeground: Bool
+        let revision: Int
+    }
+    private var bridgeProbeKey: BridgeProbeKey {
+        BridgeProbeKey(
+            host: appModel.connectionIdentity,
+            generation: appModel.ownership.transportGeneration,
+            isConnected: { if case .connected = appModel.phase { return true } else { return false } }(),
+            isForeground: scenePhase == .active,
+            revision: active.bridgeUpdates.observationRevision
+        )
+    }
 
     private var showsLaunchCat: Bool {
         LaunchCatOverlay.shouldShow(
@@ -198,6 +217,25 @@ struct AppRootView: View {
                 hasHandedOff = true
             case .connecting, .disconnected:
                 break
+            }
+        }
+        // Launch: ask GitHub for the newest bridge release. Never blocks startup
+        // and never touches an SSH machine.
+        .task { await active.bridgeUpdates.refresh(force: true) }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await active.bridgeUpdates.refresh() } }
+        }
+        // After the active SSH connection is up, read the installed bridge
+        // version once per (host, connection generation) with the read-only
+        // probe. Only the active host; no saved-host fanout.
+        .task(id: bridgeProbeKey) {
+            let key = bridgeProbeKey
+            guard key.isConnected, key.isForeground, let host = key.host, let generation = key.generation,
+                  host.backend == .tui, !appModel.isCoreMode
+            else { return }
+            let connection = appModel.connection
+            await active.bridgeUpdates.ensureObservation(host: host, generation: generation) {
+                try await connection.probeInstalledBridgeVersion(target: host, owned: generation)
             }
         }
         .task {

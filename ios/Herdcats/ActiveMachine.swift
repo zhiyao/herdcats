@@ -20,6 +20,8 @@ final class ActiveMachine {
         case switched, alreadyActive, needsCredentials, failed, superseded
     }
 
+    /// App-lifetime bridge release checker; deliberately outlives machine switches.
+    let bridgeUpdates: BridgeUpdateChecker
     private let makeModel: @MainActor () -> AppModel
     private let dial: @MainActor (AppModel, ConnectionConfig) async -> Void
     private var target: (entry: RecentConnection, config: ConnectionConfig, recordConnection: Bool)?
@@ -28,10 +30,12 @@ final class ActiveMachine {
 
     init(
         model: AppModel? = nil,
+        bridgeUpdates: BridgeUpdateChecker? = nil,
         makeModel: @escaping @MainActor () -> AppModel = { AppModel(autoConnectOnLaunch: false) },
         dial: @escaping @MainActor (AppModel, ConnectionConfig) async -> Void = { await $0.connect(config: $1) }
     ) {
         self.model = model ?? AppModel()
+        self.bridgeUpdates = bridgeUpdates ?? BridgeUpdateChecker()
         self.makeModel = makeModel
         self.dial = dial
     }
