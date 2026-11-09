@@ -1544,15 +1544,19 @@ fn resolver_fails_closed_when_first_line_exceeds_max_record_without_newline() {
 }
 
 #[test]
-fn resolver_fails_closed_when_file_exceeds_max_source() {
+fn resolver_opens_a_rollout_beyond_the_whole_file_limit() {
     let temp = Temp::new();
     let rollout_dir = temp.0.join("2026/10/13");
     fs::create_dir_all(&rollout_dir).unwrap();
     let rollout_file = rollout_dir.join(format!("rollout-2026-10-13T00-00-00-{THREAD_ID}.jsonl"));
 
-    // Create sparse file larger than MAX_SOURCE (64 MiB)
-    let file = fs::File::create(&rollout_file).unwrap();
-    file.set_len(MAX_SOURCE + 1024).unwrap();
+    // Codex rollouts are read tail-first, so size alone never refuses one.
+    let meta = format!(
+        "{}\n",
+        json!({"type":"session_meta","payload":{"id":THREAD_ID,"cwd":"/fixture/work"}})
+    );
+    fs::write(&rollout_file, meta).unwrap();
+    fs::OpenOptions::new().write(true).open(&rollout_file).unwrap().set_len(MAX_SOURCE + 1024).unwrap();
 
     let resolver = CodexResolver::new(&temp.0).unwrap();
     let pane = make_pane(
@@ -1563,10 +1567,7 @@ fn resolver_fails_closed_when_file_exceeds_max_source() {
         "id",
         "/fixture/work",
     );
-    assert_eq!(
-        resolver.resolve(THREAD_ID, &pane).unwrap_err(),
-        "source_too_large"
-    );
+    assert!(resolver.resolve(THREAD_ID, &pane).is_ok());
 }
 
 #[test]
