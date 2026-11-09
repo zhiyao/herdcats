@@ -903,8 +903,9 @@ impl Service {
                         let mut batch = Vec::new();
                         for entry in changed {
                             let encoded = serde_json::to_vec(&entry)?.len() + 1;
+                            // The phone rejects more than 1000 rows per update.
                             if (!batch.is_empty() || !evictions.is_empty())
-                                && size + encoded > MAX_RECORD / 2
+                                && (size + encoded > MAX_RECORD / 2 || batch.len() + evictions.len() >= 1000)
                             {
                                 self.event(out, "timeline.updated", json!({"identity":identity,"generation":self.generation,"entries":batch,"evicted_ids":evictions,"agent_status":status,"unknown_records":data.unknown_records,"dropped_entries":data.dropped_entries,"delayed":false}))?;
                                 batch.clear();
@@ -3429,6 +3430,40 @@ mod tests {
             before = result["before"].as_str().unwrap().to_owned();
         };
         assert_eq!(tool["status"], "completed");
+        cleanup(&service, root);
+    }
+    #[test]
+    fn updates_revising_many_older_entries_stay_within_1000_rows() {
+        let (mut service, root, identity) = fixture();
+        let path = root.join(format!("projects/one/{OTHER}.jsonl"));
+        let tools = crate::claude::MAX_ENTRIES + 1;
+        let calls: Vec<Value> = (0..tools).map(|i| json!({"type":"tool_use","id":format!("t{i}"),"name":"Bash","input":{}})).collect();
+        let mut text = format!("{}\n", json!({"type":"assistant","uuid":"a0","sessionId":OTHER,"message":{"role":"assistant","content":calls}}));
+        text += &user_lines(OTHER, 0..crate::claude::MAX_ENTRIES);
+        fs::write(&path, &text).unwrap();
+        *identity.lock().unwrap() = OTHER.to_owned();
+        let mut output = Vec::new();
+        service.poll(&mut output).unwrap();
+        // Page back to the start so the phone holds every tool.
+        let generation = service.generation;
+        let mut before = format!("message:m{}", crate::claude::MAX_ENTRIES - 1);
+        loop {
+            let reply = history_reply(&mut service, generation, &before);
+            if reply["result"]["has_more"] != true { break; }
+            before = reply["result"]["before"].as_str().unwrap().to_owned();
+        }
+        let results: Vec<Value> = (0..tools).map(|i| json!({"type":"tool_result","tool_use_id":format!("t{i}"),"content":"ok"})).collect();
+        text += &format!("{}\n", json!({"type":"user","uuid":"r0","sessionId":OTHER,"message":{"role":"user","content":results}}));
+        fs::write(&path, &text).unwrap();
+        let mut output = Vec::new();
+        service.poll(&mut output).unwrap();
+        let mut completed = 0;
+        for update in frames(output).iter().filter(|f| f["event"] == "timeline.updated") {
+            let rows = update["data"]["entries"].as_array().unwrap();
+            assert!(rows.len() <= 1000, "{} rows in one update", rows.len());
+            completed += rows.iter().filter(|e| e["kind"] == "tool" && e["status"] == "completed").count();
+        }
+        assert_eq!(completed, tools);
         cleanup(&service, root);
     }
     #[test]
