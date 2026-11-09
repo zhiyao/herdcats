@@ -1,6 +1,6 @@
 {
   "component": "herdcats-bridge",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "protocol": 1,
   "herdr_protocol": 22,
   "supported_agent": "Claude, Codex, Agy, Pi and Cursor with exact session references",
@@ -9,7 +9,7 @@
     "Rust 1.85 or later for a source build",
     "Python 3.8 or later for installer",
     "Herdr 0.9.3 protocol 22",
-    "Unix host with the current agent session directory readable by the SSH user; Pi controls also require the opt-in extension in Pi 1.4.0"
+    "Unix host with the current agent session directory readable by the SSH user; Pi controls also require the opt-in extension with compatible public APIs and Herdcats extension protocol 1"
   ],
   "steps": [
     {
@@ -84,7 +84,7 @@
     "record_content": "App requires negotiated record_content support; older helpers reopen setup and require explicit replacement. Images and unfamiliar records expose complete source bytes."
   },
   "source_support": {
-    "version": "0.5.0 published and pinned by iOS",
+    "version": "0.5.1 release preparation; published iOS installer remains pinned to 0.5.0",
     "agents": [
       "claude",
       "codex",
@@ -92,11 +92,11 @@
       "pi",
       "cursor"
     ],
-    "agy": "Supported by the published 0.5.0 installer. Agy model controls and interactions retain native-session and verified-build guards.",
+    "agy": "Model controls validate the live catalog, native session and terminal screens without an exact CLI version gate.",
     "docs": "ios/docs/agy-conversations.md",
-    "cursor": "Supported by the published 0.5.0 installer. Model control is verified on Cursor build 2026.10.22-27dcf5f only.",
+    "cursor": "Model controls validate live picker and composer screens without an exact CLI version gate; the running build identifies the catalog cache.",
     "docs_cursor": "ios/docs/cursor-conversations.md",
-    "pi": "Requires the opt-in extension in herdcats-pi-extension.tar.gz (or bridge/pi-extension from source), enabled inside Pi 1.4.0. Binary installation alone does not enable Pi controls.",
+    "pi": "Requires the opt-in extension in herdcats-pi-extension.tar.gz (or bridge/pi-extension from source), enabled inside the existing Pi TUI. Required public APIs and Herdcats extension protocol 1 are validated; Pi CLI version is diagnostic only. Binary installation alone does not update or enable the Pi extension.",
     "docs_pi": "ios/docs/pi-conversations.md"
   }
 }
