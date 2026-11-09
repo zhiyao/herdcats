@@ -171,6 +171,29 @@ struct AgentBridgeFramingTests {
         try s.mergeHistory(delayed, owner: owner, generation: 1)
         #expect(s.entries.map(\.text) == ["b", "c"])
     }
+    @Test func historyPagesScrollPastOneThousandEntriesToTheSessionStart() throws {
+        let s = store()
+        try s.consume(frame("timeline.snapshot", entries: (1100..<1200).map { "m\($0)" }, hasMore: true), owner: owner)
+        var next = 1100
+        while next > 0 {
+            let start = max(0, next - 100)
+            let page = try frame("timeline.snapshot", entries: (start..<next).map { "m\($0)" }, hasMore: start > 0).data!
+            try s.mergeHistory(page, owner: owner, generation: 1)
+            #expect(s.hasMore == (start > 0))
+            next = start
+        }
+        #expect(s.entries.count == 1200)
+        #expect(s.entries.first?.text == "m0")
+        #expect(s.entries.last?.text == "m1199")
+    }
+    @Test func liveUpdatesKeepEntriesPastOneThousand() throws {
+        let s = store()
+        try s.consume(frame("timeline.snapshot", entries: (0..<1000).map { "m\($0)" }), owner: owner)
+        try s.consume(frame("timeline.updated", seq: 2, entries: (1000..<1100).map { "m\($0)" }), owner: owner)
+        #expect(s.entries.count == 1100)
+        #expect(s.entries.first?.text == "m0")
+        #expect(!s.hasMore)
+    }
     @Test func delayedEventsAndFailuresCannotReplaceNewOwner() throws {
         let s = store()
         let next = UUID()

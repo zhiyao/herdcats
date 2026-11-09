@@ -23,6 +23,8 @@ struct RecordContext<'a> {
     reference: String,
     role: Option<String>,
     counter: usize,
+    /// Tool results left for the older batch that holds their call.
+    deferred: usize,
 }
 impl RecordContext<'_> {
     fn reference_for(&self, raw: &str) -> Result<String> {
@@ -114,7 +116,11 @@ impl Transcript {
                 let attached = tool_key
                     .as_ref()
                     .is_some_and(|k| self.attach_record(k, &context.reference));
-                if !attached {
+                if !attached && kind == "tool_result" && tool_key.is_some() && self.partial_prefix {
+                    // Its call is in unread older bytes; loading that batch
+                    // attaches this record to the call.
+                    context.deferred += 1;
+                } else if !attached {
                     self.content_bubble(context, &kind, raw.get(), false)?;
                 }
                 if attached && kind == "tool_use" {
@@ -166,6 +172,7 @@ impl Transcript {
             reference: format!("source:{offset}:{}", part.len()),
             role: matches!(kind.as_str(), "user" | "assistant").then(|| kind.clone()),
             counter: 0,
+            deferred: 0,
         };
         if matches!(kind.as_str(), "user" | "assistant") {
             let attached = string(fields.get("uuid")).is_some_and(|id| {
@@ -189,6 +196,7 @@ impl Transcript {
             }
             if attached
                 || context.counter > 0
+                || context.deferred > 0
                 || self
                     .entries
                     .iter()
@@ -223,7 +231,7 @@ impl Transcript {
             }
         }
         for key in keys { self.attach_record(&key,&reference); }
-        let mut context=RecordContext{part,offset,reference,role:(role=="user"||role=="assistant").then_some(role),counter:0};
+        let mut context=RecordContext{part,offset,reference,role:(role=="user"||role=="assistant").then_some(role),counter:0,deferred:0};
         if let Some(content)=message.get("content").and_then(|v|serde_json::from_str::<Vec<&RawValue>>(v.get()).ok()) {
             for block in content { self.preserve_block(block,&mut context,0)?; }
         }

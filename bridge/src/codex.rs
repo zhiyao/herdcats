@@ -2,7 +2,7 @@ use crate::{
     Result,
     adapter::Adapter,
     claude::{Entry, Transcript, bounded, entry_id},
-    follower::{AgentType, Follower, MAX_RECORD, MAX_SOURCE},
+    follower::{AgentType, Follower, MAX_RECORD},
     herdr::Pane,
     resolver::{open_beneath, session_id},
 };
@@ -379,11 +379,6 @@ impl CodexResolver {
         // Confined open beneath the pinned root anchor: O_NOFOLLOW on every level
         let mut file = open_beneath(&self.anchor, relative_path, false)?;
 
-        let meta = file.metadata().map_err(|_| "transcript_unavailable")?;
-        if meta.len() > MAX_SOURCE {
-            return Err("source_too_large");
-        }
-
         self.meta_read_count.fetch_add(1, Ordering::SeqCst);
         let first_record = Self::read_first_record(&mut file)?;
         Self::verify_session_meta(&first_record, thread_id, pane)?;
@@ -528,12 +523,6 @@ impl Adapter for CodexAdapter {
                 if !is_v7 && !walk_occurred {
                     let fresh_rel = resolver.resolve_relative(thread_id)?;
                     let mut fresh_file = open_beneath(&resolver.anchor, &fresh_rel, false)?;
-                    let fresh_meta = fresh_file
-                        .metadata()
-                        .map_err(|_| "transcript_unavailable")?;
-                    if fresh_meta.len() > MAX_SOURCE {
-                        return Err("source_too_large");
-                    }
                     resolver.meta_read_count.fetch_add(1, Ordering::SeqCst);
                     let record = CodexResolver::read_first_record(&mut fresh_file)?;
                     CodexResolver::verify_session_meta(&record, thread_id, pane)?;
@@ -553,10 +542,6 @@ impl Adapter for CodexAdapter {
             }
         };
 
-        let meta = file.metadata().map_err(|_| "transcript_unavailable")?;
-        if meta.len() > MAX_SOURCE {
-            return Err("source_too_large");
-        }
         let cached_entry = self.cache.lock().unwrap().get(thread_id).cloned();
         // The first record authorizes the file, and an equal metadata stamp cannot prove
         // it is unchanged (same-length in-place rewrites on coarse-timestamp filesystems),
@@ -1031,6 +1016,10 @@ impl Transcript {
                     old.text = text;
                     old.status = Some("completed".into());
                     old.truncated |= truncated;
+                } else if self.partial_prefix {
+                    // The call is in unread older bytes; loading that batch
+                    // replays this output, so no nameless entry here.
+                    self.defer(Some(key));
                 } else {
                     self.upsert(Entry {
                         id: key,
@@ -1063,6 +1052,8 @@ impl Transcript {
                 })
             }
             CodexRecordAction::TurnAborted { turn_id } => {
+                // Calls still running in unread older bytes fail here too.
+                self.defer(None);
                 for entry in self.entries.iter_mut() {
                     if entry.kind == "tool" && entry.status.as_deref() == Some("running") {
                         entry.status = Some("failed".into());

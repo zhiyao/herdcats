@@ -325,14 +325,19 @@ pub struct Service {
     pi_agent_dir: Option<PathBuf>,
 }
 pub fn page(entries: &[Entry], before: usize) -> Value {
-    let mut start = before.saturating_sub(100);
+    page_with_more(entries, before, false)
+}
+/// One history page ending before `entries[before]`; `more` reports entries
+/// older than this slice, such as older batches still on disk.
+pub fn page_with_more(entries: &[Entry], before: usize, more: bool) -> Value {
+    let mut start = before.saturating_sub(crate::follower::PAGE);
     // Leave room for envelope and identity; JSON escaping can expand source text.
     while start < before
         && serde_json::to_vec(&entries[start..before]).map_or(true, |v| v.len() > MAX_RECORD / 2)
     {
         start += 1;
     }
-    json!({"entries":entries[start..before], "has_more":start>0,
+    json!({"entries":entries[start..before], "has_more":start>0 || more,
         "before":entries.get(start).filter(|_|start<before).map(|e|e.id.as_str())})
 }
 impl Service {
@@ -779,18 +784,44 @@ impl Service {
                     }
                     status
                 };
+                let follower = &mut watch.follower;
+                if reset
+                    && follower.transcript.entries.len() < crate::follower::PAGE
+                    && follower.has_unread_older()
+                {
+                    // A tail of mostly skipped records, such as screenshots,
+                    // would open nearly empty: fill the first page from older
+                    // batches. If that read fails the page stays short and
+                    // still reports has_more; the history request that pages
+                    // back returns the error.
+                    let want = crate::follower::PAGE - follower.transcript.entries.len();
+                    let _ = follower.load_older(want);
+                }
                 let data = &watch.follower.transcript;
-                let evicted: Vec<_> = watch
-                    .previous
-                    .iter()
-                    .filter(|old| !data.entries.iter().any(|new| new.id == old.id))
-                    .map(|old| old.id.clone())
-                    .collect();
+                // Tail-first followers keep entries past retention as older
+                // batches the phone can page back to, so they are not deletions.
+                let evicted: Vec<_> = if watch.follower.windowed() {
+                    Vec::new()
+                } else {
+                    watch
+                        .previous
+                        .iter()
+                        .filter(|old| !data.entries.iter().any(|new| new.id == old.id))
+                        .map(|old| old.id.clone())
+                        .collect()
+                };
                 if reset {
                     watch.last_model = None;
                     watch.model_override = None;
                     watch.model_stamp = None;
-                    let mut body = page(&data.entries, data.entries.len());
+                    let older = watch.follower.older();
+                    let unread = watch.follower.has_unread_older();
+                    let mut body = if older.is_empty() {
+                        page_with_more(&data.entries, data.entries.len(), unread)
+                    } else {
+                        let all: Vec<Entry> = older.iter().chain(&data.entries).cloned().collect();
+                        page_with_more(&all, all.len(), unread)
+                    };
                     body["identity"] = json!(identity);
                     body["generation"] = json!(self.generation);
                     body["agent_status"] = json!(status);
@@ -2890,14 +2921,37 @@ impl Service {
                 if params["generation"].as_u64() != Some(self.generation) {
                     return Self::error(out, id, "stale_cursor");
                 }
-                let entries = &watch.follower.transcript.entries;
-                let Some(before) = params["before"]
-                    .as_str()
-                    .and_then(|id| entries.iter().position(|e| e.id == id))
-                else {
-                    return Self::error(out, id, "stale_cursor");
+                let Some(watch) = &mut self.watch else {
+                    return Self::error(out, id, "not_watching");
                 };
-                let mut result = page(entries, before);
+                let follower = &mut watch.follower;
+                let cursor = params["before"].as_str();
+                let live = cursor.and_then(|id| follower.transcript.entries.iter().position(|e| e.id == id));
+                let mut result = match live {
+                    Some(before) if before > 0 => {
+                        let more = !follower.older().is_empty() || follower.has_unread_older();
+                        page_with_more(&follower.transcript.entries, before, more)
+                    }
+                    _ => {
+                        // Before the live list: page through older batches,
+                        // loading the next one from disk when this runs short.
+                        let mut before = match live {
+                            Some(_) => follower.older().len(),
+                            None => match cursor.and_then(|id| follower.older().iter().position(|e| e.id == id)) {
+                                Some(index) => index,
+                                None => return Self::error(out, id, "stale_cursor"),
+                            },
+                        };
+                        if before < crate::follower::PAGE && follower.has_unread_older() {
+                            let loaded = follower.older().len();
+                            if let Err(code) = follower.load_older(loaded + crate::follower::PAGE - before) {
+                                return Self::error(out, id, code);
+                            }
+                            before += follower.older().len() - loaded;
+                        }
+                        page_with_more(follower.older(), before, follower.has_unread_older())
+                    }
+                };
                 result["identity"] = json!(watch.identity);
                 result["generation"] = json!(self.generation);
                 result["dropped_entries"] = json!(watch.follower.transcript.dropped_entries);
@@ -3210,6 +3264,72 @@ mod tests {
             .lines()
             .map(|line| serde_json::from_str(line).unwrap())
             .collect()
+    }
+    fn user_lines(session: &str, range: std::ops::Range<usize>) -> String {
+        range.map(|i| format!("{}\n", json!({"type":"user","uuid":format!("m{i}"),"sessionId":session,"message":{"role":"user","content":format!("text{i}")}}))).collect()
+    }
+    fn history_reply(service: &mut Service, generation: u64, before: &str) -> Value {
+        let mut output = Vec::new();
+        service.request(json!({"id":"h","method":"history","params":{"generation":generation,"before":before}}).to_string().as_bytes(), &mut output).unwrap();
+        frames(output).into_iter().find(|f| f["id"] == "h").unwrap()
+    }
+    #[test]
+    fn history_continues_past_the_live_list_into_older_entries() {
+        let (mut service, root, _) = fixture();
+        let path = root.join(format!("projects/one/{SESSION}.jsonl"));
+        let count = crate::claude::MAX_ENTRIES + 250;
+        fs::write(&path, user_lines(SESSION, 0..count)).unwrap();
+        let mut output = Vec::new();
+        service.poll(&mut output).unwrap();
+        let updates = frames(output);
+        assert!(!updates.is_empty());
+        for update in &updates {
+            assert_eq!(update["event"], "timeline.updated");
+            assert_eq!(update["data"]["evicted_ids"], json!([]), "retention is not deletion");
+        }
+        let generation = service.generation;
+        let mut before = format!("message:m{}", count - 1);
+        let mut served = Vec::new();
+        loop {
+            let reply = history_reply(&mut service, generation, &before);
+            let result = &reply["result"];
+            let page: Vec<String> = result["entries"].as_array().unwrap().iter().map(|e| e["id"].as_str().unwrap().to_owned()).collect();
+            assert!(!page.is_empty(), "{reply}");
+            served.splice(0..0, page);
+            if result["has_more"] != true { break; }
+            before = result["before"].as_str().unwrap().to_owned();
+        }
+        let expected: Vec<String> = (0..count - 1).map(|i| format!("message:m{i}")).collect();
+        assert_eq!(served, expected);
+        cleanup(&service, root);
+    }
+    #[test]
+    fn a_fresh_watch_fills_its_first_page_from_older_batches() {
+        let (mut service, root, identity) = fixture();
+        let path = root.join(format!("projects/one/{OTHER}.jsonl"));
+        let mut text = user_lines(OTHER, 0..150);
+        // Screenshot-sized records the timeline skips push the prompts out of the tail.
+        let padding = format!("{}\n", json!({"type":"attachment","sessionId":OTHER,"payload":"x".repeat(1024 * 1024 - 100)}));
+        for _ in 0..9 { text += &padding; }
+        text += &user_lines(OTHER, 150..153);
+        fs::write(&path, text).unwrap();
+        *identity.lock().unwrap() = OTHER.to_owned();
+        let mut output = Vec::new();
+        service.poll(&mut output).unwrap();
+        let replies = frames(output);
+        let snapshot = replies.iter().find(|f| f["event"] == "timeline.snapshot").unwrap();
+        let entries = snapshot["data"]["entries"].as_array().unwrap();
+        assert_eq!(entries.len(), crate::follower::PAGE);
+        assert_eq!(entries.last().unwrap()["id"], "message:m152");
+        assert_eq!(entries[0]["id"], format!("message:m{}", 153 - crate::follower::PAGE));
+        assert_eq!(snapshot["data"]["has_more"], true);
+        let generation = service.generation;
+        let reply = history_reply(&mut service, generation, entries[0]["id"].as_str().unwrap());
+        let older = reply["result"]["entries"].as_array().unwrap();
+        assert_eq!(older.len(), 153 - crate::follower::PAGE);
+        assert_eq!(older[0]["id"], "message:m0");
+        assert_eq!(reply["result"]["has_more"], false);
+        cleanup(&service, root);
     }
     #[test]
     fn changing_same_source_keeps_verified_history_and_generation() {
