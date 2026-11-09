@@ -5,8 +5,8 @@
 //! whose label matches exactly. Everything here is pure and fail-closed.
 use std::collections::HashSet;
 
-/// The only CLI build whose screens were verified. The running session's own
-/// version must equal it.
+/// Reference build used by the screen parser fixtures.
+#[cfg(test)]
 pub const TESTED_VERSION: &str = "2026.10.22-27dcf5f";
 /// Rows the picker is allowed to report; more is an unrecognized layout.
 pub const MAX_MODELS: usize = 96;

@@ -470,13 +470,12 @@ fn agy_catalog_test_cli(service: &Service, root: &std::path::Path, body: &str) {
 #[test]
 fn agy_model_status_reports_catalog_failures_instead_of_empty_success() {
     for (body, error) in [
-        ("printf '1.4.8\\n'", "agy_unsupported_version"),
         (
-            "if [ \"$1\" = --version ]; then printf '1.4.7\\n'; fi",
+            "if [ \"$1\" = --version ]; then printf '1.5.0\\n'; fi",
             "agy_catalog_empty",
         ),
         (
-            "if [ \"$1\" = --version ]; then printf '1.4.7\\n'; else printf 'malformed\\n'; fi",
+            "if [ \"$1\" = --version ]; then printf '1.5.0\\n'; else printf 'malformed\\n'; fi",
             "agy_catalog_invalid",
         ),
     ] {
@@ -490,7 +489,7 @@ fn agy_model_status_reports_catalog_failures_instead_of_empty_success() {
         agy_catalog_test_cli(
             &service,
             &root,
-            "if [ \"$1\" = --version ]; then printf '1.4.7\\n'; else printf 'gemini-3.8-flash-low\\tGemini 3.8 Flash (Low)\\n'; fi",
+            "if [ \"$1\" = --version ]; then printf '1.5.0\\n'; else printf 'gemini-3.8-flash-low\\tGemini 3.8 Flash (Low)\\n'; fi",
         );
         assert_eq!(service.agy_catalog().unwrap_err(), error);
         *service.agy_catalog_error.borrow_mut() =
@@ -529,19 +528,19 @@ fn agy_model_status_retry_discovers_once_and_failure_cache_only_throttles_pollin
         let responses = frames(out);
         assert_eq!(
             responses.iter().find(|f| f["id"] == "status").unwrap()["error"]["code"],
-            "agy_unsupported_version"
+            "agy_catalog_invalid"
         );
         assert_eq!(fs::read(&counter).unwrap().len(), attempt);
         assert_eq!(
             service.agy_catalog().unwrap_err(),
-            "agy_unsupported_version"
+            "agy_catalog_invalid"
         );
         assert_eq!(fs::read(&counter).unwrap().len(), attempt);
     }
     agy_catalog_test_cli(
         &service,
         &root,
-        "if [ \"$1\" = --version ]; then printf '1.4.7\\n'; else printf 'gemini-3.8-flash-low\\tGemini 3.8 Flash (Low)\\n'; fi",
+        "if [ \"$1\" = --version ]; then printf '1.5.0\\n'; else printf 'gemini-3.8-flash-low\\tGemini 3.8 Flash (Low)\\n'; fi",
     );
     let mut out = Vec::new();
     service
@@ -598,7 +597,7 @@ fn agy_family_switch_and_effort_only_send_exact_discovered_commands() {
     service.include_model_control = true;
     *service.agy_catalog_cache.borrow_mut() = Some((Instant::now(), model_control::parse_agy_models(
         "flash-low\tFlash (Low)\nflash-high\tFlash (High)\nargon-medium\tArgon (Medium)\nargon-high\tArgon (High)\nsolo-medium\tSolo (Medium)")));
-    agy_catalog_test_cli(&service, &root, "printf '1.4.7\\n'");
+    agy_catalog_test_cli(&service, &root, "printf '1.5.0\\n'");
     let screen = |label: &str, effort: &str, ack: &str| format!("{ack}\n────────────────────\n>\n────────────────────\n? for shortcuts       {label} · {effort}");
     herdr.lock().unwrap().screen = screen("Flash", "high", "");
     service.poll(&mut Vec::new()).unwrap();
@@ -648,7 +647,7 @@ fn agy_gpt_oss_full_label_footer_switches_away_and_back_with_native_guards() {
     service.include_model_control = true;
     *service.agy_catalog_cache.borrow_mut() = Some((Instant::now(), model_control::parse_agy_models(
         "gemini-3.8-flash-low\tGemini 3.8 Flash (Low)\ngemini-3.8-flash-medium\tGemini 3.8 Flash (Medium)\ngemini-3.8-flash-high\tGemini 3.8 Flash (High)\ngpt-oss-120b-medium\tGPT-OSS 120B (Medium)")));
-    agy_catalog_test_cli(&service, &root, "printf '1.4.7\\n'");
+    agy_catalog_test_cli(&service, &root, "printf '1.5.0\\n'");
     let screen = |label: &str, full: bool, ack: &str| format!("{ack}\n────────────────────\n>\n────────────────────\n? for shortcuts       {}", if full {format!("{label} (Medium)")} else {format!("{label} · medium")});
     let gpt_screen = screen("GPT-OSS 120B", true, "Model set to GPT-OSS 120B (Medium)");
     herdr.lock().unwrap().screen = gpt_screen.clone();
