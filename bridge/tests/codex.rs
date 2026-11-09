@@ -700,6 +700,54 @@ fn adapter_cache_hit_still_reverifies_session_meta_for_v7() {
 }
 
 #[test]
+fn adapter_rejects_reference_to_thread_codex_no_longer_holds() {
+    // Codex keeps <CODEX_HOME>/thread-writer-locks/<thread>.lock while a thread
+    // is loaded and deletes it after `/resume` or `/new` switches away. Herdr
+    // only learns the new thread on the next prompt, so until then its
+    // reference names the old thread, which may share the pane's cwd.
+    let temp = Temp::new();
+    let sessions = temp.0.join("sessions");
+    let locks = temp.0.join("thread-writer-locks");
+    let day_dir = sessions.join("2026/10/13");
+    fs::create_dir_all(&day_dir).unwrap();
+    fs::create_dir_all(&locks).unwrap();
+    fs::write(
+        day_dir.join(format!("rollout-2026-10-13T00-00-00-{THREAD_ID}.jsonl")),
+        ROLLOUT_FIXTURE,
+    )
+    .unwrap();
+    let adapter = CodexAdapter::new(Some(CodexResolver::new(&sessions).unwrap()));
+    let pane = make_pane(
+        Some(THREAD_ID),
+        "herdr:codex",
+        "codex",
+        "codex",
+        "id",
+        "/fixture/work",
+    );
+
+    assert_eq!(
+        adapter.resolve_and_open(&pane).unwrap_err(),
+        "session_inactive"
+    );
+
+    let lock = locks.join(format!("{THREAD_ID}.lock"));
+    fs::write(&lock, "").unwrap();
+    assert_eq!(adapter.resolve_and_open(&pane).unwrap().0, THREAD_ID);
+
+    // Released after the follower was established: fail on the next poll.
+    fs::remove_file(&lock).unwrap();
+    assert_eq!(
+        adapter.resolve_and_open(&pane).unwrap_err(),
+        "session_inactive"
+    );
+
+    // Codex builds without writer locks are not checked.
+    fs::remove_dir(&locks).unwrap();
+    assert_eq!(adapter.resolve_and_open(&pane).unwrap().0, THREAD_ID);
+}
+
+#[test]
 fn adapter_non_v7_cache_skips_full_walk_within_30s() {
     let temp = Temp::new();
     let thread_non_v7 = "11111111-2222-4333-8444-555555555555";
