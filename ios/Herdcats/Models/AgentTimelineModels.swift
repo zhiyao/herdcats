@@ -465,6 +465,13 @@ enum HostHelperProbe: Equatable, Sendable {
         else { return false }
         return current == pinned || pinned.lexicographicallyPrecedes(current)
     }
+    static func isOlder(_ version: String?, than target: String) -> Bool {
+        guard let version,
+              let current = versionNumbers(version),
+              let target = versionNumbers(target)
+        else { return false }
+        return current.lexicographicallyPrecedes(target)
+    }
     static func isOlderThanPinned(_ version: String?) -> Bool {
         guard let version,
               let current = versionNumbers(version),

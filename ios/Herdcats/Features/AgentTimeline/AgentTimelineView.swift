@@ -23,6 +23,7 @@ struct AgentTimelineView: View {
     let onSetupComplete: () -> Void
     var onFocusComposer: () -> Void = {}
     @Environment(AppModel.self) var appModel
+    @Environment(ActiveMachine.self) var activeMachine: ActiveMachine?
     @Environment(\.scenePhase) var scenePhase
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

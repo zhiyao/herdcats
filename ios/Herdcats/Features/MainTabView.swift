@@ -17,6 +17,7 @@ struct MainTabView: View {
         ConnectedTabsView(selectedTab: $selectedTab)
             .environment(appModel)
             .id(Self.subtreeID(for: appModel))
+            .bridgeUpdateHost()
             // Switch progress and errors render per screen via `connectionStatusBanner(appModel:)`.
             .background {
                 if let active, !active.pendingHostKeyOwnedByForm, let pending = active.pending {
@@ -85,6 +86,7 @@ struct ConnectedTabsView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             SpacesScreen(model: model, layout: paneLayout, paneMemory: paneMemory)
+                .bridgeUpdateBanner()
                 .hidesSystemTabBarForSidebarSwitcher(horizontalSizeClass)
                 .tabItem {
                     Label("Spaces", systemImage: "square.grid.3x3")
@@ -92,6 +94,7 @@ struct ConnectedTabsView: View {
                 .tag(MainTab.spaces)
 
             AgentsScreen(model: model, layout: paneLayout, paneMemory: paneMemory)
+                .bridgeUpdateBanner()
                 .hidesSystemTabBarForSidebarSwitcher(horizontalSizeClass)
                 .tabItem {
                     Label("Agents", systemImage: "cpu")
@@ -100,6 +103,7 @@ struct ConnectedTabsView: View {
                 .tag(MainTab.agents)
 
             QuotaScreen(model: model)
+                .bridgeUpdateBanner()
                 .hidesSystemTabBarForSidebarSwitcher(horizontalSizeClass)
                 .tabItem {
                     Label("Quota", systemImage: "gauge.with.dots.needle.67percent")
@@ -107,6 +111,7 @@ struct ConnectedTabsView: View {
                 .tag(MainTab.quota)
 
             SettingsScreen(model: model)
+                .bridgeUpdateBanner()
                 .hidesSystemTabBarForSidebarSwitcher(horizontalSizeClass)
                 .tabItem {
                     Label("Settings", systemImage: "gearshape")
