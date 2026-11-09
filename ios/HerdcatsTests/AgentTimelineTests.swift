@@ -108,6 +108,13 @@ struct AgentBridgeFramingTests {
         #expect(s.entries.map(\.text) == ["a", "b"])
         #expect(s.phase == .ready)
     }
+    @Test func revisedRowsUpdateHeldEntriesAndNeverInsert() throws {
+        let s = store()
+        try s.consume(frame("timeline.snapshot", entries: ["a", "b"]), owner: owner)
+        let update = try AgentBridgeFrame.decode(Data(#"{"event":"timeline.updated","epoch":"epoch-a","seq":2,"data":{"identity":{"pane_id":"w1:p1","terminal_id":"t1","agent":"claude","native_session_id":"session-a"},"generation":1,"entries":[],"revised":[{"id":"message:a","kind":"message","text":"A","role":"assistant","truncated":false},{"id":"message:trimmed","kind":"message","text":"gone","role":"assistant","truncated":false}]}}"#.utf8))
+        try s.consume(update, owner: owner)
+        #expect(s.entries.map(\.text) == ["A", "b"])
+    }
     @Test func switchingPanesDoesNotShowPreviousPaneEntries() throws {
         // Pane 1 receives a snapshot and shows its entries
         let pane1 = store()

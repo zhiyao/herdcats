@@ -161,7 +161,11 @@ import Observation
             guard phase == .ready, data.identity == identity, data.generation == generation,
                 let rows = data.entries
             else { throw AgentBridgeError.identityMismatch }
-            try validate(rows)
+            // Update-only rows for older entries: applied to rows held here,
+            // never inserted, so a row trimmed locally does not reappear at
+            // the newest end.
+            let revised = data.revised ?? []
+            try validate(rows + revised)
             let removed = data.evictedIds ?? []
             guard removed.count <= 1000, removed.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 264 }) else {
                 throw AgentBridgeError.invalidFrame
@@ -185,6 +189,9 @@ import Observation
                     entryIndex[row.id] = entries.count
                     entries.append(row)
                 }
+            }
+            for row in revised where !evictedIds.contains(row.id) {
+                if let index = entryIndex[row.id] { entries[index] = row }
             }
             if entries.count > Self.maxEntries {
                 entries.removeFirst(entries.count - Self.maxEntries)

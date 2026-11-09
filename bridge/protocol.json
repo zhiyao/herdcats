@@ -297,13 +297,14 @@
         "identity",
         "generation",
         "entries",
+        "revised",
         "agent_status",
         "evicted_ids",
         "unknown_records",
         "dropped_entries",
         "delayed"
       ],
-      "effect": "Remove evicted_ids before stable-ID upserts; retention does not reset generation. Do not resurrect evicted IDs from delayed history. Claude and Codex never evict for retention: entries past the live list move to older history pages. Counters may update with no entries; frames remain bounded."
+      "effect": "Remove evicted_ids before stable-ID upserts; retention does not reset generation. Do not resurrect evicted IDs from delayed history. Claude and Codex never evict for retention: entries past the live list move to older history pages. Optional revised rows are update-only: they replace rows the client holds (older entries a later tool result, output or turn abort changed) and are never inserted; history pages serve them current. Clients that ignore revised see the change after a reload. entries plus revised stay within 1000 rows per update. Counters may update with no entries; frames remain bounded."
     },
     "timeline.unavailable": {
       "fields": [
