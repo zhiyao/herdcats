@@ -137,6 +137,8 @@ pub struct Transcript {
     pub(crate) update_only: bool,
     /// Older batches are not subject to the live retention cap.
     pub(crate) uncapped: bool,
+    /// IDs of `spilled` entries a later record updated during this pass.
+    pub(crate) revised: Vec<String>,
 }
 /// Claude Code records local slash commands (`/model`, `/effort`, ...) and
 /// their terminal output as user messages wrapped in these tags. They are
@@ -223,9 +225,10 @@ impl Transcript {
         }
         Ok(())
     }
-    /// Remembers the current record for the older batch that holds `key`.
+    /// Remembers the current record for the older entry that holds `key`:
+    /// one in unread older bytes, or one already moved to `spilled`.
     pub(crate) fn defer(&mut self, key: Option<String>) {
-        if self.partial_prefix && !self.update_only {
+        if (self.partial_prefix || self.spill) && !self.update_only {
             self.deferred.push((key, self.origin, self.record_len));
         }
     }

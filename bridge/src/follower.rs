@@ -139,6 +139,9 @@ pub struct Follower {
     /// Parsed records that update entries from unread older bytes; see
     /// `Transcript::deferred`.
     deferred: Vec<(Option<String>, u64, usize)>,
+    /// IDs of `older` entries that later records updated since the last
+    /// `take_revised`.
+    revised: Vec<String>,
 }
 impl Follower {
     pub fn for_agent(agent_type: AgentType) -> Self {
@@ -173,6 +176,14 @@ impl Follower {
     /// Entries older than the live list, oldest first.
     pub fn older(&self) -> &[Entry] {
         &self.older
+    }
+    /// IDs of `older()` entries updated by records read since the last call,
+    /// such as a result for a call already past the live list.
+    pub fn take_revised(&mut self) -> Vec<String> {
+        let mut revised = std::mem::take(&mut self.revised);
+        revised.sort_unstable();
+        revised.dedup();
+        revised
     }
     /// Whether file bytes before `older()` remain to be loaded.
     pub fn has_unread_older(&self) -> bool {
@@ -437,8 +448,17 @@ impl Follower {
             return Ok(false);
         }
         let mut transcript = self.transcript.clone();
+        // Appended records can update entries already past the live list.
+        transcript.spilled = std::mem::take(&mut self.older);
         let cached = self.bytes.len();
-        let consumed = self.consume_lines(&mut transcript, &self.buf, self.buf_base, cached, session, |_| false)?;
+        let consumed = self.consume_lines(&mut transcript, &self.buf, self.buf_base, cached, session, |_| false);
+        let consumed = match consumed {
+            Ok(consumed) => consumed,
+            Err(code) => {
+                self.older = transcript.spilled;
+                return Err(code);
+            }
+        };
         self.bytes.extend_from_slice(&self.buf[cached..consumed]);
         self.finish_pass(transcript, consumed, before, file, session, false)
     }
@@ -504,6 +524,10 @@ impl Follower {
             || transcript.unknown_records != self.transcript.unknown_records;
         self.older.append(&mut transcript.spilled);
         self.deferred.append(&mut transcript.deferred);
+        if reset {
+            self.revised.clear();
+        }
+        self.revised.append(&mut transcript.revised);
         self.offset = self.buf_base + consumed as u64;
         self.tail.clear();
         self.tail.extend_from_slice(&self.buf[consumed..]);
@@ -554,11 +578,63 @@ impl Follower {
                 break;
             }
             if part != b"\n" {
+                let deferred = transcript.deferred.len();
                 self.apply_line(transcript, part, base + index as u64, session)?;
+                if transcript.spill && transcript.deferred.len() > deferred {
+                    self.revise_spilled(transcript, deferred, part, base + index as u64, session)?;
+                }
             }
             index += part.len();
         }
         Ok(index)
+    }
+    /// The record just applied deferred updates from `transcript.deferred[from..]`.
+    /// Those for entries already in `spilled` (older batches and retention
+    /// spill) apply to them now, in file order; the rest wait for unread
+    /// older bytes, if any.
+    fn revise_spilled(
+        &self,
+        transcript: &mut Transcript,
+        from: usize,
+        part: &[u8],
+        offset: u64,
+        session: &str,
+    ) -> Result<()> {
+        let mut targets = Vec::new();
+        for record in transcript.deferred.split_off(from) {
+            match &record.0 {
+                Some(key) if transcript.spilled.iter().any(|e| &e.id == key) => targets.push(key.clone()),
+                key => {
+                    // A turn abort also fails tools still running past the live list.
+                    if key.is_none() {
+                        targets.extend(
+                            transcript
+                                .spilled
+                                .iter()
+                                .filter(|e| e.kind == "tool" && e.status.as_deref() == Some("running"))
+                                .map(|e| e.id.clone()),
+                        );
+                    }
+                    if transcript.partial_prefix {
+                        transcript.deferred.push(record);
+                    }
+                }
+            }
+        }
+        if targets.is_empty() {
+            return Ok(());
+        }
+        let mut older = Transcript {
+            entries: std::mem::take(&mut transcript.spilled),
+            update_only: true,
+            uncapped: true,
+            ..Transcript::default()
+        };
+        let applied = self.apply_line(&mut older, part, offset, session);
+        transcript.spilled = older.entries;
+        applied?;
+        transcript.revised.append(&mut targets);
+        Ok(())
     }
     fn apply_line(&self, transcript: &mut Transcript, part: &[u8], offset: u64, session: &str) -> Result<()> {
         let offset_usize = usize::try_from(offset).map_err(|_| "source_too_large")?;

@@ -116,9 +116,12 @@ impl Transcript {
                 let attached = tool_key
                     .as_ref()
                     .is_some_and(|k| self.attach_record(k, &context.reference));
-                if !attached && kind == "tool_result" && tool_key.is_some() && self.partial_prefix {
-                    // Its call is in unread older bytes; loading that batch
-                    // attaches this record to the call.
+                let older_call = tool_key.as_ref().is_some_and(|k| {
+                    self.partial_prefix || (self.spill && self.seen.contains(k))
+                });
+                if !attached && kind == "tool_result" && older_call {
+                    // Its call is in unread older bytes or past the live
+                    // list; the follower attaches this record to the call.
                     context.deferred += 1;
                 } else if !attached {
                     self.content_bubble(context, &kind, raw.get(), false)?;

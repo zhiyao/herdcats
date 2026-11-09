@@ -1016,9 +1016,10 @@ impl Transcript {
                     old.text = text;
                     old.status = Some("completed".into());
                     old.truncated |= truncated;
-                } else if self.partial_prefix {
-                    // The call is in unread older bytes; loading that batch
-                    // replays this output, so no nameless entry here.
+                } else if self.partial_prefix || (self.spill && self.seen.contains(&key)) {
+                    // The call is in unread older bytes or already past the
+                    // live list; the follower applies this output there, so
+                    // no nameless entry here.
                     self.defer(Some(key));
                 } else {
                     self.upsert(Entry {

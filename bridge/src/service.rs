@@ -240,6 +240,9 @@ struct Watch {
     follower: Follower,
     generation: u64,
     previous: Vec<Entry>,
+    /// Oldest entry sent to the phone in this generation, by snapshot or
+    /// history page; the phone holds every entry from it onward.
+    oldest_sent: Option<String>,
     unavailable: Option<&'static str>,
     status: String,
     unknown_records: usize,
@@ -329,6 +332,13 @@ pub fn page(entries: &[Entry], before: usize) -> Value {
 }
 /// One history page ending before `entries[before]`; `more` reports entries
 /// older than this slice, such as older batches still on disk.
+/// Position of `id` in the follower's older entries followed by the live list.
+fn timeline_position(follower: &Follower, id: &str) -> Option<usize> {
+    let older = follower.older();
+    older.iter().position(|e| e.id == id).or_else(|| {
+        follower.transcript.entries.iter().position(|e| e.id == id).map(|i| older.len() + i)
+    })
+}
 pub fn page_with_more(entries: &[Entry], before: usize, more: bool) -> Value {
     let mut start = before.saturating_sub(crate::follower::PAGE);
     // Leave room for envelope and identity; JSON escaping can expand source text.
@@ -797,6 +807,20 @@ impl Service {
                     let want = crate::follower::PAGE - follower.transcript.entries.len();
                     let _ = follower.load_older(want);
                 }
+                // Older entries that later records updated (a result for a
+                // call past the live list); only those the phone already
+                // holds are sent, others reach it current through history.
+                let revised = watch.follower.take_revised();
+                let revised: Vec<Entry> = match watch.oldest_sent.as_deref().and_then(|id| {
+                    watch.follower.older().iter().position(|e| e.id == id)
+                }) {
+                    Some(from) if !reset => watch.follower.older()[from..]
+                        .iter()
+                        .filter(|e| revised.binary_search(&e.id).is_ok())
+                        .cloned()
+                        .collect(),
+                    _ => Vec::new(),
+                };
                 let data = &watch.follower.transcript;
                 // Tail-first followers keep entries past retention as older
                 // batches the phone can page back to, so they are not deletions.
@@ -822,6 +846,7 @@ impl Service {
                         let all: Vec<Entry> = older.iter().chain(&data.entries).cloned().collect();
                         page_with_more(&all, all.len(), unread)
                     };
+                    watch.oldest_sent = body["before"].as_str().map(str::to_owned);
                     body["identity"] = json!(identity);
                     body["generation"] = json!(self.generation);
                     body["agent_status"] = json!(status);
@@ -843,13 +868,16 @@ impl Service {
                     }
                     self.event(out, "timeline.snapshot", body)?;
                 } else {
-                    let changed: Vec<_> = data
-                        .entries
-                        .iter()
-                        .filter(|entry| {
-                            watch.previous.iter().find(|old| old.id == entry.id) != Some(*entry)
-                        })
-                        .cloned()
+                    let changed: Vec<_> = revised
+                        .into_iter()
+                        .chain(
+                            data.entries
+                                .iter()
+                                .filter(|entry| {
+                                    watch.previous.iter().find(|old| old.id == entry.id) != Some(*entry)
+                                })
+                                .cloned(),
+                        )
                         .collect();
                     if !changed.is_empty()
                         || !evicted.is_empty()
@@ -2843,6 +2871,7 @@ impl Service {
                     },
                     generation: 0,
                     previous: Vec::new(),
+                    oldest_sent: None,
                     unavailable: None,
                     status: String::new(),
                     unknown_records: 0,
@@ -2952,6 +2981,13 @@ impl Service {
                         page_with_more(follower.older(), before, follower.has_unread_older())
                     }
                 };
+                if let Some(sent) = result["before"].as_str() {
+                    let sent_at = timeline_position(&watch.follower, sent);
+                    let held_at = watch.oldest_sent.as_deref().and_then(|id| timeline_position(&watch.follower, id));
+                    if sent_at.is_some() && held_at.is_none_or(|held| sent_at < Some(held)) {
+                        watch.oldest_sent = Some(sent.to_owned());
+                    }
+                }
                 result["identity"] = json!(watch.identity);
                 result["generation"] = json!(self.generation);
                 result["dropped_entries"] = json!(watch.follower.transcript.dropped_entries);
@@ -3329,6 +3365,70 @@ mod tests {
         assert_eq!(older.len(), 153 - crate::follower::PAGE);
         assert_eq!(older[0]["id"], "message:m0");
         assert_eq!(reply["result"]["has_more"], false);
+        cleanup(&service, root);
+    }
+    #[test]
+    fn a_result_for_a_call_in_the_first_page_fill_updates_the_phone() {
+        let (mut service, root, identity) = fixture();
+        let path = root.join(format!("projects/one/{OTHER}.jsonl"));
+        let mut text = user_lines(OTHER, 0..150);
+        text += &format!("{}\n", json!({"type":"assistant","uuid":"a0","sessionId":OTHER,"message":{"role":"assistant","content":[
+            {"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"ls"}}]}}));
+        let padding = format!("{}\n", json!({"type":"attachment","sessionId":OTHER,"payload":"x".repeat(1024 * 1024 - 100)}));
+        for _ in 0..9 { text += &padding; }
+        text += &user_lines(OTHER, 150..153);
+        fs::write(&path, &text).unwrap();
+        *identity.lock().unwrap() = OTHER.to_owned();
+        let mut output = Vec::new();
+        service.poll(&mut output).unwrap();
+        let snapshot = frames(output).into_iter().find(|f| f["event"] == "timeline.snapshot").unwrap();
+        let tool = snapshot["data"]["entries"].as_array().unwrap().iter().find(|e| e["id"] == "tool:toolu_1").cloned().unwrap();
+        assert_eq!(tool["status"], "running");
+        // The call is in an older batch now; its result arrives on a later poll.
+        text += &format!("{}\n", json!({"type":"user","uuid":"r0","sessionId":OTHER,"message":{"role":"user","content":[
+            {"type":"tool_result","tool_use_id":"toolu_1","content":"listing"}]}}));
+        fs::write(&path, &text).unwrap();
+        let mut output = Vec::new();
+        service.poll(&mut output).unwrap();
+        let updated: Vec<Value> = frames(output).into_iter().filter(|f| f["event"] == "timeline.updated")
+            .flat_map(|f| f["data"]["entries"].as_array().unwrap().clone()).collect();
+        let tool = updated.iter().find(|e| e["id"] == "tool:toolu_1").expect("the phone holds this call");
+        assert_eq!(tool["status"], "completed");
+        assert_eq!(tool["text"], "listing");
+        cleanup(&service, root);
+    }
+    #[test]
+    fn a_result_for_a_call_the_phone_has_not_paged_to_reaches_it_through_history() {
+        let (mut service, root, identity) = fixture();
+        let path = root.join(format!("projects/one/{OTHER}.jsonl"));
+        let mut text = format!("{}\n", json!({"type":"assistant","uuid":"a0","sessionId":OTHER,"message":{"role":"assistant","content":[
+            {"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"ls"}}]}}));
+        text += &user_lines(OTHER, 0..crate::claude::MAX_ENTRIES + 250);
+        fs::write(&path, &text).unwrap();
+        *identity.lock().unwrap() = OTHER.to_owned();
+        let mut output = Vec::new();
+        service.poll(&mut output).unwrap();
+        text += &format!("{}\n", json!({"type":"user","uuid":"r0","sessionId":OTHER,"message":{"role":"user","content":[
+            {"type":"tool_result","tool_use_id":"toolu_1","content":"listing"}]}}));
+        fs::write(&path, &text).unwrap();
+        let mut output = Vec::new();
+        service.poll(&mut output).unwrap();
+        for update in frames(output).iter().filter(|f| f["event"] == "timeline.updated") {
+            assert!(update["data"]["entries"].as_array().unwrap().iter().all(|e| e["id"] != "tool:toolu_1"),
+                "an entry the phone never received is not appended: {update}");
+        }
+        let generation = service.generation;
+        let mut before = format!("message:m{}", crate::claude::MAX_ENTRIES + 249);
+        let tool = loop {
+            let reply = history_reply(&mut service, generation, &before);
+            let result = &reply["result"];
+            if let Some(tool) = result["entries"].as_array().unwrap().iter().find(|e| e["id"] == "tool:toolu_1") {
+                break tool.clone();
+            }
+            assert_eq!(result["has_more"], true, "{reply}");
+            before = result["before"].as_str().unwrap().to_owned();
+        };
+        assert_eq!(tool["status"], "completed");
         cleanup(&service, root);
     }
     #[test]

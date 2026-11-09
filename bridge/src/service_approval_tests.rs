@@ -208,6 +208,7 @@ fn test_watch() -> Watch {
         follower: Follower::default(),
         generation: 0,
         previous: Vec::new(),
+        oldest_sent: None,
         unavailable: None,
         status: String::new(),
         unknown_records: 0,

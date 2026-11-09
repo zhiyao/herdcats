@@ -343,3 +343,82 @@ fn a_claude_result_many_batches_after_its_call_completes_it() {
     let tool = all.iter().find(|e| e.id == "tool:toolu_1").unwrap();
     assert_eq!(tool.text, "late listing");
 }
+
+#[test]
+fn a_result_appended_after_its_call_moved_to_older_completes_it() {
+    let temp = Temp::new("claude-older-live");
+    let mut text = user("u0", "run it");
+    text += &tool_use("a0", "toolu_1");
+    for _ in 0..4 { text += &padding(1500); }
+    text += &user("u1", "waiting");
+    temp.write(&text);
+    let mut follower = follower(AgentType::Claude, true, small());
+    follower.refresh_file(temp.open(), SESSION).unwrap();
+    everything(&mut follower);
+    assert!(follower.older().iter().any(|e| e.id == "tool:toolu_1"));
+    assert!(follower.take_revised().is_empty());
+    temp.append(&tool_result("r0", "toolu_1", "listing"));
+    follower.refresh_file(temp.open(), SESSION).unwrap();
+    let tool = follower.older().iter().find(|e| e.id == "tool:toolu_1").unwrap();
+    assert_eq!(tool.status.as_deref(), Some("completed"));
+    assert_eq!(tool.text, "listing");
+    assert!(!tool.record_refs.is_empty(), "the result record attaches to its call");
+    assert!(follower.transcript.entries.iter().all(|e| e.kind != "record"), "no raw result bubble");
+    assert_eq!(follower.take_revised(), ["tool:toolu_1"]);
+    assert!(follower.take_revised().is_empty());
+}
+
+#[test]
+fn a_result_after_its_call_passed_retention_completes_it() {
+    let temp = Temp::new("claude-spilled");
+    let mut text = tool_use("a0", "toolu_1");
+    text += &(0..crate::claude::MAX_ENTRIES).map(|i| user(&format!("m{i}"), "t")).collect::<String>();
+    text += &tool_result("r0", "toolu_1", "in pass");
+    temp.write(&text);
+    let mut follower = Follower::with_content_for_agent(AgentType::Claude);
+    follower.refresh_file(temp.open(), SESSION).unwrap();
+    assert_eq!(follower.older()[0].id, "tool:toolu_1");
+    assert_eq!(follower.older()[0].text, "in pass");
+    assert!(follower.transcript.entries.iter().all(|e| e.kind != "record"));
+    temp.append(&tool_result("r1", "toolu_1", "appended"));
+    follower.refresh_file(temp.open(), SESSION).unwrap();
+    assert_eq!(follower.older()[0].text, "appended");
+    assert_eq!(follower.take_revised(), ["tool:toolu_1"]);
+}
+
+#[test]
+fn a_codex_output_after_its_call_passed_retention_completes_it() {
+    let temp = Temp::new("codex-spilled");
+    let mut text = line(json!({"type":"session_meta","payload":{"id":THREAD,"cwd":"/fixture/work"}}));
+    text += &codex(json!({"type":"function_call","id":"fc_1","call_id":"call_1","name":"exec_command","arguments":"{}"}));
+    for i in 0..crate::claude::MAX_ENTRIES {
+        text += &codex(json!({"type":"message","id":format!("msg_{i}"),"role":"user","content":[{"type":"input_text","text":"t"}]}));
+    }
+    temp.write(&text);
+    let mut follower = Follower::for_agent(AgentType::Codex);
+    follower.refresh_file(temp.open(), THREAD).unwrap();
+    assert_eq!(follower.older()[0].id, "tool:call_1");
+    temp.append(&codex(json!({"type":"function_call_output","call_id":"call_1","output":"listing"})));
+    follower.refresh_file(temp.open(), THREAD).unwrap();
+    assert_eq!(follower.older()[0].status.as_deref(), Some("completed"));
+    assert_eq!(follower.older()[0].tool_name.as_deref(), Some("exec_command"));
+    assert!(follower.transcript.entries.iter().all(|e| e.id != "tool:call_1"), "no nameless tool");
+}
+
+#[test]
+fn a_codex_turn_abort_fails_a_running_call_already_in_older() {
+    let temp = Temp::new("codex-abort-older");
+    let mut text = line(json!({"type":"session_meta","payload":{"id":THREAD,"cwd":"/fixture/work"}}));
+    text += &codex(json!({"type":"function_call","id":"fc_1","call_id":"call_1","name":"exec_command","arguments":"{}"}));
+    for _ in 0..4 { text += &codex_padding(); }
+    text += &codex(json!({"type":"message","id":"msg_2","role":"user","content":[{"type":"input_text","text":"next"}]}));
+    temp.write(&text);
+    let mut follower = follower(AgentType::Codex, false, small());
+    follower.refresh_file(temp.open(), THREAD).unwrap();
+    everything(&mut follower);
+    temp.append(&line(json!({"type":"event_msg","payload":{"type":"turn_aborted","turn_id":"turn_1"}})));
+    follower.refresh_file(temp.open(), THREAD).unwrap();
+    let tool = follower.older().iter().find(|e| e.id == "tool:call_1").unwrap();
+    assert_eq!(tool.status.as_deref(), Some("failed"));
+    assert_eq!(follower.take_revised(), ["tool:call_1"]);
+}
