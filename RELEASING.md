@@ -131,12 +131,13 @@ upload. `./ios/bin/beta` remains available as a standalone helper.
 
 ## Bridge releases
 
-Bridge versions are independent of the iOS app. Version 0.5.0 prepares Pi and
-Cursor Agent support; 0.4.0 already has a tag and draft, so do not move or reuse
-that tag. The 0.3.0 published release and iOS installer pin remain valid until
-new published assets are verified.
+Bridge versions are independent of the iOS app. Version 0.5.1 prepares agent
+compatibility fixes and bridge hardening after the published 0.5.0 release.
+Do not move or reuse existing release tags. The published 0.5.0 release and iOS
+installer pin remain valid until new published assets are verified.
 
-1. Prepare a PR updating `bridge/Cargo.toml`, `bridge/Cargo.lock`, the default
+1. Prepare a PR updating `bridge/Cargo.toml`, `bridge/Cargo.lock`,
+   `bridge/protocol.json`'s `bridge_version`, the default
    version in `bridge/scripts/install.sh`, agent list in setup metadata, workflow dispatch
    default, setup metadata, and `bridge/release-notes.txt`.
 2. Run locked Rust tests, Clippy, a release build, the Pi extension Node suite,
@@ -144,7 +145,7 @@ new published assets are verified.
    compatibility limits in their conversation docs. Automated fixtures do not
    establish compatibility with additional CLI versions.
 3. Merge through passing Bridge, iOS and Web CI. From a checkout with the merged
-   source, run `scripts/bridge-release-tag.sh 0.5.0`. It checks `origin/main` and
+   source, run `scripts/bridge-release-tag.sh 0.5.1`. It checks `origin/main` and
    CI, then asks before tagging and again before publishing. Never tag this
    unmerged preparation branch.
 4. Review the workflow's draft: four native binaries, `install.sh`,

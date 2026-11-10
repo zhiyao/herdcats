@@ -9,6 +9,13 @@ struct AgentBridgeSetupView: View {
     var agent: String? = nil
     var installedVersion: String? = nil
     var pinnedVersion: String = HostHelperSetupPlan.version
+    /// False for a release without a verified installer checksum: the sheet
+    /// then offers manual setup only and no in-app install.
+    var installAvailable: Bool = true
+    var dismissLabel: String = "Use Terminal for now"
+    /// Machine-level updates have no agent; Pi users still need the new extension.
+    var showsPiExtensionReminder: Bool = false
+    var installedLabel: String = "Open Timeline"
     let isChecking: Bool
     let feedback: String?
     let stage: HostHelperSetupStage
@@ -18,11 +25,13 @@ struct AgentBridgeSetupView: View {
     let onCheckAgain: () -> Void
     let onUseTerminal: () -> Void
     @State private var copied = false
+    @State private var manualExpanded: Bool?
     private var command: String {
         HostHelperSetupPlan.manualInstallCommand(reason: reason, pinnedVersion: pinnedVersion)
     }
     private var installLabel: String {
-        HostHelperSetupPlan.installLabel(stage: stage, reason: reason, pinnedVersion: pinnedVersion)
+        if stage == .installed { return installedLabel }
+        return HostHelperSetupPlan.installLabel(stage: stage, reason: reason, pinnedVersion: pinnedVersion)
     }
 
     var body: some View {
@@ -57,8 +66,20 @@ struct AgentBridgeSetupView: View {
                         }
                         .padding(18).frame(maxWidth: .infinity, alignment: .leading)
                         .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 18))
-                        Text("Tapping Upgrade downloads \(pinnedVersion), verifies its checksum, and replaces the copy at the location shown. No sudo, background service, or agent hooks are required.")
-                            .font(.jost(.subheadline)).foregroundStyle(Theme.textMuted)
+                        if installAvailable {
+                            Text("Tapping Upgrade downloads \(pinnedVersion), verifies its checksum, and replaces the copy at the location shown. No sudo, background service, or agent hooks are required.")
+                                .font(.jost(.subheadline)).foregroundStyle(Theme.textMuted)
+                        } else {
+                            Text("Herdcats couldn’t verify an installer checksum for \(pinnedVersion), so it won’t install it for you. Run the manual command below on your SSH computer.")
+                                .font(.jost(.subheadline)).foregroundStyle(Theme.textMuted)
+                                .accessibilityIdentifier("timeline-setup-manual-only")
+                        }
+                        if agent == "pi" || showsPiExtensionReminder {
+                            Text("If you use Pi: the bridge installer does not update the Herdcats Pi extension. Download the extension from this release, replace the installed files, then run `/reload` in Pi. Reloading the old files does not apply the update.")
+                                .font(.jost(.subheadline)).foregroundStyle(Theme.textMuted)
+                            Link("Pi extension setup", destination: URL(string: "https://github.com/zhiyao/herdcats/releases/tag/herdcats-bridge-v\(pinnedVersion)")!)
+                                .font(.jost(.subheadline))
+                        }
                     } else {
                         Image(systemName: "calendar.day.timeline.left")
                             .font(.system(size: 36)).foregroundStyle(Theme.text)
@@ -104,7 +125,10 @@ struct AgentBridgeSetupView: View {
                         }
                     }
 
-                    DisclosureGroup("Manual setup") {
+                    DisclosureGroup("Manual setup", isExpanded: Binding(
+                        get: { manualExpanded ?? !installAvailable },
+                        set: { manualExpanded = $0 }
+                    )) {
                         VStack(alignment: .leading, spacing: 14) {
                             Text("Set it up once on your SSH host")
                                 .font(.jost(.headline)).accessibilityAddTraits(.isHeader)
@@ -150,16 +174,18 @@ struct AgentBridgeSetupView: View {
                         Text(feedback).font(.jost(.caption)).foregroundStyle(Theme.textMuted)
                             .accessibilityIdentifier("timeline-setup-feedback")
                     }
-                    Button(action: onInstall) {
-                        HStack {
-                            if stage.isBusy { ProgressView() }
-                            Text(installLabel)
-                        }.frame(maxWidth: .infinity)
+                    if installAvailable {
+                        Button(action: onInstall) {
+                            HStack {
+                                if stage.isBusy { ProgressView() }
+                                Text(installLabel)
+                            }.frame(maxWidth: .infinity)
+                        }
+                        .disabled(stage.isBusy || isChecking || !canInstall)
+                        .buttonStyle(.herdrPrimary)
+                        .accessibilityIdentifier("timeline-helper-install")
                     }
-                    .disabled(stage.isBusy || isChecking || !canInstall)
-                    .buttonStyle(.herdrPrimary)
-                    .accessibilityIdentifier("timeline-helper-install")
-                    if !canInstall {
+                    if !canInstall || !installAvailable {
                         Button(action: onCheckAgain) {
                             HStack {
                                 if isChecking { ProgressView() }
@@ -169,7 +195,7 @@ struct AgentBridgeSetupView: View {
                         .disabled(isChecking || stage.isBusy).buttonStyle(.herdrSecondary)
                         .accessibilityIdentifier("timeline-helper-check-again")
                     }
-                    Button("Use Terminal for now", action: onUseTerminal)
+                    Button(dismissLabel, action: onUseTerminal)
                         .buttonStyle(.herdrSecondary)
                         .accessibilityIdentifier("timeline-helper-use-terminal")
                 }
@@ -181,7 +207,7 @@ struct AgentBridgeSetupView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: onUseTerminal) { Image(systemName: "xmark") }
-                        .accessibilityLabel("Use Terminal for now")
+                        .accessibilityLabel(dismissLabel)
                         .accessibilityIdentifier("timeline-helper-dismiss")
                 }
             }

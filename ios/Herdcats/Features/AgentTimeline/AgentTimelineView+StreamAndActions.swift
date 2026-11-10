@@ -85,6 +85,8 @@ extension AgentTimelineView {
                 switch result {
                 case .ready:
                     helperStage = .installed
+                    // The host changed: re-read its installed version.
+                    activeMachine?.bridgeUpdates.invalidateObservation()
                     isCheckingSetup = true
                     retry += 1
                 case .missing:
