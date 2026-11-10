@@ -1,0 +1,50 @@
+{
+  "date": "2026-11-10",
+  "status": "release_preparation_unpublished",
+  "version": "0.6.0",
+  "proposed_tag": "herdcats-bridge-v0.6.0",
+  "base_commit": "2867661",
+  "version_reason": "Publish the new pi-extension status|install subcommand and pi_extension_install capability, plus tail-first Claude/Codex transcript reads and the Codex thread-reference fix, after 0.5.1; minor bump for the new capability; preserve existing release tags.",
+  "local_validation": {
+    "platform": "darwin-arm64",
+    "rust_tests": 656,
+    "pi_extension_tests": 21,
+    "python_installer_distribution_tests": 36,
+    "clippy": "passed (--locked --all-targets -- -D warnings)",
+    "release_build": "passed (--release --locked)",
+    "version_report": {
+      "version": "0.6.0",
+      "protocol": 1,
+      "herdr_protocol": 22,
+      "agents": [
+        "claude",
+        "codex",
+        "antigravity_cli",
+        "pi",
+        "cursor"
+      ]
+    },
+    "shell_syntax": "bash -n scripts/bridge-release-tag.sh and sh -n bridge/scripts/install.sh passed"
+  },
+  "pi_extension": {
+    "index_ts_sha256": "58db9fb35a0847c68e13e38bd6d5d2e94880a3192d21a1bb3871346b2950cf85",
+    "runtime_mjs_sha256": "4f3c226482533de9559bb9e25de1c07ce729a9e932ef162f5110fcc46fd8fd9e",
+    "unchanged_since": "0.5.1 (only README.md changed)"
+  },
+  "unchanged_published_pin": {
+    "version": "0.5.0",
+    "installer_sha256": "64d19e790f6256db5c4fc3b28240bbe9462b32268c3afd541befe7505ea6397a"
+  },
+  "remaining": [
+    "Merge the preparation PR after Bridge, iOS and Web CI pass.",
+    "Run scripts/bridge-release-tag.sh 0.6.0 to tag the tested origin/main commit and build the release draft.",
+    "Verify all native binaries, the Pi extension archive, installer and checksums; smoke-test installation and pi-extension status before publishing.",
+    "Update the iOS installer pin only in a separate change using verified published assets."
+  ],
+  "limits": [
+    "Local native build and installer/distribution tests cover Apple Silicon; other platforms require release CI.",
+    "Newer CLI versions are accepted through contract and terminal guards, not declared universally live-tested.",
+    "The app's Install/Update and Type /reload buttons need both this bridge and an app build that includes them.",
+    "No release tag or published assets were created by this preparation."
+  ]
+}
