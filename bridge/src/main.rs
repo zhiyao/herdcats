@@ -40,6 +40,10 @@ fn run() -> std::result::Result<(), &'static str> {
         println!("{}", result.to_json());
         return Ok(());
     }
+    if command.as_deref() == Some("pi-extension") {
+        println!("{}", pi_extension(args.collect()));
+        return Ok(());
+    }
     if command.as_deref() == Some("codex-config") {
         let sub = args.next();
         match sub.as_deref() {
@@ -122,6 +126,29 @@ fn run() -> std::result::Result<(), &'static str> {
         let _ = herdcats_bridge::spool::prune(&dir, std::time::SystemTime::now());
     }
     serve(service, Duration::from_millis(poll)).map_err(|_| "stream_closed")
+}
+/// `pi-extension status|install [--pi-agent-dir PATH]`: one JSON line, always
+/// exit 0 so the app reads the code. Uses the same agent dir as `serve`.
+fn pi_extension(args: Vec<String>) -> serde_json::Value {
+    use herdcats_bridge::pi_extension;
+    let (action, agent_dir) = match args.as_slice() {
+        [action] => (action, herdcats_bridge::pi::default_agent_dir()),
+        [action, flag, dir] if flag == "--pi-agent-dir" => (action, Some(PathBuf::from(dir))),
+        _ => return serde_json::json!({"error":"unknown_argument"}),
+    };
+    let run = match action.as_str() {
+        "status" => pi_extension::status_in,
+        "install" => pi_extension::install_in,
+        _ => return serde_json::json!({"error":"unknown_argument"}),
+    };
+    let Some(agent_dir) = agent_dir else {
+        return serde_json::json!({"error":"pi_agent_dir_unavailable"});
+    };
+    let dir = pi_extension::extension_dir(&agent_dir).to_string_lossy().into_owned();
+    match run(&agent_dir) {
+        Ok(status) => serde_json::json!({"status":status.name(),"dir":dir}),
+        Err(code) => serde_json::json!({"error":code,"dir":dir}),
+    }
 }
 fn main() {
     // Recognize hooks before UTF-8 argument parsing or the normal error path.

@@ -29,6 +29,8 @@ extension AgentTimelineView {
             // Claude writes its transcript only after the first prompt; the
             // helper keeps polling and swaps in the timeline once it exists.
             ContentUnavailableView("Send a message to start", systemImage: "bubble.left")
+        case .unavailable("pi_extension_unavailable") where agent == "pi" && bridgeCapabilities?.piExtensionInstall == true:
+            piExtensionSetup
         case .unavailable(let code):
             let isCodex = agent == "codex"
             let isSupportedAgent = canPinnedInstallerSupportAgent
@@ -463,7 +465,7 @@ extension AgentTimelineView {
         let isCwdMismatch = code == "session_cwd_mismatch"
         let isMissing = code == "helper_missing"
         if isNeedsUpgrade { return "Upgrade Herdcats Bridge" }
-        if agent == "pi" && code == "pi_extension_unavailable" { return "Load Herdcats Pi extension" }
+        if agent == "pi" && code == "pi_extension_unavailable" { return "Herdcats Pi extension isn’t running" }
         if agent == "pi" && code == "unsafe_transcript_path" { return "Session history could not be read safely" }
         if isCodex && isNoSession { return "Waiting for Codex session" }
         if agent == "cursor" && isNoSession { return "Cursor chat not identified" }
@@ -503,7 +505,7 @@ extension AgentTimelineView {
                 return "Herdcats could not verify this pane's Pi session file. Check the Pi session and bridge agent directory, then check again."
             }
             if code == "pi_extension_unavailable" {
-                return "Install the Herdcats extension on this SSH host, then load it in the Pi TUI for this pane. Copy `bridge/pi-extension/index.ts` and `runtime.mjs` to `~/.pi/agent/extensions/herdcats/` (or `$PI_CODING_AGENT_DIR/extensions/herdcats/`), then run `/reload` in this same TUI and tap Check again."
+                return "This Pi TUI isn’t running the Herdcats extension. Make sure it is installed and up to date: copy `bridge/pi-extension/index.ts` and `runtime.mjs` from the Herdcats Bridge release to `~/.pi/agent/extensions/herdcats/` (or `$PI_CODING_AGENT_DIR/extensions/herdcats/`), then run `/reload` in this same TUI and tap Check again."
             }
             if code == "invalid_pi_response" {
                 return "The Herdcats extension returned an unrecognized response. Check that this Pi TUI has the extension version from the same source checkout, then run `/reload` and check again."
@@ -703,3 +705,91 @@ extension AgentTimelineView {
         }
     }
 }
+
+// MARK: - Herdcats Pi extension install, update and reload
+
+extension AgentTimelineView {
+    struct PiExtensionCheckKey: Equatable {
+        let generation: ConnectionGeneration?
+        let retry: Int
+    }
+
+    /// Opt-in: nothing is written until the user taps Install or Update.
+    var piExtensionSetup: some View {
+        let hint = piExtension.map { PiExtensionPresentation.hint(result: $0, agentStatus: paneAgentStatus) }
+        return ContentUnavailableView {
+            Label(hint?.title ?? "Checking the Herdcats Pi extension…", systemImage: "puzzlepiece.extension")
+        } description: {
+            VStack(spacing: 8) {
+                if let feedback = piExtensionFeedback {
+                    Text(feedback).accessibilityIdentifier("timeline-pi-extension-feedback")
+                }
+                if let hint { Text(hint.detail) }
+            }
+        } actions: {
+            if let action = hint?.action {
+                Button { performPiExtension(action) } label: {
+                    HStack {
+                        if isRunningPiExtension { ProgressView() }
+                        Text(action.label)
+                    }.frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.herdrPrimary)
+                .disabled(isRunningPiExtension || !connectionState.isReady)
+                .accessibilityIdentifier("timeline-pi-extension-action")
+            }
+            Button("Check again") {
+                piExtension = nil
+                piExtensionFeedback = nil
+                retry += 1
+            }
+            .buttonStyle(.herdrSecondary)
+            .disabled(isRunningPiExtension)
+            .accessibilityIdentifier("timeline-helper-retry")
+        }
+        .task(id: PiExtensionCheckKey(generation: connectionState.generation, retry: retry)) {
+            await checkPiExtension()
+        }
+    }
+
+    @MainActor func checkPiExtension() async {
+        guard let generation = connectionState.generation, connectionState.isReady else { return }
+        do {
+            piExtension = try await connection.runPiExtension(.status, target: setupTarget, owned: generation)
+        } catch is CancellationError {
+        } catch {
+            piExtension = PiExtensionResult(status: nil, dir: nil, error: "check_failed")
+        }
+    }
+
+    @MainActor func performPiExtension(_ action: PiExtensionAction) {
+        guard !isRunningPiExtension, let generation = connectionState.generation else { return }
+        isRunningPiExtension = true
+        piExtensionFeedback = nil
+        Task { @MainActor in
+            defer { isRunningPiExtension = false }
+            switch action {
+            case .install, .update:
+                do {
+                    let result = try await connection.runPiExtension(.install, target: setupTarget, owned: generation)
+                    piExtension = result
+                    if result.status == .current {
+                        piExtensionFeedback = action == .install ? "Extension installed." : "Extension updated."
+                    }
+                } catch {
+                    piExtensionFeedback = "Couldn’t write the Pi extension. Check the host, then try again."
+                }
+            case .reload:
+                // Recheck right before typing: a busy Pi could take the text as a prompt.
+                guard ["idle", "done"].contains(paneAgentStatus ?? "") else { return }
+                do {
+                    try await connection.paneTypeText(paneId: paneId, text: "/reload")
+                    onOpenTerminal()
+                } catch {
+                    piExtensionFeedback = "Couldn’t type /reload. Run it in Terminal."
+                }
+            }
+        }
+    }
+}
+

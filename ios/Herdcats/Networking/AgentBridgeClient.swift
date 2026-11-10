@@ -773,6 +773,8 @@ extension HerdrConnection {
         await onStage(.verifying)
         try HostHelperSetupPlan.verifyInstallation(result, agent: agent, release: release)
         try requireGeneration(owned)
+        await refreshOutdatedPiExtension(client: client)
+        try requireGeneration(owned)
         return .ready
     }
 
@@ -882,6 +884,50 @@ extension HerdrConnection {
     static func hooksScript(agent: ApprovalAgent, operation: AgentHooksOperation) -> String {
         helperScript(
             exec: "exec \"$B\" hooks \(operation.rawValue) --agent \(agent.rawValue)",
+            missingPayload: "{\"error\":\"helper_missing\"}",
+            readStdinOnMissing: false,
+            missingExitCode: 0
+        )
+    }
+}
+
+enum PiExtensionOperation: String, Sendable { case status, install }
+extension HerdrConnection {
+    /// User-triggered only (an explicit Install/Update tap, or `status` to pick the button).
+    func runPiExtension(
+        _ operation: PiExtensionOperation, target: ConnectionIdentity, owned: ConnectionGeneration
+    ) async throws -> PiExtensionResult {
+        try requireTUIFeature()
+        try requireGeneration(owned)
+        guard identity == target else { throw HerdrError.notConnected }
+        let client = try slot.ownedClient(owned)
+        guard helperSetupOperation == nil else { throw HostHelperSetupError.busy }
+        let token = UUID()
+        helperSetupOperation = token
+        defer { if helperSetupOperation == token { helperSetupOperation = nil } }
+        try Task.checkCancellation()
+        try requireGeneration(owned)
+        guard identity == target else { throw HerdrError.notConnected }
+        let output = try await HostHelperCommand().run(client: client, script: Self.piExtensionScript(operation), timeout: 15)
+        try Task.checkCancellation()
+        try requireGeneration(owned)
+        guard identity == target else { throw HerdrError.notConnected }
+        return try PiExtensionResult.parse(output)
+    }
+
+    /// Part of a user-started bridge update: brings an older Herdcats Pi
+    /// extension the user installed before up to date. Never installs one that
+    /// is absent or edited. Best effort; the bridge update already succeeded.
+    func refreshOutdatedPiExtension(client: SSHClient) async {
+        guard let output = try? await HostHelperCommand().run(client: client, script: Self.piExtensionScript(.status), timeout: 15),
+              PiExtensionPresentation.refreshesAfterBridgeUpdate((try? PiExtensionResult.parse(output))?.status)
+        else { return }
+        _ = try? await HostHelperCommand().run(client: client, script: Self.piExtensionScript(.install), timeout: 15)
+    }
+
+    static func piExtensionScript(_ operation: PiExtensionOperation) -> String {
+        helperScript(
+            exec: "exec \"$B\" pi-extension \(operation.rawValue)",
             missingPayload: "{\"error\":\"helper_missing\"}",
             readStdinOnMissing: false,
             missingExitCode: 0

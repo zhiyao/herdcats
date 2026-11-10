@@ -449,7 +449,9 @@ struct PaneSessionView: View {
                             let key = TimelineSetupPreference.key(scope: connectionScope)
                             if UserDefaults.standard.bool(forKey: key) { UserDefaults.standard.removeObject(forKey: key) }
                         },
-                        onFocusComposer: focusApprovalComposer
+                        onFocusComposer: focusApprovalComposer,
+                        paneAgentStatus: pane.agentStatus,
+                        onOpenTerminal: { showsTimeline = false }
                     )
                 } else {
                     outputScrollView
