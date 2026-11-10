@@ -63,7 +63,7 @@ fn pi_fresh_session_prompt_persists_without_identity_or_generation_reset() {
     let listener = UnixListener::bind(&socket).unwrap();
     let pane = json!({"pane_id":"pane","terminal_id":"terminal","agent":"pi","agent_status":"idle","agent_session":{"agent":"pi","source":"herdr:pi","kind":"path","value":path}});
     let h = thread::spawn(move || {
-        for _ in 0..5 {
+        for _ in 0..7 {
             let (mut stream, _) = listener.accept().unwrap();
             let mut line = String::new();
             BufReader::new(stream.try_clone().unwrap())
@@ -77,7 +77,7 @@ fn pi_fresh_session_prompt_persists_without_identity_or_generation_reset() {
     let state_path = path.clone();
     let extension = thread::spawn(move || {
         let mut entries = json!([]);
-        for index in 0..5 {
+        for index in 0..7 {
             let (mut stream, _) = listener.accept().unwrap();
             let mut line = String::new();
             BufReader::new(stream.try_clone().unwrap())
@@ -95,7 +95,7 @@ fn pi_fresh_session_prompt_persists_without_identity_or_generation_reset() {
                 entries = json!([{"type":"message","id":"u1","message":{"role":"user","content":[{"type":"text","text":"first fixture prompt"}]}}]);
                 json!({"accepted":true})
             } else {
-                json!({"version":"1.4.0","session_id":session,"session_file":state_path,"instance_id":"runtime","revision":1,"entries":entries,"status":"idle"})
+                json!({"protocol":1,"version":"1.5.0","session_id":session,"session_file":state_path,"instance_id":"runtime","revision":1,"entries":entries,"status":"idle"})
             };
             let mut result = result;
             if index == 3 {
@@ -104,6 +104,8 @@ fn pi_fresh_session_prompt_persists_without_identity_or_generation_reset() {
             if index == 4 {
                 result["session_id"] = json!("00000000-0000-0000-0000-000000000000");
             }
+            if index == 5 { result.as_object_mut().unwrap().remove("protocol"); }
+            if index == 6 { result["protocol"] = json!(2); }
             writeln!(stream, "{}", json!({"result":result})).unwrap();
         }
     });
@@ -156,6 +158,10 @@ fn pi_fresh_session_prompt_persists_without_identity_or_generation_reset() {
         service.watch.as_ref().unwrap().unavailable,
         Some("invalid_pi_response")
     );
+    for _ in 0..2 {
+        service.poll(&mut Vec::new()).unwrap();
+        assert_eq!(service.watch.as_ref().unwrap().unavailable, Some("invalid_pi_response"));
+    }
     h.join().unwrap();
     extension.join().unwrap();
     fs::remove_dir_all(root).unwrap();
@@ -296,7 +302,7 @@ fn pi_consecutive_effort_changes_publish_updates_without_reloading_watch() {
                 effort = request["params"]["effort"].clone(); revision += 1;
                 json!({"applied":true,"model":{"id":"provider/model-a","label":"Model A","effort":effort}})
             } else {
-                json!({"version":"1.4.0","session_id":session,"session_file":path,"instance_id":"runtime-a","revision":revision,"entries":[],"status":"idle","model":{"id":"provider/model-a","label":"Model A","effort":effort}})
+                json!({"protocol":1,"version":"1.5.0","session_id":session,"session_file":path,"instance_id":"runtime-a","revision":revision,"entries":[],"status":"idle","model":{"id":"provider/model-a","label":"Model A","effort":effort}})
             };
             writeln!(stream,"{}",json!({"result":result})).unwrap();
         }
@@ -350,7 +356,7 @@ fn pi_branch_a_b_a_emits_fresh_snapshots_restoring_original_messages() {
             let mut line = String::new();
             BufReader::new(stream.try_clone().unwrap()).read_line(&mut line).unwrap();
             let entries = ["one", "two"].map(|suffix| json!({"type":"message","id":format!("{branch}-{suffix}"),"message":{"role":"user","content":format!("{branch} {suffix}")}}));
-            writeln!(stream,"{}",json!({"result":{"version":"1.4.0","session_id":session,"session_file":path,"instance_id":"runtime","revision":1,"entries":entries,"status":"idle","pending":{"id":"same-dialog","kind":"confirm","title":"Continue?","message":"Allow once?"}}})).unwrap();
+            writeln!(stream,"{}",json!({"result":{"protocol":1,"version":"1.5.0","session_id":session,"session_file":path,"instance_id":"runtime","revision":1,"entries":entries,"status":"idle","pending":{"id":"same-dialog","kind":"confirm","title":"Continue?","message":"Allow once?"}}})).unwrap();
         }
     });
     let mut service = Service::with_resolvers(socket, None, None).with_pi_agent_dir(root.clone());

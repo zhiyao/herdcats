@@ -220,6 +220,8 @@ struct AgentBridgePayload: Codable, Sendable {
     var identity: AgentTimelineIdentity?
     var generation: UInt64?
     var entries: [AgentTimelineEntry]?
+    /// Update-only rows in `timeline.updated`: replace held rows, never insert.
+    var revised: [AgentTimelineEntry]?
     var evictedIds: [String]?
     var hasMore: Bool?
     var before: String?
@@ -465,6 +467,13 @@ enum HostHelperProbe: Equatable, Sendable {
         else { return false }
         return current == pinned || pinned.lexicographicallyPrecedes(current)
     }
+    static func isOlder(_ version: String?, than target: String) -> Bool {
+        guard let version,
+              let current = versionNumbers(version),
+              let target = versionNumbers(target)
+        else { return false }
+        return current.lexicographicallyPrecedes(target)
+    }
     static func isOlderThanPinned(_ version: String?) -> Bool {
         guard let version,
               let current = versionNumbers(version),
@@ -600,7 +609,8 @@ enum TimelineActivitySummary {
     static func title(_ entries: [AgentTimelineEntry]) -> String {
         let commands = entries.filter(isCommand).count
         let notifications = entries.filter { $0.toolName == "Background task" }.count
-        let tools = entries.count - commands - notifications
+        let definitions = entries.filter { $0.toolName == "Tool definitions" }.count
+        let tools = entries.count - commands - notifications - definitions
         let running = entries.contains(where: isRunning)
         var parts: [String] = []
         if commands > 0 {
@@ -612,9 +622,13 @@ enum TimelineActivitySummary {
         if notifications > 0 {
             parts.append(notifications == 1 ? "Background task update" : "\(notifications) background task updates")
         }
+        if definitions > 0 {
+            parts.append("Loaded tool definitions")
+        }
         return parts.joined(separator: " · ")
     }
     static func purpose(_ entry: AgentTimelineEntry) -> String {
+        if entry.toolName == "Tool definitions" { return "Loaded tool definitions" }
         if entry.toolName == "Background task" { return String(entry.text.prefix(240)) }
         let input = entry.details.flatMap { $0.data(using: .utf8) }
             .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]

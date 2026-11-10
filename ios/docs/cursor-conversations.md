@@ -19,7 +19,7 @@ Confirm the report includes `cursor`, install the binary at `~/.local/bin/herdca
 | Sending a prompt | Yes, only when the screen shows an idle, empty composer. |
 | Shell command approvals | Run once and Skip. Other choices stay in Terminal. |
 | Questions (`AskQuestion`) | Single choice, multiple choice and write-in, one question at a time. |
-| Model and effort | Yes, on the verified build only. |
+| Model and effort | Yes, with recognized picker and composer screens. |
 | File edits, MCP, web fetch, plan approvals | Terminal only. |
 
 Use Terminal whenever the bridge cannot verify the session, a pending interaction or a control. Nothing here implies that a Cursor-enabled binary has been published.
@@ -75,7 +75,7 @@ A question is answerable only while untouched (cursor on the first row, nothing 
 
 ## Model and effort
 
-Model controls are enabled only for the exact build `2026.10.22-27dcf5f`. The version comes from the **running session's own process** (Herdr's process information for the pane), not from `cursor-agent --version` or the install symlink, because the installed build can change under a running session when Cursor auto-updates. A different, mixed or unknown version keeps history and Terminal and refuses control before any key is sent.
+Model controls validate the live composer, picker, editor and confirmation screens without an exact CLI version gate. The running session's build comes from Herdr's process information and identifies the catalog cache; a different build gets a fresh scan. Mixed or unknown build identity still refuses controls before input because the cache cannot be bound unambiguously to the running session.
 
 - **The picker is the catalog.** The flat `--list-models` ids do not match what `/model <id>` accepts: a typed id is a fuzzy filter that can select a neighbour (`claude-opus-5` selected Claude Opus 5.5), and many derived ids are not in the picker. So the bridge opens `/model`, walks the list with verified steps (about 4 seconds for 46 models), closes it, and caches the rows for that version. The labels are also saved to `~/.cache/herdcats/cursor-model-catalog.json` (private, valid for the same build and 24 hours), so the next connection lists the models at once instead of scanning again. A saved list is only a speed-up: every change still picks the exact row in the live picker, and the file is deleted and rescanned whenever the screen disagrees with it. `--list-models` is not used for a quick preview because it prints about 270 flat variants where the picker has 46 rows. Model ids on the wire are slugs of the picker label (`Claude Opus 5.5` → `claude-opus-5-5`) and are never typed into the terminal.
 - **Changing the model** types the exact label into the picker filter one character per key (the picker ignores pasted text), moves to the row whose label matches exactly, and presses Enter. Success needs an idle composer whose footer names that model.
@@ -99,7 +99,7 @@ Live checks through the release bridge on disposable panes covered prompt delive
 
 ## Known limits
 
-- Model control is gated to the one verified Cursor build. The conversation, prompts, approvals and questions are guarded by what the screen shows, not by a version check, but were verified on that build only; a Cursor update that redraws those screens makes them refuse and fall back to Terminal.
+- Model controls, conversation, prompts, approvals and questions validate their data and terminal screens rather than requiring a specific CLI version. Live probes originally covered build `2026.10.22-27dcf5f`; a Cursor update that redraws those screens makes them refuse and fall back to Terminal.
 - The `/new` gap and the missing session after `--resume` (see above) are Herdr limits.
 - Approval and question confirmation is weaker than Agy's because Cursor records no results.
 - The chosen question answers are not visible in the conversation.
