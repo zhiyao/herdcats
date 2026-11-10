@@ -577,6 +577,15 @@ struct CodexTimelineGatingTests {
         #expect(explanation.contains("The session folder does not match the pane’s folder") || explanation.contains("The session folder does not match the pane's folder"))
         #expect(explanation.contains("so Herdcats will not guess"))
     }
+
+    @Test func inactiveCodexSessionExplainsTheResumeGap() {
+        #expect(AgentTimelineView.unavailableTitle(code: "session_inactive", agent: "codex") == "Codex switched sessions")
+        let explanation = AgentTimelineView.explanation("session_inactive", agent: "codex")
+        #expect(explanation.contains("/resume"))
+        #expect(explanation.contains("Send a message"))
+        #expect(AgentTimelineView.availabilitySymbol(code: "session_inactive", agent: "codex", capabilities: nil, codexDaemon: nil) == "questionmark.bubble")
+        #expect(AgentTimelineView.showsPaneCheckAgain(code: "session_inactive", agent: "codex"))
+    }
 }
 
 @Suite("Codex timeline prompt submission and routing")

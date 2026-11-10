@@ -115,8 +115,30 @@ pub struct Transcript {
     pub entries: Vec<Entry>,
     pub unknown_records: usize,
     pub dropped_entries: usize,
-    seen: HashSet<String>,
+    pub(crate) seen: HashSet<String>,
     pub(crate) agy_pending: Vec<String>,
+    /// File offset of the record being applied.
+    pub(crate) origin: u64,
+    /// Keep entries the retention cap removes, oldest first.
+    pub(crate) spill: bool,
+    pub(crate) spilled: Vec<Entry>,
+    /// Bytes before the first parsed record were not read, so a result or
+    /// output whose call is missing belongs to a call in those bytes.
+    pub(crate) partial_prefix: bool,
+    /// Length of the record being applied.
+    pub(crate) record_len: usize,
+    /// With a partial prefix, records that update an entry from unread older
+    /// bytes: (entry ID, or None for a turn abort that affects every running
+    /// tool; record offset; record length). Loading the older batch that
+    /// creates the entry replays them.
+    pub(crate) deferred: Vec<(Option<String>, u64, usize)>,
+    /// Replaying deferred records into an older batch: update entries the
+    /// batch created, never add new ones.
+    pub(crate) update_only: bool,
+    /// Older batches are not subject to the live retention cap.
+    pub(crate) uncapped: bool,
+    /// IDs of `spilled` entries a later record updated during this pass.
+    pub(crate) revised: Vec<String>,
 }
 /// Claude Code records local slash commands (`/model`, `/effort`, ...) and
 /// their terminal output as user messages wrapped in these tags. They are
@@ -185,7 +207,7 @@ impl Transcript {
             }
             *old = entry;
         } else {
-            if self.seen.contains(&entry.id) {
+            if self.update_only || self.seen.contains(&entry.id) {
                 return Ok(());
             }
             if self.seen.len() >= 100_000 {
@@ -194,11 +216,26 @@ impl Transcript {
             self.seen.insert(entry.id.clone());
             self.entries.push(entry);
         }
-        if self.entries.len() > MAX_ENTRIES {
-            self.entries.remove(0);
+        if !self.uncapped && self.entries.len() > MAX_ENTRIES {
+            let entry = self.entries.remove(0);
             self.dropped_entries += 1;
+            if self.spill {
+                self.spilled.push(entry);
+            }
         }
         Ok(())
+    }
+    /// Remembers the current record for the older entry that holds `key`:
+    /// one in unread older bytes, or one already moved to `spilled`.
+    pub(crate) fn defer(&mut self, key: Option<String>) {
+        if (self.partial_prefix || self.spill) && !self.update_only {
+            self.deferred.push((key, self.origin, self.record_len));
+        }
+    }
+    pub(crate) fn has_running_tools(&self) -> bool {
+        self.entries
+            .iter()
+            .any(|e| e.kind == "tool" && e.status.as_deref() == Some("running"))
     }
     fn apply_notification(&mut self, source_id: &str, text: &str) -> Result<()> {
         let (summary, truncated) =
@@ -330,6 +367,8 @@ impl Transcript {
                                 .into(),
                             );
                             old.truncated |= truncated;
+                        } else {
+                            self.defer(Some(key));
                         }
                     }
                     _ => {}
@@ -468,6 +507,8 @@ impl Transcript {
                                 block.is_error.map(|r| r.get() == "true").unwrap_or(false);
                             old.status = Some(if is_error { "failed" } else { "completed" }.into());
                             old.truncated |= truncated;
+                        } else {
+                            self.defer(Some(key));
                         }
                     }
                     "image" => {
