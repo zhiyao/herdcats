@@ -22,6 +22,10 @@ struct AgentTimelineView: View {
     let onUseTerminal: () -> Void
     let onSetupComplete: () -> Void
     var onFocusComposer: () -> Void = {}
+    /// Herdr's status for this pane; gates typing `/reload` into Pi.
+    var paneAgentStatus: String? = nil
+    /// Shows Terminal for this pane without remembering a Terminal preference.
+    var onOpenTerminal: () -> Void = {}
     @Environment(AppModel.self) var appModel
     @Environment(ActiveMachine.self) var activeMachine: ActiveMachine?
     @Environment(\.scenePhase) var scenePhase
@@ -73,6 +77,9 @@ struct AgentTimelineView: View {
     @State var copiedCodexConfig = false
     @State var copiedCodexStop = false
     @State var copiedCodexUpdaterStop = false
+    @State var piExtension: PiExtensionResult?
+    @State var isRunningPiExtension = false
+    @State var piExtensionFeedback: String?
 
     var approvalInset: CGFloat { showsWaitingRow ? waitingRowHeight + 8 : 0 }
     private var hooksKey: PhoneAnswersStore.Key? {

@@ -164,6 +164,7 @@ impl Peer {
         assert_eq!(x["result"]["capabilities"]["claude_timeline"], true);
         assert_eq!(x["result"]["capabilities"]["codex_daemon_stop"], true);
         assert_eq!(x["result"]["capabilities"]["codex_daemon_config"], true);
+        assert_eq!(x["result"]["capabilities"]["pi_extension_install"], true);
         assert_eq!(x["result"]["capabilities"]["approvals"], true);
         assert_eq!(x["result"]["capabilities"]["questions"], true);
         for capability in ["git", "prompts", "routed_hosts"] {

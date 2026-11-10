@@ -1046,14 +1046,87 @@ struct ModelCatalogProvenanceTests {
             onUseTerminal: {},
             onSetupComplete: {}
         )
-        #expect(view.title("pi_extension_unavailable") == "Load Herdcats Pi extension")
+        #expect(view.title("pi_extension_unavailable") == "Herdcats Pi extension isn’t running")
         let guidance = view.explanation("pi_extension_unavailable")
+        #expect(guidance.contains("installed and up to date"))
         #expect(guidance.contains("~/.pi/agent/extensions/herdcats"))
         #expect(guidance.contains("/reload"))
         #expect(guidance.contains("Pi TUI"))
         let invalidResponse = view.explanation("invalid_pi_response")
         #expect(invalidResponse.contains("unrecognized response"))
         #expect(!invalidResponse.contains("~/.pi/agent/extensions/herdcats"))
+    }
+
+    @Test func piExtensionResultParsesStatusDirAndError() throws {
+        let current = try PiExtensionResult.parse(#"{"status":"outdated","dir":"/Users/k/.pi/agent/extensions/herdcats"}"#)
+        #expect(current == PiExtensionResult(status: .outdated, dir: "/Users/k/.pi/agent/extensions/herdcats", error: nil))
+        let refused = try PiExtensionResult.parse("noise\n{\"error\":\"pi_extension_modified\",\"dir\":\"/x\"}\n")
+        #expect(refused.status == nil)
+        #expect(refused.error == "pi_extension_modified")
+        #expect(try PiExtensionResult.parse(#"{"status":"future"}"#).status == nil)
+        #expect(throws: (any Error).self) { try PiExtensionResult.parse("not json") }
+    }
+
+    @Test func piExtensionInstallCapabilityDefaultsOff() throws {
+        let old = try AgentBridgeFrame.decode(Data(#"{"result":{"capabilities":{"claude_timeline":true,"pi":true}}}"#.utf8))
+        #expect(old.result?.capabilities?.piExtensionInstall == false)
+        let current = try AgentBridgeFrame.decode(Data(#"{"result":{"capabilities":{"claude_timeline":true,"pi":true,"pi_extension_install":true}}}"#.utf8))
+        #expect(current.result?.capabilities?.piExtensionInstall == true)
+    }
+
+    @Test func piExtensionScriptsRunTheBridgeSubcommand() {
+        #expect(HerdrConnection.piExtensionScript(.status).contains("exec \"$B\" pi-extension status"))
+        #expect(HerdrConnection.piExtensionScript(.install).contains("exec \"$B\" pi-extension install"))
+        #expect(HerdrConnection.piExtensionScript(.install).contains("helper_missing"))
+    }
+
+    @Test func piExtensionHintOffersInstallUpdateOrReload() {
+        let dir = "/Users/kenny/.pi/agent/extensions/herdcats"
+        let missing = PiExtensionPresentation.hint(result: PiExtensionResult(status: .missing, dir: dir, error: nil), agentStatus: "idle")
+        #expect(missing.title == "Install the Herdcats Pi extension")
+        #expect(missing.action == .install)
+        #expect(missing.detail.contains("~/.pi/agent/extensions/herdcats"))
+        #expect(missing.detail.contains("send prompts"))
+
+        let outdated = PiExtensionPresentation.hint(result: PiExtensionResult(status: .outdated, dir: dir, error: nil), agentStatus: "idle")
+        #expect(outdated.title == "Update the Herdcats Pi extension")
+        #expect(outdated.action == .update)
+        #expect(outdated.action?.label == "Update Pi extension")
+        #expect(PiExtensionAction.install.label == "Install Pi extension")
+
+        let current = PiExtensionPresentation.hint(result: PiExtensionResult(status: .current, dir: dir, error: nil), agentStatus: "done")
+        #expect(current.title == "Reload Pi to finish")
+        #expect(current.action == .reload)
+        #expect(current.action?.label == "Type /reload")
+        #expect(current.detail.contains("press Enter"))
+        // Typing into a busy Pi could land in its prompt mid-run.
+        let busy = PiExtensionPresentation.hint(result: PiExtensionResult(status: .current, dir: dir, error: nil), agentStatus: "working")
+        #expect(busy.action == nil)
+        #expect(busy.detail.contains("/reload"))
+    }
+
+    @Test func piExtensionHintRefusesEditedFilesAndExplainsErrors() {
+        let modified = PiExtensionPresentation.hint(result: PiExtensionResult(status: .modified, dir: "/home/k/.pi/agent/extensions/herdcats", error: nil), agentStatus: "idle")
+        #expect(modified.title == "The Herdcats Pi extension was changed on this computer")
+        #expect(modified.action == nil)
+        #expect(modified.detail.contains("~/.pi/agent/extensions/herdcats"))
+        let refused = PiExtensionPresentation.hint(result: PiExtensionResult(status: nil, dir: "/x/extensions/herdcats", error: "pi_extension_modified"), agentStatus: "idle")
+        #expect(refused.title == modified.title)
+        #expect(refused.detail.contains("/x/extensions/herdcats"))
+        let noPi = PiExtensionPresentation.hint(result: PiExtensionResult(status: nil, dir: nil, error: "pi_agent_dir_unavailable"), agentStatus: "idle")
+        #expect(noPi.detail.contains("Start Pi"))
+        #expect(noPi.action == nil)
+        let failed = PiExtensionPresentation.hint(result: PiExtensionResult(status: nil, dir: nil, error: "pi_extension_write_failed"), agentStatus: "idle")
+        #expect(failed.action == nil)
+        #expect(failed.detail.contains("try again"))
+    }
+
+    @Test func bridgeUpdateRefreshesOnlyAnOutdatedPiExtension() {
+        #expect(PiExtensionPresentation.refreshesAfterBridgeUpdate(.outdated))
+        for status in [PiExtensionStatus.missing, .current, .modified] {
+            #expect(!PiExtensionPresentation.refreshesAfterBridgeUpdate(status))
+        }
+        #expect(!PiExtensionPresentation.refreshesAfterBridgeUpdate(nil))
     }
 
     @Test func piCapabilityDefaultsOffAndRequiresExplicitSupport() throws {

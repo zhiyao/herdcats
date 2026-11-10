@@ -8,7 +8,14 @@ Start a new Pi session with this source extension explicitly enabled:
 pi -e /absolute/path/to/herdcats/bridge/pi-extension/index.ts
 ```
 
-Keep `index.ts` and `runtime.mjs` together. For automatic discovery, copy this directory to your personal Pi extensions directory as a directory containing `index.ts`, then start Pi normally. Follow Pi's extension lifecycle guidance when reloading: `/reload` replaces the runtime; it is not RPC attachment. Existing sessions started without the extension remain usable in Terminal. Do not start a second `pi --mode rpc` process to control an already running session.
+Keep `index.ts` and `runtime.mjs` together. For automatic discovery, install them into your personal Pi extensions directory with the bridge, which bundles the matching copy:
+
+```sh
+herdcats-bridge pi-extension status    # missing, outdated, current or modified
+herdcats-bridge pi-extension install   # writes <agent dir>/extensions/herdcats/{index.ts,runtime.mjs}
+```
+
+The Herdcats app runs the same command when you tap **Install Pi extension** or **Update Pi extension** on a Pi pane. Install replaces only files that match a Herdcats release (by SHA-256) and refuses edited ones. Add `--pi-agent-dir PATH` when Pi uses a non-default agent directory. When you change `index.ts` or `runtime.mjs`, add the new SHA-256 to `bridge/src/pi_extension.rs`; a test fails until you do. Follow Pi's extension lifecycle guidance when reloading: `/reload` replaces the runtime; it is not RPC attachment. Existing sessions started without the extension remain usable in Terminal. Do not start a second `pi --mode rpc` process to control an already running session.
 
 The extension creates `<getAgentDir()>/herdcats/<native-session-UUID>.sock`, normally `~/.pi/agent/herdcats/<UUID>.sock`. The directory is mode 0700 and socket mode 0600; every directory component is checked for symlinks. `PI_CODING_AGENT_DIR` changes Pi's agent directory; pass the same path to the bridge using `--pi-agent-dir /absolute/path/to/agent-dir`. A duplicate endpoint is refused, including a stale endpoint left after a crash. Never delete an endpoint belonging to a running session. Shutdown removes only an endpoint successfully created by this extension instance.
 

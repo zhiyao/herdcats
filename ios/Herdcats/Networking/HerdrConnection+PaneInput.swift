@@ -58,6 +58,14 @@ extension HerdrConnection {
         return keys
     }
 
+    /// Types text into the pane through the exclusive pane lane, without Enter.
+    func paneTypeText(paneId: String, text: String) async throws {
+        let owned = generation
+        try await paneInput.run(paneId: paneId) {
+            try await self.paneTypeTextUnlocked(paneId: paneId, text: text, owned: owned)
+        }
+    }
+
     /// Sends logical key presses into the pane (`pane send-keys`).
     ///
     /// Keys follow Herdr’s key vocabulary (e.g. `esc`, `ctrl+c`, `enter`).

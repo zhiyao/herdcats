@@ -71,6 +71,7 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
     var approvals: Bool? = nil
     var recordContent: Bool? = nil
     var modelControl: Bool = false
+    var piExtensionInstall: Bool = false
 
     init(
         claudeTimeline: Bool,
@@ -107,6 +108,7 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
         self.cursor = try container.decodeIfPresent(Bool.self, forKey: .cursor) ?? false
         self.cursorPrompts = try container.decodeIfPresent(Bool.self, forKey: .cursorPrompts) ?? false
         self.modelControl = try container.decodeIfPresent(Bool.self, forKey: .modelControl) ?? false
+        self.piExtensionInstall = try container.decodeIfPresent(Bool.self, forKey: .piExtensionInstall) ?? false
         self.claudeTimeline = try container.decode(Bool.self, forKey: .claudeTimeline)
         self.codexTimeline = try container.decodeIfPresent(Bool.self, forKey: .codexTimeline) ?? false
         self.codexDaemonConfig = try container.decodeIfPresent(Bool.self, forKey: .codexDaemonConfig) ?? false
@@ -114,6 +116,85 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
         self.questions = try container.decodeIfPresent(Bool.self, forKey: .questions)
         self.approvals = try container.decodeIfPresent(Bool.self, forKey: .approvals)
         self.recordContent = try container.decodeIfPresent(Bool.self, forKey: .recordContent)
+    }
+}
+
+/// `herdcats-bridge pi-extension status|install`, judged by file hashes.
+enum PiExtensionStatus: String, Sendable { case missing, outdated, current, modified }
+struct PiExtensionResult: Equatable, Sendable {
+    let status: PiExtensionStatus?
+    let dir: String?
+    let error: String?
+
+    static func parse(_ raw: String) throws -> Self {
+        struct Payload: Decodable { let status: String?; let dir: String?; let error: String? }
+        let line = raw.split(whereSeparator: \.isNewline).last.map(String.init) ?? ""
+        let payload = try JSONDecoder().decode(Payload.self, from: Data(line.utf8))
+        return Self(status: payload.status.flatMap(PiExtensionStatus.init(rawValue:)), dir: payload.dir, error: payload.error)
+    }
+}
+enum PiExtensionAction: Equatable, Sendable {
+    case install, update, reload
+    var label: String {
+        switch self {
+        case .install: "Install Pi extension"
+        case .update: "Update Pi extension"
+        case .reload: "Type /reload"
+        }
+    }
+}
+struct PiExtensionHint: Equatable, Sendable {
+    let title: String
+    let detail: String
+    let action: PiExtensionAction?
+}
+enum PiExtensionPresentation {
+    static let modifiedTitle = "The Herdcats Pi extension was changed on this computer"
+
+    /// Installation is opt-in: each action needs a tap. Reload only types the
+    /// command; the user presses Enter in Terminal, where any draft is visible.
+    static func hint(result: PiExtensionResult, agentStatus: String?) -> PiExtensionHint {
+        let dir = displayPath(result.dir ?? "~/.pi/agent/extensions/herdcats")
+        if result.error == "pi_extension_modified" || result.status == .modified {
+            return PiExtensionHint(title: modifiedTitle,
+                detail: "The files in \(dir) don’t match any Herdcats release, so Herdcats won’t replace them. Update or remove them at your desk, then run /reload in Pi.",
+                action: nil)
+        }
+        if result.error == "pi_agent_dir_unavailable" {
+            return PiExtensionHint(title: "Pi isn’t set up for this account",
+                detail: "Herdcats couldn’t find Pi’s settings folder on this computer. Start Pi once on this SSH computer, then check again.",
+                action: nil)
+        }
+        switch result.status {
+        case .missing:
+            return PiExtensionHint(title: "Install the Herdcats Pi extension",
+                detail: "Adds a small extension to Pi on this computer (\(dir)) so your phone can show this conversation and send prompts. Nothing else changes.",
+                action: .install)
+        case .outdated:
+            return PiExtensionHint(title: "Update the Herdcats Pi extension",
+                detail: "This computer has an older Herdcats Pi extension. Updating replaces only its files in \(dir) with the version that matches Herdcats Bridge.",
+                action: .update)
+        case .current:
+            let idle = ["idle", "done"].contains(agentStatus ?? "")
+            return PiExtensionHint(title: "Reload Pi to finish",
+                detail: idle
+                    ? "The extension is installed. Pi loads it on /reload. Tap Type /reload, then press Enter in Terminal."
+                    : "The extension is installed. When Pi is idle, run /reload in Terminal to load it.",
+                action: idle ? .reload : nil)
+        case .modified, nil:
+            return PiExtensionHint(title: "Couldn’t check the Herdcats Pi extension",
+                detail: "Check the host, then try again. You can continue in Terminal.", action: nil)
+        }
+    }
+
+    /// A bridge update refreshes only an older Herdcats extension the user installed before.
+    static func refreshesAfterBridgeUpdate(_ status: PiExtensionStatus?) -> Bool { status == .outdated }
+
+    /// `/Users/<name>/…` or `/home/<name>/…` shown as `~/…`.
+    static func displayPath(_ path: String) -> String {
+        let parts = path.split(separator: "/", omittingEmptySubsequences: false)
+        guard parts.count > 3, parts[0].isEmpty, parts[1] == "Users" || parts[1] == "home" else { return path }
+        return "~/" + parts.dropFirst(3).joined(separator: "/")
     }
 }
 
