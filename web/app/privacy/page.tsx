@@ -11,7 +11,7 @@ export default function PrivacyPage() {
     <SitePage current="privacy" title="Privacy Policy">
       <section className={styles.section}>
         <p>
-          <strong>Last updated:</strong> 28 October 2026
+          <strong>Last updated:</strong> 8 November 2026
         </p>
         <p>
           This Privacy Policy explains how the publisher of Herdcats (&ldquo;we,&rdquo; &ldquo;us,&rdquo; or
@@ -112,10 +112,15 @@ export default function PrivacyPage() {
         <p>
           Optional Herdcats Bridge. If you enable the native Timeline, the app can download
           Herdcats Bridge (<code>herdcats-bridge</code>) from our GitHub releases and install it on the direct
-          SSH host (at <code>~/.local/bin/herdcats-bridge</code>) after you tap Install. GitHub serves
-          that download and may log the request under its own privacy policy. Herdcats Bridge reads the
+          SSH host (at <code>~/.local/bin/herdcats-bridge</code>) after you tap Install or Update. GitHub serves
+          that download and may log the request under its own privacy policy. When the app opens or returns to the
+          foreground, it also requests the public Herdcats release list from GitHub over HTTPS to see whether a newer
+          Bridge exists. That request is not tied to your SSH host: it sends no host names, usernames, credentials,
+          or session contents, only the network metadata GitHub normally sees (such as your IP address). The result
+          is cached on your device. A newer Bridge is never installed without your explicit action; if its
+          checksum cannot be verified, the app shows manual instructions instead. Herdcats Bridge reads the
           agent session transcript on that machine (Claude, Codex, Agy, Pi, and Cursor Agent with Bridge 0.5.0; Pi also requires its opt-in extension) and sends it to your phone
-          over the same SSH connection. It runs only while Timeline is open; there is no background
+          over the same SSH connection. It reads and streams session history only while Timeline is open; there is no background
           service. Downloads are checksum-verified but not code-signed or notarized. Delete the
           file to uninstall it after removing phone answers if you enabled that optional feature.
         </p>
@@ -210,7 +215,7 @@ export default function PrivacyPage() {
         <ul className={styles.list}>
           <li>Apple (App Store / StoreKit, and Speech if you use dictation)</li>
           <li>Website hosting / CDN providers for herdcats.dev</li>
-          <li>GitHub (serves the optional Herdcats Bridge download, if you install it)</li>
+          <li>GitHub (public Herdcats release information, and the optional Herdcats Bridge download if you install it)</li>
           <li>Networks and hosts you configure (your SSH server, Tailscale, Herdr, AI agent tools)</li>
         </ul>
       </section>

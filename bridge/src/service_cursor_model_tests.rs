@@ -337,14 +337,11 @@ fn cursor_status_is_cached_after_the_first_visit() {
 }
 
 #[test]
-fn cursor_model_control_needs_the_verified_live_version_before_any_input() {
+fn cursor_model_control_needs_an_unambiguous_live_build_before_any_input() {
     let (service, root, herdr, _file) = model_fixture();
     let identity = service.watch.as_ref().unwrap().identity.clone().unwrap();
     let old = "/home/u/.local/bin/cursor-agent /home/u/.local/share/cursor-agent/versions/2026.10.19-6bbf2c4/index.js --trust";
-    let newer = old.replace("2026.10.19-6bbf2c4", "2026.10.30-abcdef0");
     for (lines, code) in [
-        (vec![old.to_owned()], "cursor_unsupported_version"),
-        (vec![newer], "cursor_unsupported_version"),
         (vec!["zsh".to_owned()], "cursor_version_unverified"),
         (vec![], "cursor_version_unverified"),
         (vec![old.to_owned(), old.replace("2026.10.19-6bbf2c4", "2026.10.22-27dcf5f")], "cursor_version_unverified"),
@@ -360,18 +357,19 @@ fn cursor_model_control_needs_the_verified_live_version_before_any_input() {
 
 #[test]
 fn cursor_version_comes_from_the_session_even_when_the_installed_build_moved_on() {
-    // The pane runs the verified build; nothing about `cursor-agent --version`
+    // The pane runs the fixture build; nothing about `cursor-agent --version`
     // or the symlink is consulted.
     let (service, root, herdr, _file) = model_fixture();
     let identity = service.watch.as_ref().unwrap().identity.clone().unwrap();
     assert_eq!(service.cursor_version(&identity), Ok("2026.10.22-27dcf5f".to_owned()));
-    // A cached catalog is for one version only: after an update mid-session the
-    // next call must refuse rather than reuse it.
+    // A different live build must trigger a fresh scan, not reuse the catalog.
     service.cursor_model_status(&identity).unwrap();
     herdr.lock().unwrap().process_lines = Some(vec!["x/cursor-agent/versions/2026.11.02-0123abc/index.js".into()]);
     let before = input_count(&herdr);
-    assert_eq!(service.cursor_model_status(&identity).unwrap_err(), "cursor_unsupported_version");
-    assert_eq!(input_count(&herdr), before);
+    let status = service.cursor_model_status(&identity).unwrap();
+    assert_eq!(status["catalog"]["cliVersion"], "2026.11.02-0123abc");
+    assert!(input_count(&herdr) > before, "the new build gets a fresh picker scan");
+    closed(&herdr);
     cleanup(&service, root);
 }
 

@@ -131,12 +131,13 @@ upload. `./ios/bin/beta` remains available as a standalone helper.
 
 ## Bridge releases
 
-Bridge versions are independent of the iOS app. Version 0.5.0 prepares Pi and
-Cursor Agent support; 0.4.0 already has a tag and draft, so do not move or reuse
-that tag. The 0.3.0 published release and iOS installer pin remain valid until
-new published assets are verified.
+Bridge versions are independent of the iOS app. Version 0.5.1 prepares agent
+compatibility fixes and bridge hardening after the published 0.5.0 release.
+Do not move or reuse existing release tags. The published 0.5.0 release and iOS
+installer pin remain valid until new published assets are verified.
 
-1. Prepare a PR updating `bridge/Cargo.toml`, `bridge/Cargo.lock`, the default
+1. Prepare a PR updating `bridge/Cargo.toml`, `bridge/Cargo.lock`,
+   `bridge/protocol.json`'s `bridge_version`, the default
    version in `bridge/scripts/install.sh`, agent list in setup metadata, workflow dispatch
    default, setup metadata, and `bridge/release-notes.txt`.
 2. Run locked Rust tests, Clippy, a release build, the Pi extension Node suite,
@@ -144,7 +145,7 @@ new published assets are verified.
    compatibility limits in their conversation docs. Automated fixtures do not
    establish compatibility with additional CLI versions.
 3. Merge through passing Bridge, iOS and Web CI. From a checkout with the merged
-   source, run `scripts/bridge-release-tag.sh 0.5.0`. It checks `origin/main` and
+   source, run `scripts/bridge-release-tag.sh 0.5.1`. It checks `origin/main` and
    CI, then asks before tagging and again before publishing. Never tag this
    unmerged preparation branch.
 4. Review the workflow's draft: four native binaries, `install.sh`,
@@ -153,7 +154,7 @@ new published assets are verified.
    report. Smoke-test installation in a temporary directory on the target host.
    The Pi archive is platform-independent and comes from the arm64 Mac job;
    verify its checksum, extract it into a chosen directory, and explicitly enable
-   its `herdcats/index.ts` inside Pi 1.4.0. The binary installer does not enable it.
+   its `herdcats/index.ts` inside the existing Pi TUI. The binary installer does not enable it.
 5. After publication and verification, prepare a separate iOS pin update with the
    actual released installer SHA-256, version and supported-agent list together.
    Record platform/checksum/CI evidence under `compatibility/release/`; do not
@@ -161,6 +162,7 @@ new published assets are verified.
 
 The release workflow builds macOS arm64/x86_64 and Linux arm64/x86_64 natively.
 macOS binaries are unsigned/unnotarized; Linux requires glibc 2.35 or later.
-Cursor model controls are verified only on build `2026.10.22-27dcf5f`; Pi native
-controls require the opt-in extension and verified Pi `1.4.0`. Terminal fallback
+CLI releases are not exact-version gated. Cursor and Agy controls validate live
+catalogs and terminal screens; Pi requires the opt-in extension with compatible
+public APIs and Herdcats extension protocol `1`. Terminal fallback
 and each integration's existing guards still apply.

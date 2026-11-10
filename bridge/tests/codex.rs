@@ -700,6 +700,54 @@ fn adapter_cache_hit_still_reverifies_session_meta_for_v7() {
 }
 
 #[test]
+fn adapter_rejects_reference_to_thread_codex_no_longer_holds() {
+    // Codex keeps <CODEX_HOME>/thread-writer-locks/<thread>.lock while a thread
+    // is loaded and deletes it after `/resume` or `/new` switches away. Herdr
+    // only learns the new thread on the next prompt, so until then its
+    // reference names the old thread, which may share the pane's cwd.
+    let temp = Temp::new();
+    let sessions = temp.0.join("sessions");
+    let locks = temp.0.join("thread-writer-locks");
+    let day_dir = sessions.join("2026/10/13");
+    fs::create_dir_all(&day_dir).unwrap();
+    fs::create_dir_all(&locks).unwrap();
+    fs::write(
+        day_dir.join(format!("rollout-2026-10-13T00-00-00-{THREAD_ID}.jsonl")),
+        ROLLOUT_FIXTURE,
+    )
+    .unwrap();
+    let adapter = CodexAdapter::new(Some(CodexResolver::new(&sessions).unwrap()));
+    let pane = make_pane(
+        Some(THREAD_ID),
+        "herdr:codex",
+        "codex",
+        "codex",
+        "id",
+        "/fixture/work",
+    );
+
+    assert_eq!(
+        adapter.resolve_and_open(&pane).unwrap_err(),
+        "session_inactive"
+    );
+
+    let lock = locks.join(format!("{THREAD_ID}.lock"));
+    fs::write(&lock, "").unwrap();
+    assert_eq!(adapter.resolve_and_open(&pane).unwrap().0, THREAD_ID);
+
+    // Released after the follower was established: fail on the next poll.
+    fs::remove_file(&lock).unwrap();
+    assert_eq!(
+        adapter.resolve_and_open(&pane).unwrap_err(),
+        "session_inactive"
+    );
+
+    // Codex builds without writer locks are not checked.
+    fs::remove_dir(&locks).unwrap();
+    assert_eq!(adapter.resolve_and_open(&pane).unwrap().0, THREAD_ID);
+}
+
+#[test]
 fn adapter_non_v7_cache_skips_full_walk_within_30s() {
     let temp = Temp::new();
     let thread_non_v7 = "11111111-2222-4333-8444-555555555555";
@@ -923,6 +971,46 @@ fn preserve_codex_record_unfamiliar_record_creates_bounded_bubble() {
         transcript.entries[1].content_ref.as_deref(),
         Some(format!("source:300:{}", bytes2.len()).as_str())
     );
+}
+
+#[test]
+fn additional_tools_appear_as_completed_tool_setup_activity() {
+    let temp = Temp::new();
+    let file_path = temp.0.join("rollout-tools.jsonl");
+    let records = [
+        json!({"type": "session_meta", "payload": {"id": THREAD_ID, "cwd": "/test/cwd"}}),
+        json!({"timestamp": "2026-11-07T02:27:12.126Z", "ordinal": 2, "type": "response_item", "payload": {
+            "type": "additional_tools", "id": "at-tools", "role": "developer",
+            "tools": [{"type": "namespace", "name": "functions", "description": "", "tools": [
+                {"type": "custom", "name": "exec", "description": "Run JavaScript code to orchestrate tool calls"}
+            ]}]
+        }}),
+        json!({"type": "response_item", "payload": {
+            "type": "message", "id": "msg-visible", "role": "assistant",
+            "content": [{"type": "output_text", "text": "Ready to help"}]
+        }}),
+    ];
+    let content: String = records.iter().map(|record| format!("{record}\n")).collect();
+    fs::write(&file_path, content).unwrap();
+
+    for mut follower in [
+        Follower::for_agent(AgentType::Codex),
+        Follower::with_content_for_agent(AgentType::Codex),
+    ] {
+        assert!(follower.refresh(&file_path, THREAD_ID).unwrap());
+        assert_eq!(follower.transcript.entries.len(), 2);
+        let setup = &follower.transcript.entries[0];
+        assert_eq!(setup.id, "tool_definitions:at-tools");
+        assert_eq!(setup.kind, "tool");
+        assert_eq!(setup.tool_name.as_deref(), Some("Tool definitions"));
+        assert_eq!(setup.status.as_deref(), Some("completed"));
+        let definitions: serde_json::Value = serde_json::from_str(&setup.text).unwrap();
+        assert_eq!(definitions[0]["name"], "functions");
+        assert_eq!(definitions[0]["tools"][0]["name"], "exec");
+        assert_eq!(follower.transcript.entries[1].kind, "message");
+        assert_eq!(follower.transcript.entries[1].text, "Ready to help");
+        assert_eq!(follower.transcript.unknown_records, 0);
+    }
 }
 
 #[test]
@@ -1456,15 +1544,19 @@ fn resolver_fails_closed_when_first_line_exceeds_max_record_without_newline() {
 }
 
 #[test]
-fn resolver_fails_closed_when_file_exceeds_max_source() {
+fn resolver_opens_a_rollout_beyond_the_whole_file_limit() {
     let temp = Temp::new();
     let rollout_dir = temp.0.join("2026/10/13");
     fs::create_dir_all(&rollout_dir).unwrap();
     let rollout_file = rollout_dir.join(format!("rollout-2026-10-13T00-00-00-{THREAD_ID}.jsonl"));
 
-    // Create sparse file larger than MAX_SOURCE (64 MiB)
-    let file = fs::File::create(&rollout_file).unwrap();
-    file.set_len(MAX_SOURCE + 1024).unwrap();
+    // Codex rollouts are read tail-first, so size alone never refuses one.
+    let meta = format!(
+        "{}\n",
+        json!({"type":"session_meta","payload":{"id":THREAD_ID,"cwd":"/fixture/work"}})
+    );
+    fs::write(&rollout_file, meta).unwrap();
+    fs::OpenOptions::new().write(true).open(&rollout_file).unwrap().set_len(MAX_SOURCE + 1024).unwrap();
 
     let resolver = CodexResolver::new(&temp.0).unwrap();
     let pane = make_pane(
@@ -1475,10 +1567,7 @@ fn resolver_fails_closed_when_file_exceeds_max_source() {
         "id",
         "/fixture/work",
     );
-    assert_eq!(
-        resolver.resolve(THREAD_ID, &pane).unwrap_err(),
-        "source_too_large"
-    );
+    assert!(resolver.resolve(THREAD_ID, &pane).is_ok());
 }
 
 #[test]

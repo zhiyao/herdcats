@@ -47,7 +47,12 @@ covers Claude, Codex, Agy, Pi and Cursor in TUI mode and needs the optional
 **Herdcats Bridge** on the SSH computer. Install it from the Timeline screen:
 Herdcats downloads the pinned release, verifies its checksum and installs it to
 `~/.local/bin/herdcats-bridge`, with no sudo, background service or agent hooks.
-It runs only while a Timeline is open. Pi also needs the Herdcats Pi extension;
+It reads and streams agent history only while a Timeline is open, and never runs
+as a background service. On launch and when returning to the
+foreground, the app checks GitHub's public release list for a newer Bridge and
+compares it with the connected computer's installed version; a dismissible
+notice offers an update, and nothing installs until you tap it. If a release has
+no verifiable checksum, the app shows manual instructions instead. Pi also needs the Herdcats Pi extension;
 see [Pi conversations](ios/docs/pi-conversations.md). The terminal view works
 without the bridge.
 

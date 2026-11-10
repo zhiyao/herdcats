@@ -515,7 +515,9 @@ enum HostHelperSetupPlan {
     static func manualInstallCommand(reason: HostHelperSetupReason, pinnedVersion: String = version) -> String {
         "curl -fsSL https://github.com/zhiyao/herdcats/releases/download/herdcats-bridge-v\(pinnedVersion)/install.sh | sh -s -- --version \(pinnedVersion)" + (reason == .updateRequired ? " --replace" : "")
     }
-    static func installationScript(replace: Bool) -> String {
+    static func installationScript(replace: Bool, release: BridgeRelease = .pinned) -> String {
+        let version = release.version
+        let installerSHA256 = release.installerSHA256
         return #"""
         set -eu
         fail() { printf 'HC_HELPER_ERROR:%s\n' "$1"; exit 0; }
@@ -548,7 +550,8 @@ extension HostHelperSetupPlan {
         replace: Bool,
         checkOnly: Bool,
         agent: String? = nil,
-        reason: HostHelperSetupReason = .missing
+        reason: HostHelperSetupReason = .missing,
+        target: BridgeRelease = .pinned
     ) -> HostHelperSetupDecision {
         if let agent, !agents.contains(TimelineAgentAvailability.canonical(agent) ?? agent) {
             if case .present(_, _, true) = probe { return .ready }
@@ -559,9 +562,14 @@ extension HostHelperSetupPlan {
             return checkOnly ? .missing : .install(replace: false)
         case .present(let version, let managed, let compatible):
             if checkOnly {
+                // After an uncertain explicit update the host may be unchanged:
+                // being merely compatible is not completion of the target release.
+                if compatible && reason == .updateRequired && HostHelperProbe.isOlder(version, than: target.version) {
+                    return .replacementRequired(probe)
+                }
                 return compatible ? .ready : .replacementRequired(probe)
             }
-            if reason == .updateRequired && HostHelperProbe.isOlderThanPinned(version) {
+            if reason == .updateRequired && HostHelperProbe.isOlder(version, than: target.version) {
                 if managed {
                     return .install(replace: true)
                 }
@@ -713,7 +721,7 @@ extension HostHelperSetupPlan {
         "$B" --version-json 2>/dev/null || printf '%s\n' HC_HELPER_PROBE_FAILED
         """#
     }
-    static func verifyInstallation(_ output: String, agent: String? = nil) throws {
+    static func verifyInstallation(_ output: String, agent: String? = nil, release: BridgeRelease = .pinned) throws {
         if output.hasPrefix("HC_HELPER_ERROR:") {
             let code = output.dropFirst("HC_HELPER_ERROR:".count).trimmingCharacters(in: .whitespacesAndNewlines)
             throw HostHelperSetupError.failed(code)
@@ -721,7 +729,9 @@ extension HostHelperSetupPlan {
         guard output.hasPrefix("HC_HELPER_INSTALLED\n") else { throw HostHelperSetupError.invalidResponse }
         let report = String(output.dropFirst("HC_HELPER_INSTALLED\n".count))
         let probe = try HostHelperProbe(output: "HC_HELPER_MANAGED\n" + report, agent: agent)
-        guard case .present(_, true, true) = probe else { throw HostHelperSetupError.invalidResponse }
+        guard case .present(let version, true, true) = probe,
+              !HostHelperProbe.isOlder(version, than: release.version)
+        else { throw HostHelperSetupError.invalidResponse }
     }
 }
 
@@ -732,6 +742,7 @@ extension HerdrConnection {
         replace: Bool, checkOnly: Bool, target: ConnectionIdentity, owned: ConnectionGeneration,
         agent: String? = nil,
         reason: HostHelperSetupReason = .missing,
+        release: BridgeRelease = .pinned,
         onStage: @escaping @Sendable (HostHelperSetupStage) async -> Void
     ) async throws -> HostHelperSetupDecision {
         try requireTUIFeature()
@@ -750,19 +761,36 @@ extension HerdrConnection {
         try Task.checkCancellation()
         try requireGeneration(owned)
         let probe = try HostHelperProbe(output: output, agent: agent)
-        let decision = HostHelperSetupPlan.decision(probe: probe, replace: replace, checkOnly: checkOnly, agent: agent, reason: reason)
+        let decision = HostHelperSetupPlan.decision(probe: probe, replace: replace, checkOnly: checkOnly, agent: agent, reason: reason, target: release)
         guard case .install(let replaceManaged) = decision else { return decision }
         await onStage(.installing)
         try Task.checkCancellation()
         try requireGeneration(owned)
         guard identity == target else { throw HerdrError.notConnected }
-        let result = try await HostHelperCommand().run(client: client, script: HostHelperSetupPlan.installationScript(replace: replaceManaged), timeout: 180)
+        let result = try await HostHelperCommand().run(client: client, script: HostHelperSetupPlan.installationScript(replace: replaceManaged, release: release), timeout: 180)
         try Task.checkCancellation()
         try requireGeneration(owned)
         await onStage(.verifying)
-        try HostHelperSetupPlan.verifyInstallation(result, agent: agent)
+        try HostHelperSetupPlan.verifyInstallation(result, agent: agent, release: release)
         try requireGeneration(owned)
         return .ready
+    }
+
+    /// Read-only: runs the same probe script as setup, installs nothing, and
+    /// yields the installed bridge version (nil when absent or unreadable).
+    /// Skipped while a setup operation owns the helper channel.
+    func probeInstalledBridgeVersion(target: ConnectionIdentity, owned: ConnectionGeneration) async throws -> String? {
+        try requireTUIFeature()
+        try requireGeneration(owned)
+        guard identity == target else { throw HerdrError.notConnected }
+        guard helperSetupOperation == nil else { throw HostHelperSetupError.busy }
+        let client = try slot.ownedClient(owned)
+        let output = try await HostHelperCommand().run(client: client, script: HostHelperSetupPlan.probeScript, timeout: 10)
+        try Task.checkCancellation()
+        try requireGeneration(owned)
+        guard identity == target else { throw HerdrError.notConnected }
+        guard case .present(let version, _, _) = try HostHelperProbe(output: output, agent: nil) else { return nil }
+        return version
     }
 
     func disableCodexDaemon(

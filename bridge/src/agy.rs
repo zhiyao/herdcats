@@ -370,15 +370,11 @@ pub fn installed_executable() -> Result<PathBuf> {
     )
 }
 
-/// Both read-only commands use the same resolved executable and shared deadline.
+/// Discover and validate the catalog without restricting the CLI release.
 pub fn discover_catalog(
     executable: &std::path::Path,
     deadline: std::time::Instant,
 ) -> Result<Vec<crate::model_control::AgyModel>> {
-    let version = query_executable(executable, &["--version"], deadline)?;
-    if !crate::model_control::agy_supported_version(&version) {
-        return Err("agy_unsupported_version");
-    }
     let text = query_executable(executable, &["models"], deadline)?;
     if text
         .lines()

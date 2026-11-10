@@ -108,6 +108,13 @@ struct AgentBridgeFramingTests {
         #expect(s.entries.map(\.text) == ["a", "b"])
         #expect(s.phase == .ready)
     }
+    @Test func revisedRowsUpdateHeldEntriesAndNeverInsert() throws {
+        let s = store()
+        try s.consume(frame("timeline.snapshot", entries: ["a", "b"]), owner: owner)
+        let update = try AgentBridgeFrame.decode(Data(#"{"event":"timeline.updated","epoch":"epoch-a","seq":2,"data":{"identity":{"pane_id":"w1:p1","terminal_id":"t1","agent":"claude","native_session_id":"session-a"},"generation":1,"entries":[],"revised":[{"id":"message:a","kind":"message","text":"A","role":"assistant","truncated":false},{"id":"message:trimmed","kind":"message","text":"gone","role":"assistant","truncated":false}]}}"#.utf8))
+        try s.consume(update, owner: owner)
+        #expect(s.entries.map(\.text) == ["A", "b"])
+    }
     @Test func switchingPanesDoesNotShowPreviousPaneEntries() throws {
         // Pane 1 receives a snapshot and shows its entries
         let pane1 = store()
@@ -170,6 +177,29 @@ struct AgentBridgeFramingTests {
         #expect(s.unknownRecords == 2)
         try s.mergeHistory(delayed, owner: owner, generation: 1)
         #expect(s.entries.map(\.text) == ["b", "c"])
+    }
+    @Test func historyPagesScrollPastOneThousandEntriesToTheSessionStart() throws {
+        let s = store()
+        try s.consume(frame("timeline.snapshot", entries: (1100..<1200).map { "m\($0)" }, hasMore: true), owner: owner)
+        var next = 1100
+        while next > 0 {
+            let start = max(0, next - 100)
+            let page = try frame("timeline.snapshot", entries: (start..<next).map { "m\($0)" }, hasMore: start > 0).data!
+            try s.mergeHistory(page, owner: owner, generation: 1)
+            #expect(s.hasMore == (start > 0))
+            next = start
+        }
+        #expect(s.entries.count == 1200)
+        #expect(s.entries.first?.text == "m0")
+        #expect(s.entries.last?.text == "m1199")
+    }
+    @Test func liveUpdatesKeepEntriesPastOneThousand() throws {
+        let s = store()
+        try s.consume(frame("timeline.snapshot", entries: (0..<1000).map { "m\($0)" }), owner: owner)
+        try s.consume(frame("timeline.updated", seq: 2, entries: (1000..<1100).map { "m\($0)" }), owner: owner)
+        #expect(s.entries.count == 1100)
+        #expect(s.entries.first?.text == "m0")
+        #expect(!s.hasMore)
     }
     @Test func delayedEventsAndFailuresCannotReplaceNewOwner() throws {
         let s = store()
@@ -403,6 +433,17 @@ struct TimelineActivityTests {
         #expect(TimelineActivitySummary.purpose(push) == "Push changes to pull request #11")
         #expect(TimelineActivitySummary.purpose(entry("b", name: "Read", details: #"{"file_path":"/project/README.md"}"#)) == "Read README.md")
         #expect(TimelineActivitySummary.purpose(entry("c", details: "incomplete JSON")) == "Run a shell command")
+    }
+    @Test func toolDefinitionsJoinActivityWithoutCountingAsAnExecutedTool() {
+        let definitions = entry("definitions", name: "Tool definitions")
+        #expect(TimelineActivitySummary.title([definitions]) == "Loaded tool definitions")
+        #expect(TimelineActivitySummary.title([definitions, entry("read", name: "Read")])
+                == "Used a tool · Loaded tool definitions")
+        #expect(TimelineActivitySummary.purpose(definitions) == "Loaded tool definitions")
+        #expect(!TimelineActivitySummary.isRunning(definitions))
+        let grouped = TimelineConversationItem.group([definitions, entry("read", name: "Read")])
+        #expect(grouped.count == 1)
+        #expect(grouped[0].isActivity)
     }
 }
 
@@ -1009,7 +1050,7 @@ struct ModelCatalogProvenanceTests {
         let guidance = view.explanation("pi_extension_unavailable")
         #expect(guidance.contains("~/.pi/agent/extensions/herdcats"))
         #expect(guidance.contains("/reload"))
-        #expect(guidance.contains("Pi 1.4.0"))
+        #expect(guidance.contains("Pi TUI"))
         let invalidResponse = view.explanation("invalid_pi_response")
         #expect(invalidResponse.contains("unrecognized response"))
         #expect(!invalidResponse.contains("~/.pi/agent/extensions/herdcats"))

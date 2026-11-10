@@ -325,14 +325,19 @@ pub struct Service {
     pi_agent_dir: Option<PathBuf>,
 }
 pub fn page(entries: &[Entry], before: usize) -> Value {
-    let mut start = before.saturating_sub(100);
+    page_with_more(entries, before, false)
+}
+/// One history page ending before `entries[before]`; `more` reports entries
+/// older than this slice, such as older batches still on disk.
+pub fn page_with_more(entries: &[Entry], before: usize, more: bool) -> Value {
+    let mut start = before.saturating_sub(crate::follower::PAGE);
     // Leave room for envelope and identity; JSON escaping can expand source text.
     while start < before
         && serde_json::to_vec(&entries[start..before]).map_or(true, |v| v.len() > MAX_RECORD / 2)
     {
         start += 1;
     }
-    json!({"entries":entries[start..before], "has_more":start>0,
+    json!({"entries":entries[start..before], "has_more":start>0 || more,
         "before":entries.get(start).filter(|_|start<before).map(|e|e.id.as_str())})
 }
 impl Service {
@@ -534,7 +539,7 @@ impl Service {
         let (session, file, pi_state) = if adapter.name() == "pi" {
             let (session, file, path) = adapter.resolve_pi_live(pane)?;
             let state = self.pi_request(&session, "state", json!({}))?;
-            if state["version"] != "1.4.0" || state["session_id"].as_str() != Some(session.as_str())
+            if state["protocol"].as_u64() != Some(1) || state["session_id"].as_str() != Some(session.as_str())
                 || state["instance_id"].as_str().is_none_or(|v| v.is_empty() || v.len() > 128)
                 || !state["entries"].is_array()
             { return Err("invalid_pi_response"); }
@@ -779,18 +784,55 @@ impl Service {
                     }
                     status
                 };
+                let follower = &mut watch.follower;
+                if reset
+                    && follower.transcript.entries.len() < crate::follower::PAGE
+                    && follower.has_unread_older()
+                {
+                    // A tail of mostly skipped records, such as screenshots,
+                    // would open nearly empty: fill the first page from older
+                    // batches. If that read fails the page stays short and
+                    // still reports has_more; the history request that pages
+                    // back returns the error.
+                    let want = crate::follower::PAGE - follower.transcript.entries.len();
+                    let _ = follower.load_older(want);
+                }
+                // Older entries that later records updated (a result for a
+                // call past the live list). They go out as update-only
+                // `revised` rows: the phone applies them to rows it holds and
+                // never inserts them, and rows it does not hold reach it
+                // current through history.
+                let revised = watch.follower.take_revised();
+                let revised: Vec<Entry> = if reset {
+                    Vec::new()
+                } else {
+                    watch.follower.older().iter().filter(|e| revised.binary_search(&e.id).is_ok()).cloned().collect()
+                };
                 let data = &watch.follower.transcript;
-                let evicted: Vec<_> = watch
-                    .previous
-                    .iter()
-                    .filter(|old| !data.entries.iter().any(|new| new.id == old.id))
-                    .map(|old| old.id.clone())
-                    .collect();
+                // Tail-first followers keep entries past retention as older
+                // batches the phone can page back to, so they are not deletions.
+                let evicted: Vec<_> = if watch.follower.windowed() {
+                    Vec::new()
+                } else {
+                    watch
+                        .previous
+                        .iter()
+                        .filter(|old| !data.entries.iter().any(|new| new.id == old.id))
+                        .map(|old| old.id.clone())
+                        .collect()
+                };
                 if reset {
                     watch.last_model = None;
                     watch.model_override = None;
                     watch.model_stamp = None;
-                    let mut body = page(&data.entries, data.entries.len());
+                    let older = watch.follower.older();
+                    let unread = watch.follower.has_unread_older();
+                    let mut body = if older.is_empty() {
+                        page_with_more(&data.entries, data.entries.len(), unread)
+                    } else {
+                        let all: Vec<Entry> = older.iter().chain(&data.entries).cloned().collect();
+                        page_with_more(&all, all.len(), unread)
+                    };
                     body["identity"] = json!(identity);
                     body["generation"] = json!(self.generation);
                     body["agent_status"] = json!(status);
@@ -812,13 +854,18 @@ impl Service {
                     }
                     self.event(out, "timeline.snapshot", body)?;
                 } else {
-                    let changed: Vec<_> = data
-                        .entries
-                        .iter()
-                        .filter(|entry| {
-                            watch.previous.iter().find(|old| old.id == entry.id) != Some(*entry)
-                        })
-                        .cloned()
+                    // (is a `revised` row, entry)
+                    let changed: Vec<(bool, Entry)> = revised
+                        .into_iter()
+                        .map(|entry| (true, entry))
+                        .chain(
+                            data.entries
+                                .iter()
+                                .filter(|entry| {
+                                    watch.previous.iter().find(|old| old.id == entry.id) != Some(*entry)
+                                })
+                                .map(|entry| (false, entry.clone())),
+                        )
                         .collect();
                     if !changed.is_empty()
                         || !evicted.is_empty()
@@ -841,21 +888,33 @@ impl Service {
                             evictions.push(id);
                             size += encoded;
                         }
+                        let generation = self.generation;
+                        let update = |batch: &[Entry], revisions: &[Entry], evictions: &[String]| {
+                            let mut body = json!({"identity":identity,"generation":generation,"entries":batch,"evicted_ids":evictions,"agent_status":status,"unknown_records":data.unknown_records,"dropped_entries":data.dropped_entries,"delayed":false});
+                            if !revisions.is_empty() {
+                                body["revised"] = json!(revisions);
+                            }
+                            body
+                        };
                         let mut batch = Vec::new();
-                        for entry in changed {
+                        let mut revisions = Vec::new();
+                        for (revision, entry) in changed {
                             let encoded = serde_json::to_vec(&entry)?.len() + 1;
-                            if (!batch.is_empty() || !evictions.is_empty())
-                                && size + encoded > MAX_RECORD / 2
-                            {
-                                self.event(out, "timeline.updated", json!({"identity":identity,"generation":self.generation,"entries":batch,"evicted_ids":evictions,"agent_status":status,"unknown_records":data.unknown_records,"dropped_entries":data.dropped_entries,"delayed":false}))?;
+                            let rows = batch.len() + revisions.len() + evictions.len();
+                            // The phone rejects more than 1000 rows per update.
+                            if rows > 0 && (size + encoded > MAX_RECORD / 2 || rows >= 1000) {
+                                let body = update(&batch, &revisions, &evictions);
+                                self.event(out, "timeline.updated", body)?;
                                 batch.clear();
+                                revisions.clear();
                                 evictions.clear();
                                 size = 0;
                             }
-                            batch.push(entry);
+                            if revision { revisions.push(entry) } else { batch.push(entry) }
                             size += encoded;
                         }
-                        self.event(out, "timeline.updated", json!({"identity":identity,"generation":self.generation,"entries":batch,"evicted_ids":evictions,"agent_status":status,"unknown_records":data.unknown_records,"dropped_entries":data.dropped_entries,"delayed":false}))?;
+                        let body = update(&batch, &revisions, &evictions);
+                        self.event(out, "timeline.updated", body)?;
                     }
                 }
                 watch.unknown_records = data.unknown_records;
@@ -1352,10 +1411,6 @@ impl Service {
             "model":pair.as_ref().map(|(id,_)|json!({"id":id,"label":catalog.iter().find(|m|m.id==*id).map(|m|m.label.as_str()).unwrap_or(id)})),
             "effort":pair.as_ref().and_then(|(_,e)|e.as_deref())},"confirmed":confirmed,"error":error});
         if target.id==*current_id && current_effort.as_deref()==Some(target_effort) { return Ok(result(true,None,current)); }
-        // Refuse changed installed versions even if a previous catalog is cached.
-        let executable = self.agy_executable.borrow().clone().ok_or("agy_unavailable")?;
-        let version=crate::agy::query_executable(&executable, &["--version"], Instant::now() + crate::agy::CATALOG_TIMEOUT)?;
-        if !model_control::agy_supported_version(&version) {return Err("agy_unsupported_version");}
         self.composer_clear(identity,"agy")?;
         let before=self.client.read_visible(&identity.pane_id)?;
         if model_control::agy_composer_state(&before, &catalog)!=model_control::Composer::Empty {return Err("composer_not_empty");}
@@ -2760,7 +2815,7 @@ impl Service {
                         json!({
                             "identity":self.watch.as_ref().and_then(|w|w.identity.clone()),"generation":self.generation,"agent":"pi",
                             "model":s["model"],"effort":s["model"]["effort"],"models":s["models"],
-                            "efforts":efforts,"catalog":{"source":"extension","fresh":true,"complete":true,"cliVersion":"1.4.0"}
+                            "efforts":efforts,"catalog":{"source":"extension","fresh":true,"complete":true,"cliVersion":s["version"]}
                         })
                     }).ok_or("pi_extension_unavailable")
                 } else { self.model_status() };
@@ -2894,14 +2949,37 @@ impl Service {
                 if params["generation"].as_u64() != Some(self.generation) {
                     return Self::error(out, id, "stale_cursor");
                 }
-                let entries = &watch.follower.transcript.entries;
-                let Some(before) = params["before"]
-                    .as_str()
-                    .and_then(|id| entries.iter().position(|e| e.id == id))
-                else {
-                    return Self::error(out, id, "stale_cursor");
+                let Some(watch) = &mut self.watch else {
+                    return Self::error(out, id, "not_watching");
                 };
-                let mut result = page(entries, before);
+                let follower = &mut watch.follower;
+                let cursor = params["before"].as_str();
+                let live = cursor.and_then(|id| follower.transcript.entries.iter().position(|e| e.id == id));
+                let mut result = match live {
+                    Some(before) if before > 0 => {
+                        let more = !follower.older().is_empty() || follower.has_unread_older();
+                        page_with_more(&follower.transcript.entries, before, more)
+                    }
+                    _ => {
+                        // Before the live list: page through older batches,
+                        // loading the next one from disk when this runs short.
+                        let mut before = match live {
+                            Some(_) => follower.older().len(),
+                            None => match cursor.and_then(|id| follower.older().iter().position(|e| e.id == id)) {
+                                Some(index) => index,
+                                None => return Self::error(out, id, "stale_cursor"),
+                            },
+                        };
+                        if before < crate::follower::PAGE && follower.has_unread_older() {
+                            let loaded = follower.older().len();
+                            if let Err(code) = follower.load_older(loaded + crate::follower::PAGE - before) {
+                                return Self::error(out, id, code);
+                            }
+                            before += follower.older().len() - loaded;
+                        }
+                        page_with_more(follower.older(), before, follower.has_unread_older())
+                    }
+                };
                 result["identity"] = json!(watch.identity);
                 result["generation"] = json!(self.generation);
                 result["dropped_entries"] = json!(watch.follower.transcript.dropped_entries);
@@ -3214,6 +3292,167 @@ mod tests {
             .lines()
             .map(|line| serde_json::from_str(line).unwrap())
             .collect()
+    }
+    fn user_lines(session: &str, range: std::ops::Range<usize>) -> String {
+        range.map(|i| format!("{}\n", json!({"type":"user","uuid":format!("m{i}"),"sessionId":session,"message":{"role":"user","content":format!("text{i}")}}))).collect()
+    }
+    fn history_reply(service: &mut Service, generation: u64, before: &str) -> Value {
+        let mut output = Vec::new();
+        service.request(json!({"id":"h","method":"history","params":{"generation":generation,"before":before}}).to_string().as_bytes(), &mut output).unwrap();
+        frames(output).into_iter().find(|f| f["id"] == "h").unwrap()
+    }
+    #[test]
+    fn history_continues_past_the_live_list_into_older_entries() {
+        let (mut service, root, _) = fixture();
+        let path = root.join(format!("projects/one/{SESSION}.jsonl"));
+        let count = crate::claude::MAX_ENTRIES + 250;
+        fs::write(&path, user_lines(SESSION, 0..count)).unwrap();
+        let mut output = Vec::new();
+        service.poll(&mut output).unwrap();
+        let updates = frames(output);
+        assert!(!updates.is_empty());
+        for update in &updates {
+            assert_eq!(update["event"], "timeline.updated");
+            assert_eq!(update["data"]["evicted_ids"], json!([]), "retention is not deletion");
+        }
+        let generation = service.generation;
+        let mut before = format!("message:m{}", count - 1);
+        let mut served = Vec::new();
+        loop {
+            let reply = history_reply(&mut service, generation, &before);
+            let result = &reply["result"];
+            let page: Vec<String> = result["entries"].as_array().unwrap().iter().map(|e| e["id"].as_str().unwrap().to_owned()).collect();
+            assert!(!page.is_empty(), "{reply}");
+            served.splice(0..0, page);
+            if result["has_more"] != true { break; }
+            before = result["before"].as_str().unwrap().to_owned();
+        }
+        let expected: Vec<String> = (0..count - 1).map(|i| format!("message:m{i}")).collect();
+        assert_eq!(served, expected);
+        cleanup(&service, root);
+    }
+    #[test]
+    fn a_fresh_watch_fills_its_first_page_from_older_batches() {
+        let (mut service, root, identity) = fixture();
+        let path = root.join(format!("projects/one/{OTHER}.jsonl"));
+        let mut text = user_lines(OTHER, 0..150);
+        // Screenshot-sized records the timeline skips push the prompts out of the tail.
+        let padding = format!("{}\n", json!({"type":"attachment","sessionId":OTHER,"payload":"x".repeat(1024 * 1024 - 100)}));
+        for _ in 0..9 { text += &padding; }
+        text += &user_lines(OTHER, 150..153);
+        fs::write(&path, text).unwrap();
+        *identity.lock().unwrap() = OTHER.to_owned();
+        let mut output = Vec::new();
+        service.poll(&mut output).unwrap();
+        let replies = frames(output);
+        let snapshot = replies.iter().find(|f| f["event"] == "timeline.snapshot").unwrap();
+        let entries = snapshot["data"]["entries"].as_array().unwrap();
+        assert_eq!(entries.len(), crate::follower::PAGE);
+        assert_eq!(entries.last().unwrap()["id"], "message:m152");
+        assert_eq!(entries[0]["id"], format!("message:m{}", 153 - crate::follower::PAGE));
+        assert_eq!(snapshot["data"]["has_more"], true);
+        let generation = service.generation;
+        let reply = history_reply(&mut service, generation, entries[0]["id"].as_str().unwrap());
+        let older = reply["result"]["entries"].as_array().unwrap();
+        assert_eq!(older.len(), 153 - crate::follower::PAGE);
+        assert_eq!(older[0]["id"], "message:m0");
+        assert_eq!(reply["result"]["has_more"], false);
+        cleanup(&service, root);
+    }
+    #[test]
+    fn a_result_for_a_call_in_the_first_page_fill_updates_the_phone() {
+        let (mut service, root, identity) = fixture();
+        let path = root.join(format!("projects/one/{OTHER}.jsonl"));
+        let mut text = user_lines(OTHER, 0..150);
+        text += &format!("{}\n", json!({"type":"assistant","uuid":"a0","sessionId":OTHER,"message":{"role":"assistant","content":[
+            {"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"ls"}}]}}));
+        let padding = format!("{}\n", json!({"type":"attachment","sessionId":OTHER,"payload":"x".repeat(1024 * 1024 - 100)}));
+        for _ in 0..9 { text += &padding; }
+        text += &user_lines(OTHER, 150..153);
+        fs::write(&path, &text).unwrap();
+        *identity.lock().unwrap() = OTHER.to_owned();
+        let mut output = Vec::new();
+        service.poll(&mut output).unwrap();
+        let snapshot = frames(output).into_iter().find(|f| f["event"] == "timeline.snapshot").unwrap();
+        let tool = snapshot["data"]["entries"].as_array().unwrap().iter().find(|e| e["id"] == "tool:toolu_1").cloned().unwrap();
+        assert_eq!(tool["status"], "running");
+        // The call is in an older batch now; its result arrives on a later poll.
+        text += &format!("{}\n", json!({"type":"user","uuid":"r0","sessionId":OTHER,"message":{"role":"user","content":[
+            {"type":"tool_result","tool_use_id":"toolu_1","content":"listing"}]}}));
+        fs::write(&path, &text).unwrap();
+        let mut output = Vec::new();
+        service.poll(&mut output).unwrap();
+        let updates: Vec<Value> = frames(output).into_iter().filter(|f| f["event"] == "timeline.updated").collect();
+        assert!(updates.iter().all(|f| f["data"]["entries"].as_array().unwrap().iter().all(|e| e["id"] != "tool:toolu_1")),
+            "an older entry is never an insertable row");
+        let revised: Vec<Value> = updates.iter().flat_map(|f| f["data"]["revised"].as_array().cloned().unwrap_or_default()).collect();
+        let tool = revised.iter().find(|e| e["id"] == "tool:toolu_1").expect("an update-only revision");
+        assert_eq!(tool["status"], "completed");
+        assert_eq!(tool["text"], "listing");
+        cleanup(&service, root);
+    }
+    #[test]
+    fn a_result_for_a_call_past_retention_is_update_only_and_current_in_history() {
+        let (mut service, root, identity) = fixture();
+        let path = root.join(format!("projects/one/{OTHER}.jsonl"));
+        let mut text = format!("{}\n", json!({"type":"assistant","uuid":"a0","sessionId":OTHER,"message":{"role":"assistant","content":[
+            {"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"ls"}}]}}));
+        text += &user_lines(OTHER, 0..crate::claude::MAX_ENTRIES + 250);
+        fs::write(&path, &text).unwrap();
+        *identity.lock().unwrap() = OTHER.to_owned();
+        let mut output = Vec::new();
+        service.poll(&mut output).unwrap();
+        text += &format!("{}\n", json!({"type":"user","uuid":"r0","sessionId":OTHER,"message":{"role":"user","content":[
+            {"type":"tool_result","tool_use_id":"toolu_1","content":"listing"}]}}));
+        fs::write(&path, &text).unwrap();
+        let mut output = Vec::new();
+        service.poll(&mut output).unwrap();
+        let updates: Vec<Value> = frames(output).into_iter().filter(|f| f["event"] == "timeline.updated").collect();
+        for update in &updates {
+            assert!(update["data"]["entries"].as_array().unwrap().iter().all(|e| e["id"] != "tool:toolu_1"),
+                "a phone that trimmed or never paged to this call must not append it: {update}");
+        }
+        assert!(updates.iter().any(|f| f["data"]["revised"].as_array().is_some_and(|rows| rows.iter().any(|e| e["id"] == "tool:toolu_1"))));
+        let generation = service.generation;
+        let mut before = format!("message:m{}", crate::claude::MAX_ENTRIES + 249);
+        let tool = loop {
+            let reply = history_reply(&mut service, generation, &before);
+            let result = &reply["result"];
+            if let Some(tool) = result["entries"].as_array().unwrap().iter().find(|e| e["id"] == "tool:toolu_1") {
+                break tool.clone();
+            }
+            assert_eq!(result["has_more"], true, "{reply}");
+            before = result["before"].as_str().unwrap().to_owned();
+        };
+        assert_eq!(tool["status"], "completed");
+        cleanup(&service, root);
+    }
+    #[test]
+    fn updates_revising_many_older_entries_stay_within_1000_rows() {
+        let (mut service, root, identity) = fixture();
+        let path = root.join(format!("projects/one/{OTHER}.jsonl"));
+        let tools = crate::claude::MAX_ENTRIES + 1;
+        let calls: Vec<Value> = (0..tools).map(|i| json!({"type":"tool_use","id":format!("t{i}"),"name":"Bash","input":{}})).collect();
+        let mut text = format!("{}\n", json!({"type":"assistant","uuid":"a0","sessionId":OTHER,"message":{"role":"assistant","content":calls}}));
+        text += &user_lines(OTHER, 0..crate::claude::MAX_ENTRIES);
+        fs::write(&path, &text).unwrap();
+        *identity.lock().unwrap() = OTHER.to_owned();
+        let mut output = Vec::new();
+        service.poll(&mut output).unwrap();
+        let results: Vec<Value> = (0..tools).map(|i| json!({"type":"tool_result","tool_use_id":format!("t{i}"),"content":"ok"})).collect();
+        text += &format!("{}\n", json!({"type":"user","uuid":"r0","sessionId":OTHER,"message":{"role":"user","content":results}}));
+        fs::write(&path, &text).unwrap();
+        let mut output = Vec::new();
+        service.poll(&mut output).unwrap();
+        let mut completed = 0;
+        for update in frames(output).iter().filter(|f| f["event"] == "timeline.updated") {
+            let rows = update["data"]["entries"].as_array().unwrap();
+            let revised = update["data"]["revised"].as_array().cloned().unwrap_or_default();
+            assert!(rows.len() + revised.len() <= 1000, "{} rows in one update", rows.len() + revised.len());
+            completed += revised.iter().filter(|e| e["kind"] == "tool" && e["status"] == "completed").count();
+        }
+        assert_eq!(completed, tools);
+        cleanup(&service, root);
     }
     #[test]
     fn changing_same_source_keeps_verified_history_and_generation() {
