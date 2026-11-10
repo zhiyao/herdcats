@@ -41,6 +41,9 @@ import Observation
     private(set) var identity: AgentTimelineIdentity?
     private(set) var phase: Phase = .loading
     private(set) var generation: UInt64?
+    /// Entries kept on the phone. Claude and Codex history pages reach back to
+    /// the session start, so this is well above the bridge's live list of 1000.
+    static let maxEntries = 20_000
     private(set) var hasMore = false
     private(set) var before: String?
     private(set) var agentStatus: String?
@@ -158,7 +161,11 @@ import Observation
             guard phase == .ready, data.identity == identity, data.generation == generation,
                 let rows = data.entries
             else { throw AgentBridgeError.identityMismatch }
-            try validate(rows)
+            // Update-only rows for older entries: applied to rows held here,
+            // never inserted, so a row trimmed locally does not reappear at
+            // the newest end.
+            let revised = data.revised ?? []
+            try validate(rows + revised)
             let removed = data.evictedIds ?? []
             guard removed.count <= 1000, removed.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 264 }) else {
                 throw AgentBridgeError.invalidFrame
@@ -183,8 +190,11 @@ import Observation
                     entries.append(row)
                 }
             }
-            if entries.count > 1000 {
-                entries.removeFirst(entries.count - 1000)
+            for row in revised where !evictedIds.contains(row.id) {
+                if let index = entryIndex[row.id] { entries[index] = row }
+            }
+            if entries.count > Self.maxEntries {
+                entries.removeFirst(entries.count - Self.maxEntries)
                 // Older local entries were discarded; history can still be
                 // requested relative to the first retained entity.
                 hasMore = true
@@ -246,9 +256,9 @@ import Observation
         let currentIds = Set(entries.map(\.id))
         let prefix = rows.filter { !currentIds.contains($0.id) && !evictedIds.contains($0.id) }
         // Never let a delayed history page overwrite a streamed revision.
-        entries = Array((prefix + entries).suffix(1000))
+        entries = Array((prefix + entries).suffix(Self.maxEntries))
         if !rows.contains(where: { evictedIds.contains($0.id) }) {
-            hasMore = (page.hasMore ?? false) && entries.count < 1000
+            hasMore = (page.hasMore ?? false) && entries.count < Self.maxEntries
         }
         before = entries.first?.id
         droppedEntries = page.droppedEntries ?? droppedEntries
