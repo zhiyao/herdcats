@@ -1,11 +1,12 @@
-Herdcats Bridge __BRIDGE_VERSION__ — agent compatibility fixes
+Herdcats Bridge __BRIDGE_VERSION__ — Pi extension setup from your phone
 
 Herdcats Bridge (`herdcats-bridge`) is the optional companion on your SSH computer that powers Claude, Codex, Agy, Pi and Cursor Agent Timelines in Herdcats.
 
-Changes since 0.5.0:
-- Pi, Agy and Cursor no longer require one exact CLI version. Pi validates its public extension APIs and Herdcats extension protocol 1; Agy and Cursor retain catalog, session identity, composer, screen and confirmation guards. Pi reports its actual CLI version, and Cursor rescans its model catalog when the running build changes.
-- Codex activity includes tool definitions in the timeline.
-- Security hardening protects bridge hook/configuration handling and validates persisted Cursor catalog cache data.
+Changes since 0.5.1:
+- Pi extension setup from the app: the bridge carries the Herdcats Pi extension and adds `herdcats-bridge pi-extension status|install`. When a Pi pane's extension is missing or out of date, a compatible Herdcats app offers Install or Update; it runs only when you tap. Then Type /reload types the command into Pi without pressing Enter, only while Pi is idle. Extension files that were edited by hand are refused, never overwritten.
+- Updating the bridge from a compatible app also refreshes a Herdcats Pi extension it recognises as an older release. Missing or edited extensions are left alone.
+- Long Claude and Codex sessions no longer show an empty timeline once their transcript passes 64 MiB. Transcripts are read from the newest 8 MiB, and older history loads as you scroll back to the start.
+- After /resume or /new inside Codex, the timeline no longer shows the previous thread when both threads share the pane's folder.
 
 Install or update on the SSH computer running Herdr and your agents:
 
@@ -13,12 +14,12 @@ curl -fsSL https://github.com/zhiyao/herdcats/releases/download/herdcats-bridge-
 
 Requires macOS 13+ or Linux with glibc 2.35+ (Ubuntu 22.04+), curl and SHA-256 tooling. Apple Silicon, Intel Mac, Linux arm64 and x86_64 binaries are included. Herdr protocol 22 and an exact native session reference are required. No root access, Rust, Python or persistent service is needed. Phone answers for Claude, and for Codex approvals, use an optional recording hook installed only after confirmation.
 
-The existing iOS one-click installer remains pinned to 0.5.0 until this release is published, its assets are verified, and a separate app pin update ships. Existing compatible iOS builds can use a manually updated bridge. This release does not add launch-time update discovery to the currently published iOS app.
+The iOS one-click installer remains pinned to 0.5.0 until this release is published, its assets are verified, and a separate app pin update ships. Herdcats builds that check for bridge updates on launch offer this release once it is published. The Install, Update and Type /reload buttons need both this bridge and a Herdcats app that includes them.
 
-Pi users must update the extension as well as the bridge:
+Pi extension: the extension files are unchanged since 0.5.1, so an extension already updated for 0.5.1 needs nothing. To update an older one without the app:
 1. Download herdcats-pi-extension.tar.gz and SHA256SUMS from this release and verify the archive with sha256sum or shasum -a 256.
 2. Extract it and replace the installed Herdcats extension files, keeping herdcats/index.ts and herdcats/runtime.mjs together. For a new session, enable it with pi -e /absolute/path/to/herdcats/index.ts.
-3. In an existing Pi TUI, run /reload after replacing the files. Reloading the old extension files does not apply this update.
+3. In an existing Pi TUI, run /reload after replacing the files.
 4. Return to Herdcats and tap Check again if needed.
 
 The binary installer does not install, update or enable the Pi extension, and the extension does not change Pi permission policies. Custom/editor dialogs, slash commands and authentication remain in Terminal when their contracts cannot be verified. Newer CLI versions are covered by regression fixtures; live validation of every newer release is not implied.

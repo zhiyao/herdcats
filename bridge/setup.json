@@ -1,6 +1,6 @@
 {
   "component": "herdcats-bridge",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "protocol": 1,
   "herdr_protocol": 22,
   "supported_agent": "Claude, Codex, Agy, Pi and Cursor with exact session references",
@@ -84,7 +84,7 @@
     "record_content": "App requires negotiated record_content support; older helpers reopen setup and require explicit replacement. Images and unfamiliar records expose complete source bytes."
   },
   "source_support": {
-    "version": "0.5.1 release preparation; published iOS installer remains pinned to 0.5.0",
+    "version": "0.6.0 release preparation; published iOS installer remains pinned to 0.5.0",
     "agents": [
       "claude",
       "codex",
@@ -96,7 +96,7 @@
     "docs": "ios/docs/agy-conversations.md",
     "cursor": "Model controls validate live picker and composer screens without an exact CLI version gate; the running build identifies the catalog cache.",
     "docs_cursor": "ios/docs/cursor-conversations.md",
-    "pi": "Requires the opt-in extension in herdcats-pi-extension.tar.gz (or bridge/pi-extension from source), enabled inside the existing Pi TUI. Required public APIs and Herdcats extension protocol 1 are validated; Pi CLI version is diagnostic only. Binary installation alone does not update or enable the Pi extension.",
+    "pi": "Requires the opt-in extension in herdcats-pi-extension.tar.gz (or bridge/pi-extension from source), enabled inside the existing Pi TUI. Required public APIs and Herdcats extension protocol 1 are validated; Pi CLI version is diagnostic only. A compatible app can install or update it with herdcats-bridge pi-extension install after an explicit tap; binary installation alone does not install, update or enable the Pi extension.",
     "docs_pi": "ios/docs/pi-conversations.md"
   }
 }
