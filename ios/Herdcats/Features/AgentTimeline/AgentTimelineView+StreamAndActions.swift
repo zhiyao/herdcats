@@ -277,6 +277,16 @@ extension AgentTimelineView {
                 if AgentTimelineScreenshotFixture.showsQuestion {
                     bridgeCapabilities = AgentBridgeCapabilities(claudeTimeline: true, codexTimeline: true, recordContent: true, approvals: true, questions: true)
                 }
+                if ScreenshotFixtures.screen.hasPrefix("timeline-pi-") {
+                    bridgeCapabilities = AgentBridgeCapabilities(claudeTimeline: true, pi: true)
+                    bridgeCapabilities?.piExtensionInstall = true
+                }
+                if ScreenshotFixtures.screen == "timeline-audit-hooks" {
+                    let key = PhoneAnswersStore.Key(target: setupTarget, generation: .init(rawValue: 1), agent: "codex")
+                    await appModel.phoneAnswers.check(key, force: true) {
+                        AgentHooksResult(status: .needsTrust, spoolConfirmed: false, error: nil, backup: nil)
+                    }
+                }
                 Self.publishBridgeVersion(bridgeVersion, to: bridgeUpgrade, owner: owner, activeOwner: activeOwner)
                 do {
                     try timeline.consume(AgentTimelineScreenshotFixture.frame(

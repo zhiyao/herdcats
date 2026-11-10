@@ -10,13 +10,13 @@ struct BridgeUpdateBanner: View {
     private var canInstall: Bool { prompt.available.verifiedInstaller != nil }
 
     var body: some View {
-        HStack(spacing: 12) {
+        NoticeBar {
             Image(systemName: "arrow.up.circle")
                 .accessibilityHidden(true)
             Text("Herdcats Bridge \(prompt.available.version) is available")
                 .font(.jost(.subheadline, weight: .semibold))
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Button(canInstall ? "Update" : "Details", action: onOpen)
+            NoticeAction(title: canInstall ? "Update" : "Details", action: onOpen)
                 .font(.jost(.subheadline, weight: .semibold))
                 .accessibilityIdentifier("bridge-update-open")
             Button(action: onDismiss) {
@@ -24,12 +24,10 @@ struct BridgeUpdateBanner: View {
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
+                .buttonStyle(.plain)
                 .accessibilityLabel("Dismiss")
                 .accessibilityIdentifier("bridge-update-dismiss")
         }
-        .padding(.leading, 16).padding(.trailing, 4).padding(.vertical, 2)
-        .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .padding(.horizontal, 12)
         .accessibilityIdentifier("bridge-update-banner")
     }
 }

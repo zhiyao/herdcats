@@ -976,9 +976,10 @@ private struct AgentModelConfigurationSheet: View {
                 .navigationBarTitleDisplayMode(.inline)
             }
         }
+        .bottomNotice { catalogNotice }
         .font(.jost(.body))
         .tint(Theme.accent)
-        .presentationDetents(path.isEmpty && !typeSize.isAccessibilitySize ? [.height(300)] : [.medium, .large])
+        .presentationDetents(path.isEmpty && !typeSize.isAccessibilitySize && !hasCatalogNotice ? [.height(300)] : [.medium, .large])
         .presentationDragIndicator(.visible)
         .task { await state.refresh() }
     }
@@ -990,32 +991,30 @@ private struct AgentModelConfigurationSheet: View {
                 Text("Loading model choices…")
             }
             .listRowBackground(Theme.cardBackground)
-        } else if let error = state.errorMessage {
-            Text(error)
-                .foregroundStyle(Theme.destructive)
-                .fixedSize(horizontal: false, vertical: true)
-                .listRowBackground(Theme.cardBackground)
-                .accessibilityIdentifier("model-choices-error")
-            retryCatalog
-        } else if state.models.isEmpty {
-            Text("Model choices haven't loaded yet.")
-                .foregroundStyle(Theme.textMuted)
-                .listRowBackground(Theme.cardBackground)
-            retryCatalog
-        } else if let note = state.catalogInfo?.note {
-            Text(note)
-                .foregroundStyle(Theme.textMuted)
-                .fixedSize(horizontal: false, vertical: true)
-                .listRowBackground(Theme.cardBackground)
-                .accessibilityIdentifier("model-choices-catalog-note")
-            retryCatalog
         }
     }
-    private var retryCatalog: some View {
-        Button("Retry") { Task { await state.refresh() } }
-            .disabled(state.isChanging || state.isLoadingModels)
-            .listRowBackground(Theme.cardBackground)
-            .accessibilityIdentifier("model-choices-retry")
+
+    private var hasCatalogNotice: Bool {
+        !state.isLoadingModels && (state.errorMessage != nil || state.models.isEmpty || state.catalogInfo?.note != nil)
+    }
+
+    @ViewBuilder private var catalogNotice: some View {
+        if hasCatalogNotice {
+            RecoveryNotice(title: state.errorMessage == nil ? "Model choices" : "Couldn't load model choices", systemImage: "slider.horizontal.3", identifier: "model-choices-notice") {
+                if let error = state.errorMessage {
+                    Text(error).accessibilityIdentifier("model-choices-error")
+                } else if state.models.isEmpty {
+                    Text("Model choices haven't loaded yet.")
+                } else if let note = state.catalogInfo?.note {
+                    Text(note).accessibilityIdentifier("model-choices-catalog-note")
+                }
+            } actions: {
+                Button("Retry") { Task { await state.refresh() } }
+                    .disabled(state.isChanging || state.isLoadingModels)
+                    .accessibilityIdentifier("model-choices-retry")
+            }
+            .padding(.vertical, 4)
+        }
     }
 
     private func row(_ title: String, value: String) -> some View {

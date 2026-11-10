@@ -497,19 +497,11 @@ struct PaneDetailView: View {
             let title = (actionTargetPane ?? selectedPane).displayTitle
             Text("Are you sure you want to kill “\(title)”? This will close the terminal pane.")
         }
-        .alert(
-            "Action Failed",
-            isPresented: Binding(
-                get: { actionErrorMessage != nil },
-                set: { if !$0 { actionErrorMessage = nil } }
-            )
-        ) {
-            Button("OK", role: .cancel) {
-                actionErrorMessage = nil
-            }
-        } message: {
+        .bottomNotice {
             if let actionErrorMessage {
-                Text(actionErrorMessage)
+                ErrorBanner(message: actionErrorMessage, dismiss: { self.actionErrorMessage = nil })
+                    .padding(.vertical, 4)
+                    .accessibilityIdentifier("pane-action-error")
             }
         }
         .sheet(isPresented: $isShowingAddPane, onDismiss: {

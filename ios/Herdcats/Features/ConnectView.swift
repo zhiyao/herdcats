@@ -39,20 +39,6 @@ struct ConnectView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 26) {
-                if let error = appModel.lastError {
-                    if appModel.herdrMissingOnLastConnect {
-                        MissingHerdrRecoveryCard(
-                            inForm: false,
-                            mismatch: appModel.runtimeMismatchOnLastConnect,
-                            onConnect: connectWithInstalledRuntimeAction,
-                            onSetup: { showingSetupGuide = true }
-                        )
-                    } else if appModel.herdrSessionUnavailableOnLastConnect {
-                        SessionRecoveryCard(inForm: false)
-                    } else {
-                        ErrorBanner(message: error)
-                    }
-                }
                 switch route {
                 case nil:
                     EmptyView()
@@ -79,6 +65,24 @@ struct ConnectView: View {
             .padding(.horizontal, 22)
             .padding(.top, 30)
             .padding(.bottom, 40)
+        }
+        .bottomNotice {
+            if let message = appModel.lastError {
+                ErrorBanner(message: message, dismiss: { appModel.lastError = nil }).padding(.vertical, 4)
+            }
+            if appModel.lastError != nil {
+                if appModel.herdrMissingOnLastConnect {
+                    MissingHerdrRecoveryCard(
+                        inForm: false,
+                        mismatch: appModel.runtimeMismatchOnLastConnect,
+                        onConnect: connectWithInstalledRuntimeAction,
+                        isConnecting: attempting || appModel.isConnecting,
+                        onSetup: { showingSetupGuide = true }
+                    )
+                } else if appModel.herdrSessionUnavailableOnLastConnect {
+                    SessionRecoveryCard(inForm: false)
+                }
+            }
         }
         .safeAreaInset(edge: .bottom) {
             if route == .intro {
@@ -406,46 +410,35 @@ struct MissingHerdrRecoveryCard: View {
     var mismatch: AppModel.RuntimeMismatch?
     /// Connects with the runtime the machine has. The card shows the button only when this is set.
     var onConnect: (() -> Void)?
+    var isConnecting = false
     /// Opens the setup steps when Herdr was not found. When the machine has the
     /// other runtime, the card opens that runtime's steps itself.
     let onSetup: () -> Void
     @State private var showingInstalledRuntimeSetup = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        RecoveryNotice(
+            title: mismatch.map { "SSH worked. This machine runs \($0.installed.runtimeName)." }
+                ?? "SSH worked. Herdr was not found.",
+            systemImage: "exclamationmark.triangle",
+            identifier: "runtime-recovery-notice"
+        ) {
             if let mismatch {
-                Text("SSH worked. This machine runs \(mismatch.installed.runtimeName).")
-                    .font(.jost(.headline))
                 Text("This connection is set to \(mismatch.saved.runtimeName), which isn't installed here.")
-                    .font(.jost(.subheadline))
-                    .foregroundStyle(.secondary)
-                if let onConnect {
-                    Button("Connect with \(mismatch.installed.title)", action: onConnect)
-                        .buttonStyle(.herdrPrimary())
-                }
-                Button("See Setup Steps") { showingInstalledRuntimeSetup = true }
-                    .font(.jost(.subheadline))
             } else {
-                Text("SSH worked. Herdr was not found.")
-                    .font(.jost(.headline))
-                Text(
-                    "Install the Herdr desktop app, Herdr Core, or the Herdr TUI on the remote machine. "
-                    + (inForm
-                        ? "Your connection details stay in this form. Then tap Connect again."
-                        : "Then tap your machine to connect again.")
-                )
-                    .font(.jost(.subheadline))
-                    .foregroundStyle(.secondary)
+                Text("Install the Herdr desktop app, Herdr Core, or the Herdr TUI on the remote machine. "
+                    + (inForm ? "Your connection details stay in this form. Then tap Connect again." : "Then tap your machine to connect again."))
+            }
+        } actions: {
+            if let mismatch {
+                if let onConnect { Button("Connect with \(mismatch.installed.title)", action: onConnect).disabled(isConnecting) }
+                Button("See Setup Steps") { showingInstalledRuntimeSetup = true }
+            } else {
                 Button("See Setup Steps", action: onSetup)
-                    .buttonStyle(.herdrSecondary())
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .herdrCard()
+        .padding(.vertical, 4)
         .sheet(isPresented: $showingInstalledRuntimeSetup) {
-            // Steps for the runtime the machine has. Installing the missing one would
-            // start a second, separate Herdr.
             HerdrSetupGuideView(backend: mismatch?.installed ?? .tui)
         }
     }
@@ -455,24 +448,14 @@ struct SessionRecoveryCard: View {
     let inForm: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Herdr was found. Check its session.")
-                .font(.jost(.headline))
-            Text(
-                "On the remote machine, run herdr from a project directory to start or attach "
-                + "to the default session. "
-                + (inForm
-                    ? "Then tap Connect again here."
-                    : "Then tap your machine to connect again.")
-            )
-                .font(.jost(.subheadline))
-                .foregroundStyle(.secondary)
+        RecoveryNotice(title: "Herdr was found. Check its session.", systemImage: "terminal", identifier: "session-recovery-notice") {
+            Text("On the remote machine, run herdr from a project directory to start or attach to the default session. "
+                + (inForm ? "Then tap Connect again here." : "Then tap your machine to connect again."))
+        } actions: {
             Link("Herdr Quick Start", destination: URL(string: "https://herdr.dev/docs/quick-start/")!)
-                .font(.jost(.subheadline))
+                .frame(minHeight: 44)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .herdrCard()
+        .padding(.vertical, 4)
     }
 }
 
@@ -601,6 +584,7 @@ struct SavedConnectionSignInView: View {
     let replay: Bool
     let requestsSecret: Bool
     let switcher: ActiveMachine?
+    @State private var showingRuntimeSetup = false
     @State private var switchError: String?
     @State private var value: ConnectionSignIn
     @State private var attempting = false
@@ -629,26 +613,6 @@ struct SavedConnectionSignInView: View {
                     Text("\(value.entry.username) at \(value.entry.host):\(String(value.entry.port))")
                         .font(.jost(.headline))
                         .textSelection(.enabled)
-                    if let error = switchError ?? (switcher == nil ? appModel.lastError : switcher?.pending?.lastError) {
-                        ErrorBanner(message: error)
-                    }
-                    if appModel.herdrMissingOnLastConnect {
-                        if let mismatch = appModel.runtimeMismatchOnLastConnect {
-                            // The error above names the runtime the machine has.
-                            if canConnectWithInstalledRuntime {
-                                Button("Connect with \(mismatch.installed.title)") {
-                                    Task { await connectWithInstalledRuntime(mismatch.installed) }
-                                }
-                                .buttonStyle(.herdrSecondary())
-                                .disabled(attempting)
-                            }
-                        } else {
-                            Text("Install the Herdr desktop app, Herdr Core, or the Herdr TUI on this machine, then try Connect again.")
-                            Link("Herdr Quick Start", destination: URL(string: "https://herdr.dev/docs/quick-start/")!)
-                        }
-                    } else if appModel.herdrSessionUnavailableOnLastConnect {
-                        SessionRecoveryCard(inForm: true)
-                    }
                     if requestsSecret || editingRejectedSecret {
                         if value.isKey {
                             ConnectionPrivateKeyField(key: $value.secret) { keyImporterPresented = true }
@@ -684,6 +648,26 @@ struct SavedConnectionSignInView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .background(Theme.backgroundGradient)
+            .bottomNotice {
+                if let message = switchError ?? (switcher != nil ? switcher?.pending?.lastError : appModel.lastError) {
+                    ErrorBanner(message: message, dismiss: {
+                        if switcher != nil { switchError = nil; switcher?.pending?.lastError = nil }
+                        else { appModel.lastError = nil }
+                    }).padding(.vertical, 4)
+                }
+                if switcher == nil, appModel.herdrMissingOnLastConnect {
+                    MissingHerdrRecoveryCard(inForm: true, mismatch: appModel.runtimeMismatchOnLastConnect,
+                        onConnect: canConnectWithInstalledRuntime ? {
+                            guard let installed = appModel.runtimeMismatchOnLastConnect?.installed else { return }
+                            Task { await connectWithInstalledRuntime(installed) }
+                        } : nil,
+                        isConnecting: attempting,
+                        onSetup: { showingRuntimeSetup = true })
+                } else if switcher == nil, appModel.herdrSessionUnavailableOnLastConnect {
+                    SessionRecoveryCard(inForm: true)
+                }
+            }
+            .sheet(isPresented: $showingRuntimeSetup) { HerdrSetupGuideView(backend: value.entry.backend) }
             .navigationTitle("Sign in")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -819,7 +803,6 @@ struct ManageMachinesView: View {
     var body: some View {
         NavigationStack {
             List {
-                if let error { ErrorBanner(message: error) }
                 ForEach(draft.servers) { connection in
                     Button {
                         renaming = connection
@@ -841,6 +824,7 @@ struct ManageMachinesView: View {
             .environment(\.editMode, .constant(.active))
             .scrollContentBackground(.hidden)
             .background(Theme.backgroundGradient)
+            .exceptionBanner(message: error, dismiss: { error = nil })
             .navigationTitle("Manage Machines")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -888,10 +872,10 @@ private struct RenameMachineView: View {
         NavigationStack {
             Form {
                 TextField("Name (optional)", text: $name)
-                if let error { ErrorBanner(message: error) }
             }
             .scrollContentBackground(.hidden)
             .background(Theme.backgroundGradient)
+            .exceptionBanner(message: error, dismiss: { error = nil })
             .navigationTitle("Rename Machine")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

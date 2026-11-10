@@ -100,6 +100,9 @@ struct SpacesScreen: View {
                         OfflineHerdView()
                     } else if model.isLoading {
                         LazyCatLoadingView(message: appModel.isCoreMode ? "Loading terminals…" : "Loading spaces…")
+                    } else if model.errorMessage != nil {
+                        // A failed fetch does not confirm that this computer has no spaces.
+                        Color.clear
                     } else {
                         emptyState
                     }
@@ -376,19 +379,13 @@ struct SpacesScreen: View {
                     Text("Are you sure you want to close this space? This will close its tabs and panes.")
                 }
             }
-            .overlay(alignment: .bottom) {
-                if let error = model.errorMessage,
-                   case .connected = appModel.phase,
-                   !HerdrConnection.isDisconnectionOrTransitionMessage(error) {
-                    VStack {
-                        Spacer()
-                        ErrorBanner(message: error, retry: {
-                            Task { await model.refresh(appModel.connection) }
-                        })
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 8)
-                    }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            .bottomNotice {
+                if let error = model.errorMessage, appModel.connectionBanner == nil {
+                    ErrorBanner(message: error, retry: {
+                        Task { await model.refresh(appModel.connection) }
+                    })
+                    .padding(.vertical, 4)
+                    .transition(.opacity)
                 }
             }
             .animation(.easeInOut(duration: 0.25), value: model.errorMessage == nil)
@@ -399,15 +396,18 @@ struct SpacesScreen: View {
                 async let usage: Void = currentModel.refreshUsage(connection, force: true)
                 _ = await (spaces, usage)
             }
-            .connectionStatusBanner(appModel: appModel)
         } detail: { ref in
             if let space = model.spaces.first(where: { $0.id == ref.spaceID }) ?? lastSeen[ref.spaceID] {
                 WorkspacePaneView(space: space, initialPaneID: ref.paneID)
                     .environment(appModel)
                     .environment(model)
             } else {
-                ContentUnavailableView("Space unavailable", systemImage: "square.grid.3x3",
-                                       description: Text("This space may have closed."))
+                Color.clear.bottomNotice {
+                    RecoveryNotice(title: "Space unavailable", systemImage: "square.grid.3x3") {
+                        Text("This space may have closed.")
+                    } actions: { EmptyView() }
+                    .padding(.vertical, 4)
+                }
             }
         }
     }

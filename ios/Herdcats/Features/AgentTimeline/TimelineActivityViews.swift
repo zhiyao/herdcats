@@ -56,7 +56,8 @@ struct TimelineActivityView: View {
             if previewFailed {
                 HStack {
                     Text("Some code previews couldn’t load.").foregroundStyle(Theme.textMuted)
-                    Button("Retry") { previewRetry += 1 }.tint(Theme.accent)
+                    Button("Retry") { previewRetry += 1 }
+                        .buttonStyle(NoticeButtonStyle())
                 }.font(.jost(.caption))
             }
         }

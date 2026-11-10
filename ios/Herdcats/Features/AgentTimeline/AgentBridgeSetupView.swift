@@ -168,12 +168,16 @@ struct AgentBridgeSetupView: View {
                 .padding(24)
             }
             .accessibilityIdentifier("timeline-setup-scroll")
+            .bottomNotice {
+                if let feedback {
+                    RecoveryNotice(title: "Bridge setup", systemImage: "info.circle", identifier: "bridge-setup-notice") {
+                        Text(feedback).accessibilityIdentifier("timeline-setup-feedback")
+                    } actions: { EmptyView() }
+                    .padding(.vertical, 4)
+                }
+            }
             .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 12) {
-                    if let feedback {
-                        Text(feedback).font(.jost(.caption)).foregroundStyle(Theme.textMuted)
-                            .accessibilityIdentifier("timeline-setup-feedback")
-                    }
+                    VStack(spacing: 12) {
                     if installAvailable {
                         Button(action: onInstall) {
                             HStack {
@@ -198,8 +202,9 @@ struct AgentBridgeSetupView: View {
                     Button(dismissLabel, action: onUseTerminal)
                         .buttonStyle(.herdrSecondary)
                         .accessibilityIdentifier("timeline-helper-use-terminal")
-                }
-                .padding(20).background(Theme.background)
+                    }
+                    .padding(20)
+                    .background(Theme.background)
             }
             .background(Theme.background).foregroundStyle(Theme.text)
             .navigationTitle(reason == .updateRequired ? "Upgrade Herdcats Bridge" : "Set up Timeline")

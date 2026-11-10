@@ -33,7 +33,7 @@ struct QuotaScreen: View {
                     GeometryReader { viewport in
                         ScrollView {
                             VStack(alignment: .leading, spacing: 10) {
-                                QuotaCardsView(model: model)
+                                QuotaCardsView(model: model, showsRecoveryNotice: false)
                                     .frame(minHeight: model.quotaContentState == .loading ? max(260, viewport.size.height - 32) : nil)
                                 if let updated = model.usageLastUpdated, !model.usageCards.isEmpty {
                                     QuotaLastUpdatedView(date: updated)
@@ -71,9 +71,39 @@ struct QuotaScreen: View {
                 }
             }
             .toolbarBackground(.hidden, for: .navigationBar)
+            .bottomNotice {
+                if !appModel.isOffline {
+                    QuotaRecoveryNotice(model: model)
+                }
+            }
             .task { await model.refreshUsage(appModel.connection) }
             .refreshable { await model.refreshUsage(appModel.connection, force: true) }
-            .connectionStatusBanner(appModel: appModel)
+        }
+    }
+}
+
+/// Shared by the tab and standalone quota card hosts (including UI fixtures).
+struct QuotaRecoveryNotice: View {
+    @Environment(AppModel.self) private var appModel
+    let model: SpacesModel
+    var body: some View {
+        switch model.quotaContentState {
+        case .error(let message):
+            ErrorBanner(message: message, retry: {
+                Task { await model.refreshUsage(appModel.connection, force: true) }
+            })
+            .padding(.vertical, 4)
+            .accessibilityIdentifier("quota-load-error")
+        case .notSetup:
+            QuotaAxiNotSetupView(model: model).padding(.vertical, 4)
+        case .empty:
+            RecoveryNotice(title: "No quota data available", systemImage: "gauge.with.dots.needle.67percent", identifier: "quota-load-empty") {
+                Text("Check quota again to load the latest usage from this computer.")
+            } actions: {
+                Button("Retry") { Task { await model.refreshUsage(appModel.connection, force: true) } }
+            }
+            .padding(.vertical, 4)
+        case .cards, .loading: EmptyView()
         }
     }
 }
@@ -127,6 +157,7 @@ enum QuotaUpdatedFormat {
 struct QuotaCardsView: View {
     @Environment(AppModel.self) private var appModel
     let model: SpacesModel
+    var showsRecoveryNotice = true
     @State private var showsAgySignIn = false
     @AppStorage(QuotaOrderPreference.storageKey)
     private var quotaOrderRaw = QuotaOrderPreference.default.rawValue
@@ -141,25 +172,19 @@ struct QuotaCardsView: View {
             case .cards:
                 cardsRow
             case .notSetup:
-                QuotaAxiNotSetupView(model: model)
+                EmptyView()
             case .loading:
                 usageStatusCard
-            case .error(let message):
-                ErrorBanner(message: message, retry: {
-                    Task { await model.refreshUsage(appModel.connection, force: true) }
-                })
-                .accessibilityIdentifier("quota-load-error")
-            case .empty:
-                VStack(spacing: 12) {
-                    ContentUnavailableView("No quota data available", systemImage: "gauge.with.dots.needle.67percent")
-                    Button("Retry") { Task { await model.refreshUsage(appModel.connection, force: true) } }
-                        .buttonStyle(.herdrSecondary(fullWidth: false))
-                }
-                .accessibilityIdentifier("quota-load-empty")
+            case .error, .empty:
+                EmptyView()
             }
         }
         .animation(.spring(response: 0.38, dampingFraction: 0.82), value: model.usageCards.isEmpty)
         .animation(.spring(response: 0.38, dampingFraction: 0.82), value: model.quotaAxiMissing)
+        .frame(maxWidth: .infinity, maxHeight: showsRecoveryNotice ? .infinity : nil, alignment: .topLeading)
+        .bottomNotice {
+            if showsRecoveryNotice { QuotaRecoveryNotice(model: model) }
+        }
     }
 
     private var usageStatusCard: some View {
@@ -246,95 +271,33 @@ struct QuotaAxiNotSetupView: View {
     static let installCommand = "npm i -g quota-axi"
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) {
-                Image(systemName: "gauge.with.dots.needle.67percent")
-                    .font(.jost(16, weight: .semibold))
-                    .foregroundStyle(Theme.accent)
-                Text("quota-axi is not installed")
-                    .font(.jost(15, weight: .bold))
-                    .foregroundStyle(.primary)
-            }
-
+        RecoveryNotice(title: "quota-axi is not installed", systemImage: "gauge.with.dots.needle.67percent", identifier: "quota-setup-notice") {
             Text("Install quota-axi on the remote machine to view remaining quota and reset countdowns for Claude, Cursor, Codex, Agy, and other providers.")
-                .font(.jost(13, weight: .regular))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack(spacing: 8) {
-                Text(Self.installCommand)
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Button {
-                    UIPasteboard.general.string = Self.installCommand
-                    didCopyCommand = true
-                    Task {
-                        try? await Task.sleep(for: .seconds(2))
-                        didCopyCommand = false
-                    }
-                } label: {
-                    Label(
-                        didCopyCommand ? "Copied" : "Copy",
-                        systemImage: didCopyCommand ? "checkmark" : "doc.on.doc"
-                    )
-                    .font(.jost(11, weight: .medium))
-                }
-                .buttonStyle(.herdrSecondary(fullWidth: false))
-                .controlSize(.mini)
-                .accessibilityLabel(didCopyCommand ? "Copied install command" : "Copy install command")
-                .accessibilityIdentifier("quota-axi-copy-command-button")
+            Text(Self.installCommand)
+                .font(.system(.footnote, design: .monospaced))
+                .textSelection(.enabled)
+        } actions: {
+            Button(didCopyCommand ? "Copied" : "Copy command") {
+                UIPasteboard.general.string = Self.installCommand
+                didCopyCommand = true
+                Task { try? await Task.sleep(for: .seconds(2)); didCopyCommand = false }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle.continuous(DesignSystem.CornerRadius.sm)
-                    .fill(Theme.subtleFill)
-            )
-
-            HStack(spacing: 12) {
-                Link(destination: Self.setupGuideURL) {
-                    HStack(spacing: 4) {
-                        Text("quota-axi Setup Guide")
-                        Image(systemName: "arrow.up.right")
-                            .font(.jost(9, weight: .semibold))
-                    }
-                    .font(.jost(13, weight: .medium))
-                    .foregroundStyle(Theme.accent)
-                }
-                .accessibilityLabel("quota-axi Setup Guide")
+            .accessibilityLabel(didCopyCommand ? "Copied install command" : "Copy install command")
+            .accessibilityIdentifier("quota-axi-copy-command-button")
+            Link("Setup guide", destination: Self.setupGuideURL)
+                .frame(minHeight: 44)
                 .accessibilityIdentifier("quota-axi-setup-guide-link")
-
-                Spacer()
-
-                Button {
-                    Task { await model.refreshUsage(appModel.connection, force: true) }
-                } label: {
-                    HStack(spacing: 6) {
-                        if model.isRefreshingUsage {
-                            CircularArcSpinner(size: 11)
-                            Text("Checking…")
-                        } else {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.jost(11, weight: .semibold))
-                            Text("Check Quota")
-                        }
-                    }
-                    .font(.jost(12, weight: .medium))
+            Button {
+                Task { await model.refreshUsage(appModel.connection, force: true) }
+            } label: {
+                HStack {
+                    if model.isRefreshingUsage { CircularArcSpinner(size: 12) }
+                    Text("Check again")
                 }
-                .buttonStyle(.herdrSecondary(fullWidth: false))
-                .controlSize(.small)
-                .disabled(model.isRefreshingUsage)
-                .accessibilityIdentifier("quota-axi-check-button")
             }
+            .disabled(model.isRefreshingUsage)
+            .accessibilityIdentifier("quota-axi-check-button")
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .herdrCard(cornerRadius: DesignSystem.CornerRadius.lg, showsBorder: false)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("agent-usage-status-card")
     }
 }
 

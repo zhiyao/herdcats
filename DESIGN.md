@@ -145,14 +145,15 @@ img.pixel, canvas.pixel {
 - Transparent background, 2px border `mint-200`, text `mint-200`.
 - Hover: fill `night-800`.
 
-### Offline connection recovery (iOS)
-- Group the offline explanation and Retry action in the composer's glass surface: nearly opaque translucent fill, fine outer rim and inset highlight, and 24pt corners. Use a solid fill and the simple hairline border when Reduce Transparency is enabled. Keep the card bounded to its content rather than filling the viewport.
-- The top connection banner is **status-only**: connection icon, current status/reason, and a small progress indicator while reconnecting. Never put a Retry button in this banner.
-- Center one **Retry** button directly beneath the offline explanation. Keep the existing cats, heading, and explanation together; keep the action clear of the keyboard, composer, navigation, and tabs.
-- Retry must have a visible outline so it reads as a button, not a text link. Use `.buttonStyle(.herdrSecondary(fullWidth: false))` with regular control size: transparent fill, **2pt `Theme.accent` outline**, matching accent label, **8pt corners**, and **44pt minimum height**. Use semantic theme tokens so the outline remains visible in light and dark appearances; never use a ghost/borderless style for this action.
-- When retained messages, terminal output, or other cached content remain visible, preserve that content and show a compact offline explanation with the same centered, outlined Retry in the content area. Do not restore a banner Retry as a fallback.
-- Bound retained-content recovery by the measured pane-switcher and composition-dock insets. If a multiline draft and keyboard leave too little room for the card, scroll it within that output area and keep Retry reachable above the dock.
-- Show exactly one recovery action and invoke the current session owner's reconnect callback. Connecting and success status do not add a Retry button. Verify the outlined action in both appearances, with large text and with the Timeline keyboard open.
+### Exception and status bars (iOS)
+- Use the Bridge update notice as the shared reference: `NoticeBar`, `Theme.cardBackground`, continuous 16pt corners, 12pt outer horizontal margin, 12pt row spacing, and Jost subheadline semibold text. Allow messages to wrap; stack notice content vertically at accessibility text sizes so words remain readable. Actions have at least 44pt tap targets.
+- Pin notices with `bottomNotice` (a bottom safe-area inset) and 4pt vertical spacing. Long notices scroll within a measured height limit so instructions and actions remain reachable at accessibility sizes and with the keyboard open. Reserve content space above the tab bar, keyboard, or the screen's primary action; never cover the last row with an overlay.
+- Bound related form warnings together in one scrolling notice area. Tabs divide a combined 55% height budget between screen notices and the tab notice; empty notice regions are absent from accessibility. Keep primary sheet actions as primary buttons below feedback notices.
+- Own connection and machine-switch notices once per tab, outside navigation and split columns. A failed machine switch takes priority over connection status. Preserve reconnect callbacks, dismiss actions, and progress indicators.
+- Offline Retry lives in the bottom notice. Empty states may keep their cats and explanation, but do not repeat Retry or overlay recovery cards over cached output.
+- Form errors and load failures use the same surface and bottom inset. Keep field validation beside its field, provider-specific quota actions on their cards, and trust verification in its dedicated flow. Timeline availability and Pi extension recovery use the shared bottom notice above the composer; long guidance scrolls within the usable area.
+- Call the hook-based feature **Approvals and questions** in user-facing copy, including Settings, setup, progress, confirmation, and errors.
+- Verify light and dark appearances, large text, and Timeline with its keyboard and composer open.
 
 ### Accent / "sign" badge
 - Background `mint-200` or `paper-50`, text and 2px border `lacquer-900`. Optionally set the text vertically.

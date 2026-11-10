@@ -352,132 +352,131 @@ struct RepoPill: View {
 
 // MARK: - Error banner
 
+/// Shared notice surface, matching the Bridge update card.
+struct NoticeBar<Content: View>: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    private let content: Content
+
+    init(@ViewBuilder content: () -> Content) { self.content = content() }
+
+    var body: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(spacing: 12))
+        layout { content }
+            .font(.jost(.subheadline, weight: .semibold))
+            .padding(.leading, 16)
+            .padding(.trailing, 4)
+            .padding(.vertical, dynamicTypeSize.isAccessibilitySize ? 12 : 2)
+            .frame(minHeight: 48)
+            .background(Theme.cardBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.horizontal, 12)
+    }
+}
+
+struct NoticeButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+            .foregroundStyle(configuration.role == .destructive ? Theme.destructive : Theme.accent)
+            .opacity(!isEnabled ? 0.4 : (configuration.isPressed ? 0.6 : 1))
+    }
+}
+
+struct NoticeAction: View {
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .frame(minWidth: 44, minHeight: 44)
+                .padding(.horizontal, 4)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(NoticeButtonStyle())
+    }
+}
+
+/// The same card surface as Bridge updates, with room for recovery instructions.
+struct RecoveryNotice<Detail: View, Actions: View>: View {
+    let title: String
+    let systemImage: String
+    var identifier = "recovery-notice"
+    @ViewBuilder let detail: Detail
+    @ViewBuilder let actions: Actions
+
+    var body: some View {
+        NoticeBar {
+            Image(systemName: systemImage)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                detail
+                    .font(.jost(.subheadline))
+                    .foregroundStyle(.secondary)
+                if Actions.self != EmptyView.self {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 12) { actions }
+                        VStack(alignment: .leading, spacing: 4) { actions }
+                    }
+                    .buttonStyle(NoticeButtonStyle())
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 8)
+            .padding(.trailing, 12)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(identifier)
+    }
+}
+
 struct ErrorBanner: View {
     let message: String
     var dismiss: (() -> Void)? = nil
     var retry: (() -> Void)?
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        NoticeBar {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(Theme.warning)
-                .font(.jost(14, weight: .semibold))
+                .accessibilityHidden(true)
             Text(message)
-                .font(.jost(.footnote))
-                .foregroundStyle(.primary.opacity(0.85))
                 .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
-            if let retry {
-                Button("Retry", action: retry)
-                    .buttonStyle(.herdrSecondary(fullWidth: false))
-                    .controlSize(.small)
-            }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 10)
+                .padding(.trailing, retry == nil && dismiss == nil ? 12 : 0)
+            if let retry { NoticeAction(title: "Retry", action: retry) }
             if let dismiss {
                 Button(action: dismiss) {
                     Image(systemName: "xmark")
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Dismiss error")
             }
         }
-        .padding(12)
-        .background(
-            RoundedRectangle.continuous(DesignSystem.CornerRadius.lg)
-                .fill(Theme.warning.opacity(0.12))
-        )
-    }
-}
-
-// MARK: - Connection status bar
-
-private struct ConnectionRetryActionKey: EnvironmentKey {
-    static var defaultValue: (() -> Void)? { nil }
-}
-
-extension EnvironmentValues {
-    var connectionRetryAction: (() -> Void)? {
-        get { self[ConnectionRetryActionKey.self] }
-        set { self[ConnectionRetryActionKey.self] = newValue }
-    }
-}
-
-struct ConnectionRecoveryLayout {
-    var hasContentRetry = false
-    var topInset: CGFloat = 0
-    var bottomInset: CGFloat = 0
-}
-
-struct ConnectionRecoveryLayoutKey: PreferenceKey {
-    static var defaultValue: ConnectionRecoveryLayout { .init() }
-    static func reduce(value: inout ConnectionRecoveryLayout, nextValue: () -> ConnectionRecoveryLayout) {
-        let next = nextValue()
-        value.hasContentRetry = value.hasContentRetry || next.hasContentRetry
-        value.topInset = max(value.topInset, next.topInset)
-        value.bottomInset = max(value.bottomInset, next.bottomInset)
-    }
-}
-
-/// The session owner supplies recovery beneath the offline explanation.
-/// Reporting this placement suppresses the retained-content recovery card.
-struct ConnectionContentRetryButton: View {
-    @Environment(\.connectionRetryAction) private var retryAction
-
-    var body: some View {
-        if let retryAction {
-            OutlinedConnectionRetryButton(action: retryAction)
-                .preference(key: ConnectionRecoveryLayoutKey.self, value: .init(hasContentRetry: true))
-        }
-    }
-}
-
-private struct OutlinedConnectionRetryButton: View {
-    let action: () -> Void
-
-    var body: some View {
-        Button("Retry", action: action)
-            .buttonStyle(.herdrSecondary(fullWidth: false))
-            .controlSize(.regular)
-            .accessibilityIdentifier("connection-content-retry")
-    }
-}
-
-/// Retains cached content and supplies recovery when no offline empty state is shown.
-private struct ConnectionRecoveryCard: View {
-    let retryAction: () -> Void
-
-    var body: some View {
-        VStack(spacing: 12) {
-            Text("You're offline. Reconnect to bring the cats back.")
-                .font(.jost(.subheadline))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-            OutlinedConnectionRetryButton(action: retryAction)
-        }
-        .padding(24)
-        .frame(maxWidth: 360)
-        .modifier(PaneInputGlassSurface(cornerRadius: 24, backgroundOpacity: 0.98))
-        .padding(16)
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("connection-offline-recovery")
     }
 }
 
-/// Keeps recovery within the usable output area even with a tall draft and keyboard.
+/// Allows a tall offline explanation to scroll within the pane's output area.
 struct ConnectionRecoveryViewport<Recovery: View>: View {
     let recovery: Recovery
 
-    init(@ViewBuilder recovery: () -> Recovery) {
-        self.recovery = recovery()
-    }
+    init(@ViewBuilder recovery: () -> Recovery) { self.recovery = recovery() }
 
     var body: some View {
         ViewThatFits(in: .vertical) {
             recovery
-            ScrollView {
-                recovery.frame(maxWidth: .infinity)
-            }
-            .defaultScrollAnchor(.bottom)
+            ScrollView { recovery.frame(maxWidth: .infinity) }
+                .defaultScrollAnchor(.bottom)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -485,27 +484,28 @@ struct ConnectionRecoveryViewport<Recovery: View>: View {
 
 struct ConnectionStatusBar: View {
     let banner: ConnectionBanner
+    var retryAction: (() -> Void)? = nil
 
     var body: some View {
-        HStack(spacing: 8) {
+        NoticeBar {
             Image(systemName: banner.systemImage)
-                .font(.jost(13, weight: .bold))
-
+                .foregroundStyle(banner.tintColor)
+                .accessibilityHidden(true)
             Text(banner.message)
-                .font(.jost(13, weight: .semibold))
-                .lineLimit(1)
-
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 10)
+                .padding(.trailing, !banner.showsProgress && !(banner.canRetry && retryAction != nil) ? 12 : 0)
             if banner.showsProgress {
                 CircularArcSpinner(size: 13, color: banner.tintColor)
+                    .padding(.trailing, 12)
+            }
+            if banner.canRetry, let retryAction {
+                NoticeAction(title: "Retry", action: retryAction)
+                    .accessibilityIdentifier("connection-content-retry")
             }
         }
-        .foregroundStyle(banner.tintColor)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity)
-        .background(Color.clear)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(banner.message)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("connection-status-bar")
     }
 }
@@ -515,37 +515,92 @@ struct ConnectionStatusBannerModifier: ViewModifier {
     var retryAction: (() -> Void)?
 
     func body(content: Content) -> some View {
+        content.bottomNotice {
+            if let banner {
+                ConnectionStatusBar(banner: banner, retryAction: retryAction)
+                    .padding(.vertical, 4)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: banner)
+    }
+}
+
+/// A measured scrolling region for notices in either an inset or a pane overlay.
+struct NoticeViewport<Notice: View>: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let maximumHeight: CGFloat
+    var identifier = "notice-viewport"
+    var keyboardDismissMode: ScrollDismissesKeyboardMode = .never
+    @ViewBuilder let notice: Notice
+    @State private var noticeHeight: CGFloat = 0
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 0) { notice }
+                .frame(maxWidth: .infinity)
+                .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { noticeHeight = $0 }
+        }
+        .accessibilityIdentifier(noticeHeight > 0 ? identifier : "")
+        .accessibilityHidden(noticeHeight == 0)
+        .defaultScrollAnchor(.bottom)
+        .scrollBounceBehavior(.basedOnSize)
+        .scrollDismissesKeyboard(keyboardDismissMode)
+        .frame(height: min(noticeHeight, max(44, maximumHeight)))
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: noticeHeight)
+    }
+}
+
+/// Keep long recovery instructions reachable with large text and a keyboard.
+private struct NoticeHeightFractionKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0.55
+}
+
+extension EnvironmentValues {
+    /// Tabs reserve half of the combined budget for their screen's own notice.
+    var noticeHeightFraction: CGFloat {
+        get { self[NoticeHeightFractionKey.self] }
+        set { self[NoticeHeightFractionKey.self] = newValue }
+    }
+}
+
+private struct BottomNoticeModifier<Notice: View>: ViewModifier {
+    @Environment(\.noticeHeightFraction) private var heightFraction
+    let notice: Notice
+    let identifier: String
+    @State private var viewportHeight: CGFloat = 600
+
+    func body(content: Content) -> some View {
         content
-            .overlayPreferenceValue(ConnectionRecoveryLayoutKey.self) { layout in
-                if !layout.hasContentRetry, banner?.canRetry == true, let retryAction {
-                    ConnectionRecoveryViewport {
-                        ConnectionRecoveryCard(retryAction: retryAction)
-                    }
-                    .padding(.top, layout.topInset)
-                    .padding(.bottom, layout.bottomInset)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                NoticeViewport(maximumHeight: viewportHeight * heightFraction,
+                               identifier: identifier, keyboardDismissMode: .interactively) {
+                    notice
                 }
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if let banner {
-                    ConnectionStatusBar(banner: banner)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-            }
-            .environment(\.connectionRetryAction, banner?.canRetry == true ? retryAction : nil)
-            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: banner)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
     }
 }
 
 extension View {
-    /// Insets the top of the scrollable content with the connection status bar,
-    /// ensuring it sits beneath the navigation bar without overlapping content.
+    func bottomNotice<Notice: View>(identifier: String = "bottom-notice-scroll", @ViewBuilder notice: () -> Notice) -> some View {
+        modifier(BottomNoticeModifier(notice: notice(), identifier: identifier))
+    }
+
+    func exceptionBanner(message: String?, dismiss: (() -> Void)? = nil, retry: (() -> Void)? = nil) -> some View {
+        bottomNotice {
+            if let message {
+                ErrorBanner(message: message, dismiss: dismiss, retry: retry)
+                    .padding(.vertical, 4)
+            }
+        }
+    }
+
     func connectionStatusBanner(banner: ConnectionBanner?, retryAction: (() -> Void)? = nil) -> some View {
         modifier(ConnectionStatusBannerModifier(banner: banner, retryAction: retryAction))
     }
 
-    /// Convenience overload resolving the current session from the given `AppModel`.
-    /// A machine switch in progress (or its failure) takes this slot too, so it
-    /// sits beneath each screen's navigation bar like every other status.
     func connectionStatusBanner(appModel: AppModel) -> some View {
         modifier(SessionStatusBannerModifier(appModel: appModel))
     }
@@ -553,24 +608,33 @@ extension View {
 
 private struct SessionStatusBannerModifier: ViewModifier {
     let appModel: AppModel
-    @Environment(ActiveMachine.self) private var active: ActiveMachine?
 
     func body(content: Content) -> some View {
-        content
-            .connectionStatusBanner(
-                banner: active?.pendingLabel.map { .connecting(message: "Connecting to \($0)…") }
-                    ?? appModel.connectionBanner
-            ) {
-                Task { await appModel.reconnect() }
+        content.bottomNotice { SessionStatusNotice(appModel: appModel) }
+    }
+}
+
+struct SessionStatusNotice: View {
+    let appModel: AppModel
+    @Environment(ActiveMachine.self) private var active: ActiveMachine?
+
+    var body: some View {
+        Group {
+            if let active, let error = active.switchError {
+                ErrorBanner(message: error, dismiss: { active.switchError = nil })
+                    .padding(.vertical, 4)
+                    .accessibilityIdentifier("machine-switch-error")
+                    .transition(.opacity)
+            } else if let banner = active?.pendingLabel.map({ ConnectionBanner.connecting(message: "Connecting to \($0)…") })
+                        ?? appModel.connectionBanner {
+                ConnectionStatusBar(banner: banner) { Task { await appModel.reconnect() } }
+                    .padding(.vertical, 4)
+                    .transition(.opacity)
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if let active, let error = active.switchError {
-                    ErrorBanner(message: error, dismiss: { active.switchError = nil })
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .accessibilityIdentifier("machine-switch-error")
-                }
-            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: active?.switchError)
+        .animation(.easeInOut(duration: 0.25), value: active?.pendingLabel)
+        .animation(.easeInOut(duration: 0.25), value: appModel.connectionBanner)
     }
 }
 
@@ -663,11 +727,6 @@ private struct HostKeyApprovalView: View {
                             .font(.jost(.footnote))
                             .foregroundStyle(.secondary)
                     }
-                    if let error = approvalError {
-                        Text(error)
-                            .font(.jost(.footnote))
-                            .foregroundStyle(.secondary)
-                    }
                     Button {
                         Task {
                             isApproving = true
@@ -688,6 +747,7 @@ private struct HostKeyApprovalView: View {
                 .padding(20)
             }
             .background(Theme.backgroundGradient)
+            .exceptionBanner(message: approvalError, dismiss: { approvalError = nil })
             .navigationTitle(isReplacement ? "Host Key Changed" : "Verify Host Key")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
