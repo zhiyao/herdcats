@@ -220,6 +220,8 @@ struct AgentBridgePayload: Codable, Sendable {
     var identity: AgentTimelineIdentity?
     var generation: UInt64?
     var entries: [AgentTimelineEntry]?
+    /// Update-only rows in `timeline.updated`: replace held rows, never insert.
+    var revised: [AgentTimelineEntry]?
     var evictedIds: [String]?
     var hasMore: Bool?
     var before: String?
@@ -464,6 +466,13 @@ enum HostHelperProbe: Equatable, Sendable {
               let pinned = versionNumbers(HostHelperSetupPlan.version)
         else { return false }
         return current == pinned || pinned.lexicographicallyPrecedes(current)
+    }
+    static func isOlder(_ version: String?, than target: String) -> Bool {
+        guard let version,
+              let current = versionNumbers(version),
+              let target = versionNumbers(target)
+        else { return false }
+        return current.lexicographicallyPrecedes(target)
     }
     static func isOlderThanPinned(_ version: String?) -> Bool {
         guard let version,

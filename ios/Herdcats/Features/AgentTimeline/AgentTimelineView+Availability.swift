@@ -158,7 +158,7 @@ extension AgentTimelineView {
             return codexNoSessionAction(agent: agent, code: code, capabilities: capabilities, codexDaemon: codexDaemon) == .waitForSession
                 ? "bubble.left" : "questionmark.bubble"
         }
-        if (agent == "cursor" && noSession) || (agent == "codex" && code == "session_cwd_mismatch") {
+        if (agent == "cursor" && noSession) || (agent == "codex" && ["session_cwd_mismatch", "session_inactive"].contains(code)) {
             return "questionmark.bubble"
         }
         return "bubble.left"
@@ -468,6 +468,7 @@ extension AgentTimelineView {
         if isCodex && isNoSession { return "Waiting for Codex session" }
         if agent == "cursor" && isNoSession { return "Cursor chat not identified" }
         if isCodex && isCwdMismatch { return "This pane’s Codex session could not be confirmed" }
+        if isCodex && code == "session_inactive" { return "Codex switched sessions" }
         if isMissing { return "Set up Timeline" }
         return "Timeline unavailable"
     }
@@ -563,6 +564,11 @@ extension AgentTimelineView {
                 return "If this stays after Codex replies, restart Codex with `codex --no-daemon`."
             }
             return "This pane has no verified session history."
+        case "session_inactive":
+            // Codex reports a /resume or /new to Herdr only with the next prompt.
+            // The bridge sees the switch only once Codex deletes the old thread's
+            // lock, about a minute later; until then the old chat still shows.
+            return "Codex in this pane left the session Herdcats was showing, for example after /resume or /new. Send a message in Terminal so Codex reports the new session, then check again."
         case "session_cwd_mismatch":
             if isCodex {
                 return "The session folder does not match the pane’s folder, so Herdcats will not guess."

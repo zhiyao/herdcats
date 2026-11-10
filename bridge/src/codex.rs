@@ -2,7 +2,7 @@ use crate::{
     Result,
     adapter::Adapter,
     claude::{Entry, Transcript, bounded, entry_id},
-    follower::{AgentType, Follower, MAX_RECORD, MAX_SOURCE},
+    follower::{AgentType, Follower, MAX_RECORD},
     herdr::Pane,
     resolver::{open_beneath, session_id},
 };
@@ -41,6 +41,9 @@ impl FileStamp {
 pub struct CodexResolver {
     pub root: PathBuf,
     anchor: fs::File,
+    // `<CODEX_HOME>/thread-writer-locks`, taken from the configured sessions
+    // root before canonicalization so a symlinked sessions dir cannot move it.
+    writer_locks: Option<PathBuf>,
     pub scan_count: Arc<AtomicUsize>,
     pub meta_read_count: Arc<AtomicUsize>,
 }
@@ -50,6 +53,7 @@ impl Clone for CodexResolver {
         Self {
             root: self.root.clone(),
             anchor: self.anchor.try_clone().expect("anchor clone"),
+            writer_locks: self.writer_locks.clone(),
             scan_count: self.scan_count.clone(),
             meta_read_count: self.meta_read_count.clone(),
         }
@@ -104,6 +108,7 @@ impl CodexResolver {
         if !root.is_absolute() {
             return Err("transcript_root_unavailable");
         }
+        let writer_locks = root.parent().map(|home| home.join("thread-writer-locks"));
         let root = root
             .canonicalize()
             .map_err(|_| "transcript_root_unavailable")?;
@@ -114,6 +119,7 @@ impl CodexResolver {
         Ok(Self {
             root,
             anchor,
+            writer_locks,
             scan_count: Arc::new(AtomicUsize::new(0)),
             meta_read_count: Arc::new(AtomicUsize::new(0)),
         })
@@ -373,11 +379,6 @@ impl CodexResolver {
         // Confined open beneath the pinned root anchor: O_NOFOLLOW on every level
         let mut file = open_beneath(&self.anchor, relative_path, false)?;
 
-        let meta = file.metadata().map_err(|_| "transcript_unavailable")?;
-        if meta.len() > MAX_SOURCE {
-            return Err("source_too_large");
-        }
-
         self.meta_read_count.fetch_add(1, Ordering::SeqCst);
         let first_record = Self::read_first_record(&mut file)?;
         Self::verify_session_meta(&first_record, thread_id, pane)?;
@@ -387,6 +388,25 @@ impl CodexResolver {
             .map_err(|_| "transcript_unavailable")?;
 
         Ok(file)
+    }
+
+    /// Codex holds `thread-writer-locks/<thread>.lock` while a thread is loaded
+    /// and deletes it about a minute after the TUI leaves the thread (`/resume`,
+    /// `/new`, exit). Herdr learns a resumed thread only from the SessionStart
+    /// hook, which Codex fires on the next prompt, so until then the pane's
+    /// reference still names the old thread. A missing lock proves the reference
+    /// is stale; a present lock does not prove this pane owns the thread.
+    /// Codex builds without the lock directory are not checked.
+    pub fn verify_thread_loaded(&self, thread_id: &str) -> Result<()> {
+        let Some(dir) = self.writer_locks.as_ref().filter(|dir| dir.is_dir()) else {
+            return Ok(());
+        };
+        let held = |id: &str| dir.join(format!("{id}.lock")).is_file();
+        if held(thread_id) || held(&thread_id.to_ascii_lowercase()) {
+            Ok(())
+        } else {
+            Err("session_inactive")
+        }
     }
 
     pub fn resolve(&self, thread_id: &str, pane: &Pane) -> Result<(String, fs::File)> {
@@ -458,6 +478,7 @@ impl Adapter for CodexAdapter {
             .ok_or("transcript_root_unavailable")?;
 
         let thread_id = &reference.value;
+        resolver.verify_thread_loaded(thread_id)?;
         let is_v7 = parse_uuid_v7_timestamp_ms(thread_id).is_some();
         let now = (self.clock)();
 
@@ -502,12 +523,6 @@ impl Adapter for CodexAdapter {
                 if !is_v7 && !walk_occurred {
                     let fresh_rel = resolver.resolve_relative(thread_id)?;
                     let mut fresh_file = open_beneath(&resolver.anchor, &fresh_rel, false)?;
-                    let fresh_meta = fresh_file
-                        .metadata()
-                        .map_err(|_| "transcript_unavailable")?;
-                    if fresh_meta.len() > MAX_SOURCE {
-                        return Err("source_too_large");
-                    }
                     resolver.meta_read_count.fetch_add(1, Ordering::SeqCst);
                     let record = CodexResolver::read_first_record(&mut fresh_file)?;
                     CodexResolver::verify_session_meta(&record, thread_id, pane)?;
@@ -527,10 +542,6 @@ impl Adapter for CodexAdapter {
             }
         };
 
-        let meta = file.metadata().map_err(|_| "transcript_unavailable")?;
-        if meta.len() > MAX_SOURCE {
-            return Err("source_too_large");
-        }
         let cached_entry = self.cache.lock().unwrap().get(thread_id).cloned();
         // The first record authorizes the file, and an equal metadata stamp cannot prove
         // it is unchanged (same-length in-place rewrites on coarse-timestamp filesystems),
@@ -1005,6 +1016,11 @@ impl Transcript {
                     old.text = text;
                     old.status = Some("completed".into());
                     old.truncated |= truncated;
+                } else if self.partial_prefix || (self.spill && self.seen.contains(&key)) {
+                    // The call is in unread older bytes or already past the
+                    // live list; the follower applies this output there, so
+                    // no nameless entry here.
+                    self.defer(Some(key));
                 } else {
                     self.upsert(Entry {
                         id: key,
@@ -1037,6 +1053,8 @@ impl Transcript {
                 })
             }
             CodexRecordAction::TurnAborted { turn_id } => {
+                // Calls still running in unread older bytes fail here too.
+                self.defer(None);
                 for entry in self.entries.iter_mut() {
                     if entry.kind == "tool" && entry.status.as_deref() == Some("running") {
                         entry.status = Some("failed".into());

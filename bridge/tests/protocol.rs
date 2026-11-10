@@ -442,7 +442,7 @@ fn escaped_tool_output_updates_fit_frame_budget_without_closing_stream() {
     assert_eq!(peer.next()["id"], "stop");
 }
 #[test]
-fn bounded_retention_updates_keep_generation_and_validate_retained_cursors() {
+fn bounded_retention_keeps_generation_and_moves_entries_to_older_pages() {
     let server = Server::new();
     let mut text = (0..1000)
         .map(|i| row(SESSION, &format!("m{i}"), "text"))
@@ -457,20 +457,28 @@ fn bounded_retention_updates_keep_generation_and_validate_retained_cursors() {
     assert_eq!(after["event"], "timeline.updated");
     assert_eq!(after["data"]["dropped_entries"], 1);
     assert_eq!(after["data"]["generation"], before["data"]["generation"]);
-    assert_eq!(after["data"]["evicted_ids"], json!(["message:m0"]));
+    // Retention is not deletion: the entry moved to an older page.
+    assert_eq!(after["data"]["evicted_ids"], json!([]));
     peer.send(json!({"id":"retained","method":"history","params":{"generation":before["data"]["generation"],"before":"message:m900"}}));
     assert_eq!(
         peer.next()["result"]["entries"].as_array().unwrap().len(),
         100
     );
-    peer.send(json!({"id":"evicted","method":"history","params":{"generation":before["data"]["generation"],"before":"message:m0"}}));
-    assert_eq!(peer.next()["error"]["code"], "stale_cursor");
+    peer.send(json!({"id":"older","method":"history","params":{"generation":before["data"]["generation"],"before":"message:m1"}}));
+    let older = peer.next();
+    assert_eq!(older["result"]["entries"], json!([older["result"]["entries"][0].clone()]));
+    assert_eq!(older["result"]["entries"][0]["id"], "message:m0");
+    assert_eq!(older["result"]["has_more"], false);
+    peer.send(json!({"id":"first","method":"history","params":{"generation":before["data"]["generation"],"before":"message:m0"}}));
+    let first = peer.next();
+    assert_eq!(first["result"]["entries"], json!([]));
+    assert_eq!(first["result"]["has_more"], false);
     text += &row(SESSION, "m1001", "latest again");
     server.transcript(SESSION, &text);
     let next = peer.next();
     assert_eq!(next["event"], "timeline.updated");
     assert_eq!(next["data"]["generation"], before["data"]["generation"]);
-    assert_eq!(next["data"]["evicted_ids"], json!(["message:m1"]));
+    assert_eq!(next["data"]["evicted_ids"], json!([]));
 }
 #[test]
 fn requests_do_not_starve_occupant_refresh() {

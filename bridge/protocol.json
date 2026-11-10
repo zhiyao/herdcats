@@ -102,7 +102,7 @@
         "total",
         "hex"
       ],
-      "effect": "Revalidates native occupant and source; returns at most64KiB raw bytes encoded as lowercase hex. Only current retained entry references are readable; no host paths accepted."
+      "effect": "Revalidates native occupant and source; returns at most64KiB raw bytes encoded as lowercase hex. Only references on retained entries or loaded older pages are readable; no host paths accepted."
     },
     {
       "method": "interaction.respond",
@@ -297,13 +297,14 @@
         "identity",
         "generation",
         "entries",
+        "revised",
         "agent_status",
         "evicted_ids",
         "unknown_records",
         "dropped_entries",
         "delayed"
       ],
-      "effect": "Remove evicted_ids before stable-ID upserts; retention does not reset generation. Do not resurrect evicted IDs from delayed history. Counters may update with no entries; frames remain bounded."
+      "effect": "Remove evicted_ids before stable-ID upserts; retention does not reset generation. Do not resurrect evicted IDs from delayed history. Claude and Codex never evict for retention: entries past the live list move to older history pages. Optional revised rows are update-only: they replace rows the client holds (older entries a later tool result, output or turn abort changed) and are never inserted; history pages serve them current. Clients that ignore revised see the change after a reload. entries plus revised stay within 1000 rows per update. Counters may update with no entries; frames remain bounded."
     },
     "timeline.unavailable": {
       "fields": [
@@ -424,7 +425,7 @@
     "record_refs": "optional references to complete original record bytes; up to4 per entry"
   },
   "reconnect": "No persistent replay cursor. Start a new helper, initialize and watch. Epoch change or sequence gap requires fresh snapshot. Notifications can interleave all replies.",
-  "cursor": "Generation-bound before entry ID. Identity/source replacement or genuine outage recovery resets generation. Normal retention keeps generation; a retained cursor remains valid and an evicted cursor returns stale_cursor.",
+  "cursor": "Generation-bound before entry ID. Identity/source replacement or genuine outage recovery resets generation. Normal retention keeps generation; a retained cursor remains valid and an evicted cursor returns stale_cursor. Claude and Codex history continues past the live list: a cursor at its first entry, or on an older page, returns the next older page, read from the transcript one batch at a time, until has_more is false at the session start.",
   "limits": {
     "source_bytes": 67108864,
     "wire_frame_bytes": 1048576,
@@ -436,14 +437,14 @@
     "entry_identities": 100000,
     "project_directories": 10000,
     "request_queue": 16,
-    "oversized_source_record_behavior": "Complete source lines exceeding the parsed record limit use bounded typed deserialization for text/tools. Negotiated rich mode additionally emits image descriptors and unfamiliar-record bubbles with complete source references, without embedding bulky image bytes in live frames. Incomplete lines wait for newline; the 64MiB source bound remains hard.",
+    "oversized_source_record_behavior": "Complete source lines exceeding the parsed record limit use bounded typed deserialization for text/tools. Negotiated rich mode additionally emits image descriptors and unfamiliar-record bubbles with complete source references, without embedding bulky image bytes in live frames. Incomplete lines wait for newline. The 64MiB source bound remains hard for Agy, Cursor and Pi; Claude and Codex transcripts are read tail-first with no source bound.",
     "evicted_ids_per_update": 1000
   },
-  "source_policy": "Herdr22 references use herdr:claude or herdr:codex. Claude native UUID filenames/paths stay beneath the pinned transcript root; Codex rollouts stay beneath the pinned sessions root and verify session metadata and pane cwd. Ambiguous references, symlinks below pinned roots, missing references or foreign main-session records fail closed.",
+  "source_policy": "Herdr22 references use herdr:claude or herdr:codex. Claude native UUID filenames/paths stay beneath the pinned transcript root; Codex rollouts stay beneath the pinned sessions root and verify session metadata and pane cwd. A Codex reference is rejected with session_inactive when <CODEX_HOME>/thread-writer-locks exists without that thread's lock: Codex deletes the lock about a minute after /resume or /new leaves a thread, while Herdr keeps the old reference until the next prompt's SessionStart hook. The lock directory is taken as the parent of the configured sessions root, so a --codex-root outside <CODEX_HOME>/sessions finds no lock directory and skips this check. Ambiguous references, symlinks below pinned roots, missing references or foreign main-session records fail closed.",
   "implementation_limits": [
     "Polling-only fallback; no subscriptions.",
-    "Bounded source prefix reread on change, new complete records parsed incrementally.",
-    "Negotiated content retrieval covers complete original records and blocks within the verified 64MiB source; only references on retained entries are readable.",
+    "Agy, Cursor and Pi: bounded source prefix reread on change, new complete records parsed incrementally. Claude and Codex: a fresh timeline parses the newest 8 MiB from a line start, then each poll rereads the first 64 KiB and the newest consumed 8-16 MiB (a change to either resets the generation) and parses only appended records; older history pages are parsed from 4 MiB batches, and newer records that updated a batch's entries before it was loaded (tool results, later outputs, turn aborts) are replayed into it in file order.",
+    "Negotiated content retrieval covers complete original records and blocks within the verified source; only references on retained entries or loaded older pages are readable.",
     "Claude captured2.1.296 schema coverage; no general version promise.",
     "Optional four-platform installer and native iOS client. Bridge approval and question events and guarded responses are available from 0.3.0 for Claude and Codex. Clients must gate on the approvals / questions capabilities and corresponding initialize opt-ins, not on bridge_version. Claude cards require the recording hook (herdcats-bridge hooks install --agent claude); Codex approval cards require the Codex recording hook (herdcats-bridge hooks install --agent codex), while Codex question cards require no recording hook. prompts and routed_hosts (saved-machine routing) remain unavailable."
   ],
@@ -474,6 +475,7 @@
     "protocol_mismatch",
     "record_too_large",
     "session_cwd_mismatch",
+    "session_inactive",
     "session_mismatch",
     "session_reference_unavailable",
     "socket_required",
