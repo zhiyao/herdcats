@@ -201,24 +201,9 @@ struct WorkspacePaneView: View {
             if let pane = initialPane {
                 PaneDetailView(pane: pane, siblings: panes, restoring: openPaneMemory?.paneID)
             } else {
-                VStack(spacing: 16) {
-                    if isLoading {
-                        CircularArcSpinner("Loading panes…")
-                    } else if let errorMessage,
-                              !HerdrConnection.isDisconnectionOrTransitionMessage(errorMessage) {
-                        ErrorBanner(message: errorMessage, retry: {
-                            Task { await loadPanes() }
-                        })
-                    } else {
-                        ContentUnavailableView(
-                            initialPaneID == nil ? "No panes available" : "Pane unavailable",
-                            systemImage: "rectangle.split.2x2",
-                            description: Text(initialPaneID == nil
-                                ? "Open a pane in this workspace, then retry."
-                                : "This agent's pane may have closed. Go back to refresh the agents list, or retry.")
-                        )
-                        Button("Retry") { Task { await loadPanes() } }
-                    }
+                Group {
+                    if isLoading { CircularArcSpinner("Loading panes…") }
+                    else { Color.clear }
                 }
                 .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -228,8 +213,24 @@ struct WorkspacePaneView: View {
         }
         .background(Theme.backgroundGradient.ignoresSafeArea())
         .toolbarBackground(.hidden, for: .navigationBar)
+        .bottomNotice {
+            if initialPane == nil, !isLoading, !appModel.isOffline {
+                if let errorMessage {
+                    ErrorBanner(message: errorMessage, retry: { Task { await loadPanes() } })
+                        .padding(.vertical, 4)
+                } else {
+                    RecoveryNotice(title: initialPaneID == nil ? "No panes available" : "Pane unavailable", systemImage: "rectangle.split.2x2", identifier: "pane-unavailable-notice") {
+                        Text(initialPaneID == nil
+                            ? "Open a pane in this workspace, then retry."
+                            : "This agent's pane may have closed. Go back to refresh the agents list, or retry.")
+                    } actions: {
+                        Button("Retry") { Task { await loadPanes() } }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
         .task(id: space.id) { await loadPanes() }
-        .connectionStatusBanner(appModel: appModel)
     }
 
     private func loadPanes() async {

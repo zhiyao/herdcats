@@ -25,10 +25,6 @@ struct AgySignInSheet: View {
                     Text("Sign in to Agy on the remote machine. Open the sign-in page, then paste its authorization code here.")
                         .foregroundStyle(.secondary)
 
-                    if let error {
-                        Text(error).foregroundStyle(Theme.destructive)
-                    }
-
                     if transcript.codeSubmitted {
                         Label("Code Sent to Agy", systemImage: "checkmark.circle")
                         Text("Check quota to confirm that sign-in completed.")
@@ -112,6 +108,7 @@ struct AgySignInSheet: View {
                 }
                 .padding(20)
             }
+            .exceptionBanner(message: error, dismiss: { error = nil })
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 HStack(spacing: 12) {
                     Button { send(.up) } label: {

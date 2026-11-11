@@ -205,17 +205,24 @@ struct BridgeUpdateBannerInset: ViewModifier {
     @Environment(\.bridgeUpdateSheetOpen) private var sheetOpen
 
     func body(content: Content) -> some View {
-        content.safeAreaInset(edge: .bottom, spacing: 0) {
-            if let prompt = currentBridgeUpdatePrompt(appModel: appModel, active: active), !sheetOpen {
-                BridgeUpdateBanner(
-                    prompt: prompt,
-                    onOpen: { open?(prompt) },
-                    onDismiss: { active?.bridgeUpdates.dismiss(prompt) }
-                )
-                .padding(.vertical, 4)
-                .transition(.opacity)
+        content
+            .bottomNotice(identifier: "tab-notice-scroll") {
+                SessionStatusNotice(appModel: appModel)
+                if let prompt = currentBridgeUpdatePrompt(appModel: appModel, active: active),
+                   !sheetOpen, active?.switchError == nil, active?.pendingLabel == nil,
+                   appModel.connectionBanner == nil {
+                    BridgeUpdateBanner(
+                        prompt: prompt,
+                        onOpen: { open?(prompt) },
+                        onDismiss: { active?.bridgeUpdates.dismiss(prompt) }
+                    )
+                    .padding(.vertical, 4)
+                    .transition(.opacity)
+                }
             }
-        }
+            // At most two viewports: the screen notice and this tab notice.
+            // Their combined maximum is 55% of the keyboard-adjusted viewport.
+            .environment(\.noticeHeightFraction, 0.275)
     }
 }
 

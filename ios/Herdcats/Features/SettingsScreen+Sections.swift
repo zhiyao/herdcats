@@ -51,7 +51,7 @@ extension SettingsScreen {
                     if let key = phoneAnswersKey(agent) {
                         let result = appModel.phoneAnswers.result(for: key)
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("\(agent.displayName) phone answers")
+                            Text("\(agent.displayName) approvals and questions")
                             Text(PhoneAnswersPresentation.status(result)).font(.jost(.caption)).foregroundStyle(Theme.textMuted)
                             if agent == .codex, result?.error == nil,
                                 result?.status == .needsTrust || result?.status == .disabled {
@@ -61,7 +61,7 @@ extension SettingsScreen {
                             HStack(spacing: 16) {
                                 Button("Check") { Task { await checkPhoneAnswers(agent, force: true) } }
                                 ForEach(PhoneAnswersPresentation.actions(result)) { mode in
-                                    Button(mode == .install ? "Install" : mode == .repair ? "Repair" : "Remove",
+                                    Button(mode == .install ? "Install" : mode == .repair ? "Repair" : "Turn off",
                                         role: mode.requiresConfirmation ? .destructive : nil) {
                                         phoneAnswersSelection = PhoneAnswersSelection(key: key, mode: mode)
                                     }
@@ -76,7 +76,7 @@ extension SettingsScreen {
                         .accessibilityIdentifier("phone-answers-settings-\(agent.rawValue)")
                     }
                 }
-            } header: { Text("Phone answers").font(.jost(.footnote)) }
+            } header: { Text("Approvals and questions").font(.jost(.footnote)) }
         }
     }
 

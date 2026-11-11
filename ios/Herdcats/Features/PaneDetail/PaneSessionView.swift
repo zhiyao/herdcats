@@ -36,6 +36,8 @@ struct PaneSessionView: View {
     @State var isTimelineSending = false
     @State var shouldPinToBottom = true
     @State var bottomDockHeight: CGFloat = 58
+    @State private var outputViewportHeight: CGFloat = 600
+    @State private var compositionControlsHeight: CGFloat = 58
     @State var outputTextSelectionActive = false
     @State var draftSaveTask: Task<Void, Never>?
     /// True while the Compose bubble's text field holds keyboard focus.
@@ -159,6 +161,25 @@ struct PaneSessionView: View {
                     ? "Selection draft" : "")
             }
             let surface = PaneInputSurfaceModel()
+            if ["timeline-audit-dictation", "timeline-audit-hooks"].contains(ScreenshotFixtures.screen) {
+                surface.requestComposeDraft()
+                _draft = State(initialValue: "")
+                if ScreenshotFixtures.screen == "timeline-audit-dictation" {
+                    _dictationError = State(initialValue: "Allow Microphone access for Herdcats in Settings to dictate messages.")
+                    // A transition error must not mask the independent microphone failure.
+                    _sessionError = State(initialValue: ProcessInfo.processInfo.arguments.contains("-hc.action-error")
+                        ? "Could not load that image." : "Not connected")
+                }
+            }
+            if ScreenshotFixtures.screen == "timeline-audit-hooks",
+               ProcessInfo.processInfo.arguments.contains("-hc.dictation-error") {
+                _dictationError = State(initialValue: "Microphone unavailable. Try again in Settings.")
+            }
+            if ScreenshotFixtures.screen.hasPrefix("timeline-pi-") {
+                // Isolate recovery captures from drafts persisted by other fixtures.
+                surface.requestComposeDraft()
+                _draft = State(initialValue: "")
+            }
             if ["compose", "timeline-helper-missing", "timeline-unavailable", "timeline-pending", "timeline-disconnected", "optional-upgrade-menu", "turn-interrupted", "timeline-codex-no-session"].contains(ScreenshotFixtures.screen) {
                 surface.requestComposeDraft()
                 _draft = State(initialValue: "Looks good. Add a test for reconnecting, then open a pull request.")
@@ -432,6 +453,21 @@ struct PaneSessionView: View {
         )
     }
 
+    private enum PaneNoticeSource { case action, dictation, polling }
+
+    private var displayedError: (source: PaneNoticeSource, message: String)? {
+        if let sessionError, !HerdrConnection.isDisconnectionOrTransitionMessage(sessionError) {
+            return (.action, sessionError)
+        }
+        if let dictationError { return (.dictation, dictationError) }
+        if showsTimeline, !appModel.isOffline, let errorMessage,
+           !HerdrConnection.isDisconnectionOrTransitionMessage(errorMessage),
+           !errorMessage.contains("Timed out") {
+            return (.polling, errorMessage)
+        }
+        return nil
+    }
+
     private var outputWithInputDock: some View {
         VStack(spacing: 0) {
             Group {
@@ -469,25 +505,34 @@ struct PaneSessionView: View {
                     .ignoresSafeArea(edges: .bottom)
             }
         }
-        .transformPreference(ConnectionRecoveryLayoutKey.self) { layout in
-            // Preserve the empty state's own Retry marker while supplying the
-            // measured usable area for recovery over retained output.
-            layout.topInset = max(layout.topInset, topOutputInset)
-            layout.bottomInset = max(layout.bottomInset, bottomDockHeight)
-        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { outputViewportHeight = $0 }
         .overlay(alignment: .bottom) {
             VStack(spacing: 0) {
-                if paneIsFocused {
-                    if showsTimeline {
-                        if let sessionError {
-                            Text(sessionError).font(.jost(.caption)).foregroundStyle(Theme.destructive)
-                                .padding(.horizontal, 16)
-                        }
-                    } else {
-                        liveStatusRow
+                if let error = displayedError {
+                    NoticeViewport(
+                        maximumHeight: (outputViewportHeight - topOutputInset - (paneIsFocused ? compositionControlsHeight : 0) - 16) * 0.5,
+                        identifier: "pane-error-notice-scroll"
+                    ) {
+                        ErrorBanner(message: error.message,
+                            dismiss: error.source == .polling ? nil : {
+                                switch error.source {
+                                case .action: sessionError = nil
+                                case .dictation: dictationError = nil
+                                case .polling: break
+                                }
+                            },
+                            retry: error.source == .polling ? { Task { await reload() } } : nil)
+                            .padding(.vertical, 4)
+                            .accessibilityIdentifier("pane-session-error")
                     }
-                    voiceComposeBar
-                        .environment(\.colorScheme, showsTimeline ? colorScheme : .dark)
+                }
+                if paneIsFocused {
+                    VStack(spacing: 0) {
+                        if !showsTimeline { liveStatusRow }
+                        voiceComposeBar
+                            .environment(\.colorScheme, showsTimeline ? colorScheme : .dark)
+                    }
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { compositionControlsHeight = $0 }
                 }
             }
             // Track the rendered dock directly, including multiline drafts,
@@ -668,14 +713,7 @@ struct PaneSessionView: View {
                 composeFieldFocused = true
             }
         }
-        .alert("Dictation unavailable", isPresented: Binding<Bool>(
-            get: { dictationError != nil },
-            set: { if !$0 { dictationError = nil } }
-        )) {
-            Button("OK", role: .cancel) { dictationError = nil }
-        } message: {
-            Text(dictationError ?? "")
-        }
+
     }
 
     var body: some View {

@@ -126,6 +126,12 @@ struct ConnectionSettingsView: View {
             _credentialLoadError = State(initialValue: error.localizedDescription)
         }
         self.loadedPrivateKey = loadedPrivateKey
+        #if DEBUG && targetEnvironment(simulator)
+        if ScreenshotFixtures.enabled && ScreenshotFixtures.screen == "loading-audit-settings-warnings" {
+            _credentialLoadError = State(initialValue: "Saved credentials could not be loaded.")
+            _switchConnectionError = State(initialValue: "Switching to this machine failed.")
+        }
+        #endif
     }
 
     enum AuthMode: String, CaseIterable, Identifiable {
@@ -167,24 +173,6 @@ struct ConnectionSettingsView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
-                    if let switchConnectionError { ErrorBanner(message: switchConnectionError) }
-                    if switcher == nil, let error = appModel.lastError {
-                        if appModel.herdrMissingOnLastConnect {
-                            MissingHerdrRecoveryCard(
-                                inForm: true,
-                                mismatch: appModel.runtimeMismatchOnLastConnect,
-                                onConnect: connectWithInstalledRuntimeAction,
-                                onSetup: { showingSetupGuide = true }
-                            )
-                        } else if appModel.herdrSessionUnavailableOnLastConnect {
-                            SessionRecoveryCard(inForm: true)
-                        } else {
-                            ErrorBanner(message: error)
-                        }
-                    }
-                    if let credentialLoadError {
-                        ErrorBanner(message: credentialLoadError + " Close and reopen settings to retry loading sign-in before saving changes.")
-                    }
                     connectionCard
                     footer
                 }
@@ -192,6 +180,32 @@ struct ConnectionSettingsView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .background(Theme.backgroundGradient)
+            .bottomNotice {
+                if let credentialLoadError {
+                    ErrorBanner(message: credentialLoadError + " Close and reopen settings to retry loading sign-in before saving changes.")
+                        .padding(.vertical, 4)
+                }
+                if let switchConnectionError {
+                    ErrorBanner(message: switchConnectionError, dismiss: { self.switchConnectionError = nil })
+                        .padding(.vertical, 4)
+                }
+                if switcher == nil, let message = appModel.lastError {
+                    ErrorBanner(message: message, dismiss: { appModel.lastError = nil }).padding(.vertical, 4)
+                }
+                if switcher == nil, appModel.lastError != nil {
+                    if appModel.herdrMissingOnLastConnect {
+                        MissingHerdrRecoveryCard(
+                            inForm: true,
+                            mismatch: appModel.runtimeMismatchOnLastConnect,
+                            onConnect: connectWithInstalledRuntimeAction,
+                            isConnecting: isConnecting,
+                            onSetup: { showingSetupGuide = true }
+                        )
+                    } else if appModel.herdrSessionUnavailableOnLastConnect {
+                        SessionRecoveryCard(inForm: true)
+                    }
+                }
+            }
             .safeAreaInset(edge: .bottom) {
                 Button(editing ? "Save changes" : "Connect") {
                     Task { if editing { saveChanges() } else { await connect() } }

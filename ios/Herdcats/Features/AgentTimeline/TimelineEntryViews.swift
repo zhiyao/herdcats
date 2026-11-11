@@ -168,6 +168,7 @@ struct AgentTimelineEntryView: View {
             Label("Image", systemImage: "photo")
             Text(imageError).font(.jost(.caption)).foregroundStyle(Theme.textMuted)
             Button("Retry") { Task { await loadImage() } }
+                .buttonStyle(NoticeButtonStyle())
         } else {
             ProgressView("Loading image…")
         }

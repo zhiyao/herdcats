@@ -259,14 +259,8 @@ struct OpenWorktreeDrawer: View {
                 LazyCatLoadingView(message: "Loading worktrees…")
                     .accessibilityIdentifier("worktree-content-loading")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let errorMessage, worktrees.isEmpty {
-                VStack(spacing: 14) {
-                    ErrorBanner(message: errorMessage, retry: {
-                        Task { await loadWorktrees() }
-                    })
-                    customInputSection
-                    Spacer()
-                }
+            } else if errorMessage != nil, worktrees.isEmpty {
+                ScrollView { customInputSection }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
@@ -304,6 +298,9 @@ struct OpenWorktreeDrawer: View {
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Theme.backgroundGradient.ignoresSafeArea())
+        .exceptionBanner(message: errorMessage, dismiss: { errorMessage = nil }, retry: {
+            Task { await loadWorktrees() }
+        })
         .task {
             await loadWorktrees()
         }
