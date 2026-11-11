@@ -179,7 +179,8 @@ struct CodexTimelineGatingTests {
 
     private func frame(
         _ event: String, agent: String = "codex", seq: Int = 1, generation: Int = 1,
-        code: String? = nil, entries: [String] = ["hello from codex"]
+        code: String? = nil, entries: [String] = ["hello from codex"],
+        session: String = "00000000-0000-0000-0000-000000000001"
     ) throws -> AgentBridgeFrame {
         let rows = entries.map {
             ["id": "message:\($0)", "kind": "message", "text": $0, "role": "assistant", "truncated": false] as [String: Any]
@@ -195,7 +196,7 @@ struct CodexTimelineGatingTests {
                 "pane_id": "p-codex",
                 "terminal_id": "t1",
                 "agent": agent,
-                "native_session_id": "00000000-0000-0000-0000-000000000001",
+                "native_session_id": session,
             ]
             data["entries"] = rows
             data["has_more"] = false
@@ -219,6 +220,89 @@ struct CodexTimelineGatingTests {
         #expect(state.identity?.agent == "codex")
         #expect(state.entries.count == 1)
         #expect(state.entries.first?.text == "hello from codex")
+    }
+
+    @Test func contextResetCommandsAreCodexOnly() {
+        for text in ["/clear", "  /new\n", "/CLEAR"] {
+            #expect(CodexContextReset.isReset(agent: "codex", text: text), "\(text)")
+            #expect(!CodexContextReset.isReset(agent: "claude", text: text))
+        }
+        for text in ["/clear everything", "clear", "/model", "/compact"] {
+            #expect(!CodexContextReset.isReset(agent: "codex", text: text), "\(text)")
+        }
+    }
+
+    @Test func clearedContextStaysHiddenUntilANewSessionArrives() throws {
+        let state = AgentTimelineState()
+        state.begin(owner: owner, paneId: "p-codex")
+        try state.consume(try frame("timeline.snapshot", entries: ["old one", "old two"]), owner: owner)
+        #expect(state.visibleEntries.count == 2)
+
+        state.markContextCleared(for: try #require(state.identity))
+        #expect(state.visibleEntries.isEmpty)
+
+        // A reconnect that replays the same old thread must not resurrect it.
+        try state.consume(try frame("timeline.snapshot", seq: 2, entries: ["old one", "old two"]), owner: owner)
+        #expect(state.visibleEntries.isEmpty)
+
+        // Old-session rows that arrive after the clear stay hidden too.
+        try state.consume(try frame("timeline.snapshot", seq: 3, entries: ["old one", "old two", "late old"]), owner: owner)
+        #expect(state.visibleEntries.isEmpty)
+
+        // Herdr reports the new thread with the next prompt.
+        try state.consume(
+            try frame("timeline.snapshot", seq: 4, entries: ["fresh"], session: "00000000-0000-0000-0000-000000000002"),
+            owner: owner)
+        #expect(state.visibleEntries.map(\.text) == ["fresh"])
+    }
+
+    @Test func staleClearForAReplacedSessionIsIgnored() throws {
+        let state = AgentTimelineState()
+        state.begin(owner: owner, paneId: "p-codex")
+        try state.consume(try frame("timeline.snapshot", entries: ["old"]), owner: owner)
+        let submitted = try #require(state.identity)
+        try state.consume(
+            try frame("timeline.snapshot", seq: 2, entries: ["new"], session: "00000000-0000-0000-0000-000000000002"),
+            owner: owner)
+
+        state.markContextCleared(for: submitted)
+        #expect(state.visibleEntries.map(\.text) == ["new"])
+    }
+
+    @Test func clearSurvivesStreamEndDuringSubmission() throws {
+        let state = AgentTimelineState()
+        state.begin(owner: owner, paneId: "p-codex")
+        try state.consume(try frame("timeline.snapshot", entries: ["old"]), owner: owner)
+        let submitted = try #require(state.identity)
+
+        state.end(owner: owner, error: .closed)
+        state.markContextCleared(for: submitted)
+
+        state.begin(owner: owner, paneId: "p-codex")
+        try state.consume(try frame("timeline.snapshot", entries: ["old"]), owner: owner)
+        #expect(state.visibleEntries.isEmpty)
+    }
+
+    @Test func delayedHistoryPageDoesNotRestorePaginationAfterClear() throws {
+        let state = AgentTimelineState()
+        state.begin(owner: owner, paneId: "p-codex")
+        try state.consume(try frame("timeline.snapshot", entries: ["old"]), owner: owner)
+        let identity = try #require(state.identity)
+        let generation = try #require(state.generation)
+        state.markContextCleared(for: identity)
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let page = try decoder.decode(AgentBridgePayload.self, from: JSONSerialization.data(withJSONObject: [
+            "pane_id": "p-codex", "generation": Int(generation), "has_more": true,
+            "identity": ["pane_id": "p-codex", "terminal_id": "t1", "agent": "codex",
+                         "native_session_id": identity.nativeSessionId],
+            "entries": [["id": "message:older", "kind": "message", "text": "older", "role": "assistant", "truncated": false]],
+        ]))
+        try state.mergeHistory(page, owner: owner, generation: generation)
+        #expect(!state.hasMore)
+        #expect(state.before == nil)
+        #expect(state.visibleEntries.isEmpty)
     }
 
     @Test func snapshotRejectsUnsupportedAgent() throws {

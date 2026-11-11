@@ -38,6 +38,28 @@ import Observation
     private(set) var isPiActionPending = false
     var piActionError: String?
     private(set) var entries: [AgentTimelineEntry] = []
+    /// Codex `/clear` and `/new` start a fresh thread, but Herdr learns about it
+    /// only from the next prompt's SessionStart hook, so the bridge keeps
+    /// streaming the old thread meanwhile. Everything from the session the user
+    /// just left stays hidden, including entries that arrive later, until a
+    /// snapshot names a different session. Survives `clear()` so a reconnect
+    /// cannot resurrect it.
+    private var clearedSession: String?
+    /// Entries to render: nothing while the abandoned session is still bound.
+    var visibleEntries: [AgentTimelineEntry] {
+        if let clearedSession, identity?.nativeSessionId == clearedSession { return [] }
+        return entries
+    }
+    /// Hides the conversation after the phone sent Codex a context reset. A stream
+    /// that ended during submission has no identity, so the marker is kept for the
+    /// submitted session; a bound, different session means the reply is stale.
+    func markContextCleared(for submitted: AgentTimelineIdentity) {
+        guard identity == nil || identity == submitted else { return }
+        clearedSession = submitted.nativeSessionId
+        hasMore = false
+        before = nil
+        revision += 1
+    }
     private(set) var identity: AgentTimelineIdentity?
     private(set) var phase: Phase = .loading
     private(set) var generation: UInt64?
@@ -144,13 +166,14 @@ import Observation
             else { throw AgentBridgeError.identityMismatch }
             try validate(rows)
             clear()
+            if clearedSession != nextIdentity.nativeSessionId { clearedSession = nil }
             identity = nextIdentity
             generation = next
             modelControl.bind(identity: nextIdentity, generation: next)
             if data.model != nil { try modelControl.update(data) }
             entries = rows
-            hasMore = data.hasMore ?? false
-            before = data.before
+            hasMore = clearedSession == nil && (data.hasMore ?? false)
+            before = clearedSession == nil ? data.before : nil
             agentStatus = data.agentStatus
             unknownRecords = data.unknownRecords ?? 0
             droppedEntries = data.droppedEntries ?? 0
@@ -257,10 +280,17 @@ import Observation
         let prefix = rows.filter { !currentIds.contains($0.id) && !evictedIds.contains($0.id) }
         // Never let a delayed history page overwrite a streamed revision.
         entries = Array((prefix + entries).suffix(Self.maxEntries))
-        if !rows.contains(where: { evictedIds.contains($0.id) }) {
-            hasMore = (page.hasMore ?? false) && entries.count < Self.maxEntries
+        // A page requested before a context reset must not bring pagination back.
+        let hidden = clearedSession != nil && identity?.nativeSessionId == clearedSession
+        if hidden {
+            hasMore = false
+            before = nil
+        } else {
+            if !rows.contains(where: { evictedIds.contains($0.id) }) {
+                hasMore = (page.hasMore ?? false) && entries.count < Self.maxEntries
+            }
+            before = entries.first?.id
         }
-        before = entries.first?.id
         droppedEntries = page.droppedEntries ?? droppedEntries
     }
     func end(owner: UUID, error: AgentBridgeError) {

@@ -459,6 +459,14 @@ enum TimelineComposePolicy {
     }
 }
 
+/// Codex `/clear` and `/new` abandon the loaded thread for a new one.
+enum CodexContextReset {
+    static func isReset(agent: String?, text: String) -> Bool {
+        guard agent == "codex" else { return false }
+        return ["/clear", "/new"].contains(text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
+}
+
 /// Phone prompts to Cursor go through the bridge, which reads the terminal first.
 enum CursorPromptPolicy {
     /// Cursor runs a message that starts with "/" as one of its own commands
