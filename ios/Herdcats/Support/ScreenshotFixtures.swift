@@ -51,6 +51,7 @@ enum ScreenshotFixtures {
         }
     }
     static var paneAgent: String {
+        if screen.hasPrefix("timeline-pi-") { return "pi" }
         if screen == "timeline-question-codex-plan" || screen == "timeline-question-codex-async" { return "codex" }
         if screen == "timeline-question-claude" { return "claude" }
         if screen == "timeline-approval-codex" { return "codex" }
@@ -143,12 +144,25 @@ struct ScreenshotRootView: View {
         let app = AppModel(autoConnectOnLaunch: false)
         app.phase = .connected(host: "studio-mac", username: "demo")
         app.hasActiveSession = true
+        if ProcessInfo.processInfo.arguments.contains("-hc.disconnected-list") { app.phase = .disconnected }
         if ScreenshotFixtures.screen == "timeline-connecting" { app.phase = .connecting }
         if ScreenshotFixtures.screen == "timeline-offline" || ScreenshotFixtures.screen.hasPrefix("loading-audit-offline-") {
             app.phase = .offline(host: "studio-mac", username: "demo")
             app.connectionBanner = .offline(message: "Offline · Connection lost", canRetry: true)
         }
         app.connectionIdentity = ConnectionIdentity(host: "studio-mac", port: 22, username: "demo")
+        if ScreenshotFixtures.screen == "loading-audit-settings-warnings" {
+            app.lastError = "Saving the connection failed."
+        }
+        if ScreenshotFixtures.screen.hasPrefix("loading-audit-recovery-") {
+            app.phase = .disconnected
+            app.lastError = "Recovery fixture"
+            app.herdrMissingOnLastConnect = !ScreenshotFixtures.screen.hasSuffix("session")
+            app.herdrSessionUnavailableOnLastConnect = ScreenshotFixtures.screen.hasSuffix("session")
+            if ScreenshotFixtures.screen.hasSuffix("mismatch") {
+                app.runtimeMismatchOnLastConnect = .init(saved: .core, installed: .tui)
+            }
+        }
         // Keep each capture independent of previous timeline/terminal navigation.
         if ProcessInfo.processInfo.arguments.contains("-hc.capture-surface"), let identity = app.connectionIdentity {
             let terminal = ["pane", "agent-pane", "keys"].contains(ScreenshotFixtures.screen)
@@ -217,6 +231,9 @@ private struct LoadingAuditFixtureView: View {
     init() {
         let model = SpacesModel()
         let screen = ScreenshotFixtures.screen
+        if screen == "loading-audit-agents-error" || screen == "loading-audit-spaces-error" {
+            model.agentListFetch = { throw HerdrError.unexpectedResponse("Audit list refresh failed. Reconnect to this computer and retry loading the list.") }
+        }
         // Inject only the fetch boundary. QuotaScreen owns its actual refresh task,
         // GeometryReader, scroll view, navigation, and recovery UI.
         model.quotaReportFetch = {
@@ -236,7 +253,57 @@ private struct LoadingAuditFixtureView: View {
     }
 
     var body: some View {
-        if screen.hasPrefix("loading-audit-offline-") {
+        if screen == "loading-audit-agents-error" || screen == "loading-audit-spaces-error" {
+            TabView {
+                Group {
+                    if screen.contains("agents") { AgentsScreen(model: quota, layout: $layout) }
+                    else { SpacesScreen(model: quota, layout: $layout) }
+                }
+                .tabItem { Label("Audit", systemImage: "exclamationmark.triangle") }
+            }
+            .environment(quota)
+            .task { await quota.refresh(appModel.connection) }
+        } else if screen == "loading-audit-settings-warnings" {
+            ConnectionSettingsView(connection: RecentConnection(host: "preview.local", port: 22,
+                username: "preview", authMode: "password", remember: false), isReplay: true, editing: true)
+        } else if screen == "loading-audit-phone-setup" {
+            PhoneAnswersSheet(selection: PhoneAnswersSelection(
+                key: .init(target: ConnectionIdentity(host: "preview.local", port: 22, username: "preview"),
+                           generation: .init(rawValue: 1), agent: "claude"), mode: .install),
+                connection: appModel.connection, store: appModel.phoneAnswers, isCurrent: { false })
+        } else if screen.hasPrefix("loading-audit-quota-standalone-") {
+            QuotaCardsView(model: quota)
+                .task { await quota.refreshUsage(appModel.connection, force: true) }
+        } else if screen == "loading-audit-inline-errors" {
+            NavigationStack {
+                VStack(alignment: .leading, spacing: 16) {
+                    if let workspace = try? JSONDecoder().decode(Workspace.self, from: Data(ScreenshotFixtures.json(ScreenshotFixtures.workspaces[0]).utf8)) {
+                        List {
+                            SpacePaneTreeRows(space: Space(workspace: workspace, agents: []),
+                                load: .failed(.init(tabCount: 1, paneCount: 1), "Couldn't load this space's panes."),
+                                indent: 0, layout: $layout, retry: {})
+                        }
+                        .listStyle(.plain)
+                        .frame(height: 150)
+                    }
+                    TimelineActivityView(entries: [AgentTimelineEntry(id: "audit-edit", kind: "tool", text: "Update README", role: nil, toolName: "edit", status: "completed", details: nil, truncated: true)]) { _ in
+                        throw AgentBridgeError.unavailable("preview_unavailable")
+                    }
+                    .padding(.horizontal, 16)
+                    Spacer()
+                }
+                .background(Theme.background)
+                .navigationTitle("Item recovery")
+            }
+        } else if screen.hasPrefix("loading-audit-recovery-") {
+            Group {
+                if screen.hasSuffix("form") {
+                    ConnectionSettingsView(connection: RecentConnection(host: "preview.local", port: 22, username: "preview", authMode: "password", remember: false), isReplay: true)
+                }
+                else { ConnectView(replay: true) }
+            }
+            .background(Theme.background)
+        } else if screen.hasPrefix("loading-audit-offline-") {
             if screen.hasSuffix("action") {
                 NavigationStack {
                     OfflineHerdView()
@@ -248,9 +315,9 @@ private struct LoadingAuditFixtureView: View {
             } else {
                 TabView {
                     Group {
-                        if screen.hasSuffix("agents") { AgentsScreen(model: quota, layout: $layout) }
-                        else if screen.hasSuffix("spaces") { SpacesScreen(model: quota, layout: $layout) }
-                        else if screen.hasSuffix("quota") { QuotaScreen(model: quota) }
+                        if screen.hasSuffix("agents") { AgentsScreen(model: quota, layout: $layout).connectionStatusBanner(appModel: appModel) }
+                        else if screen.hasSuffix("spaces") { SpacesScreen(model: quota, layout: $layout).connectionStatusBanner(appModel: appModel) }
+                        else if screen.hasSuffix("quota") { QuotaScreen(model: quota).connectionStatusBanner(appModel: appModel) }
                         else if screen.hasSuffix("terminal") {
                             NavigationStack {
                                 PaneOutputScrollView(output: "", selectableText: AttributedString(), outputRevision: 0,

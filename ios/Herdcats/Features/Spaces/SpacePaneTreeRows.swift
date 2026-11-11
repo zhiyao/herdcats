@@ -153,6 +153,7 @@ struct SpacePaneTreeRows: View {
                     .foregroundStyle(Theme.destructive)
                 Button("Retry", action: retry)
                     .font(.jost(.footnote, weight: .semibold))
+                    .buttonStyle(NoticeButtonStyle())
                     .accessibilityIdentifier("space-panes-retry")
             }
             .padding(.leading, indent)

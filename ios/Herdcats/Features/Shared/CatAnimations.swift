@@ -259,7 +259,6 @@ struct OfflineHerdView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
 
-            ConnectionContentRetryButton()
         }
         .padding(24)
         .frame(maxWidth: 360)

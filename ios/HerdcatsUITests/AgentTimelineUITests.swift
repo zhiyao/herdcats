@@ -2,6 +2,250 @@ import XCTest
 import UIKit
 
 final class AgentTimelineUITests: XCTestCase {
+    func testRecoveryNoticesAndInlineRetryTargetsRemainReachable() {
+        let cases: [(String, String, Bool, Bool)] = [
+            ("loading-audit-quota-error", "quota-load-error", false, false),
+            ("loading-audit-agents-error", "Retry", false, false),
+            ("loading-audit-agents-error", "Retry", true, false),
+            ("loading-audit-spaces-error", "Retry", true, false),
+            ("timeline-audit-hooks", "phone-answers-waiting", false, false),
+            ("timeline-audit-hooks", "phone-answers-waiting", true, true),
+            ("timeline-audit-dictation", "pane-session-error", true, true),
+            ("loading-audit-inline-errors", "space-panes-retry", false, false)
+        ]
+        for item in cases {
+            let (screen, identifier, large, keyboard) = item
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", screen, "-hc.light", "-paneShowComposeByDefault", "NO", "-hc.agent", screen == "timeline-audit-hooks" ? "codex" : "claude"]
+                + (large ? ["-hc.accessibility-type-max"] : [])
+                + (large && screen.contains("loading-audit-") && !screen.contains("inline") ? ["-hc.disconnected-list"] : [])
+            launch(app)
+            let surface = app.descendants(matching: .any)[identifier].firstMatch
+            XCTAssertTrue(surface.waitForExistence(timeout: 5), screen)
+            if keyboard {
+                let composer = app.textFields["timeline-compose-field"]
+                XCTAssertTrue(composer.waitForExistence(timeout: 5))
+                composer.tap()
+                XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+            }
+            if screen == "loading-audit-agents-error" || screen == "loading-audit-spaces-error" {
+                let retry = app.buttons["Retry"].firstMatch
+                XCTAssertTrue(retry.isHittable)
+                XCTAssertLessThanOrEqual(retry.frame.maxY, app.tabBars.firstMatch.frame.minY + 1)
+                XCTAssertFalse(app.staticTexts["Unable to Load Agents"].exists)
+                XCTAssertFalse(app.staticTexts["No Spaces Yet"].exists)
+            }
+            if screen == "timeline-audit-hooks" {
+                let scroll = app.scrollViews["phone-answers-notice-scroll"]
+                XCTAssertTrue(scroll.exists)
+                let dock = app.descendants(matching: .any)["pane-compose-bar"].firstMatch
+                XCTAssertGreaterThanOrEqual(scroll.frame.minY, app.navigationBars.firstMatch.frame.maxY)
+                XCTAssertLessThanOrEqual(scroll.frame.maxY, dock.frame.minY)
+                if !large {
+                    XCTAssertEqual(surface.frame.minX, 12, accuracy: 1)
+                } else {
+                    let heading = app.staticTexts["Approve the Herdcats hook in Codex once"]
+                    for _ in 0..<6 {
+                        if heading.isHittable { break }
+                        scroll.swipeDown()
+                    }
+                    XCTAssertTrue(heading.isHittable, "The entire guidance must be readable by scrolling")
+                    XCTAssertTrue(app.keyboards.firstMatch.exists, "Reading the notice must not dismiss the keyboard")
+                }
+            }
+            if screen == "timeline-audit-dictation" {
+                let scroll = app.scrollViews["pane-error-notice-scroll"]
+                let dock = app.descendants(matching: .any)["pane-compose-bar"].firstMatch
+                XCTAssertTrue(scroll.exists)
+                XCTAssertGreaterThanOrEqual(scroll.frame.minY, app.navigationBars.firstMatch.frame.maxY)
+                XCTAssertLessThanOrEqual(scroll.frame.maxY, dock.frame.minY)
+                let dismiss = app.buttons["Dismiss error"]
+                XCTAssertTrue(dismiss.isHittable)
+                XCTAssertLessThanOrEqual(dismiss.frame.maxY, dock.frame.minY)
+            }
+            if screen == "loading-audit-inline-errors" {
+                let retries = app.buttons.matching(NSPredicate(format: "label == %@", "Retry")).allElementsBoundByIndex
+                XCTAssertEqual(retries.count, 2)
+                for retry in retries {
+                    XCTAssertGreaterThanOrEqual(retry.frame.width, 43.5)
+                    XCTAssertGreaterThanOrEqual(retry.frame.height, 43.5)
+                    XCTAssertTrue(retry.isHittable)
+                }
+            }
+            if screen == "timeline-audit-dictation" {
+                app.buttons["Dismiss error"].tap()
+                XCTAssertTrue(app.descendants(matching: .any)["pane-session-error"].firstMatch.waitForNonExistence(timeout: 5))
+            }
+            app.terminate()
+        }
+    }
+
+    func testIndependentSettingsWarningsStayVisibleAndDismissSeparately() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "loading-audit-settings-warnings", "-hc.light"]
+        launch(app)
+        defer { app.terminate() }
+        let credentialWarning = app.staticTexts["Saved credentials could not be loaded. Close and reopen settings to retry loading sign-in before saving changes."]
+        XCTAssertTrue(credentialWarning.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Switching to this machine failed."].exists)
+        XCTAssertTrue(app.staticTexts["Saving the connection failed."].exists)
+        XCTAssertFalse(app.buttons["Save changes"].isEnabled)
+        XCTAssertEqual(app.scrollViews.matching(identifier: "bottom-notice-scroll").count, 1)
+        app.buttons["Dismiss error"].firstMatch.tap()
+        XCTAssertFalse(app.staticTexts["Switching to this machine failed."].exists)
+        XCTAssertTrue(credentialWarning.exists)
+        XCTAssertTrue(app.staticTexts["Saving the connection failed."].exists)
+        app.buttons["Dismiss error"].firstMatch.tap()
+        XCTAssertFalse(app.staticTexts["Saving the connection failed."].exists)
+        XCTAssertTrue(credentialWarning.exists)
+        XCTAssertFalse(app.buttons["Save changes"].isEnabled)
+    }
+
+    func testStandaloneQuotaCardsKeepRecoveryStates() {
+        for (state, identifier) in [("empty", "quota-load-empty"), ("error", "quota-load-error"), ("missing", "quota-setup-notice")] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", "loading-audit-quota-standalone-" + state, "-hc.light"]
+            launch(app)
+            XCTAssertTrue(app.descendants(matching: .any)[identifier].firstMatch.waitForExistence(timeout: 5), state)
+            XCTAssertEqual(app.scrollViews.matching(identifier: "bottom-notice-scroll").count, 1)
+            app.terminate()
+        }
+    }
+
+    func testApprovalsSetupKeepsPrimaryActionAndNoIdleStatusCard() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "loading-audit-phone-setup", "-hc.light"]
+        launch(app)
+        defer { app.terminate() }
+        let confirm = app.buttons["phone-answers-confirm"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        XCTAssertFalse(confirm.isEnabled, "A disconnected host must disable setup")
+        XCTAssertGreaterThanOrEqual(confirm.frame.height, 44)
+        XCTAssertFalse(app.descendants(matching: .any)["phone-answers-notice"].firstMatch.exists)
+        XCTAssertEqual(app.scrollViews.matching(identifier: "bottom-notice-scroll").count, 0)
+    }
+
+    func testPaneErrorsDismissOneSourceAtATime() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-audit-dictation", "-hc.light", "-hc.action-error"]
+        launch(app)
+        defer { app.terminate() }
+        let actionError = app.staticTexts["Could not load that image."]
+        XCTAssertTrue(actionError.waitForExistence(timeout: 5))
+        app.buttons["Dismiss error"].tap()
+        XCTAssertTrue(actionError.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Allow Microphone access for Herdcats in Settings to dictate messages."].waitForExistence(timeout: 5))
+        app.buttons["Dismiss error"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["pane-session-error"].firstMatch.waitForNonExistence(timeout: 5))
+    }
+
+    func testWaitingGuidanceAndPaneErrorDoNotOverlapWithKeyboard() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-audit-hooks", "-hc.agent", "codex", "-hc.light", "-hc.accessibility-type-max", "-hc.dictation-error"]
+        launch(app)
+        defer { app.terminate() }
+        let composer = app.textFields["timeline-compose-field"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        composer.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        let waiting = app.scrollViews["phone-answers-notice-scroll"]
+        let error = app.scrollViews["pane-error-notice-scroll"]
+        XCTAssertTrue(waiting.waitForExistence(timeout: 5))
+        XCTAssertTrue(error.exists)
+        XCTAssertGreaterThanOrEqual(waiting.frame.minY, app.navigationBars.firstMatch.frame.maxY)
+        XCTAssertLessThanOrEqual(waiting.frame.maxY, error.frame.minY + 1)
+        let dock = app.descendants(matching: .any)["pane-compose-bar"].firstMatch
+        XCTAssertLessThanOrEqual(error.frame.maxY, dock.frame.minY + 1)
+        XCTAssertTrue(app.buttons["Dismiss error"].isHittable)
+    }
+
+    func testLongRecoveryNoticesScrollAtAccessibilitySizes() {
+        for (screen, action, keyboard) in [
+            ("loading-audit-recovery-missing", "See Setup Steps", false),
+            ("loading-audit-recovery-form", "See Setup Steps", true),
+            ("loading-audit-quota-missing", "quota-axi-check-button", false)
+        ] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", screen, "-hc.light", "-hc.accessibility-type-max"]
+            launch(app)
+            if keyboard {
+                let field = app.textFields["Name (optional)"]
+                XCTAssertTrue(field.waitForExistence(timeout: 5))
+                field.tap()
+                XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+            }
+            let scroll = app.scrollViews["bottom-notice-scroll"].firstMatch
+            XCTAssertTrue(scroll.waitForExistence(timeout: 5), screen)
+            XCTAssertGreaterThanOrEqual(scroll.frame.minY, 0)
+            XCTAssertEqual(app.scrollViews.matching(identifier: "bottom-notice-scroll").count, 1, "Empty notice modifiers must not create test targets")
+            let retry = app.buttons[action]
+            XCTAssertTrue(retry.waitForExistence(timeout: 5), screen)
+            if !retry.isHittable { scroll.swipeUp() }
+            XCTAssertTrue(retry.isHittable, screen)
+            XCTAssertLessThanOrEqual(retry.frame.maxY, keyboard ? app.keyboards.firstMatch.frame.minY : app.frame.maxY)
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = "accessible-bottom-notice-" + screen
+            shot.lifetime = .keepAlways
+            add(shot)
+            app.terminate()
+        }
+    }
+
+    func testRuntimeAndSessionRecoveryUseBottomNotices() {
+        for kind in ["missing", "mismatch", "session"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", "loading-audit-recovery-" + kind, "-hc.light"]
+            launch(app)
+            let notice = app.descendants(matching: .any)[kind == "session" ? "session-recovery-notice" : "runtime-recovery-notice"].firstMatch
+            XCTAssertTrue(notice.waitForExistence(timeout: 5))
+            XCTAssertGreaterThan(notice.frame.minY, app.frame.height * 0.5)
+            XCTAssertLessThanOrEqual(notice.frame.maxY, app.buttons["Continue"].frame.minY)
+            if kind != "session" { XCTAssertTrue(notice.buttons["See Setup Steps"].isHittable) }
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = "bottom-runtime-" + kind
+            shot.lifetime = .keepAlways
+            add(shot)
+            app.terminate()
+        }
+    }
+
+    func testPiReloadNoticeStaysAboveComposerAndKeyboard() {
+        for (light, large, keyboard) in [(true, false, false), (false, false, true), (true, true, false)] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-pi-reload", "-paneShowComposeByDefault", "NO"]
+                + (light ? ["-hc.light"] : []) + (large ? ["-hc.accessibility-type"] : [])
+            launch(app)
+            let notice = app.descendants(matching: .any)["timeline-exception-notice"].firstMatch
+            XCTAssertTrue(notice.waitForExistence(timeout: 5))
+            XCTAssertTrue(notice.staticTexts["Reload Pi to finish"].exists)
+            let composer = app.textFields["timeline-compose-field"]
+            XCTAssertTrue(composer.exists)
+            let noticeViewport = app.scrollViews["timeline-exception-scroll"]
+            if keyboard {
+                composer.tap()
+                XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+            } else if app.keyboards.firstMatch.exists {
+                noticeViewport.swipeDown()
+                XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+            }
+            let dock = app.descendants(matching: .any)["pane-compose-bar"].firstMatch
+            XCTAssertLessThanOrEqual(notice.frame.maxY, dock.frame.minY)
+            XCTAssertGreaterThanOrEqual(noticeViewport.frame.minY, app.navigationBars.firstMatch.frame.maxY)
+            if !keyboard && !large { XCTAssertGreaterThan(notice.frame.minY, app.frame.height * 0.5) }
+            let retry = notice.buttons["timeline-helper-retry"]
+            XCTAssertTrue(retry.isHittable)
+            XCTAssertGreaterThanOrEqual(retry.frame.height, 43.5) // Allow subpixel frame rounding.
+            retry.tap()
+            XCTAssertTrue(notice.staticTexts["Reload Pi to finish"].waitForExistence(timeout: 5))
+            XCTAssertEqual(app.buttons.matching(identifier: "timeline-helper-retry").count, 1)
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = "pi-reload-bottom-light-\(light)-large-\(large)-keyboard-\(keyboard)"
+            shot.lifetime = .keepAlways
+            add(shot)
+            app.terminate()
+        }
+    }
+
     func testEmptyScreenRecoveryRemainsReachableAtAccessibilitySizes() {
         for screen in ["loading-audit-offline-agents", "loading-audit-offline-spaces", "loading-audit-offline-quota"] {
             let app = XCUIApplication()
@@ -15,7 +259,7 @@ final class AgentTimelineUITests: XCTestCase {
             XCTAssertLessThanOrEqual(retry.frame.maxY, app.tabBars.firstMatch.frame.minY, screen)
             let status = app.descendants(matching: .any)["connection-status-bar"].firstMatch
             XCTAssertTrue(status.exists, screen)
-            XCTAssertEqual(status.buttons.count, 0, screen)
+            XCTAssertEqual(status.buttons.count, 1, screen)
             let shot = XCTAttachment(screenshot: app.screenshot())
             shot.name = "accessible-recovery-" + screen; shot.lifetime = .keepAlways; add(shot)
             app.terminate()
@@ -46,7 +290,7 @@ final class AgentTimelineUITests: XCTestCase {
             XCTAssertEqual(app.buttons.matching(identifier: "connection-content-retry").count, 1)
             XCTAssertTrue(retry.isHittable)
             let dock = app.descendants(matching: .any)["pane-compose-bar"].firstMatch
-            XCTAssertLessThanOrEqual(retry.frame.maxY, dock.frame.minY - 8)
+            XCTAssertGreaterThanOrEqual(retry.frame.minY, dock.frame.maxY)
             XCTAssertTrue(composer.isHittable)
             let draft = composer.value as? String
             composer.tap()
@@ -60,7 +304,7 @@ final class AgentTimelineUITests: XCTestCase {
         }
     }
 
-    func testOfflineRetrySitsBelowOfflineMessageAndNotInStatusBar() {
+    func testOfflineRetryLivesInBottomStatusBar() {
         for screen in ["loading-audit-offline-agents", "loading-audit-offline-spaces", "loading-audit-offline-quota", "timeline-offline", "loading-audit-offline-terminal"] {
             let app = XCUIApplication()
             app.launchArguments = ["-hc.screenshots", "-hc.screen", screen, "-paneShowComposeByDefault", screen == "timeline-offline" ? "YES" : "NO"]
@@ -71,15 +315,15 @@ final class AgentTimelineUITests: XCTestCase {
                 let body = app.staticTexts["You're offline. Reconnect to bring the cats back."]
                 XCTAssertTrue(body.exists)
                 XCTAssertGreaterThanOrEqual(retry.frame.minY, body.frame.maxY)
-                XCTAssertEqual(retry.frame.midX, app.frame.midX, accuracy: 3)
+                XCTAssertGreaterThan(retry.frame.midX, app.frame.midX)
                 XCTAssertTrue(retry.isHittable)
                 XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "Retry")).count, 1)
                 let status = app.descendants(matching: .any)["connection-status-bar"].firstMatch
                 XCTAssertTrue(status.exists)
-                XCTAssertEqual(status.buttons.count, 0)
+                XCTAssertEqual(status.buttons.count, 1)
                 if screen == "timeline-offline" {
                     let composer = app.descendants(matching: .any)["timeline-compose-field"].firstMatch
-                    XCTAssertLessThanOrEqual(retry.frame.maxY, composer.frame.minY - 8)
+                    XCTAssertGreaterThanOrEqual(retry.frame.minY, composer.frame.maxY)
                 }
                 if screen.hasSuffix("terminal") {
                     retry.tap()
@@ -91,7 +335,7 @@ final class AgentTimelineUITests: XCTestCase {
         }
     }
 
-    func testCenteredOfflineRetryInvokesItsOwnerAndRetainedContentKeepsRecovery() {
+    func testBottomOfflineRetryInvokesItsOwnerAndPreservesRetainedContent() {
         let app = XCUIApplication()
         app.launchArguments = ["-hc.screenshots", "-hc.screen", "loading-audit-offline-action", "-hc.light", "-hc.accessibility-type"]
         launch(app)
@@ -114,19 +358,17 @@ final class AgentTimelineUITests: XCTestCase {
             XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "Retry")).count, 1)
             let status = app.descendants(matching: .any)["connection-status-bar"].firstMatch
             XCTAssertTrue(status.exists)
-            XCTAssertEqual(status.buttons.count, 0, "The connection banner is status-only, even with retained content")
+            XCTAssertEqual(status.buttons.count, 1, "Recovery lives in the bottom notice with retained content")
             if retainedRetry.exists {
-                let explanation = app.staticTexts["You're offline. Reconnect to bring the cats back."]
-                XCTAssertTrue(explanation.exists)
-                XCTAssertGreaterThanOrEqual(retainedRetry.frame.minY, explanation.frame.maxY)
-                XCTAssertEqual(retainedRetry.frame.midX, app.frame.midX, accuracy: 3)
+                XCTAssertFalse(app.descendants(matching: .any)["connection-offline-recovery"].exists)
+                XCTAssertGreaterThan(retainedRetry.frame.midX, app.frame.midX)
                 XCTAssertGreaterThanOrEqual(retainedRetry.frame.height, 44)
                 XCTAssertTrue(retainedRetry.isHittable)
                 let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "outlined-retry-retained-light-\(light)"; shot.lifetime = .keepAlways; add(shot)
                 retainedRetry.tap()
                 XCTAssertEqual(app.staticTexts["fixture-retry-count"].label, "Retries: 1")
                 XCTAssertTrue(app.staticTexts["Verified retained content"].exists)
-                XCTAssertEqual(status.label, "Reconnecting…")
+                XCTAssertTrue(status.staticTexts["Reconnecting…"].exists)
                 XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "Retry")).count, 0)
             }
             app.terminate()
@@ -153,6 +395,12 @@ final class AgentTimelineUITests: XCTestCase {
             } else {
                 XCTAssertFalse(app.descendants(matching: .any)["quota-content-loading"].exists)
                 if suffix == "-error" || suffix == "-empty" { XCTAssertTrue(app.buttons["Retry"].isHittable) }
+                if suffix == "-error" || suffix == "-empty" || suffix == "-missing" {
+                    let notice = suffix == "-missing"
+                        ? app.descendants(matching: .any)["quota-setup-notice"].firstMatch : content
+                    XCTAssertLessThanOrEqual(notice.frame.maxY, tab.frame.minY)
+                    XCTAssertGreaterThan(notice.frame.minY, app.frame.height * 0.5)
+                }
             }
             let shot = XCTAttachment(screenshot: app.screenshot())
             shot.name = "actual-quota-wrapper\(suffix)-large-\(large)"; shot.lifetime = .keepAlways; add(shot)
@@ -333,7 +581,11 @@ final class AgentTimelineUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Send a message to start"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["Timeline unavailable"].exists)
         XCTAssertFalse(app.buttons["timeline-helper-retry"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["timeline-compose-field"].firstMatch.exists)
+        let composer = app.descendants(matching: .any)["timeline-compose-field"].firstMatch
+        XCTAssertTrue(composer.isHittable)
+        XCTAssertFalse(app.scrollViews["timeline-exception-scroll"].exists)
+        composer.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         app.terminate()
     }
     func testDisconnectedTimelineCanRetryWithoutReconnectingSSH() {
@@ -477,7 +729,7 @@ final class AgentTimelineUITests: XCTestCase {
             XCTAssertTrue(feedback.waitForExistence(timeout: 5))
             XCTAssertFalse(app.buttons["timeline-tool-tool:read"].exists)
             if scenario == "replacement" {
-                XCTAssertEqual(install.label, "Replace Herdcats Bridge with 0.3.0")
+                XCTAssertEqual(install.label, "Replace Herdcats Bridge with 0.5.0")
                 install.tap()
                 XCTAssertTrue(app.buttons["timeline-tool-tool:read"].waitForExistence(timeout: 5))
             } else if scenario == "uncertain" {
@@ -999,6 +1251,9 @@ final class AgentTimelineUITests: XCTestCase {
         app.buttons["model-configuration-model"].tap()
         XCTAssertTrue(app.navigationBars["Model"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["model-choices-error"].waitForExistence(timeout: 3))
+        let notice = app.descendants(matching: .any)["model-choices-notice"].firstMatch
+        XCTAssertTrue(notice.exists)
+        XCTAssertTrue(notice.buttons["model-choices-retry"].isHittable)
         XCTAssertTrue(app.staticTexts["Agy wasn't found on this computer. Update Herdcats Bridge or check the Agy installation, then retry."].exists)
         let retry = app.buttons["model-choices-retry"]
         XCTAssertTrue(retry.exists)

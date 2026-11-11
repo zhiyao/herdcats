@@ -14,21 +14,34 @@ extension AgentTimelineView {
             } else if scenePhase == .active {
                 timelineContentLoading
             }
+        case .unavailable("transcript_unavailable"):
+            ContentUnavailableView("Send a message to start", systemImage: "bubble.left")
+        case .disconnected, .unavailable, .ready:
+            EmptyView()
+        }
+    }
+
+    var showsAvailabilityNotice: Bool {
+        switch timeline.presentationPhase(connection: connectionState, isActive: scenePhase == .active, paneId: paneId, agent: agent) {
+        case .disconnected: true
+        case .unavailable(let code): code != "transcript_unavailable"
+        default: false
+        }
+    }
+
+    /// Recovery stays outside transcript scrolling, immediately above the composer.
+    @ViewBuilder var availabilityNotice: some View {
+        switch timeline.presentationPhase(connection: connectionState, isActive: scenePhase == .active, paneId: paneId, agent: agent) {
         case .disconnected:
-            ContentUnavailableView {
-                Label("Timeline disconnected", systemImage: "wifi.slash")
-            } description: {
+            RecoveryNotice(title: "Timeline disconnected", systemImage: "wifi.slash", identifier: "timeline-exception-notice") {
                 if !connectionState.isReady { Text("Reconnect to load current session messages.") }
             } actions: {
                 Button("Check again") { retry += 1 }
-                    .buttonStyle(.herdrSecondary)
                     .disabled(!connectionState.isReady)
                     .accessibilityIdentifier("timeline-helper-retry")
             }
         case .unavailable("transcript_unavailable"):
-            // Claude writes its transcript only after the first prompt; the
-            // helper keeps polling and swaps in the timeline once it exists.
-            ContentUnavailableView("Send a message to start", systemImage: "bubble.left")
+            EmptyView()
         case .unavailable("pi_extension_unavailable") where agent == "pi" && bridgeCapabilities?.piExtensionInstall == true:
             piExtensionSetup
         case .unavailable(let code):
@@ -47,10 +60,11 @@ extension AgentTimelineView {
                     codexDaemon: timeline.codexDaemon)
                 : nil
 
-            ContentUnavailableView {
-                Label(codexNoSession.map(Self.codexNoSessionTitle) ?? title(code), systemImage: Self.availabilitySymbol(code: code, agent: agent,
-                    capabilities: bridgeCapabilities, codexDaemon: timeline.codexDaemon, bridgeVersion: bridgeVersion))
-            } description: {
+            RecoveryNotice(
+                title: codexNoSession.map(Self.codexNoSessionTitle) ?? title(code),
+                systemImage: Self.availabilitySymbol(code: code, agent: agent,
+                    capabilities: bridgeCapabilities, codexDaemon: timeline.codexDaemon, bridgeVersion: bridgeVersion), identifier: "timeline-exception-notice"
+            ) {
                 if codexNoSession != nil, let outcome = codexDaemonStopOutcome {
                     Text(outcome.message)
                 } else if let codexNoSession {
@@ -65,7 +79,7 @@ extension AgentTimelineView {
                     Button(isNeedsUpgrade ? "Upgrade Herdcats Bridge" : (isMissing ? "Install Herdcats Bridge" : "Set up Timeline")) {
                         beginSetup(reason: isNeedsUpgrade ? .updateRequired : .missing)
                     }
-                    .buttonStyle(.herdrPrimary)
+                    .buttonStyle(NoticeButtonStyle())
                     .accessibilityIdentifier("timeline-helper-setup")
                 }
                 if let codexNoSession {
@@ -83,14 +97,14 @@ extension AgentTimelineView {
                                     Text(isDisablingCodexDaemon ? "Turning off…" : "Turn off Codex's shared background server")
                                 }.frame(maxWidth: .infinity)
                             }
-                            .buttonStyle(.herdrPrimary)
+                            .buttonStyle(NoticeButtonStyle())
                             .accessibilityIdentifier("timeline-codex-disable-daemon")
                             .disabled(isDisablingCodexDaemon)
                         case .upgradeBridge:
                             Button("Upgrade Herdcats Bridge") {
                                 beginSetup(reason: .updateRequired)
                             }
-                            .buttonStyle(.herdrPrimary)
+                            .buttonStyle(NoticeButtonStyle())
                             .accessibilityIdentifier("timeline-codex-upgrade-bridge")
                         case .manualFallback:
                             codexManualFallback
@@ -105,16 +119,16 @@ extension AgentTimelineView {
                 // replaces this state on its own; retrying adds nothing.
                 if codexNoSession != .waitForSession,
                    Self.showsPaneCheckAgain(code: code, agent: agent, bridgeVersion: bridgeVersion) {
-                    Button("Check again") { retry += 1 }.buttonStyle(.herdrSecondary)
+                    Button("Check again") { retry += 1 }.buttonStyle(NoticeButtonStyle())
                         .accessibilityIdentifier("timeline-helper-retry")
                 }
             }
-        case .ready: EmptyView()
+        case .loading, .suspended, .ready: EmptyView()
         }
     }
 
     /// Intrinsic, finite content fits above the floating composer even with the keyboard open.
-    /// The session owner supplies recovery here; the banner keeps its status text.
+    /// The tab owns the recovery action in its bottom status notice.
     private var timelineOfflineState: some View {
         ConnectionRecoveryViewport {
             timelineOfflineCard
@@ -135,7 +149,6 @@ extension AgentTimelineView {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-            ConnectionContentRetryButton()
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 16)
@@ -607,7 +620,7 @@ extension AgentTimelineView {
             } label: {
                 Label(copiedCodexConfig ? "Setting copied" : "Copy setting", systemImage: copiedCodexConfig ? "checkmark" : "doc.on.doc")
             }
-            .buttonStyle(.herdrSecondary)
+            .buttonStyle(NoticeButtonStyle())
             .accessibilityIdentifier("timeline-codex-copy-setting")
         }
     }
@@ -619,7 +632,7 @@ extension AgentTimelineView {
         } label: {
             Label(copiedCodexStop ? "Command copied" : "Copy stop command", systemImage: copiedCodexStop ? "checkmark" : "doc.on.doc")
         }
-        .buttonStyle(.herdrPrimary)
+        .buttonStyle(NoticeButtonStyle())
         .accessibilityIdentifier("timeline-codex-copy-stop")
     }
 
@@ -630,7 +643,7 @@ extension AgentTimelineView {
         } label: {
             Label(copiedCodexUpdaterStop ? "Command copied" : "Copy turn-off command", systemImage: copiedCodexUpdaterStop ? "checkmark" : "doc.on.doc")
         }
-        .buttonStyle(.herdrPrimary)
+        .buttonStyle(NoticeButtonStyle())
         .accessibilityIdentifier("timeline-codex-copy-updater-stop")
     }
 
@@ -717,9 +730,10 @@ extension AgentTimelineView {
     /// Opt-in: nothing is written until the user taps Install or Update.
     var piExtensionSetup: some View {
         let hint = piExtension.map { PiExtensionPresentation.hint(result: $0, agentStatus: paneAgentStatus) }
-        return ContentUnavailableView {
-            Label(hint?.title ?? "Checking the Herdcats Pi extension…", systemImage: "puzzlepiece.extension")
-        } description: {
+        return RecoveryNotice(
+            title: hint?.title ?? "Checking the Herdcats Pi extension…",
+            systemImage: "puzzlepiece.extension", identifier: "timeline-exception-notice"
+        ) {
             VStack(spacing: 8) {
                 if let feedback = piExtensionFeedback {
                     Text(feedback).accessibilityIdentifier("timeline-pi-extension-feedback")
@@ -734,7 +748,7 @@ extension AgentTimelineView {
                         Text(action.label)
                     }.frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.herdrPrimary)
+                .buttonStyle(NoticeButtonStyle())
                 .disabled(isRunningPiExtension || !connectionState.isReady)
                 .accessibilityIdentifier("timeline-pi-extension-action")
             }
@@ -743,7 +757,7 @@ extension AgentTimelineView {
                 piExtensionFeedback = nil
                 retry += 1
             }
-            .buttonStyle(.herdrSecondary)
+            .buttonStyle(NoticeButtonStyle())
             .disabled(isRunningPiExtension)
             .accessibilityIdentifier("timeline-helper-retry")
         }
@@ -753,6 +767,12 @@ extension AgentTimelineView {
     }
 
     @MainActor func checkPiExtension() async {
+        #if DEBUG && targetEnvironment(simulator)
+        if ScreenshotFixtures.enabled, ScreenshotFixtures.screen.hasPrefix("timeline-pi-") {
+            piExtension = PiExtensionResult(status: .current, dir: nil, error: nil)
+            return
+        }
+        #endif
         guard let generation = connectionState.generation, connectionState.isReady else { return }
         do {
             piExtension = try await connection.runPiExtension(.status, target: setupTarget, owned: generation)
@@ -792,4 +812,3 @@ extension AgentTimelineView {
         }
     }
 }
-
