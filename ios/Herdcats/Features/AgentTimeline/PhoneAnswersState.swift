@@ -6,7 +6,7 @@ enum PhoneAnswersMode: String, Identifiable {
     var id: String { rawValue }
     var requiresConfirmation: Bool { self == .remove }
     var confirmLabel: String {
-        switch self { case .install: "Set up phone answers"; case .repair: "Repair phone answers"; case .remove: "Remove phone answers" }
+        switch self { case .install: "Set up approvals and questions"; case .repair: "Repair approvals and questions"; case .remove: "Turn off approvals and questions" }
     }
 }
 struct PhoneAnswersSelection: Identifiable {
@@ -39,7 +39,7 @@ enum PhoneAnswersPresentation {
         case .missing: return Hint(title: plain.title, action: .install)
         case .stale: return Hint(title: plain.title, action: .repair)
         case .needsTrust where agent == .codex:
-            return Hint(title: "Approve the Herdcats hook in Codex once", detail: "Codex asks you to review new hooks at your desk. Approve it there to use phone answers.")
+            return Hint(title: "Approve the Herdcats hook in Codex once", detail: "Codex asks you to review new hooks at your desk. Approve it there to answer approval requests and questions from Herdcats.")
         case .disabled where agent == .codex:
             return Hint(title: "Re-enable the Herdcats hook in Codex", detail: "At your desk, open Codex hook settings and re-enable the Herdcats hook.")
         default: return plain

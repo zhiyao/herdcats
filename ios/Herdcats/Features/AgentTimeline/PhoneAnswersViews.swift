@@ -6,18 +6,13 @@ struct PhoneAnswersWaitingRow: View {
     let onSetup: (PhoneAnswersMode) -> Void
     var body: some View {
         let hint = PhoneAnswersPresentation.hint(agent: agent, result: result)
-        VStack(alignment: .leading, spacing: 8) {
-            Text(hint.title).font(.jost(.subheadline))
-            if let detail = hint.detail { Text(detail).font(.jost(.caption)).foregroundStyle(Theme.textMuted) }
+        RecoveryNotice(title: hint.title, systemImage: "questionmark.bubble", identifier: "phone-answers-waiting") {
+            if let detail = hint.detail { Text(detail) }
+        } actions: {
             if let action = hint.action {
                 Button(action.confirmLabel) { onSetup(action) }
-                    .font(.jost(.subheadline)).buttonStyle(.herdrSecondary)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .herdrCard()
-        .accessibilityIdentifier("phone-answers-waiting")
     }
 }
 struct PhoneAnswersSheet: View {
@@ -36,34 +31,48 @@ struct PhoneAnswersSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text(agent.map { "\($0.displayName) phone answers" } ?? "Phone answers not available for this agent")
+                    Text(agent.map { "\($0.displayName) approvals and questions" } ?? "Approvals and questions not available for this agent")
                         .font(.jost(.title2, weight: .semibold))
                     if let agent {
                         if selection.mode.requiresConfirmation {
                             Text("This removes the Herdcats hook and deletes recorded requests; your other hooks are untouched.")
                         } else {
-                            Text("Adds one hook to \(agent.hookSettingsPath) that records requests so your phone can show them.")
+                            Text("Adds one hook to \(agent.hookSettingsPath) that records requests so Herdcats can show approval requests and questions on your phone.")
                             Text("The terminal dialog still decides. Nothing is sent until you tap an option. Backups are kept.")
                             if agent == .codex { Text("Codex will ask you once, at your desk, to trust the new hook.") }
                         }
                     }
                     if !isCurrent() { Text("Reconnect to this host to continue.").foregroundStyle(Theme.textMuted) }
-                    if let feedback {
-                        Text(feedback).foregroundStyle(failed ? Theme.destructive : Theme.textMuted)
-                            .accessibilityIdentifier("phone-answers-result")
-                    }
-                    if busy { ProgressView("Updating phone answers…") }
-                    if !completed {
-                        Button(selection.mode.confirmLabel, role: selection.mode.requiresConfirmation ? .destructive : nil) {
-                            run()
-                        }
-                        .buttonStyle(.herdrPrimary)
-                        .disabled(busy || !isCurrent() || agent == nil)
-                        .accessibilityIdentifier("phone-answers-confirm")
-                    }
+
                 }
                 .font(.jost(.body))
                 .padding(20)
+            }
+            .bottomNotice {
+                if feedback != nil || busy {
+                    RecoveryNotice(
+                        title: failed ? "Setup needs attention" : (busy ? "Updating setup" : "Setup updated"),
+                        systemImage: failed ? "exclamationmark.triangle" : (busy ? "arrow.triangle.2.circlepath" : "checkmark.bubble"),
+                        identifier: "phone-answers-notice"
+                    ) {
+                        if let feedback {
+                            Text(feedback)
+                                .foregroundStyle(failed ? Theme.destructive : Theme.textMuted)
+                                .accessibilityIdentifier("phone-answers-result")
+                        }
+                        if busy { ProgressView("Updating approvals and questions…") }
+                    } actions: { EmptyView() }
+                    .padding(.vertical, 4)
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                if !completed {
+                    Button(selection.mode.confirmLabel, role: selection.mode.requiresConfirmation ? .destructive : nil) { run() }
+                        .buttonStyle(.herdrPrimary(tint: selection.mode.requiresConfirmation ? Theme.destructive : nil))
+                        .disabled(busy || !isCurrent() || agent == nil)
+                        .accessibilityIdentifier("phone-answers-confirm")
+                        .padding(16)
+                }
             }
             .background(Theme.background)
             .navigationBarTitleDisplayMode(.inline)
@@ -89,10 +98,10 @@ struct PhoneAnswersSheet: View {
                 guard isCurrent() else { return }
                 failed = !PhoneAnswersPresentation.succeeded(mode: selection.mode, result: result)
                 completed = !failed
-                if failed { feedback = "Couldn't update phone answers. Check the host, then try again." }
-                else if selection.mode.requiresConfirmation { feedback = "Phone answers removed." }
+                if failed { feedback = "Couldn't update approvals and questions. Check the host, then try again." }
+                else if selection.mode.requiresConfirmation { feedback = "Approvals and questions turned off." }
                 else if agent == .codex { feedback = "Hook installed. Approve it once in Codex at your desk." }
-                else { feedback = "Phone answers are set up." }
+                else { feedback = "Approvals and questions are set up." }
                 store.invalidate(selection.key)
                 await store.check(selection.key) {
                     guard isCurrent() else { throw HerdrError.notConnected }
@@ -101,7 +110,7 @@ struct PhoneAnswersSheet: View {
             } catch {
                 guard isCurrent() else { return }
                 failed = true
-                feedback = "Couldn't update phone answers. Check the host, then try again."
+                feedback = "Couldn't update approvals and questions. Check the host, then try again."
                 store.invalidate(selection.key)
                 await store.check(selection.key) {
                     guard isCurrent() else { throw HerdrError.notConnected }

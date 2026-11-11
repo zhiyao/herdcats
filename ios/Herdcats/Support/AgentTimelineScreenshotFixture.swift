@@ -158,6 +158,7 @@
         static func frame(paneId: String, helperInstalled: Bool = false) throws -> AgentBridgeFrame {
             if ScreenshotFixtures.screen == "timeline-disconnected" { throw AgentBridgeError.closed }
             let unavailableCode: String? = switch ScreenshotFixtures.screen {
+            case "timeline-pi-reload": "pi_extension_unavailable"
             case "timeline-unavailable": "unsupported_agent"
             case "timeline-codex-no-session", "timeline-session-unresolved": "session_reference_unavailable"
             case "timeline-codex-helper-old" where !helperInstalled: "helper_update_required"

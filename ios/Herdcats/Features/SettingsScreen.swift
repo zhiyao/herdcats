@@ -213,7 +213,6 @@ struct SettingsScreen: View {
                 PhoneAnswersSheet(selection: selection, connection: appModel.connection, store: appModel.phoneAnswers,
                     isCurrent: { phoneAnswersContextIsCurrent(selection.key) })
             }
-            .connectionStatusBanner(appModel: appModel)
             #if DEBUG
             .fullScreenCover(isPresented: $showingOnboardingReplay) {
                 DebugOnboardingReplayView()

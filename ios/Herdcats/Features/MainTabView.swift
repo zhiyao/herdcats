@@ -18,7 +18,7 @@ struct MainTabView: View {
             .environment(appModel)
             .id(Self.subtreeID(for: appModel))
             .bridgeUpdateHost()
-            // Switch progress and errors render per screen via `connectionStatusBanner(appModel:)`.
+            // Each tab owns its bottom status and update notices.
             .background {
                 if let active, !active.pendingHostKeyOwnedByForm, let pending = active.pending {
                     Color.clear
@@ -264,8 +264,8 @@ struct AgentsScreen: View {
                 } else if currentItems.isEmpty && model.showsAgentLoading {
                     loadingSkeleton
                 } else if currentItems.isEmpty && !model.hasLoadedAgentList && model.agentListError != nil {
-                    ContentUnavailableView("Unable to Load Agents", systemImage: "exclamationmark.triangle",
-                                           description: Text("Retry to load agents from your machines."))
+                    // The bottom notice owns the load failure and recovery action.
+                    Color.clear
                 } else if currentItems.isEmpty {
                     emptyState
                 } else {
@@ -326,33 +326,31 @@ struct AgentsScreen: View {
             }
             .onChange(of: layout) { _, _ in rememberSelected() }
             .onAppear { autoSelectFirstIfNeeded() }
-            .overlay(alignment: .bottom) {
-                if let error = model.agentListError,
-                   case .connected = appModel.phase {
-                    VStack {
-                        Spacer()
-                        ErrorBanner(message: error, retry: {
-                            Task { await model.refresh(appModel.connection) }
-                        })
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 8)
-                    }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            .bottomNotice {
+                if let error = model.agentListError, appModel.connectionBanner == nil {
+                    ErrorBanner(message: error, retry: {
+                        Task { await model.refresh(appModel.connection) }
+                    })
+                    .padding(.vertical, 4)
+                    .transition(.opacity)
                 }
             }
-            .animation(.easeInOut(duration: 0.25), value: model.errorMessage == nil)
+            .animation(.easeInOut(duration: 0.25), value: model.agentListError == nil)
             .refreshable {
                 await model.refresh(appModel.connection)
             }
-            .connectionStatusBanner(appModel: appModel)
         } detail: { ref in
             if let space = model.spaces.first(where: { $0.id == ref.spaceID }) ?? lastSeen[ref.spaceID] {
                 WorkspacePaneView(space: space, initialPaneID: ref.paneID)
                     .environment(appModel)
                     .environment(model)
             } else {
-                ContentUnavailableView("Agent unavailable", systemImage: "cpu",
-                                       description: Text("This agent may have closed."))
+                Color.clear.bottomNotice {
+                    RecoveryNotice(title: "Agent unavailable", systemImage: "cpu") {
+                        Text("This agent may have closed.")
+                    } actions: { EmptyView() }
+                    .padding(.vertical, 4)
+                }
             }
         }
     }

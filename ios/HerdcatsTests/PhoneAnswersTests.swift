@@ -3,7 +3,7 @@ import Testing
 
 @testable import Herdcats
 
-@Suite("Phone answers setup")
+@Suite("Approvals and questions setup")
 @MainActor struct PhoneAnswersTests {
     let target = ConnectionIdentity(host: "host", port: 22, username: "user")
     func key(_ generation: UInt64 = 1, _ agent: ApprovalAgent = .claude) -> PhoneAnswersStore.Key {
@@ -87,7 +87,7 @@ import Testing
         #expect(PhoneAnswersPresentation.actions(result(nil)).isEmpty)
         #expect(PhoneAnswersPresentation.actions(result(.installed, error: "error")).isEmpty)
         #expect(PhoneAnswersMode.remove.requiresConfirmation)
-        #expect(PhoneAnswersMode.remove.confirmLabel == "Remove phone answers")
-        #expect(PhoneAnswersMode.repair.confirmLabel == "Repair phone answers")
+        #expect(PhoneAnswersMode.remove.confirmLabel == "Turn off approvals and questions")
+        #expect(PhoneAnswersMode.repair.confirmLabel == "Repair approvals and questions")
     }
 }

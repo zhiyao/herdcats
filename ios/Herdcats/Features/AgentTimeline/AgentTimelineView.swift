@@ -83,6 +83,11 @@ struct AgentTimelineView: View {
 
     var approvalInset: CGFloat { showsWaitingRow ? waitingRowHeight + 8 : 0 }
     private var hooksKey: PhoneAnswersStore.Key? {
+        #if DEBUG && targetEnvironment(simulator)
+        if ScreenshotFixtures.enabled && ScreenshotFixtures.screen == "timeline-audit-hooks" {
+            return .init(target: setupTarget, generation: .init(rawValue: 1), agent: "codex")
+        }
+        #endif
         guard let generation = connectionState.generation,
             let agent = timeline.identity?.agent, ApprovalAgent(rawValue: agent) != nil else { return nil }
         return .init(target: setupTarget, generation: generation, agent: agent)
@@ -101,7 +106,12 @@ struct AgentTimelineView: View {
                 blocked: timeline.agentStatus == "blocked", pending: timeline.pendingApproval != nil || showsQuestion,
                 active: scenePhase == .active && appModel.isSceneActive))
     }
-    private var showsWaitingRow: Bool { waitingTaskKey.eligible && waitingKey == waitingTaskKey }
+    private var showsWaitingRow: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        if ScreenshotFixtures.enabled && ScreenshotFixtures.screen == "timeline-audit-hooks" { return true }
+        #endif
+        return waitingTaskKey.eligible && waitingKey == waitingTaskKey
+    }
     func hooksContextIsCurrent(_ key: PhoneAnswersStore.Key) -> Bool {
         matchesLiveTimeline && scenePhase == .active && appModel.isSceneActive && connectionState.isReady
             && setupTarget == key.target && connectionState.generation == key.generation
@@ -387,6 +397,18 @@ struct AgentTimelineView: View {
                         proxy.scrollTo("timeline-bottom", anchor: .bottom)
                     }
                 }
+                .overlay(alignment: .bottom) {
+                    if showsAvailabilityNotice, !timeline.hasSnapshot(for: connectionState, paneId: paneId, agent: agent) {
+                        NoticeViewport(
+                            maximumHeight: viewport.size.height - topOverlayInset - bottomOverlayInset - 16,
+                            identifier: "timeline-exception-scroll"
+                        ) {
+                            availabilityNotice.padding(.vertical, 4)
+                        }
+                        .padding(.top, topOverlayInset + 8)
+                        .padding(.bottom, bottomOverlayInset + 8)
+                    }
+                }
                 .overlay(alignment: .bottomTrailing) {
                     Group {
                     if !atBottom && timeline.phase == .ready {
@@ -415,17 +437,17 @@ struct AgentTimelineView: View {
         .overlay(alignment: .bottom) {
             Group {
                 if showsWaitingRow, let key = hooksKey, let agent = ApprovalAgent(rawValue: key.agent) {
-                    PhoneAnswersWaitingRow(agent: agent, result: appModel.phoneAnswers.result(for: key)) { mode in
-                        phoneAnswersSelection = PhoneAnswersSelection(key: key, mode: mode)
+                    NoticeViewport(
+                        maximumHeight: viewportHeight - topOverlayInset - bottomOverlayInset - 16,
+                        identifier: "phone-answers-notice-scroll"
+                    ) {
+                        PhoneAnswersWaitingRow(agent: agent, result: appModel.phoneAnswers.result(for: key)) { mode in
+                            phoneAnswersSelection = PhoneAnswersSelection(key: key, mode: mode)
+                        }
                     }
                 }
             }
-            .background {
-                GeometryReader { geometry in
-                    Color.clear.onChange(of: geometry.size.height, initial: true) { _, height in waitingRowHeight = height }
-                }
-            }
-            .padding(.horizontal, 16)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { waitingRowHeight = $0 }
             .padding(.bottom, bottomOverlayInset + 8)
         }
         .clipped()
@@ -434,6 +456,11 @@ struct AgentTimelineView: View {
         .onChange(of: timeline.pendingQuestion, initial: true) { _, pending in questionResponse.sync(pending) }
         .task(id: taskKey) { await run() }
         .task(id: "\(activeClient?.id.uuidString ?? "none"):\(contentScope)") {
+            #if DEBUG && targetEnvironment(simulator)
+            // The picker fixture owns its first failing discovery, then Retry
+            // succeeds. A background read must not consume that scripted failure.
+            if ScreenshotFixtures.enabled && ScreenshotFixtures.screen == "timeline-model-agy-retry" { return }
+            #endif
             await timeline.modelControl.refresh()
         }
         .task(id: waitingTaskKey) { await prepareWaitingRow() }
