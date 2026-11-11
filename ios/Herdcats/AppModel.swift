@@ -49,14 +49,21 @@ final class AppModel {
     var runtimeMismatchOnLastConnect: RuntimeMismatch?
     var herdrSessionUnavailableOnLastConnect = false
     var herdrVersion: String?
-    var connectionIdentity: ConnectionIdentity?
+    var connectionIdentity: ConnectionIdentity? {
+        didSet { if oldValue != connectionIdentity { optimisticPaneStatus.reset() } }
+    }
     var hostKeyChallenge: SSHHostKeyChallenge?
     var hostKeyVerificationBlocked = false
     var isSceneActive = true
 
     /// Production ownership primitive — unit tests exercise this same type.
-    var ownership = ConnectionSessionOwnership()
+    var ownership = ConnectionSessionOwnership() {
+        // A new transport may restart pane revisions, so old overrides can't be ordered against them.
+        didSet { if oldValue.transportGeneration != ownership.transportGeneration { optimisticPaneStatus.reset() } }
+    }
 
+    /// Local "working" shown from prompt submission until the pane list confirms.
+    let optimisticPaneStatus = OptimisticPaneStatus()
     let phoneAnswers = PhoneAnswersStore()
     let connection: HerdrConnection
     var dismissBannerTask: Task<Void, Never>?

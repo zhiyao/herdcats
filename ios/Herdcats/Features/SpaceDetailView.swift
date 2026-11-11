@@ -352,7 +352,7 @@ struct PaneDetailView: View {
             if let slotActions, slotActions.isSplit {
                 PaneHeaderBar(
                     title: selectedPane.displayTitle,
-                    status: selectedPane.status,
+                    status: appModel.optimisticPaneStatus.status(for: selectedPane),
                     subtitle: selectedPane.shortCwd.isEmpty ? nil : selectedPane.shortCwd,
                     agent: selectedPane.agent,
                     slot: slotActions.slot,
@@ -373,6 +373,8 @@ struct PaneDetailView: View {
         }
         .background(Theme.backgroundGradient.ignoresSafeArea())
         .navigationTitle(selectedPane.displayTitle)
+        // Every refreshed sibling confirms or retires its local "working", not just the open one.
+        .onChange(of: siblings) { _, latest in appModel.optimisticPaneStatus.reconcile(latest) }
         .navigationBarTitleDisplayMode(.inline)
         // On iPhone the system back button stays, which keeps the native
         // interactive swipe-back. Hiding it would disable that gesture.
@@ -395,7 +397,7 @@ struct PaneDetailView: View {
                 ToolbarItem(placement: .principal) {
                     StatusNavigationTitle(
                         title: selectedPane.displayTitle,
-                        status: selectedPane.status,
+                        status: appModel.optimisticPaneStatus.status(for: selectedPane),
                         subtitle: selectedPane.shortCwd.isEmpty ? nil : selectedPane.shortCwd,
                         agent: selectedPane.agent
                     )

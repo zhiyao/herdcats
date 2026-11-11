@@ -121,6 +121,7 @@ struct PaneSwitcher: View {
     var onRename: (PaneEntry) -> Void = { _ in }
     var onKill: (PaneEntry) -> Void = { _ in }
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(AppModel.self) private var appModel
     @ScaledMetric(relativeTo: .subheadline) private var cardHeight = 100
     @ScaledMetric(relativeTo: .caption) private var chipHeight = 30
     /// Vertical translation while the strip follows a drag; nil otherwise.
@@ -263,7 +264,7 @@ struct PaneSwitcher: View {
                             } label: {
                                 VStack(alignment: .leading, spacing: 8) {
                                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                        StatusDot(status: pane.status)
+                                        StatusDot(status: appModel.optimisticPaneStatus.status(for: pane))
                                             .alignmentGuide(.firstTextBaseline) { dimensions in
                                                 dimensions.height * 0.5 + 4.5
                                             }
@@ -468,7 +469,7 @@ struct PaneSwitcher: View {
             selection = pane.id
         } label: {
             HStack(spacing: 6) {
-                StatusDot(status: pane.status)
+                StatusDot(status: appModel.optimisticPaneStatus.status(for: pane))
                 Text(pane.displayTitle)
                     .font(.jost(.caption, weight: .medium))
                     .lineLimit(1)
