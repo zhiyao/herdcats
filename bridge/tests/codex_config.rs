@@ -804,16 +804,23 @@ fn spawn_orphan_in_packages(
         .unwrap();
     let pgid = outer.id() as libc::pid_t;
     let _ = outer.wait();
+    // `echo $$ > file` creates the file before writing it, so wait for a
+    // complete line, not just the file.
     let deadline = Instant::now() + Duration::from_secs(5);
-    while !pid_record.is_file() {
+    let pid: libc::pid_t = loop {
+        if let Some(pid) = fs::read_to_string(pid_record)
+            .ok()
+            .filter(|content| content.ends_with('\n'))
+            .and_then(|content| content.trim().parse().ok())
+        {
+            break pid;
+        }
         assert!(
             Instant::now() < deadline,
             "orphan dummy did not record its pid"
         );
         std::thread::sleep(Duration::from_millis(25));
-    }
-    let content = fs::read_to_string(pid_record).unwrap();
-    let pid: libc::pid_t = content.trim().parse().unwrap();
+    };
     OrphanGuard { outer, pid, pgid }
 }
 
