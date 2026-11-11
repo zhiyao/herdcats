@@ -28,8 +28,8 @@ targets:
       path: Herdcats/Info.plist
       properties:
         CFBundleDisplayName: Herdcats
-        CFBundleShortVersionString: "0.8.0"
-        CFBundleVersion: "156"
+        CFBundleShortVersionString: "0.8.5"
+        CFBundleVersion: "181"
         UILaunchScreen:
           UIColorName: LaunchBackground
           UIImageName: LaunchCat
