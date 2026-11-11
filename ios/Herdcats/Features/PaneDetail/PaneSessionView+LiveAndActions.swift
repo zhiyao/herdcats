@@ -483,6 +483,9 @@ extension PaneSessionView {
         let sendRevision = persistenceRevision
         let sentDraft = trimmedDraft
         let originalDraft = draft
+        // Show "working" now instead of after the next pane refresh; a failed
+        // submission withdraws it, and the authoritative status replaces it.
+        let optimisticToken = appModel.optimisticPaneStatus.begin(for: pane)
         do {
             if showsTimeline, let identity = timeline.identity {
                 guard let owned=appModel.ownership.transportGeneration else {throw HerdrError.notConnected}
@@ -525,6 +528,7 @@ extension PaneSessionView {
         } catch {
             // Keep draft + attachment so the user can retry; the Compose
             // bubble stays up and the existing error banner reports why.
+            if let optimisticToken { appModel.optimisticPaneStatus.withdraw(paneId: pane.paneId, token: optimisticToken) }
             setSessionError(error)
         }
     }

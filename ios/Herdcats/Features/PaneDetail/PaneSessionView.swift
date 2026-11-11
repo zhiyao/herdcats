@@ -230,6 +230,7 @@ struct PaneSessionView: View {
 
     private func handlePaneChange(_ newPane: PaneEntry) {
         session.updatePane(newPane)
+        appModel.optimisticPaneStatus.reconcile([newPane])
         updateSessionParsedOutput()
         if newPane.status != .done {
             locallyClearedDone = false
