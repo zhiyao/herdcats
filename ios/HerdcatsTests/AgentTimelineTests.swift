@@ -1196,3 +1196,14 @@ struct ModelCatalogProvenanceTests {
         #expect(String(decoding: bytes, as: UTF8.self) == "false")
     }
 }
+
+@Suite struct PiSessionMatchTests {
+    @Test func piPathFilenameMatchesBareUuidOnly() {
+        let id = "16246b9d-4c3d-54fc-b6d3-2a765d418491"
+        #expect(TimelineAgentAvailability.sameSession(agent: "pi", live: "2026-11-12T10-00-00_\(id)", native: id))
+        #expect(TimelineAgentAvailability.sameSession(agent: "pi", live: id, native: id))
+        #expect(!TimelineAgentAvailability.sameSession(agent: "pi", live: "2026_other", native: id))
+        #expect(!TimelineAgentAvailability.sameSession(agent: "codex", live: "x_\(id)", native: id))
+        #expect(!TimelineAgentAvailability.sameSession(agent: "pi", live: nil, native: id))
+    }
+}

@@ -636,6 +636,13 @@ enum TimelineAgentAvailability {
         }
     }
     static func supports(agent: String?) -> Bool { canonical(agent) != nil }
+    /// Pi's path reference is `<timestamp>_<uuid>.jsonl` while the timeline names
+    /// the session by its bare UUID; every other agent compares exactly.
+    static func sameSession(agent: String?, live: String?, native: String) -> Bool {
+        guard let live else { return false }
+        if live == native { return true }
+        return canonical(agent) == "pi" && live.hasSuffix("_" + native)
+    }
     static func matchesSession(agent: String, referenceAgent: String?, source: String?, identityAgent: String, referenceKind: String = "id") -> Bool {
         guard let canonical = canonical(identityAgent), Self.canonical(agent) == canonical,
               Self.canonical(referenceAgent) == canonical else { return false }

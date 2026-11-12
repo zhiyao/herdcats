@@ -489,8 +489,8 @@ extension PaneSessionView {
                 defer {isTimelineSending=false}
                 if identity.agent == "pi", text.hasPrefix("/") {
                     // The Pi extension only injects plain messages, so a slash
-                    // command goes through the terminal like any other agent's.
-                    try await session.send(text:text,connection:appModel.connection)
+                    // command takes the same verified terminal path as Codex.
+                    try await appModel.connection.submitTimelinePrompt(text:text,identity:identity,owned:owned)
                 } else if identity.agent == "pi" {
                     try await timeline.submitPiPrompt(text)
                 } else if identity.agent == "cursor" {
