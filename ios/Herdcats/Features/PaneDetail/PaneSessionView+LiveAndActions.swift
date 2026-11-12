@@ -487,7 +487,11 @@ extension PaneSessionView {
                 guard let owned=appModel.ownership.transportGeneration else {throw HerdrError.notConnected}
                 isTimelineSending=true
                 defer {isTimelineSending=false}
-                if identity.agent == "pi" {
+                if identity.agent == "pi", text.hasPrefix("/") {
+                    // The Pi extension only injects plain messages, so a slash
+                    // command goes through the terminal like any other agent's.
+                    try await session.send(text:text,connection:appModel.connection)
+                } else if identity.agent == "pi" {
                     try await timeline.submitPiPrompt(text)
                 } else if identity.agent == "cursor" {
                     do { try await timeline.submitCursorPrompt(text) }

@@ -24,7 +24,7 @@ The host bridge independently binds Herdr's pane/terminal/native-session referen
 ## Supported live behavior
 
 - Native branch history from `sessionManager.getBranch()` and assistant `message_start` / `message_update` streaming, with native tool calls and tool results preserved.
-- Plain user messages through `pi.sendUserMessage()` on an idle, trusted session with no queued messages, pending dialog, or local editor draft. Slash commands stay in Terminal.
+- Plain user messages through `pi.sendUserMessage()` on an idle, trusted session with no queued messages, pending dialog, or local editor draft. Slash commands are typed into the terminal by the app, not sent through this extension.
 - Cancellation through the existing context's `abort()` when the agent is running and there is no pending dialog.
 - Exact provider/model identities discovered from `modelRegistry.getAvailable()`, with thinking levels from Pi AI's `getSupportedThinkingLevels(model)`. `setModel()` and `setThinkingLevel()` affect the same native session and are checked after application.
 - Extension `ctx.ui.confirm`, `select`, and `input` dialogs. A confirmation returns the exact chosen boolean. A selection returns an exact original option string, including any extension-defined permission scope. An input returns literal text. Neither Herdcats nor this extension invents permission scopes or auto-approves a request.
