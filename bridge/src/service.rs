@@ -2557,9 +2557,6 @@ impl Service {
         if text.trim().is_empty() || text.len() > 65_536 || text.chars().any(|c| c == '\0') {
             return Err("invalid_request");
         }
-        // A leading slash would run a Cursor command (/quit, /model ...) instead
-        // of reaching the model; the phone never sends one.
-        if text.trim_start().starts_with('/') { return Err("slash_command_refused"); }
         // A brand-new chat has no transcript until its first prompt, so there is
         // no native identity to bind yet. Only that exact state is accepted, by
         // pane and generation, with the chat taken from Herdr's own reference.

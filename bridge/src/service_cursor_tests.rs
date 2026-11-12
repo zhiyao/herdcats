@@ -227,16 +227,15 @@ fn cursor_prompts_fail_closed_on_drafts_busy_pickers_and_unknown_screens() {
 }
 
 #[test]
-fn cursor_prompts_refuse_slash_commands_and_stale_scope_without_touching_the_pane() {
+fn cursor_prompts_accept_slash_commands_and_refuse_stale_scope_without_touching_the_pane() {
     let (mut service, root, herdr, _file) = cursor_fixture();
     service.poll(&mut Vec::new()).unwrap();
     let (plain, styled) = cursor_idle();
     set_screen(&herdr, "idle", &plain, &styled);
-    for text in ["/model grok-4.7", "  /quit", "\n/new"] {
-        assert_eq!(service.prompt_submit(&prompt_params(&service, text)).unwrap_err(), "slash_command_refused");
+    // Slash commands are ordinary prompts: the phone treats every agent alike.
+    for text in ["/model grok-4.7", "  /quit", "\n/new", "use a/b and /tmp"] {
+        assert!(service.prompt_submit(&prompt_params(&service, text)).is_ok(), "{text:?}");
     }
-    // A slash later in the text is ordinary prose.
-    assert!(service.prompt_submit(&prompt_params(&service, "use a/b and /tmp")).is_ok());
     for bad in ["", "   ", "a\0b"] {
         assert_eq!(service.prompt_submit(&prompt_params(&service, bad)).unwrap_err(), "invalid_request");
     }
@@ -250,7 +249,7 @@ fn cursor_prompts_refuse_slash_commands_and_stale_scope_without_touching_the_pan
     assert_eq!(service.prompt_submit(&huge).unwrap_err(), "invalid_request");
     huge["text"] = json!(5);
     assert_eq!(service.prompt_submit(&huge).unwrap_err(), "invalid_request");
-    assert_eq!(prompts(&herdr), 1, "only the prose prompt was typed");
+    assert_eq!(prompts(&herdr), 4, "only the four accepted prompts were typed");
     cleanup(&service, root);
 }
 
@@ -747,11 +746,8 @@ fn cursor_first_message_keeps_every_screen_guard() {
 }
 
 #[test]
-fn cursor_first_message_refuses_slash_commands_and_stale_requests_without_touching_the_pane() {
+fn cursor_first_message_accepts_slash_commands_and_refuses_stale_requests_without_touching_the_pane() {
     let (mut service, root, herdr, _file) = cursor_fresh_fixture();
-    for text in ["/model x", "  /quit"] {
-        assert_eq!(service.prompt_submit(&fresh_params(&service, text)).unwrap_err(), "slash_command_refused");
-    }
     for text in ["", "   ", "a\0b"] {
         assert_eq!(service.prompt_submit(&fresh_params(&service, text)).unwrap_err(), "invalid_request");
     }

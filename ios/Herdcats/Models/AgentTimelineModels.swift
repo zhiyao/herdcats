@@ -459,31 +459,26 @@ enum TimelineComposePolicy {
     }
 }
 
-/// Slash commands that abandon the loaded conversation. Cursor refuses slash
-/// commands and Pi reports the switch itself, so neither is listed.
+/// Slash commands that abandon the loaded conversation. Every agent accepts the
+/// same commands from the phone.
 enum TimelineContextReset {
     enum Scope { case wholeSession, loadedEntries }
-    /// Codex starts a new thread (the bridge keeps the old one until the next
-    /// prompt); Agy is unverified, so only what is already loaded is hidden.
+    /// Codex starts a new thread that Herdr reports only with the next prompt, so
+    /// the whole old session is hidden. The other agents either rebind on their
+    /// own (which ends the cut) or may keep the old conversation bound, so only
+    /// what was already loaded is hidden and later entries stay visible.
     static func scope(agent: String?, text: String) -> Scope? {
-        let command = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        switch TimelineAgentAvailability.canonical(agent) {
-        case "codex": return ["/clear", "/new"].contains(command) ? .wholeSession : nil
-        case "antigravity_cli": return command == "/clear" ? .loadedEntries : nil
-        default: return nil
-        }
+        guard let canonical = TimelineAgentAvailability.canonical(agent),
+              ["/clear", "/new"].contains(text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+        else { return nil }
+        return canonical == "codex" ? .wholeSession : .loadedEntries
     }
 }
 
 /// Phone prompts to Cursor go through the bridge, which reads the terminal first.
 enum CursorPromptPolicy {
-    /// Cursor runs a message that starts with "/" as one of its own commands
-    /// (/quit, /model, /new ...) instead of sending it to the model. The phone
-    /// refuses such a message rather than risk running one by accident.
-    static func refusesSlashCommand(agent: String?, text: String) -> Bool {
-        agent == "cursor" && text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/")
-    }
-    static let slashMessage = "Cursor treats a message that starts with “/” as a command, so Herdcats won't send it. Rephrase the message, or use Terminal."
+    /// Older bridges refuse a leading "/" for Cursor; current ones send it.
+    static let slashMessage = "This Herdcats Bridge is too old to send slash commands to Cursor. Update the Bridge, or use Terminal."
     static let bridgeMessage = "Herdcats can only send Cursor messages through its conversation view, and it isn't connected to this Cursor chat right now. Check the connection or the message above the chat, or use Terminal."
     static func message(forCode code: String?) -> String {
         switch code {

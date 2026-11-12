@@ -225,14 +225,13 @@ struct CodexTimelineGatingTests {
     @Test func contextResetCommandsAreScopedPerAgent() {
         for text in ["/clear", "  /new\n", "/CLEAR"] {
             #expect(TimelineContextReset.scope(agent: "codex", text: text) == .wholeSession, "\(text)")
-            #expect(TimelineContextReset.scope(agent: "claude", text: text) == nil)
-            #expect(TimelineContextReset.scope(agent: "pi", text: text) == nil)
-            #expect(TimelineContextReset.scope(agent: "cursor", text: text) == nil)
         }
-        for agent in ["agy", "antigravity_cli"] {
-            #expect(TimelineContextReset.scope(agent: agent, text: " /clear ") == .loadedEntries)
-            #expect(TimelineContextReset.scope(agent: agent, text: "/model") == nil)
+        for agent in ["claude", "pi", "cursor", "agy", "antigravity_cli"] {
+            #expect(TimelineContextReset.scope(agent: agent, text: " /clear ") == .loadedEntries, "\(agent)")
+            #expect(TimelineContextReset.scope(agent: agent, text: "/new") == .loadedEntries, "\(agent)")
+            #expect(TimelineContextReset.scope(agent: agent, text: "/model") == nil, "\(agent)")
         }
+        #expect(TimelineContextReset.scope(agent: "unknown", text: "/clear") == nil)
         for text in ["/clear everything", "clear", "/model", "/compact"] {
             #expect(TimelineContextReset.scope(agent: "codex", text: text) == nil, "\(text)")
         }

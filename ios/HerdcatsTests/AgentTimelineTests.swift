@@ -295,18 +295,9 @@ struct TimelineAgentAvailabilityTests {
         #expect(AgentModelControlState.cursorMessage(for: "cursor_unsupported_version")?.contains("verified") == true)
         #expect(AgentModelControlState.cursorMessage(for: "nonsense") == nil)
     }
-    @Test func slashPromptsAreRefusedForCursorOnly() {
-        for text in ["/model grok-4.7", "/quit", "  /new", "\n/compact", "\t /x"] {
-            #expect(CursorPromptPolicy.refusesSlashCommand(agent: "cursor", text: text), "\(text)")
-            // Other agents keep their own slash commands.
-            #expect(!CursorPromptPolicy.refusesSlashCommand(agent: "claude", text: text))
-            #expect(!CursorPromptPolicy.refusesSlashCommand(agent: "codex", text: text))
-        }
-        for text in ["hello", "use a/b and /tmp", "", " ", "\\/escaped"] {
-            #expect(!CursorPromptPolicy.refusesSlashCommand(agent: "cursor", text: text), "\(text)")
-        }
+    @Test func oldBridgeSlashRefusalPointsToAnUpdate() {
         #expect(CursorPromptPolicy.message(forCode: "slash_command_refused") == CursorPromptPolicy.slashMessage)
-        #expect(CursorPromptPolicy.slashMessage.contains("Terminal"))
+        #expect(CursorPromptPolicy.slashMessage.contains("Update the Bridge"))
     }
     @Test func cursorPromptRefusalsAreActionableAndAlwaysPointToTerminalOrTheDesk() {
         let codes = ["approval_pending", "question_pending", "composer_not_empty", "agent_busy", "picker_open", "screen_unrecognized", "stale", "prompt_unconfirmed", "unsupported_capability", "something_else"]
