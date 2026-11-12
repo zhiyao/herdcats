@@ -38,26 +38,59 @@ import Observation
     private(set) var isPiActionPending = false
     var piActionError: String?
     private(set) var entries: [AgentTimelineEntry] = []
-    /// Codex `/clear` and `/new` start a fresh thread, but Herdr learns about it
-    /// only from the next prompt's SessionStart hook, so the bridge keeps
-    /// streaming the old thread meanwhile. Everything from the session the user
-    /// just left stays hidden, including entries that arrive later, until a
-    /// snapshot names a different session. Survives `clear()` so a reconnect
-    /// cannot resurrect it.
+    /// After a phone-sent context reset the bridge may keep streaming the old
+    /// conversation (Herdr learns of a Codex `/clear` or `/new` only from the next
+    /// prompt's SessionStart hook; Agy may keep its old conversation bound).
+    /// The cut survives `clear()` so a reconnect cannot resurrect old entries and
+    /// ends when a snapshot names a different session.
     private var clearedSession: String?
-    /// Entries to render: nothing while the abandoned session is still bound.
-    var visibleEntries: [AgentTimelineEntry] {
-        if let clearedSession, identity?.nativeSessionId == clearedSession { return [] }
-        return entries
+    /// Whole-session cuts hide everything; otherwise entries up to and including
+    /// `clearedLastId` (the newest entry loaded at reset time) are hidden by
+    /// position, so later entries and later history pages stay visible.
+    private var clearedWhole = false
+    private var clearedLastId: String?
+    /// Every entry loaded at reset time, so a rewrite that drops `clearedLastId`
+    /// cannot bring earlier cleared entries back.
+    private var clearedIds: Set<String> = []
+    private var cutActive: Bool { clearedSession != nil && identity?.nativeSessionId == clearedSession }
+    /// True while history can only reveal hidden entries.
+    private var cutReached: Bool {
+        guard cutActive else { return false }
+        if clearedWhole { return true }
+        return entries.contains { $0.id == clearedLastId }
     }
-    /// Hides the conversation after the phone sent Codex a context reset. A stream
-    /// that ended during submission has no identity, so the marker is kept for the
+    /// Entries to render, minus what a context reset cut away.
+    var visibleEntries: [AgentTimelineEntry] {
+        guard cutActive else { return entries }
+        if clearedWhole { return [] }
+        let tail = entries.lastIndex(where: { $0.id == clearedLastId }).map { Array(entries[($0 + 1)...]) } ?? entries
+        return tail.filter { !clearedIds.contains($0.id) }
+    }
+    /// Loaded entry ids; capture them before sending a reset so the cut matches
+    /// what the user saw even if the stream ends while the send is in flight.
+    var loadedEntryIds: [String] { entries.map(\.id) }
+    /// Hides the conversation after the phone sent a context reset. A stream that
+    /// ended during submission has no identity, so the cut is kept for the
     /// submitted session; a bound, different session means the reply is stale.
-    func markContextCleared(for submitted: AgentTimelineIdentity) {
+    func markContextCleared(for submitted: AgentTimelineIdentity, reset: TimelineContextReset.Scope, loadedIds: [String]) {
         guard identity == nil || identity == submitted else { return }
+        switch reset {
+        case .wholeSession:
+            clearedWhole = true
+            clearedLastId = nil
+            clearedIds = []
+        case .loadedEntries:
+            // Nothing was loaded, so there is nothing to hide.
+            guard let last = loadedIds.last else { return }
+            clearedWhole = false
+            clearedLastId = last
+            clearedIds = Set(loadedIds)
+        }
         clearedSession = submitted.nativeSessionId
-        hasMore = false
-        before = nil
+        if cutReached || identity == nil {
+            hasMore = false
+            before = nil
+        }
         revision += 1
     }
     private(set) var identity: AgentTimelineIdentity?
@@ -166,14 +199,14 @@ import Observation
             else { throw AgentBridgeError.identityMismatch }
             try validate(rows)
             clear()
-            if clearedSession != nextIdentity.nativeSessionId { clearedSession = nil }
+            if clearedSession != nextIdentity.nativeSessionId { clearedSession = nil; clearedWhole = false; clearedLastId = nil; clearedIds = [] }
             identity = nextIdentity
             generation = next
             modelControl.bind(identity: nextIdentity, generation: next)
             if data.model != nil { try modelControl.update(data) }
             entries = rows
-            hasMore = clearedSession == nil && (data.hasMore ?? false)
-            before = clearedSession == nil ? data.before : nil
+            hasMore = !cutReached && (data.hasMore ?? false)
+            before = cutReached ? nil : data.before
             agentStatus = data.agentStatus
             unknownRecords = data.unknownRecords ?? 0
             droppedEntries = data.droppedEntries ?? 0
@@ -281,8 +314,7 @@ import Observation
         // Never let a delayed history page overwrite a streamed revision.
         entries = Array((prefix + entries).suffix(Self.maxEntries))
         // A page requested before a context reset must not bring pagination back.
-        let hidden = clearedSession != nil && identity?.nativeSessionId == clearedSession
-        if hidden {
+        if cutReached {
             hasMore = false
             before = nil
         } else {

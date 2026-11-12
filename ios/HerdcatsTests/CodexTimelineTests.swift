@@ -180,7 +180,7 @@ struct CodexTimelineGatingTests {
     private func frame(
         _ event: String, agent: String = "codex", seq: Int = 1, generation: Int = 1,
         code: String? = nil, entries: [String] = ["hello from codex"],
-        session: String = "00000000-0000-0000-0000-000000000001"
+        session: String = "00000000-0000-0000-0000-000000000001", hasMore: Bool = false
     ) throws -> AgentBridgeFrame {
         let rows = entries.map {
             ["id": "message:\($0)", "kind": "message", "text": $0, "role": "assistant", "truncated": false] as [String: Any]
@@ -199,7 +199,7 @@ struct CodexTimelineGatingTests {
                 "native_session_id": session,
             ]
             data["entries"] = rows
-            data["has_more"] = false
+            data["has_more"] = hasMore
         }
         return try AgentBridgeFrame.decode(
             JSONSerialization.data(withJSONObject: [
@@ -222,14 +222,35 @@ struct CodexTimelineGatingTests {
         #expect(state.entries.first?.text == "hello from codex")
     }
 
-    @Test func contextResetCommandsAreCodexOnly() {
+    @Test func contextResetCommandsAreScopedPerAgent() {
         for text in ["/clear", "  /new\n", "/CLEAR"] {
-            #expect(CodexContextReset.isReset(agent: "codex", text: text), "\(text)")
-            #expect(!CodexContextReset.isReset(agent: "claude", text: text))
+            #expect(TimelineContextReset.scope(agent: "codex", text: text) == .wholeSession, "\(text)")
+            #expect(TimelineContextReset.scope(agent: "claude", text: text) == nil)
+            #expect(TimelineContextReset.scope(agent: "pi", text: text) == nil)
+            #expect(TimelineContextReset.scope(agent: "cursor", text: text) == nil)
+        }
+        for agent in ["agy", "antigravity_cli"] {
+            #expect(TimelineContextReset.scope(agent: agent, text: " /clear ") == .loadedEntries)
+            #expect(TimelineContextReset.scope(agent: agent, text: "/model") == nil)
         }
         for text in ["/clear everything", "clear", "/model", "/compact"] {
-            #expect(!CodexContextReset.isReset(agent: "codex", text: text), "\(text)")
+            #expect(TimelineContextReset.scope(agent: "codex", text: text) == nil, "\(text)")
         }
+    }
+
+    @Test func agyClearHidesLoadedEntriesButShowsNewOnes() throws {
+        let state = AgentTimelineState()
+        state.begin(owner: owner, paneId: "p-codex")
+        try state.consume(try frame("timeline.snapshot", agent: "antigravity_cli", entries: ["old one", "old two"]), owner: owner)
+        state.markContextCleared(for: try #require(state.identity), reset: .loadedEntries, loadedIds: state.loadedEntryIds)
+        #expect(state.visibleEntries.isEmpty)
+
+        // Same conversation after a reconnect: old rows stay hidden, new rows show.
+        try state.consume(
+            try frame("timeline.snapshot", agent: "antigravity_cli", seq: 2, entries: ["old one", "old two", "after clear"]),
+            owner: owner)
+        #expect(state.visibleEntries.map(\.text) == ["after clear"])
+        #expect(!state.hasMore)
     }
 
     @Test func clearedContextStaysHiddenUntilANewSessionArrives() throws {
@@ -238,7 +259,7 @@ struct CodexTimelineGatingTests {
         try state.consume(try frame("timeline.snapshot", entries: ["old one", "old two"]), owner: owner)
         #expect(state.visibleEntries.count == 2)
 
-        state.markContextCleared(for: try #require(state.identity))
+        state.markContextCleared(for: try #require(state.identity), reset: .wholeSession, loadedIds: state.loadedEntryIds)
         #expect(state.visibleEntries.isEmpty)
 
         // A reconnect that replays the same old thread must not resurrect it.
@@ -256,6 +277,36 @@ struct CodexTimelineGatingTests {
         #expect(state.visibleEntries.map(\.text) == ["fresh"])
     }
 
+    @Test func agyClearSurvivesStreamEndAndKeepsPostClearHistoryReachable() throws {
+        let state = AgentTimelineState()
+        state.begin(owner: owner, paneId: "p-codex")
+        try state.consume(try frame("timeline.snapshot", agent: "antigravity_cli", entries: ["old one", "old two"]), owner: owner)
+        let submitted = try #require(state.identity)
+        let loadedIds = state.loadedEntryIds
+
+        state.end(owner: owner, error: .closed)
+        state.markContextCleared(for: submitted, reset: .loadedEntries, loadedIds: loadedIds)
+
+        // Reconnect window holds only post-clear rows (cut point scrolled out):
+        // everything shows and older pages stay reachable.
+        state.begin(owner: owner, paneId: "p-codex")
+        let window = try frame("timeline.snapshot", agent: "antigravity_cli", entries: ["new one", "new two"], hasMore: true)
+        try state.consume(window, owner: owner)
+        #expect(state.visibleEntries.map(\.text) == ["new one", "new two"])
+        #expect(state.hasMore)
+    }
+
+    @Test func agyRewriteDroppingTheCutPointDoesNotResurrectEarlierEntries() throws {
+        let state = AgentTimelineState()
+        state.begin(owner: owner, paneId: "p-codex")
+        try state.consume(try frame("timeline.snapshot", agent: "antigravity_cli", entries: ["old1", "old2"]), owner: owner)
+        state.markContextCleared(for: try #require(state.identity), reset: .loadedEntries, loadedIds: state.loadedEntryIds)
+
+        try state.consume(
+            try frame("timeline.snapshot", agent: "antigravity_cli", seq: 2, entries: ["old1", "fresh"]), owner: owner)
+        #expect(state.visibleEntries.map(\.text) == ["fresh"])
+    }
+
     @Test func staleClearForAReplacedSessionIsIgnored() throws {
         let state = AgentTimelineState()
         state.begin(owner: owner, paneId: "p-codex")
@@ -265,7 +316,7 @@ struct CodexTimelineGatingTests {
             try frame("timeline.snapshot", seq: 2, entries: ["new"], session: "00000000-0000-0000-0000-000000000002"),
             owner: owner)
 
-        state.markContextCleared(for: submitted)
+        state.markContextCleared(for: submitted, reset: .wholeSession, loadedIds: state.loadedEntryIds)
         #expect(state.visibleEntries.map(\.text) == ["new"])
     }
 
@@ -276,7 +327,7 @@ struct CodexTimelineGatingTests {
         let submitted = try #require(state.identity)
 
         state.end(owner: owner, error: .closed)
-        state.markContextCleared(for: submitted)
+        state.markContextCleared(for: submitted, reset: .wholeSession, loadedIds: state.loadedEntryIds)
 
         state.begin(owner: owner, paneId: "p-codex")
         try state.consume(try frame("timeline.snapshot", entries: ["old"]), owner: owner)
@@ -289,7 +340,7 @@ struct CodexTimelineGatingTests {
         try state.consume(try frame("timeline.snapshot", entries: ["old"]), owner: owner)
         let identity = try #require(state.identity)
         let generation = try #require(state.generation)
-        state.markContextCleared(for: identity)
+        state.markContextCleared(for: identity, reset: .wholeSession, loadedIds: state.loadedEntryIds)
 
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase

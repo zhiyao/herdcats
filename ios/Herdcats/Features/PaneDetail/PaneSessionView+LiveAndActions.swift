@@ -482,6 +482,7 @@ extension PaneSessionView {
         }
         let sendRevision = persistenceRevision
         let sentDraft = trimmedDraft
+        let loadedEntryIds = timeline.loadedEntryIds
         let originalDraft = draft
         do {
             if showsTimeline, let identity = timeline.identity {
@@ -495,7 +496,7 @@ extension PaneSessionView {
                     catch { throw HerdrError.invalidConfiguration(CursorPromptPolicy.message(forCode: (error as? AgentBridgeError)?.code)) }
                 } else {
                     try await appModel.connection.submitTimelinePrompt(text:text,identity:identity,owned:owned)
-                    if attachedPath == nil, CodexContextReset.isReset(agent: identity.agent, text: sentDraft) { timeline.markContextCleared(for: identity) }
+                    if attachedPath == nil, let reset = TimelineContextReset.scope(agent: identity.agent, text: sentDraft) { timeline.markContextCleared(for: identity, reset: reset, loadedIds: loadedEntryIds) }
                 }
             } else if pane.agent == "cursor", showsTimeline, timeline.canSendFirstCursorPrompt {
                 // A brand-new chat: no transcript, so no identity yet. Same bridge guard.

@@ -459,11 +459,19 @@ enum TimelineComposePolicy {
     }
 }
 
-/// Codex `/clear` and `/new` abandon the loaded thread for a new one.
-enum CodexContextReset {
-    static func isReset(agent: String?, text: String) -> Bool {
-        guard agent == "codex" else { return false }
-        return ["/clear", "/new"].contains(text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+/// Slash commands that abandon the loaded conversation. Cursor refuses slash
+/// commands and Pi reports the switch itself, so neither is listed.
+enum TimelineContextReset {
+    enum Scope { case wholeSession, loadedEntries }
+    /// Codex starts a new thread (the bridge keeps the old one until the next
+    /// prompt); Agy is unverified, so only what is already loaded is hidden.
+    static func scope(agent: String?, text: String) -> Scope? {
+        let command = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch TimelineAgentAvailability.canonical(agent) {
+        case "codex": return ["/clear", "/new"].contains(command) ? .wholeSession : nil
+        case "antigravity_cli": return command == "/clear" ? .loadedEntries : nil
+        default: return nil
+        }
     }
 }
 
