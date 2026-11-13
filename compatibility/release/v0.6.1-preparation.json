@@ -1,0 +1,51 @@
+{
+  "date": "2026-11-13",
+  "status": "release_preparation_unpublished",
+  "version": "0.6.1",
+  "proposed_tag": "herdcats-bridge-v0.6.1",
+  "base_commit": "7d6264e",
+  "version_reason": "Publish the removal of the Cursor slash-command refusal in prompt.submit (#186, issue #188) after 0.6.0; patch bump because no new capability or protocol change; preserve existing release tags.",
+  "local_validation": {
+    "platform": "darwin-arm64",
+    "rust_tests": 656,
+    "pi_extension_tests": 21,
+    "python_installer_distribution_tests": 36,
+    "clippy": "passed (--locked --all-targets -- -D warnings)",
+    "release_build": "passed (--release --locked)",
+    "version_report": {
+      "version": "0.6.1",
+      "protocol": 1,
+      "herdr_protocol": 22,
+      "agents": [
+        "claude",
+        "codex",
+        "antigravity_cli",
+        "pi",
+        "cursor"
+      ]
+    },
+    "shell_syntax": "sh -n bridge/scripts/install.sh passed"
+  },
+  "pi_extension": {
+    "index_ts_sha256": "58db9fb35a0847c68e13e38bd6d5d2e94880a3192d21a1bb3871346b2950cf85",
+    "runtime_mjs_sha256": "4f3c226482533de9559bb9e25de1c07ce729a9e932ef162f5110fcc46fd8fd9e",
+    "unchanged_since": "0.6.0 (only README.md changed)"
+  },
+  "unchanged_published_pin": {
+    "version": "0.5.0",
+    "installer_sha256": "64d19e790f6256db5c4fc3b28240bbe9462b32268c3afd541befe7505ea6397a"
+  },
+  "remaining": [
+    "Merge the preparation PR after Bridge, iOS and Web CI pass.",
+    "Run scripts/bridge-release-tag.sh 0.6.1 to tag the tested origin/main commit and build the release draft.",
+    "Verify all native binaries, the Pi extension archive, installer and checksums; smoke-test installation before publishing.",
+    "Confirm on a live Cursor session that a slash command reaches the composer and runs.",
+    "Update the iOS installer pin only in a separate change using verified published assets."
+  ],
+  "limits": [
+    "Local native build and installer/distribution tests cover Apple Silicon; other platforms require release CI.",
+    "Cursor slash-command send is covered by bridge send-path tests only; not yet verified against a live Cursor agent.",
+    "Sending Cursor slash commands needs both this bridge and an app build that no longer blocks them.",
+    "No release tag or published assets were created by this preparation."
+  ]
+}

@@ -44,7 +44,7 @@ Herdr reports the chat at launch, with two gaps that the bridge cannot close:
 
 Cursor writes no pending approval or question to its transcript, and Herdr reports a live question form as `done`. So neither the transcript nor Herdr's status can say whether it is safe to type. For a Cursor pane the **bridge** reads the terminal first (`prompt.submit`), then sends the prompt in the same call, so no phone round trip separates the check from the send. It refuses with a specific message unless the screen is an idle, empty composer (faint placeholder, bottom of the screen). A pending approval card, skip-feedback input, question form, open menu, typed draft, running turn or an unrecognized screen all refuse, and Herdcats points to Terminal.
 
-A message that starts with `/` is **refused** in the app (and again in the bridge). Cursor would run it as one of its own commands (`/quit`, `/model`, `/new`), not send it to the model. Rephrase it or use Terminal. Other agents keep their slash commands. The old Herdr-CLI send path throws for Cursor panes, so the guard cannot be bypassed.
+A message that starts with `/` is sent like any other message, so Cursor runs it as one of its own commands (`/quit`, `/model`, `/new`). Bridges older than 0.6.1 refuse it with `slash_command_refused`; the app then asks the user to update the Bridge or use Terminal. The old Herdr-CLI send path throws for Cursor panes, so the guarded bridge path is the only one.
 
 ## Approvals
 
