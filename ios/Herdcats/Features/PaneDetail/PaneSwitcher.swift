@@ -207,10 +207,16 @@ struct PaneSwitcher: View {
 
         ZStack(alignment: .top) {
             cardsRow
+                .transformPreference(PaneCardAnchorPreference.self) { anchors in
+                    if !showsCards { anchors.removeAll() }
+                }
                 .opacity(showsCards ? 1 : 0)
                 .allowsHitTesting(showsCards)
                 .accessibilityHidden(!showsCards)
             chipsRow
+                .transformPreference(PaneCardAnchorPreference.self) { anchors in
+                    if showsCards { anchors.removeAll() }
+                }
                 .opacity(showsCards ? 0 : 1)
                 .allowsHitTesting(!showsCards)
                 .accessibilityHidden(showsCards)
