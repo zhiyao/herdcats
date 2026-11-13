@@ -42,7 +42,7 @@ enum HerdrError: LocalizedError, Equatable {
             "Herdr was not found on the remote machine. "
                 + "Install the Herdr desktop app, Herdr Core, or the Herdr TUI there, then connect again."
         case .sessionUnavailable:
-            "Herdr is installed, but Herdcats could not read its default session. "
+            "Herdr is installed, but Herdcats could not read the selected session. "
                 + "Start or check Herdr on the remote machine, then try again."
         case .quotaAxiNotFound:
             "quota-axi was not found on the remote machine. Install with npm i -g quota-axi."
@@ -127,6 +127,22 @@ struct SSHHostKeyValidatorDelegate: NIOSSHClientServerAuthenticationDelegate {
 
 // MARK: - Connection configuration
 
+/// A legacy Herdr server, not an agent conversation or a Core terminal.
+struct HerdrSession: Decodable, Sendable, Equatable, Identifiable {
+    let name: String
+    let running: Bool
+    let socketPath: String
+    var id: String { name }
+    enum CodingKeys: String, CodingKey {
+        case name, running
+        case socketPath = "socket_path"
+    }
+}
+
+struct HerdrSessionList: Decodable {
+    let sessions: [HerdrSession]
+}
+
 struct ConnectionConfig: Sendable, Equatable {
     enum AuthMethod: Equatable, Sendable {
         case password(String)
@@ -141,6 +157,11 @@ struct ConnectionConfig: Sendable, Equatable {
     var backend: ConnectionBackend = .tui
     /// Auto: `backend` is a placeholder until the connect probe picks one.
     var detectsBackend = false
+    var session: HerdrSession?
+    var sessionName: String { backend == .core ? "Persistent terminals" : session?.name ?? "default" }
+    var navigationScope: String {
+        ConnectionIdentity(self).scopedToSession(session?.name).storageKey
+    }
 }
 
 // MARK: - Connection
@@ -171,6 +192,7 @@ struct AgyLoginSession {
 actor HerdrConnection {
     var slot = ConnectionClientSlot<SSHClient>()
     var backend: ConnectionBackend = .tui
+    var session: HerdrSession?
     var coreRPC: CoreRPCClient?
     var coreOpening: Task<Void, Error>?
     var coreSessionID: UUID?
@@ -277,6 +299,7 @@ actor HerdrConnection {
         }
 
         backend = config.backend
+        session = config.backend == .tui ? config.session : nil
         host = config.host
         username = config.username
         port = config.port

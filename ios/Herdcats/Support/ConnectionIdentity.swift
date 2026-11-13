@@ -9,6 +9,14 @@ struct ConnectionIdentity: Hashable, Sendable, Codable, Equatable {
     var port: Int
     var username: String
     var backend: ConnectionBackend
+    /// Set only for pane-local persistence; SSH and installer targets remain machine-scoped.
+    var session: String?
+
+    func scopedToSession(_ name: String?) -> Self {
+        var scope = self
+        scope.session = backend == .tui && name != "default" ? name : nil
+        return scope
+    }
 
     init(host: String, port: Int, username: String, backend: ConnectionBackend = .tui) {
         self.host = host.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -31,7 +39,8 @@ struct ConnectionIdentity: Hashable, Sendable, Codable, Equatable {
         let host = Self.encodeComponent(self.host.lowercased())
         let endpoint = "u=\(user)|h=\(host)|p=\(port)"
         // Keep existing TUI draft/history keys byte-for-byte compatible.
-        return backend == .tui ? endpoint : endpoint + "|b=\(backend.rawValue)"
+        let runtime = backend == .tui ? endpoint : endpoint + "|b=\(backend.rawValue)"
+        return session.map { runtime + "|s=" + Self.encodeComponent($0) } ?? runtime
     }
 
     private static let allowedComponentCharacters = CharacterSet(
@@ -44,7 +53,7 @@ struct ConnectionIdentity: Hashable, Sendable, Codable, Equatable {
 }
 
 extension ConnectionIdentity {
-    private enum CodingKeys: String, CodingKey { case host, port, username, backend }
+    private enum CodingKeys: String, CodingKey { case host, port, username, backend, session }
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -52,6 +61,7 @@ extension ConnectionIdentity {
                   port: try values.decode(Int.self, forKey: .port),
                   username: try values.decode(String.self, forKey: .username),
                   backend: try values.decodeIfPresent(ConnectionBackend.self, forKey: .backend) ?? .tui)
+        session = try values.decodeIfPresent(String.self, forKey: .session)
     }
 }
 

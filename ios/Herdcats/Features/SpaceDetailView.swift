@@ -94,7 +94,7 @@ struct PaneDetailView: View {
     }
 
     private var connectionScope: ConnectionIdentity {
-        appModel.connectionIdentity
+        appModel.paneConnectionIdentity
             ?? ConnectionIdentity(host: "unknown", port: 0, username: "unknown")
     }
 
