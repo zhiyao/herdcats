@@ -107,6 +107,14 @@ struct PanePartnerTile {
     let focus: () -> Void
 }
 
+struct PaneCardAnchorPreference: PreferenceKey {
+    static var defaultValue: [String: Anchor<CGRect>] { [:] }
+
+    static func reduce(value: inout [String: Anchor<CGRect>], nextValue: () -> [String: Anchor<CGRect>]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, latest in latest })
+    }
+}
+
 struct PaneSwitcher: View {
     let panes: [PaneEntry]
     let tabs: [TabEntry]
@@ -301,6 +309,7 @@ struct PaneSwitcher: View {
                             }
                             .buttonStyle(.herdrCard)
                             .contextMenu { paneMenu(for: pane) }
+                            .anchorPreference(key: PaneCardAnchorPreference.self, value: .bounds) { [pane.id: $0] }
                             .paneDraggable(dragRef(for: pane), title: pane.displayTitle, enabled: horizontalSizeClass == .regular)
                             .accessibilityLabel(paneAccessibilityLabel(for: pane))
                             .accessibilityAddTraits(selection == pane.id ? .isSelected : [])
@@ -487,6 +496,7 @@ struct PaneSwitcher: View {
         }
         .buttonStyle(.herdrCard)
         .contextMenu { paneMenu(for: pane) }
+        .anchorPreference(key: PaneCardAnchorPreference.self, value: .bounds) { [pane.id: $0] }
         .paneDraggable(dragRef(for: pane), title: pane.displayTitle, enabled: horizontalSizeClass == .regular)
         .accessibilityLabel(paneAccessibilityLabel(for: pane))
         .accessibilityAddTraits(isSelected ? .isSelected : [])

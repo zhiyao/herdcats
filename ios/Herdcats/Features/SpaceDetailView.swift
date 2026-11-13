@@ -479,25 +479,20 @@ struct PaneDetailView: View {
         } message: {
             Text("Enter a new name for this pane.")
         }
-        .confirmationDialog(
-            "Kill Pane",
-            isPresented: $isShowingKillConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Kill Pane", role: .destructive) {
+        .overlayPreferenceValue(PaneCardAnchorPreference.self) { anchors in
+            GeometryReader { geometry in
                 let target = actionTargetPane ?? selectedPane
-                actionTargetPane = nil
-                Task {
-                    await killPane(target)
-                }
+                let rect = anchors[target.id].map { geometry[$0] }
+                    ?? CGRect(x: geometry.size.width / 2, y: 0, width: 1, height: 1)
+                Color.clear
+                    .frame(width: rect.width, height: rect.height)
+                    .popover(isPresented: $isShowingKillConfirmation, attachmentAnchor: .rect(.bounds), arrowEdge: .top) {
+                        killConfirmation
+                            .presentationCompactAdaptation(.popover)
+                    }
+                    .position(x: rect.midX, y: rect.midY)
+                    .allowsHitTesting(isShowingKillConfirmation)
             }
-            .accessibilityIdentifier("pane-kill-confirm-button")
-            Button("Cancel", role: .cancel) {
-                actionTargetPane = nil
-            }
-        } message: {
-            let title = (actionTargetPane ?? selectedPane).displayTitle
-            Text("Are you sure you want to kill “\(title)”? This will close the terminal pane.")
         }
         .bottomNotice {
             if let actionErrorMessage {
@@ -595,6 +590,26 @@ struct PaneDetailView: View {
     private func beginKill(_ pane: PaneEntry) {
         actionTargetPane = pane
         isShowingKillConfirmation = true
+    }
+
+    private var killConfirmation: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Kill Pane").font(.headline)
+            Text("Are you sure you want to kill “\((actionTargetPane ?? selectedPane).displayTitle)”? This will close the terminal pane.")
+                .foregroundStyle(.secondary)
+            Button(role: .destructive) {
+                let target = actionTargetPane ?? selectedPane
+                isShowingKillConfirmation = false
+                Task { await killPane(target) }
+            } label: {
+                Text("Kill Pane")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("pane-kill-confirm-button")
+        }
+        .padding(24)
+        .frame(width: 300)
     }
 
     /// Loads the workspace owning this pane so workspace-level actions act on
