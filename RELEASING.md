@@ -131,10 +131,10 @@ upload. `./ios/bin/beta` remains available as a standalone helper.
 
 ## Bridge releases
 
-Bridge versions are independent of the iOS app. Version 0.6.0 prepares Pi
-extension install/update from the app and long-transcript fixes after the
-published 0.5.1 release. Do not move or reuse existing release tags. The iOS
-installer pin (0.5.0) remains valid until new published assets are verified.
+Bridge versions are independent of the iOS app. Version 0.6.1 prepares Cursor
+slash-command support (#186) after the published 0.6.0 release. Do not move or
+reuse existing release tags. The iOS installer pin (0.5.0) remains valid until
+new published assets are verified.
 
 1. Prepare a PR updating `bridge/Cargo.toml`, `bridge/Cargo.lock`,
    `bridge/protocol.json`'s `bridge_version`, the default
@@ -145,7 +145,7 @@ installer pin (0.5.0) remains valid until new published assets are verified.
    compatibility limits in their conversation docs. Automated fixtures do not
    establish compatibility with additional CLI versions.
 3. Merge through passing Bridge, iOS and Web CI. From a checkout with the merged
-   source, run `scripts/bridge-release-tag.sh 0.6.0`. It checks `origin/main` and
+   source, run `scripts/bridge-release-tag.sh 0.6.1`. It checks `origin/main` and
    CI, then asks before tagging and again before publishing. Never tag this
    unmerged preparation branch.
 4. Review the workflow's draft: four native binaries, `install.sh`,
