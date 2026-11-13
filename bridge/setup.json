@@ -1,6 +1,6 @@
 {
   "component": "herdcats-bridge",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "protocol": 1,
   "herdr_protocol": 22,
   "supported_agent": "Claude, Codex, Agy, Pi and Cursor with exact session references",
@@ -84,7 +84,7 @@
     "record_content": "App requires negotiated record_content support; older helpers reopen setup and require explicit replacement. Images and unfamiliar records expose complete source bytes."
   },
   "source_support": {
-    "version": "0.6.0 release preparation; published iOS installer remains pinned to 0.5.0",
+    "version": "0.6.1 release preparation; published iOS installer remains pinned to 0.5.0",
     "agents": [
       "claude",
       "codex",
