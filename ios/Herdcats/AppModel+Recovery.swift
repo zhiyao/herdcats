@@ -29,7 +29,7 @@ extension AppModel {
 
     func checkSessionReadiness() async throws {
         // --version confirms the binary only; a space query confirms the
-        // default session is ready for the screens we present next.
+        // selected source is ready for the screens we present next.
         do {
             _ = try await connection.workspaceList(timeoutPolicy: .teardownSilently)
         } catch {

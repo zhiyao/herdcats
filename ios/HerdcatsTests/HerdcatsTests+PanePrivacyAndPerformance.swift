@@ -14,6 +14,21 @@ struct PaneContentPrivacyTests {
             == "u=Zed|h=mac.local|p=22")
     }
 
+    @Test func paneStateIsIsolatedBySessionWhileDefaultKeysStayCompatible() throws {
+        let machine = ConnectionIdentity(host: "Mac.local", port: 22, username: "Zed")
+        let first = machine.scopedToSession("project|one")
+        let second = machine.scopedToSession("project|two")
+        #expect(machine.scopedToSession("default") == machine)
+        #expect(first.storageKey.hasSuffix("|s=project%7Cone"))
+        #expect(PanePersistenceKeys.draft(scope: first, paneId: "w1:p1")
+            != PanePersistenceKeys.draft(scope: second, paneId: "w1:p1"))
+        #expect(PanePersistenceKeys.history(scope: first, paneId: "w1:p1")
+            != PanePersistenceKeys.history(scope: machine, paneId: "w1:p1"))
+        #expect(try JSONDecoder().decode(ConnectionIdentity.self, from: JSONEncoder().encode(first)) == first)
+        let core = ConnectionIdentity(host: "Mac.local", port: 22, username: "Zed", backend: .core)
+        #expect(core.scopedToSession("project") == core)
+    }
+
     func withStore(_ body: (UserDefaults, PaneContentPersistence) -> Void) {
         let suite = "PaneContentPrivacyTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

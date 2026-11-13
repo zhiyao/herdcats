@@ -51,7 +51,8 @@ extension HerdrConnection {
     func executeHerdr(
         _ args: String, timeout: TimeInterval, allowEmptyOutput: Bool,
         timeoutPolicy: HerdrCommandTimeoutPolicy = .teardownAndNotify,
-        expectedGeneration: ConnectionGeneration? = nil
+        expectedGeneration: ConnectionGeneration? = nil,
+        scopeToSession: Bool = true
     ) async throws -> String {
         try requireTUIFeature()
 #if DEBUG && targetEnvironment(simulator)
@@ -61,7 +62,7 @@ extension HerdrConnection {
         // Validate ownership and capture the client in this same actor turn.
         // A caller's earlier generation check cannot authorize a new client.
         let client = try slot.ownedClient(owned)
-        let command = Self.remoteCommand(args)
+        let command = Self.remoteCommand(args, session: scopeToSession ? session : nil)
         let diagnosticLabel = Self.herdrDiagnosticLabel
         #if DEBUG
         print("[HC] exec: \(diagnosticLabel)")
@@ -93,6 +94,16 @@ extension HerdrConnection {
     ) async throws -> Result {
         let output = try await runHerdr(args, timeoutPolicy: timeoutPolicy)
         return try Self.decode(output, as: resultType)
+    }
+
+    /// Enumeration is local to the SSH host, never `--machine session list`.
+    func sessionList() async throws -> [HerdrSession] {
+        try requireTUIFeature()
+        let output = try await executeHerdr(
+            "session list --json", timeout: 20, allowEmptyOutput: false,
+            timeoutPolicy: .preserveConnection, scopeToSession: false
+        )
+        return try JSONDecoder().decode(HerdrSessionList.self, from: Data(output.utf8)).sessions
     }
 
     // MARK: - Typed herdr queries

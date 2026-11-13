@@ -133,7 +133,7 @@ struct ConnectedTabsView: View {
             }
             #endif
             model.stopAutoRefresh()
-            model.bindConnectionScope(appModel.connectionIdentity)
+            model.bindConnectionScope(appModel.paneConnectionIdentity)
             guard !Task.isCancelled else { return }
             let active = scenePhase == .active
             model.isSceneActive = active
@@ -142,8 +142,8 @@ struct ConnectedTabsView: View {
             guard !Task.isCancelled else { return }
             model.startAutoRefresh(appModel.connection)
         }
-        .onChange(of: appModel.connectionIdentity, initial: true) { _, identity in
-            // A failed reconnect clears the identity; keep the layout for the same machine's return.
+        .onChange(of: appModel.paneConnectionIdentity, initial: true) { _, identity in
+            // A failed reconnect clears the identity; keep the layout for the same source's return.
             guard let key = identity?.storageKey else { return }
             if !paneLayoutMachine.isEmpty, paneLayoutMachine != key {
                 paneLayout.wrappedValue = PaneLayout()
@@ -686,7 +686,47 @@ struct HerdrcatBrandMark: View {
                         }
                         .accessibilityLabel(label + (isPending(connection) ? ", Connecting…" : ""))
                     }
-                    .onAppear { reloadConnections() }
+                    .onAppear {
+                        reloadConnections()
+                        Task { await appModel.refreshSessions() }
+                    }
+                    Divider()
+                    Section(appModel.isCoreMode ? "Herdr Core" : "Sessions on \(shortHost)") {
+                        if appModel.isCoreMode {
+                            Label("Persistent terminals", systemImage: "checkmark")
+                            Text("Core keeps terminals without named sessions.")
+                        } else {
+                            ForEach(appModel.sessions) { session in
+                                Button {
+                                    Task { _ = await active?.switchSession(to: session, from: appModel) }
+                                } label: {
+                                    HStack {
+                                        Text(session.name + (session.running ? "" : " (Stopped)"))
+                                        if (appModel.activeConfig?.sessionName ?? "default") == session.name {
+                                            Image(systemName: "checkmark")
+                                        }
+                                        if active?.pending?.connectionIdentity == appModel.connectionIdentity,
+                                           active?.pending?.activeConfig?.sessionName == session.name {
+                                            Text("Connecting…")
+                                        }
+                                    }
+                                }
+                                .disabled(!session.running || appModel.isOffline || active == nil)
+                                .accessibilityIdentifier("session-choice-\(session.name)")
+                            }
+                            if appModel.isLoadingSessions {
+                                Text("Loading sessions…")
+                            } else if let error = appModel.sessionListError {
+                                Text("Couldn’t load sessions: \(error)")
+                            } else if appModel.sessions.isEmpty {
+                                Text("No sessions found")
+                            }
+                            Button("Refresh Sessions", systemImage: "arrow.clockwise") {
+                                Task { await appModel.refreshSessions() }
+                            }
+                            .disabled(appModel.isLoadingSessions || !appModel.isReadyForTerminalInput)
+                        }
+                    }
                     Divider()
                     Button("Add Machine…", systemImage: "plus") {
                         Task {
@@ -698,17 +738,20 @@ struct HerdrcatBrandMark: View {
                     }
                 } label: {
                     HStack(spacing: 4) {
-                        Text(shortHost).lineLimit(1).truncationMode(.middle)
+                        Text(shortHost + " · " + (appModel.activeConfig?.sessionName ?? "default"))
+                            .lineLimit(1).truncationMode(.middle)
                         Image(systemName: "chevron.down")
                     }
                     .font(.jost(.caption2))
                     .foregroundStyle(Color(uiColor: .secondaryLabel))
                 }
                 .accessibilityLabel("Machine: \(activeConnection?.displayName ?? host)")
+                .accessibilityValue("Session: \(appModel.activeConfig?.sessionName ?? "default")")
                 .accessibilityIdentifier("machine-picker")
             }
         }
         .onAppear { reloadConnections() }
+        .task(id: appModel.phase) { await appModel.refreshSessions() }
         .onChange(of: appModel.connectionIdentity) { _, _ in reloadConnections() }
         .sheet(item: $selectedConnection, onDismiss: reloadConnections) { connection in
             if connection.host.isEmpty {

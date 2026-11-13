@@ -218,7 +218,7 @@ extension HerdrConnection {
         guard activeLiveSessions[session.paneId] == session else { throw HerdrError.notConnected }
         guard let pair = liveShells[session.paneId] else { return false }
         guard pair.session == session else { throw HerdrError.notConnected }
-        let output = try await pair.input.execute(Self.remoteCommand(args))
+        let output = try await pair.input.execute(Self.remoteCommand(args, session: self.session))
         try requireGeneration(session.generation)
         if !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             _ = try Self.interpret(output)
