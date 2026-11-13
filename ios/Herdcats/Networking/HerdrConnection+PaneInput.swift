@@ -301,7 +301,7 @@ extension HerdrConnection {
             guard live.paneId == identity.paneId, live.terminalId == identity.terminalId,
                   TimelineAgentAvailability.matchesSession(agent: live.agent, referenceAgent: reference?.agent, source: reference?.source, identityAgent: identity.agent, referenceKind: reference?.kind ?? ""),
                   TimelineAgentAvailability.supports(agent: identity.agent),
-                  sessionId == identity.nativeSessionId,
+                  TimelineAgentAvailability.sameSession(agent: identity.agent, live: sessionId, native: identity.nativeSessionId),
                   TimelineComposePolicy.canSend(identity:identity,paneId:live.paneId,status:live.agentStatus,connected:true)
             else {throw AgentBridgeError.identityMismatch}
             try await self.requireGeneration(owned)

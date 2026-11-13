@@ -580,10 +580,10 @@ extension AgentTimelineView {
             }
             return "This pane has no verified session history."
         case "session_inactive":
-            // Codex reports a /resume or /new to Herdr only with the next prompt.
+            // Codex reports a /resume, /clear or /new to Herdr only with the next prompt.
             // The bridge sees the switch only once Codex deletes the old thread's
             // lock, about a minute later; until then the old chat still shows.
-            return "Codex in this pane left the session Herdcats was showing, for example after /resume or /new. Send a message in Terminal so Codex reports the new session, then check again."
+            return "Codex in this pane left the session Herdcats was showing, for example after /resume, /clear or /new. Send a message in Terminal so Codex reports the new session, then check again."
         case "session_cwd_mismatch":
             if isCodex {
                 return "The session folder does not match the pane’s folder, so Herdcats will not guess."

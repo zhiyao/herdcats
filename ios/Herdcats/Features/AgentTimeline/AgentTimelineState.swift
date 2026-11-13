@@ -38,6 +38,61 @@ import Observation
     private(set) var isPiActionPending = false
     var piActionError: String?
     private(set) var entries: [AgentTimelineEntry] = []
+    /// After a phone-sent context reset the bridge may keep streaming the old
+    /// conversation (Herdr learns of a Codex `/clear` or `/new` only from the next
+    /// prompt's SessionStart hook; Agy may keep its old conversation bound).
+    /// The cut survives `clear()` so a reconnect cannot resurrect old entries and
+    /// ends when a snapshot names a different session.
+    private var clearedSession: String?
+    /// Whole-session cuts hide everything; otherwise entries up to and including
+    /// `clearedLastId` (the newest entry loaded at reset time) are hidden by
+    /// position, so later entries and later history pages stay visible.
+    private var clearedWhole = false
+    private var clearedLastId: String?
+    /// Every entry loaded at reset time, so a rewrite that drops `clearedLastId`
+    /// cannot bring earlier cleared entries back.
+    private var clearedIds: Set<String> = []
+    private var cutActive: Bool { clearedSession != nil && identity?.nativeSessionId == clearedSession }
+    /// True while history can only reveal hidden entries.
+    private var cutReached: Bool {
+        guard cutActive else { return false }
+        if clearedWhole { return true }
+        return entries.contains { $0.id == clearedLastId }
+    }
+    /// Entries to render, minus what a context reset cut away.
+    var visibleEntries: [AgentTimelineEntry] {
+        guard cutActive else { return entries }
+        if clearedWhole { return [] }
+        let tail = entries.lastIndex(where: { $0.id == clearedLastId }).map { Array(entries[($0 + 1)...]) } ?? entries
+        return tail.filter { !clearedIds.contains($0.id) }
+    }
+    /// Loaded entry ids; capture them before sending a reset so the cut matches
+    /// what the user saw even if the stream ends while the send is in flight.
+    var loadedEntryIds: [String] { entries.map(\.id) }
+    /// Hides the conversation after the phone sent a context reset. A stream that
+    /// ended during submission has no identity, so the cut is kept for the
+    /// submitted session; a bound, different session means the reply is stale.
+    func markContextCleared(for submitted: AgentTimelineIdentity, reset: TimelineContextReset.Scope, loadedIds: [String]) {
+        guard identity == nil || identity == submitted else { return }
+        switch reset {
+        case .wholeSession:
+            clearedWhole = true
+            clearedLastId = nil
+            clearedIds = []
+        case .loadedEntries:
+            // Nothing was loaded, so there is nothing to hide.
+            guard let last = loadedIds.last else { return }
+            clearedWhole = false
+            clearedLastId = last
+            clearedIds = Set(loadedIds)
+        }
+        clearedSession = submitted.nativeSessionId
+        if cutReached || identity == nil {
+            hasMore = false
+            before = nil
+        }
+        revision += 1
+    }
     private(set) var identity: AgentTimelineIdentity?
     private(set) var phase: Phase = .loading
     private(set) var generation: UInt64?
@@ -144,13 +199,14 @@ import Observation
             else { throw AgentBridgeError.identityMismatch }
             try validate(rows)
             clear()
+            if clearedSession != nextIdentity.nativeSessionId { clearedSession = nil; clearedWhole = false; clearedLastId = nil; clearedIds = [] }
             identity = nextIdentity
             generation = next
             modelControl.bind(identity: nextIdentity, generation: next)
             if data.model != nil { try modelControl.update(data) }
             entries = rows
-            hasMore = data.hasMore ?? false
-            before = data.before
+            hasMore = !cutReached && (data.hasMore ?? false)
+            before = cutReached ? nil : data.before
             agentStatus = data.agentStatus
             unknownRecords = data.unknownRecords ?? 0
             droppedEntries = data.droppedEntries ?? 0
@@ -257,10 +313,16 @@ import Observation
         let prefix = rows.filter { !currentIds.contains($0.id) && !evictedIds.contains($0.id) }
         // Never let a delayed history page overwrite a streamed revision.
         entries = Array((prefix + entries).suffix(Self.maxEntries))
-        if !rows.contains(where: { evictedIds.contains($0.id) }) {
-            hasMore = (page.hasMore ?? false) && entries.count < Self.maxEntries
+        // A page requested before a context reset must not bring pagination back.
+        if cutReached {
+            hasMore = false
+            before = nil
+        } else {
+            if !rows.contains(where: { evictedIds.contains($0.id) }) {
+                hasMore = (page.hasMore ?? false) && entries.count < Self.maxEntries
+            }
+            before = entries.first?.id
         }
-        before = entries.first?.id
         droppedEntries = page.droppedEntries ?? droppedEntries
     }
     func end(owner: UUID, error: AgentBridgeError) {

@@ -295,18 +295,9 @@ struct TimelineAgentAvailabilityTests {
         #expect(AgentModelControlState.cursorMessage(for: "cursor_unsupported_version")?.contains("verified") == true)
         #expect(AgentModelControlState.cursorMessage(for: "nonsense") == nil)
     }
-    @Test func slashPromptsAreRefusedForCursorOnly() {
-        for text in ["/model grok-4.7", "/quit", "  /new", "\n/compact", "\t /x"] {
-            #expect(CursorPromptPolicy.refusesSlashCommand(agent: "cursor", text: text), "\(text)")
-            // Other agents keep their own slash commands.
-            #expect(!CursorPromptPolicy.refusesSlashCommand(agent: "claude", text: text))
-            #expect(!CursorPromptPolicy.refusesSlashCommand(agent: "codex", text: text))
-        }
-        for text in ["hello", "use a/b and /tmp", "", " ", "\\/escaped"] {
-            #expect(!CursorPromptPolicy.refusesSlashCommand(agent: "cursor", text: text), "\(text)")
-        }
+    @Test func oldBridgeSlashRefusalPointsToAnUpdate() {
         #expect(CursorPromptPolicy.message(forCode: "slash_command_refused") == CursorPromptPolicy.slashMessage)
-        #expect(CursorPromptPolicy.slashMessage.contains("Terminal"))
+        #expect(CursorPromptPolicy.slashMessage.contains("Update the Bridge"))
     }
     @Test func cursorPromptRefusalsAreActionableAndAlwaysPointToTerminalOrTheDesk() {
         let codes = ["approval_pending", "question_pending", "composer_not_empty", "agent_busy", "picker_open", "screen_unrecognized", "stale", "prompt_unconfirmed", "unsupported_capability", "something_else"]
@@ -1203,5 +1194,16 @@ struct ModelCatalogProvenanceTests {
         #expect(!confirm.accepts(.text("false")))
         let bytes = try JSONEncoder().encode(AgentPiDialogValue.boolean(false))
         #expect(String(decoding: bytes, as: UTF8.self) == "false")
+    }
+}
+
+@Suite struct PiSessionMatchTests {
+    @Test func piPathFilenameMatchesBareUuidOnly() {
+        let id = "16246b9d-4c3d-54fc-b6d3-2a765d418491"
+        #expect(TimelineAgentAvailability.sameSession(agent: "pi", live: "2026-11-12T10-00-00_\(id)", native: id))
+        #expect(TimelineAgentAvailability.sameSession(agent: "pi", live: id, native: id))
+        #expect(!TimelineAgentAvailability.sameSession(agent: "pi", live: "2026_other", native: id))
+        #expect(!TimelineAgentAvailability.sameSession(agent: "codex", live: "x_\(id)", native: id))
+        #expect(!TimelineAgentAvailability.sameSession(agent: "pi", live: nil, native: id))
     }
 }

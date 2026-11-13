@@ -188,7 +188,7 @@
     {
       "method": "prompt.submit",
       "params": {
-        "text": "required non-empty string, at most 65536 bytes, no NUL; a message whose first non-space character is / is refused with slash_command_refused because Cursor would run it as a command",
+        "text": "required non-empty string, at most 65536 bytes, no NUL; slash commands are sent like any other message",
         "expect": "required {identity, generation} from the latest snapshot; otherwise stale"
       },
       "result_fields": [
@@ -198,7 +198,7 @@
       "validation": [
         "The pane must still be the same terminal, agent and chat, with Herdr status idle or done; otherwise agent_busy or stale.",
         "The visible screen must show Cursor's idle composer with its faint placeholder and nothing else: no permission card, skip-feedback input, question form, picker or typed text. Herdr's status is not trusted because a live AskQuestion form is reported as done and Cursor writes no pending card to its transcript.",
-        "Refusal codes: approval_pending, question_pending, composer_not_empty, agent_busy, picker_open, screen_unrecognized, screen_unavailable, slash_command_refused, invalid_request, stale, unsupported_agent.",
+        "Refusal codes: approval_pending, question_pending, composer_not_empty, agent_busy, picker_open, screen_unrecognized, screen_unavailable, slash_command_refused (older bridges only), invalid_request, stale, unsupported_agent.",
         "The guard and the Herdr agent.prompt call are one bridge call. A failed send is prompt_unconfirmed and is never retried; a transport error may still have delivered it."
       ]
     },

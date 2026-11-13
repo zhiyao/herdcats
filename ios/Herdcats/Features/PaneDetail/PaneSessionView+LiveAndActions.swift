@@ -475,13 +475,9 @@ extension PaneSessionView {
         } ?? trimmedDraft
         guard !text.isEmpty else { return }
 
-        // Cursor runs a leading "/" as its own command; refuse before anything is sent.
-        if !appModel.isCoreMode, CursorPromptPolicy.refusesSlashCommand(agent: pane.agent, text: trimmedDraft) {
-            sessionError = CursorPromptPolicy.slashMessage
-            return
-        }
         let sendRevision = persistenceRevision
         let sentDraft = trimmedDraft
+        let loadedEntryIds = timeline.loadedEntryIds
         let originalDraft = draft
         // Show "working" now instead of after the next pane refresh; a failed
         // submission withdraws it, and the authoritative status replaces it.
@@ -491,7 +487,11 @@ extension PaneSessionView {
                 guard let owned=appModel.ownership.transportGeneration else {throw HerdrError.notConnected}
                 isTimelineSending=true
                 defer {isTimelineSending=false}
-                if identity.agent == "pi" {
+                if identity.agent == "pi", text.hasPrefix("/") {
+                    // The Pi extension only injects plain messages, so a slash
+                    // command takes the same verified terminal path as Codex.
+                    try await appModel.connection.submitTimelinePrompt(text:text,identity:identity,owned:owned)
+                } else if identity.agent == "pi" {
                     try await timeline.submitPiPrompt(text)
                 } else if identity.agent == "cursor" {
                     do { try await timeline.submitCursorPrompt(text) }
@@ -499,6 +499,7 @@ extension PaneSessionView {
                 } else {
                     try await appModel.connection.submitTimelinePrompt(text:text,identity:identity,owned:owned)
                 }
+                if attachedPath == nil, let reset = TimelineContextReset.scope(agent: identity.agent, text: sentDraft) { timeline.markContextCleared(for: identity, reset: reset, loadedIds: loadedEntryIds) }
             } else if pane.agent == "cursor", showsTimeline, timeline.canSendFirstCursorPrompt {
                 // A brand-new chat: no transcript, so no identity yet. Same bridge guard.
                 isTimelineSending=true

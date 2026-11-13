@@ -130,7 +130,7 @@ struct AgentTimelineView: View {
     }
 
     var conversationItems: [TimelineConversationItem] {
-        TimelineConversationItem.group(timeline.entries, showsRecords: agent == "codex" || agent == "pi")
+        TimelineConversationItem.group(timeline.visibleEntries, showsRecords: agent == "codex" || agent == "pi")
     }
 
     var connectionState: AgentTimelineConnectionState {
