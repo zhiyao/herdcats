@@ -152,21 +152,22 @@ struct PaneVoiceComposeBar: View {
     @State private var swipeStartOffset: CGFloat?
     @AppStorage(PaneKeySwipeHintPreference.storageKey) private var dismissedKeySwipeHint = false
 
-    private func primaryKeyWidths(for viewport: CGFloat) -> (text: CGFloat, arrow: CGFloat) {
-        let available = max(0, viewport - 28)
-        let text = max(32, min(44, available / 8))
-        let arrow = max(26, min(44, (available - 4 * text) / 4))
-        return (text, arrow)
+    private func liveKeyWidth(for viewport: CGFloat) -> CGFloat {
+        max(28, viewport / 8.5)
     }
 
     private var expectedKeyContentWidth: CGFloat {
         guard keyStripViewportWidth > 0 else { return 0 }
-        let widths = primaryKeyWidths(for: keyStripViewportWidth)
-        return liveKeys.reduce(CGFloat.zero) { total, key in
-            total + (key.isArrow ? widths.arrow : key.isPrimary ? widths.text :
-                (key.label.count > 3 ? 52 : 44))
-        }
+        return CGFloat(liveKeys.count) * liveKeyWidth(for: keyStripViewportWidth)
     }
+
+    private var isHomeFullyVisible: Bool {
+        guard keyStripViewportWidth > 0 else { return false }
+        let width = liveKeyWidth(for: keyStripViewportWidth)
+        let homeMinX = keyStripMetrics.minX + 8 * width
+        return homeMinX >= -1 && homeMinX + width <= keyStripViewportWidth + 1
+    }
+
     private var hasMoreKeysLeft: Bool { keyStripMetrics.minX < -2 }
     private var hasMoreKeysRight: Bool {
         keyStripMetrics.minX + expectedKeyContentWidth > keyStripViewportWidth + 2
@@ -178,10 +179,6 @@ struct PaneVoiceComposeBar: View {
         let label: String
         let token: String
         var modifier: PaneLiveModifier? = nil
-        var isPrimary: Bool {
-            ["esc", "tab", "up", "down", "left", "right", "ctrl", "alt"].contains(id)
-        }
-        var isArrow: Bool { ["up", "down", "left", "right"].contains(id) }
     }
 
     /// Stable IDs keep repeated labels independent and retain the scroll position.
@@ -368,14 +365,12 @@ struct PaneVoiceComposeBar: View {
     private var liveRail: some View {
         HStack(spacing: 0) {
             GeometryReader { geometry in
-                // Reserve enough room for a readable Home preview on phone widths.
-                // Compact arrow targets before text keys; very narrow split panes scroll.
-                let widths = primaryKeyWidths(for: geometry.size.width)
+                // Eight and a half equal cells expose Home's preview at rest.
+                let keyWidth = liveKeyWidth(for: geometry.size.width)
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 0) {
                         ForEach(liveKeys) { key in
-                            liveStripButton(key, width: key.isArrow ? widths.arrow :
-                                (key.isPrimary ? widths.text : (key.label.count > 3 ? 52 : 44)))
+                            liveStripButton(key, width: keyWidth)
                                 .id(key.id)
                         }
                     }
@@ -477,6 +472,7 @@ struct PaneVoiceComposeBar: View {
 
     private func liveStripButton(_ key: LiveKey, width: CGFloat) -> some View {
         let isArmed = key.modifier.map { armedModifiers.contains($0) } ?? false
+        let showsHomePreview = key.id == "home" && !isHomeFullyVisible
         return Button {
             HapticFeedback.impact(.light)
             if let modifier = key.modifier {
@@ -487,14 +483,13 @@ struct PaneVoiceComposeBar: View {
                 onLiveKey(key.token)
             }
         } label: {
-            Text(key.label)
+            Text(showsHomePreview ? "H" : key.label)
                 .font(.jost(.caption, weight: .semibold).monospaced())
                 .foregroundStyle(isArmed ? Theme.accent : (key.id == "esc" ? Theme.destructive : Color.primary))
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
-                .padding(.leading, key.id == "home" ? 3 : 0)
-                .frame(width: width, height: 42,
-                       alignment: key.id == "home" ? .leading : .center)
+                .frame(width: showsHomePreview ? width / 2 : width, height: 42)
+                .frame(width: width, height: 42, alignment: .leading)
                 .background(isArmed ? Theme.accent.opacity(0.16) : Color.clear)
                 .contentShape(Rectangle())
         }
@@ -502,7 +497,8 @@ struct PaneVoiceComposeBar: View {
         .disabled(!isLiveEnabled)
         .opacity(isLiveEnabled ? 1 : 0.45)
         .accessibilityLabel(key.modifier.map { "\($0.displayLabel) modifier" } ?? "Send \(key.label)")
-        .accessibilityValue(key.modifier == nil ? "" : (isArmed ? "Armed for next key" : "Off"))
+        .accessibilityValue(key.id == "home" ? (showsHomePreview ? "H preview" : "Home") :
+            (key.modifier == nil ? "" : (isArmed ? "Armed for next key" : "Off")))
         .accessibilityAddTraits(isArmed ? .isSelected : [])
         .accessibilityIdentifier(key.modifier == nil ?
             (key.id == "esc" ? "pane-live-key-esc" : key.id == "tab" ? "pane-live-key-tab" : key.id == "up" ? "pane-live-key-up" : "pane-live-extra-key-\(key.id)") :

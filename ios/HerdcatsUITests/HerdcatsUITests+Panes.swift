@@ -21,13 +21,23 @@ extension HerdcatsUITests {
         XCTAssertTrue(home.exists)
         XCTAssertLessThan(home.frame.minX, strip.frame.maxX, "Home should peek into the strip")
         XCTAssertGreaterThan(home.frame.maxX, strip.frame.maxX, "Home should be partially clipped")
-        XCTAssertGreaterThanOrEqual(strip.frame.maxX - home.frame.minX, 26,
-                                    "Enough of the Home label should be visible to read the cue")
+        let firstKeys = ["pane-live-key-esc", "pane-live-key-tab", "pane-live-key-up",
+                         "pane-live-extra-key-down", "pane-live-extra-key-left",
+                         "pane-live-extra-key-right", "pane-live-key-ctrl", "pane-live-key-alt"]
+        for identifier in firstKeys {
+            XCTAssertEqual(app.buttons[identifier].frame.width, home.frame.width, accuracy: 1,
+                           "Every key should use the same cell width")
+        }
+        XCTAssertEqual(strip.frame.maxX - home.frame.minX, home.frame.width / 2, accuracy: 2,
+                       "The first view should expose half of Home")
+        XCTAssertEqual(home.value as? String, "H preview")
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "terminal-key-discovery-initial"
         screenshot.lifetime = .keepAlways
         add(screenshot)
         strip.swipeLeft()
+        XCTAssertTrue(home.isHittable)
+        XCTAssertEqual(home.value as? String, "Home")
         XCTAssertTrue(hint.waitForNonExistence(timeout: 3))
         XCTAssertEqual(strip.value as? String, "More keys to left and right")
         let scrolledScreenshot = XCTAttachment(screenshot: app.screenshot())
