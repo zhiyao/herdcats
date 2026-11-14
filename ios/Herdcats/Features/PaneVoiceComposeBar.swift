@@ -119,6 +119,22 @@ struct PaneAttachmentInfo: Identifiable, Sendable {
     }
 }
 
+enum PaneKeySwipeHintPreference {
+    static let storageKey = "paneLiveKeySwipeHintDismissed.v1"
+}
+
+private struct PaneLiveKeyStripMetrics: Equatable {
+    var minX: CGFloat = 0
+    var contentWidth: CGFloat = 0
+}
+
+private struct PaneLiveKeyStripMetricsKey: PreferenceKey {
+    static var defaultValue: PaneLiveKeyStripMetrics? = nil
+    static func reduce(value: inout PaneLiveKeyStripMetrics?, nextValue: () -> PaneLiveKeyStripMetrics?) {
+        if let next = nextValue() { value = next }
+    }
+}
+
 // MARK: - PaneVoiceComposeBar
 
 /// A unified SwiftUI input bar for Herdr terminal panes supporting:
@@ -131,6 +147,23 @@ struct PaneVoiceComposeBar: View {
     @State private var showsModelConfiguration = false
     var modelControl: AgentModelControlState? = nil
     @State private var visibleKeyID: String?
+    @State private var keyStripMetrics = PaneLiveKeyStripMetrics()
+    @State private var keyStripViewportWidth: CGFloat = 0
+    @State private var swipeStartOffset: CGFloat?
+    @AppStorage(PaneKeySwipeHintPreference.storageKey) private var dismissedKeySwipeHint = false
+
+    private var expectedKeyContentWidth: CGFloat {
+        guard keyStripViewportWidth > 0 else { return 0 }
+        let primaryWidth = max(32, min(44, (keyStripViewportWidth - 16) / 8))
+        return liveKeys.reduce(CGFloat.zero) { total, key in
+            total + (key.isPrimary ? primaryWidth : (key.label.count > 3 ? 52 : 44))
+        }
+    }
+    private var hasMoreKeysLeft: Bool { keyStripMetrics.minX < -2 }
+    private var hasMoreKeysRight: Bool {
+        keyStripMetrics.minX + expectedKeyContentWidth > keyStripViewportWidth + 2
+    }
+    private var keyStripOverflows: Bool { expectedKeyContentWidth > keyStripViewportWidth + 2 }
 
     private struct LiveKey: Identifiable {
         let id: String
@@ -310,11 +343,25 @@ struct PaneVoiceComposeBar: View {
 
     /// Only the left key area scrolls. Voice and Compose remain fixed on the right.
     private var liveBar: some View {
+        VStack(spacing: 4) {
+            if !dismissedKeySwipeHint && keyStripOverflows {
+                Text("Swipe for more keys")
+                    .font(.jost(11, weight: .medium))
+                    .foregroundStyle(Theme.textMuted)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 6)
+                    .accessibilityIdentifier("pane-live-key-swipe-hint")
+            }
+            liveRail
+        }
+    }
+
+    private var liveRail: some View {
         HStack(spacing: 0) {
             GeometryReader { geometry in
-                // Eight primary keys fill the available space on a typical phone.
-                // On narrower panes, keep a usable 32-point hit width and allow scrolling.
-                let primaryWidth = max(32, min(44, geometry.size.width / 8))
+                // Leave a small Home preview after eight primary keys on typical phones.
+                // Narrower panes retain a usable 32-point key and scroll normally.
+                let primaryWidth = max(32, min(44, (geometry.size.width - 16) / 8))
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 0) {
                         ForEach(liveKeys) { key in
@@ -324,10 +371,62 @@ struct PaneVoiceComposeBar: View {
                         }
                     }
                     .scrollTargetLayout()
+                    .background {
+                        GeometryReader { content in
+                            Color.clear.preference(key: PaneLiveKeyStripMetricsKey.self,
+                                value: PaneLiveKeyStripMetrics(
+                                    minX: content.frame(in: .named("pane-live-key-strip-space")).minX,
+                                    contentWidth: content.size.width))
+                        }
+                    }
                 }
+                .coordinateSpace(name: "pane-live-key-strip-space")
                 .scrollTargetBehavior(.viewAligned)
                 .scrollPosition(id: $visibleKeyID)
+                .simultaneousGesture(DragGesture(minimumDistance: 8)
+                    .onChanged { value in
+                        if swipeStartOffset == nil && abs(value.translation.width) > 8 {
+                            swipeStartOffset = keyStripMetrics.minX
+                        }
+                    }
+                    .onEnded { _ in
+                        if let start = swipeStartOffset,
+                           abs(keyStripMetrics.minX - start) > 2 {
+                            dismissedKeySwipeHint = true
+                        }
+                        swipeStartOffset = nil
+                    })
+                .overlay(alignment: .leading) {
+                    if hasMoreKeysLeft {
+                        LinearGradient(colors: [Theme.cardBackground, .clear],
+                            startPoint: .leading, endPoint: .trailing)
+                            .frame(width: 12)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .overlay(alignment: .trailing) {
+                    if hasMoreKeysRight {
+                        LinearGradient(colors: [.clear, Theme.cardBackground],
+                            startPoint: .leading, endPoint: .trailing)
+                            .frame(width: 12)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .onAppear { keyStripViewportWidth = geometry.size.width }
+                .onChange(of: geometry.size.width) { _, width in keyStripViewportWidth = width }
+                .onPreferenceChange(PaneLiveKeyStripMetricsKey.self) { metrics in
+                    guard let metrics else { return }
+                    keyStripMetrics = metrics
+                    if let start = swipeStartOffset, abs(metrics.minX - start) > 2 {
+                        dismissedKeySwipeHint = true
+                    }
+                }
                 .accessibilityIdentifier("pane-live-key-strip")
+                .accessibilityValue(hasMoreKeysLeft ?
+                    (hasMoreKeysRight ? "More keys to left and right" : "More keys to left") :
+                    (hasMoreKeysRight ? "More keys to right" : "All keys visible"))
             }
             .frame(minWidth: 0, maxWidth: .infinity)
 

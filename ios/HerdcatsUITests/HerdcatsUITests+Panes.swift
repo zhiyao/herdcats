@@ -3,6 +3,48 @@ import UIKit
 import XCTest
 
 extension HerdcatsUITests {
+    func testLiveKeyDiscoveryHintAndHomePeek() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "pane", "-paneShowComposeByDefault", "NO",
+                               "-hc.reset-key-swipe-hint"]
+        app.launch()
+        let terminal = app.buttons["timeline-open-terminal"]
+        if terminal.waitForExistence(timeout: 3) { terminal.tap() }
+        let strip = app.scrollViews["pane-live-key-strip"]
+        XCTAssertTrue(strip.waitForExistence(timeout: 5))
+        XCTAssertEqual(strip.value as? String, "More keys to right")
+        let hint = app.staticTexts["pane-live-key-swipe-hint"]
+        XCTAssertTrue(hint.waitForExistence(timeout: 3))
+        app.buttons["pane-live-key-esc"].tap()
+        XCTAssertTrue(hint.exists, "A key tap should not dismiss the swipe hint")
+        let home = app.buttons["pane-live-extra-key-home"]
+        XCTAssertTrue(home.exists)
+        XCTAssertLessThan(home.frame.minX, strip.frame.maxX, "Home should peek into the strip")
+        XCTAssertGreaterThan(home.frame.maxX, strip.frame.maxX, "Home should be partially clipped")
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "terminal-key-discovery-initial"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        strip.swipeLeft()
+        XCTAssertTrue(hint.waitForNonExistence(timeout: 3))
+        XCTAssertEqual(strip.value as? String, "More keys to left and right")
+        let scrolledScreenshot = XCTAttachment(screenshot: app.screenshot())
+        scrolledScreenshot.name = "terminal-key-discovery-scrolled"
+        scrolledScreenshot.lifetime = .keepAlways
+        add(scrolledScreenshot)
+        for _ in 0..<8 { strip.swipeLeft() }
+        XCTAssertEqual(strip.value as? String, "More keys to left")
+        let endScreenshot = XCTAttachment(screenshot: app.screenshot())
+        endScreenshot.name = "terminal-key-discovery-end"
+        endScreenshot.lifetime = .keepAlways
+        add(endScreenshot)
+        app.terminate()
+        app.launchArguments.removeAll { $0 == "-hc.reset-key-swipe-hint" }
+        app.launch()
+        if terminal.waitForExistence(timeout: 3) { terminal.tap() }
+        XCTAssertTrue(strip.waitForExistence(timeout: 5))
+        XCTAssertFalse(hint.exists, "The hint should stay dismissed across launches")
+    }
     func testLiveKeyStripSwipesAndKeepsPositionAfterKeyTap() {
         let app = XCUIApplication()
         app.launchArguments = ["-hc.screenshots", "-hc.screen", "pane", "-paneShowComposeByDefault", "NO"]
