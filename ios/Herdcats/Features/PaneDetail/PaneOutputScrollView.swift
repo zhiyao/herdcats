@@ -1,6 +1,21 @@
 import SwiftUI
 import UIKit
 
+enum PaneOutputLinks {
+    // Detect against the complete rendered string, not individual ANSI runs.
+    private static let detector = try! NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+
+    static func apply(to text: NSMutableAttributedString) {
+        let range = NSRange(location: 0, length: text.length)
+        for match in detector.matches(in: text.string, range: range) {
+            guard let url = match.url,
+                  let scheme = url.scheme?.lowercased(),
+                  scheme == "https" || scheme == "http" else { continue }
+            text.addAttribute(.link, value: url, range: match.range)
+        }
+    }
+}
+
 // MARK: - Pane output scroll view
 
 struct PaneOutputScrollView: View, Equatable {
@@ -372,9 +387,18 @@ struct HostingWindowReader: UIViewRepresentable {
 /// A single, read-only native text surface provides draggable selection handles
 /// across lines without introducing a second scrolling region or a keyboard.
 struct SelectablePaneOutput: UIViewRepresentable {
-    final class Coordinator {
+    final class Coordinator: NSObject, UITextViewDelegate {
         var lastRevision: UInt64?
         var lastFont: UIFont?
+
+        func textView(_ textView: UITextView, primaryActionFor textItem: UITextItem,
+                      defaultAction: UIAction) -> UIAction? {
+            // A normal tap still belongs to the terminal's live-input gesture.
+            // Long press retains UIKit's default Open/Copy link menu. VoiceOver
+            // activation can open the link directly without a touch gesture.
+            if UIAccessibility.isVoiceOverRunning { return defaultAction }
+            return UIAction { _ in }
+        }
 
         static func shouldRender(
             lastRevision: UInt64?,
@@ -412,12 +436,16 @@ struct SelectablePaneOutput: UIViewRepresentable {
         view.observeSelectionTouches()
         view.isEditable = false
         view.isSelectable = true
+        view.delegate = context.coordinator
+        // Preserve ANSI colors and font metrics; underline identifies links.
+        view.linkTextAttributes = [.underlineStyle: NSUnderlineStyle.single.rawValue]
         view.isScrollEnabled = false
         view.backgroundColor = .clear
         view.textContainerInset = .zero
         view.textContainer.lineFragmentPadding = 0
         view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         view.accessibilityIdentifier = "pane-output-text"
+        view.accessibilityHint = "Long-press an underlined web link to open or copy it."
         return view
     }
 
@@ -449,6 +477,7 @@ struct SelectablePaneOutput: UIViewRepresentable {
                 string: String(text[run.range].characters), attributes: attributes
             ))
         }
+        PaneOutputLinks.apply(to: rendered)
         // Assigning attributedText clears UIKit's selection, even for equal text.
         guard !view.attributedText.isEqual(to: rendered) else { return }
         let selection = view.selectedRange
@@ -463,6 +492,7 @@ struct SelectablePaneOutput: UIViewRepresentable {
 
     static func dismantleUIView(_ uiView: PaneOutputTextView, coordinator: Coordinator) {
         uiView.onSelectionFocusChange = nil
+        uiView.delegate = nil
         uiView.stopObservingSelection()
     }
 

@@ -7,6 +7,33 @@ import UIKit
 import Testing
 @testable import Herdcats
 
+@Suite("Terminal output links")
+struct PaneOutputLinkTests {
+    @Test func detectsWebURLsAcrossStyleRunsUsingUTF16Ranges() {
+        let text = NSMutableAttributedString(string: "🐈 Visit https://example.com/path?q=cat#top and http://localhost:3000.")
+        let range = (text.string as NSString).range(of: "example.com")
+        text.addAttribute(.foregroundColor, value: UIColor.red, range: range)
+        PaneOutputLinks.apply(to: text)
+        let first = (text.string as NSString).range(of: "https://example.com/path?q=cat#top")
+        #expect(text.attribute(.link, at: first.location, effectiveRange: nil) as? URL
+            == URL(string: "https://example.com/path?q=cat#top"))
+        #expect(text.attribute(.link, at: NSMaxRange(first) - 1, effectiveRange: nil) != nil)
+        #expect(text.attribute(.foregroundColor, at: range.location, effectiveRange: nil) as? UIColor == .red)
+        let second = (text.string as NSString).range(of: "http://localhost:3000")
+        #expect(text.attribute(.link, at: second.location, effectiveRange: nil) as? URL
+            == URL(string: "http://localhost:3000"))
+        #expect(text.attribute(.link, at: text.length - 1, effectiveRange: nil) == nil)
+    }
+
+    @Test func leavesNonWebOutputUnlinked() {
+        let text = NSMutableAttributedString(string: "user@example.com file:///tmp/log ssh://host /tmp/file ordinary output")
+        PaneOutputLinks.apply(to: text)
+        text.enumerateAttribute(.link, in: NSRange(location: 0, length: text.length)) { value, _, _ in
+            #expect(value == nil)
+        }
+    }
+}
+
 @Suite("Pane preferences")
 struct PaneScrollBehaviorPreferenceTests {
     @Test func defaultsToHoldingTheReadersPosition() {

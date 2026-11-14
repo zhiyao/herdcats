@@ -61,6 +61,10 @@ field and keyboard ready. Turn it off in pane options or Settings → Pane to
 start with the Live toolbar. Compose supports spelling correction and keyboard
 suggestions; Live terminal input stays literal. Your saved preference is respected.
 
+Web URLs in terminal output are underlined. Long-press a URL to open the native
+link menu, then choose Open or Copy. Tapping output still focuses live input.
+Links open on your iPhone; `localhost` addresses refer to the phone, not the SSH host.
+
 [Tailscale](https://tailscale.com) is the recommended way to connect your phone
 and Herdr machine. Any network that can reach the SSH server also works.
 
