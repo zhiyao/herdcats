@@ -3,6 +3,47 @@ import UIKit
 import XCTest
 
 extension HerdcatsUITests {
+    func testLiveKeyStripSwipesAndKeepsPositionAfterKeyTap() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "pane", "-paneShowComposeByDefault", "NO"]
+        app.launch()
+        let terminal = app.buttons["timeline-open-terminal"]
+        if terminal.waitForExistence(timeout: 3) { terminal.tap() }
+        let strip = app.scrollViews["pane-live-key-strip"]
+        XCTAssertTrue(strip.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["pane-live-voice-button"].exists)
+        XCTAssertTrue(app.buttons["pane-live-keyboard-button"].exists)
+        XCTAssertFalse(app.buttons["pane-live-key-extra"].exists)
+        strip.swipeLeft()
+        let left = app.buttons["pane-live-extra-key-left"]
+        XCTAssertTrue(left.waitForExistence(timeout: 3))
+        XCTAssertTrue(left.isHittable)
+        let visibleKeys = ["pane-live-key-esc", "pane-live-key-tab", "pane-live-key-up",
+                           "pane-live-key-ctrl", "pane-live-key-alt", "pane-live-extra-key-left",
+                           "pane-live-extra-key-down", "pane-live-extra-key-right",
+                           "pane-live-extra-key-home", "pane-live-extra-key-end"].map { app.buttons[$0] }
+        let firstVisible = visibleKeys.filter { $0.isHittable && $0.frame.minX >= strip.frame.minX - 1 }
+            .min { $0.frame.minX < $1.frame.minX }
+        XCTAssertNotNil(firstVisible)
+        if let firstVisible {
+            XCTAssertEqual(firstVisible.frame.minX, strip.frame.minX, accuracy: 3,
+                           "Swipe should snap the first visible key to the strip edge")
+        }
+        let leftX = left.frame.minX
+        let voice = app.buttons["pane-live-voice-button"]
+        let compose = app.buttons["pane-live-keyboard-button"]
+        let voiceX = voice.frame.minX
+        let composeX = compose.frame.minX
+        left.tap()
+        XCTAssertTrue(left.isHittable, "Sending a key must not reset the strip")
+        XCTAssertEqual(left.frame.minX, leftX, accuracy: 2, "Sending a key must retain the strip offset")
+        XCTAssertEqual(voice.frame.minX, voiceX, accuracy: 1)
+        XCTAssertEqual(compose.frame.minX, composeX, accuracy: 1)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "terminal-key-strip"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
     private func terminalGeometry(_ output: XCUIElement) -> [String: Any] {
         let data = (output.value as? String ?? "{}").data(using: .utf8)!
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
