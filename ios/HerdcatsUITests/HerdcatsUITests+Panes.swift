@@ -6,7 +6,7 @@ extension HerdcatsUITests {
     func testTerminalLinkTapOpensBrowserDrawer() {
         let app = XCUIApplication()
         app.launchArguments = ["-hc.screenshots", "-hc.screen", "pane", "-hc.terminal-links",
-                               "-hc.terminal-github-link", "-paneShowComposeByDefault", "NO"]
+                               "-paneShowComposeByDefault", "NO"]
         app.launch()
         let terminal = app.buttons["timeline-open-terminal"]
         if terminal.waitForExistence(timeout: 3) { terminal.tap() }
@@ -15,7 +15,7 @@ extension HerdcatsUITests {
         output.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 70, dy: 8)).tap()
         let done = app.buttons["terminal-browser-done"]
         XCTAssertTrue(done.waitForExistence(timeout: 5), "A normal link tap should open the browser drawer")
-        XCTAssertTrue(app.buttons["terminal-browser-open-github"].exists)
+        XCTAssertTrue(app.buttons["terminal-browser-open"].exists)
         XCTAssertFalse(app.keyboards.firstMatch.exists)
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "Terminal browser drawer"

@@ -9,10 +9,10 @@ import Testing
 
 @Suite("Terminal output links")
 struct PaneOutputLinkTests {
-    @Test func githubHandoffUsesOnlyExactWebHosts() {
-        #expect(TerminalBrowserPolicy.isGitHub(URL(string: "https://github.com/zhiyao/herdcats")!))
-        #expect(!TerminalBrowserPolicy.isGitHub(URL(string: "https://github.com.evil.test/repo")!))
-        #expect(!TerminalBrowserPolicy.isGitHub(URL(string: "https://example.com/github.com")!))
+    @Test func browserAcceptsWebURLsFromAnyHost() {
+        #expect(TerminalBrowserPolicy.isWeb(URL(string: "https://github.com/zhiyao/herdcats")!))
+        #expect(TerminalBrowserPolicy.isWeb(URL(string: "https://example.com/page")!))
+        #expect(TerminalBrowserPolicy.isWeb(URL(string: "http://localhost:3000")!))
         #expect(!TerminalBrowserPolicy.isWeb(URL(string: "javascript:alert(1)")!))
         #expect(!TerminalBrowserPolicy.isWeb(URL(string: "file:///tmp/test")!))
     }

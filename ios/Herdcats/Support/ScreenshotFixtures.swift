@@ -107,9 +107,6 @@ enum ScreenshotFixtures {
     static var terminal: String {
         if ProcessInfo.processInfo.arguments.contains("-hc.empty-terminal-output") { return "" }
         if ProcessInfo.processInfo.arguments.contains("-hc.terminal-links") {
-            if ProcessInfo.processInfo.arguments.contains("-hc.terminal-github-link") {
-                return "https://github.com/zhiyao/herdcats\nPlain terminal output"
-            }
             return "https://example.com/herdcats\nPlain terminal output"
         }
         if ProcessInfo.processInfo.arguments.contains("-hc.long-terminal-selection") {

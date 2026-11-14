@@ -10,10 +10,6 @@ enum TerminalBrowserPolicy {
     static func isWeb(_ url: URL) -> Bool {
         ["https", "http"].contains(url.scheme?.lowercased() ?? "") && url.host?.isEmpty == false
     }
-
-    static func isGitHub(_ url: URL) -> Bool {
-        isWeb(url) && ["github.com", "www.github.com"].contains(url.host?.lowercased() ?? "")
-    }
 }
 
 /// A focused browser for terminal links. App handoff always requires a toolbar tap.
@@ -50,26 +46,19 @@ struct TerminalBrowserSheet: View {
                     Button { browser.reload() } label: { Image(systemName: "arrow.clockwise") }
                         .accessibilityLabel("Reload")
                     Spacer()
-                    if TerminalBrowserPolicy.isGitHub(browser.url) {
-                        Button("Open in GitHub") {
-                            UIApplication.shared.open(browser.url, options: [.universalLinksOnly: true]) { opened in
-                                if !opened { handoffFailed = true }
-                            }
-                        }
-                        .accessibilityIdentifier("terminal-browser-open-github")
-                    }
                     Button {
                         UIApplication.shared.open(browser.url) { opened in
                             if !opened { handoffFailed = true }
                         }
-                    } label: { Image(systemName: "safari") }
-                    .accessibilityLabel("Open in Browser")
+                    } label: { Label("Open", systemImage: "arrow.up.forward.app") }
+                    .accessibilityIdentifier("terminal-browser-open")
+                    .accessibilityHint("Open this page in the app or browser chosen by iOS.")
                 }
             }
             .alert("Couldn’t open this link", isPresented: $handoffFailed) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text("The app may not be installed or may not support this page. You can keep browsing here or use Open in Browser.")
+                Text("iOS couldn’t open this page in another app or browser. You can keep browsing here.")
             }
         }
     }
