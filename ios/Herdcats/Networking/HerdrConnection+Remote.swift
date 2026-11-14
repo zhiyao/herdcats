@@ -15,7 +15,8 @@ extension HerdrConnection {
 
     /// Builds the POSIX shell wrapper. The inner script deliberately avoids
     /// single quotes because it is embedded in `sh -c '...'`.
-    static func remoteCommand(_ args: String) -> String {
+    static func remoteCommand(_ args: String, session: HerdrSession? = nil) -> String {
+        let scope = session.map { "--session \(shellSafeArgument($0.name)) " } ?? ""
         let script = """
         B=$(command -v herdr 2>/dev/null)
         if [ -z "$B" ]; then
@@ -24,7 +25,7 @@ extension HerdrConnection {
           done
         fi
         if [ -z "$B" ]; then echo \(notFoundMarker); exit 0; fi
-        O=$("$B" \(args) 2>&1)
+        O=$("$B" \(scope)\(args) 2>&1)
         R=$?
         if [ "$R" -ne 0 ]; then echo "\(exitMarkerPrefix)$R"; fi
         echo "$O"

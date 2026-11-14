@@ -258,6 +258,30 @@ struct WorktreeValidationAndDefaultSpaceTests {
 
 @Suite("Remote command wrapper")
 struct RemoteCommandTests {
+    @Test func legacySessionListUsesActualCLIShape() throws {
+        let data = Data(#"{"sessions":[{"default":true,"name":"default","running":true,"socket_path":"/config/herdr/herdr.sock","session_dir":"/config/herdr"},{"default":false,"name":"project","running":false,"socket_path":"/config/herdr/sessions/project/herdr.sock"}]}"#.utf8)
+        let sessions = try JSONDecoder().decode(HerdrSessionList.self, from: data).sessions
+        #expect(sessions.map(\.name) == ["default", "project"])
+        #expect(sessions.map(\.running) == [true, false])
+        #expect(sessions[1].socketPath == "/config/herdr/sessions/project/herdr.sock")
+        #expect(throws: (any Error).self) {
+            try JSONDecoder().decode(HerdrSessionList.self, from: Data(#"{"sessions":[{"name":"broken"}]}"#.utf8))
+        }
+    }
+
+    @Test func selectedSessionScopesCLIAndBridgeSafely() {
+        let session = HerdrSession(name: "project ' $HOME `id`", running: true,
+            socketPath: "/config/a ' $HOME `id`/herdr.sock")
+        let command = HerdrConnection.remoteCommand("pane list --workspace w1", session: session)
+        #expect(command.contains("--session " + HerdrConnection.shellSafeArgument(session.name)))
+        #expect(!command.dropFirst("exec sh -c '".count).dropLast().contains("'"))
+        let script = HerdrConnection.agentBridgeScript(session: session)
+        #expect(script.contains("S=" + HerdrConnection.shellSafeArgument(session.socketPath)))
+        #expect(!script.contains("HERDR_SOCKET_PATH"))
+        #expect(script.contains("serve --stdio --socket \"$S\""))
+        #expect(HerdrConnection.agentBridgeScript.contains("HERDR_SOCKET_PATH"))
+    }
+
     @Test
     func herdrTimeoutUsesContentFreeDiagnosticLabel() async throws {
         let secret = "synthetic-pane-secret-9281"

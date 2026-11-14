@@ -74,6 +74,13 @@ enum ScreenshotFixtures {
     }
     static func response(_ args: String) throws -> String {
         if args == "--version" { return "herdr 0.8.0" }
+        if args == "session list --json" {
+            return try json(["sessions": [
+                ["name": "default", "running": true, "socket_path": "/fixture/herdr.sock"],
+                ["name": "project", "running": true, "socket_path": "/fixture/project/herdr.sock"],
+                ["name": "archived", "running": false, "socket_path": "/fixture/archived/herdr.sock"]
+            ]])
+        }
         if args.hasPrefix("pane read") { return terminal }
         let result: [String: Any]
         if args == "workspace list" { result = ["workspaces": workspaces] }
