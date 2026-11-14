@@ -5,12 +5,14 @@ enum PaneOutputLinks {
     // Detect against the complete rendered string, not individual ANSI runs.
     private static let detector = try! NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
 
+    static func isWeb(_ url: URL) -> Bool {
+        ["https", "http"].contains(url.scheme?.lowercased() ?? "") && url.host?.isEmpty == false
+    }
+
     static func apply(to text: NSMutableAttributedString) {
         let range = NSRange(location: 0, length: text.length)
         for match in detector.matches(in: text.string, range: range) {
-            guard let url = match.url,
-                  let scheme = url.scheme?.lowercased(),
-                  scheme == "https" || scheme == "http" else { continue }
+            guard let url = match.url, isWeb(url) else { continue }
             text.addAttribute(.link, value: url, range: match.range)
         }
     }
@@ -31,6 +33,7 @@ final class PaneOutputTouchState {
 struct PaneOutputScrollView: View, Equatable {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openURL) private var openURL
     let output: String
     let selectableText: AttributedString
     let outputRevision: UInt64
@@ -58,7 +61,6 @@ struct PaneOutputScrollView: View, Equatable {
     /// reliably reach. Fired from a content-level simultaneous drag.
     var onDismissKeyboardDrag: (() -> Void)?
 
-    @State private var browserLink: TerminalBrowserLink?
     @State private var linkTouch = PaneOutputTouchState()
     @State private var selectionActive = false
     @State private var keyboardHeight: CGFloat = 0
@@ -140,10 +142,12 @@ struct PaneOutputScrollView: View, Equatable {
                         selectionActive: selectionActive,
                         linkTouch: linkTouch,
                         onOpenLink: { url in
-                            onSelectionChange(true)
+                            guard PaneOutputLinks.isWeb(url) else { return }
+                            selectionActive = false
+                            onSelectionChange(false)
                             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
                                                             to: nil, from: nil, for: nil)
-                            browserLink = TerminalBrowserLink(url: url)
+                            openURL(url)
                         }
                     ) { active, safeAreaBottom in
                         if active {
@@ -321,11 +325,6 @@ struct PaneOutputScrollView: View, Equatable {
                 }
             }
         }
-        .sheet(item: $browserLink, onDismiss: { onSelectionChange(false) }) { link in
-            TerminalBrowserSheet(url: link.url)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-        }
     }
 
     @ViewBuilder private var latestIcon: some View {
@@ -472,7 +471,7 @@ struct SelectablePaneOutput: UIViewRepresentable {
         view.textContainer.lineFragmentPadding = 0
         view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         view.accessibilityIdentifier = "pane-output-text"
-        view.accessibilityHint = "Tap an underlined web link to browse in the app. Long-press to copy it."
+        view.accessibilityHint = "Tap an underlined web link to open it. Long-press to open or copy it."
         return view
     }
 

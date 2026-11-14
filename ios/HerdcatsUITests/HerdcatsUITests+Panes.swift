@@ -3,7 +3,7 @@ import UIKit
 import XCTest
 
 extension HerdcatsUITests {
-    func testTerminalLinkTapOpensBrowserDrawer() {
+    func testTerminalLinkTapOpensExternalBrowserWithoutKeyboard() {
         let app = XCUIApplication()
         app.launchArguments = ["-hc.screenshots", "-hc.screen", "pane", "-hc.terminal-links",
                                "-paneShowComposeByDefault", "NO"]
@@ -13,17 +13,12 @@ extension HerdcatsUITests {
         let output = app.textViews["pane-output-text"]
         XCTAssertTrue(output.waitForExistence(timeout: 5))
         output.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 70, dy: 8)).tap()
-        let done = app.buttons["terminal-browser-done"]
-        XCTAssertTrue(done.waitForExistence(timeout: 5), "A normal link tap should open the browser drawer")
-        XCTAssertTrue(app.buttons["terminal-browser-open"].exists)
+        let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
+        XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 10),
+                      "Tapping a terminal URL should open iOS's external browser")
+        app.activate()
+        XCTAssertTrue(output.waitForExistence(timeout: 5))
         XCTAssertFalse(app.keyboards.firstMatch.exists)
-        let screenshot = XCTAttachment(screenshot: app.screenshot())
-        screenshot.name = "Terminal browser drawer"
-        screenshot.lifetime = .keepAlways
-        add(screenshot)
-        done.tap()
-        XCTAssertTrue(done.waitForNonExistence(timeout: 5))
-        XCTAssertTrue(output.exists, "Closing the drawer returns to the terminal")
     }
 
     func testTerminalLinkOffersOpenAndCopyWithoutKeyboard() {

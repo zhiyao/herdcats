@@ -79,7 +79,6 @@
 		6CA7109E04A999EB086B1346 /* PaneCommandHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE9436A90B8BC2CD35E1CDA0 /* PaneCommandHistory.swift */; };
 		6F35258487D002073F2EDE73 /* CodexTimelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 425BF5E146238F8C6215AFA1 /* CodexTimelineTests.swift */; };
 		6FCE23D3A5BDBCE65BAE1B67 /* UserPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71FE57BC0966BCAEB02D563D /* UserPreferences.swift */; };
-		70387A5B860DC9348A22579B /* TerminalBrowserSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E9012878B69AE93298D4269 /* TerminalBrowserSheet.swift */; };
 		708296C78D01040FCB59842B /* SpacePaneTreeRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88F426490E28DD737E38347D /* SpacePaneTreeRows.swift */; };
 		70F0B1110708E8A8A840511C /* PaneImageEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F245C24A7A231ABFE3D3946 /* PaneImageEncoder.swift */; };
 		7195C57B2E149360F277984A /* QuotaModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BC70F0B4AB3ADF429A92F00 /* QuotaModels.swift */; };
@@ -293,7 +292,6 @@
 		8AA651ECCA572E1B7EA98DD4 /* QuestionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionTests.swift; sourceTree = "<group>"; };
 		8BC70F0B4AB3ADF429A92F00 /* QuotaModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaModels.swift; sourceTree = "<group>"; };
 		8D67B69724707A16FD4618DF /* LicensesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicensesView.swift; sourceTree = "<group>"; };
-		8E9012878B69AE93298D4269 /* TerminalBrowserSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalBrowserSheet.swift; sourceTree = "<group>"; };
 		8F47756B075A75A4323C2A2D /* VoiceWaveform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceWaveform.swift; sourceTree = "<group>"; };
 		902C762017C8EEFB00E85C2F /* ConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectView.swift; sourceTree = "<group>"; };
 		918242BF9E28295626135C98 /* CorePresentationMemoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorePresentationMemoTests.swift; sourceTree = "<group>"; };
@@ -548,7 +546,6 @@
 				A18B985E714DDE5B34D7408A /* PaneRowSupport.swift */,
 				171E48FFC3DD7A42CE5C7CED /* SelectionSplitView.swift */,
 				74D0965FC03454048E52E616 /* SidebarTabSwitcher.swift */,
-				8E9012878B69AE93298D4269 /* TerminalBrowserSheet.swift */,
 				0C957C8951A08876AE8630D8 /* TwoPaneDetail.swift */,
 			);
 			path = Shared;
@@ -940,7 +937,6 @@
 				5465CDF25126AD63373F6C5B /* SpacesModel+UsageAndRefresh.swift in Sources */,
 				FCB7B8EADE95FFAEF2CF333D /* SpacesModel.swift in Sources */,
 				D1EF0D278EE3D5017C400DEA /* SpacesScreen.swift in Sources */,
-				70387A5B860DC9348A22579B /* TerminalBrowserSheet.swift in Sources */,
 				E09AD38403575BEA82C7E9DB /* TimelineActivityViews.swift in Sources */,
 				A85C0F18679FF1BA73DAC863 /* TimelineDiffParser.swift in Sources */,
 				D88366995735A638B5816998 /* TimelineEntryViews.swift in Sources */,

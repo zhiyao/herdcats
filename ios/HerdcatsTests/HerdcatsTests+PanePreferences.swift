@@ -9,12 +9,13 @@ import Testing
 
 @Suite("Terminal output links")
 struct PaneOutputLinkTests {
-    @Test func browserAcceptsWebURLsFromAnyHost() {
-        #expect(TerminalBrowserPolicy.isWeb(URL(string: "https://github.com/zhiyao/herdcats")!))
-        #expect(TerminalBrowserPolicy.isWeb(URL(string: "https://example.com/page")!))
-        #expect(TerminalBrowserPolicy.isWeb(URL(string: "http://localhost:3000")!))
-        #expect(!TerminalBrowserPolicy.isWeb(URL(string: "javascript:alert(1)")!))
-        #expect(!TerminalBrowserPolicy.isWeb(URL(string: "file:///tmp/test")!))
+    @Test func acceptsWebURLsFromAnyHost() {
+        #expect(PaneOutputLinks.isWeb(URL(string: "https://github.com/zhiyao/herdcats")!))
+        #expect(PaneOutputLinks.isWeb(URL(string: "https://example.com/page")!))
+        #expect(PaneOutputLinks.isWeb(URL(string: "http://localhost:3000")!))
+        #expect(!PaneOutputLinks.isWeb(URL(string: "https://")!))
+        #expect(!PaneOutputLinks.isWeb(URL(string: "javascript:alert(1)")!))
+        #expect(!PaneOutputLinks.isWeb(URL(string: "file:///tmp/test")!))
     }
 
     @MainActor @Test func linkHitTestingExcludesWhitespaceAndOtherText() {
