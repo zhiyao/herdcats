@@ -21,6 +21,8 @@ extension HerdcatsUITests {
         XCTAssertTrue(home.exists)
         XCTAssertLessThan(home.frame.minX, strip.frame.maxX, "Home should peek into the strip")
         XCTAssertGreaterThan(home.frame.maxX, strip.frame.maxX, "Home should be partially clipped")
+        XCTAssertGreaterThanOrEqual(strip.frame.maxX - home.frame.minX, 26,
+                                    "Enough of the Home label should be visible to read the cue")
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "terminal-key-discovery-initial"
         screenshot.lifetime = .keepAlways
