@@ -477,7 +477,7 @@ struct PaneSessionView: View {
                         paneId: pane.paneId, agent: pane.agent, connection: appModel.connection, timeline: timeline,
                         bridgeUpgrade: bridgeUpgrade,
                         topOverlayInset: topOutputInset, bottomOverlayInset: bottomDockHeight,
-                        onOutputInteraction: { onOutputInteraction?() }, setupTarget: connectionScope,
+                        onOutputInteraction: { onOutputInteraction?() }, setupTarget: appModel.connectionIdentity ?? connectionScope,
                         onUseTerminal: {
                             UserDefaults.standard.set(true, forKey: TimelineSetupPreference.key(scope: connectionScope))
                             showsTimeline = false

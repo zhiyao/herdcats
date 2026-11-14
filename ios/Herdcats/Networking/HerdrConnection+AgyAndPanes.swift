@@ -219,7 +219,7 @@ extension HerdrConnection {
         if let shells = liveShells[paneId], shells.session.generation == generation,
            await shells.output.isOpen {
             let output = try await shells.output.execute(Self.remoteCommand(
-                "pane read \(Self.shellSafeArgument(paneId)) --source recent-unwrapped --lines \(lines) --format ansi"
+                "pane read \(Self.shellSafeArgument(paneId)) --source recent-unwrapped --lines \(lines) --format ansi", session: session
             ))
             try requireGeneration(shells.session.generation)
             if output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "" }

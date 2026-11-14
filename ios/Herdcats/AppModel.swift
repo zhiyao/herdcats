@@ -13,7 +13,14 @@ final class AppModel {
 
     var phase: Phase = .disconnected
     var hasActiveSession: Bool
-    var activeConfig: ConnectionConfig?
+    var activeConfig: ConnectionConfig? {
+        didSet {
+            if oldValue?.navigationScope != activeConfig?.navigationScope {
+                sessions = []
+                sessionListError = nil
+            }
+        }
+    }
     /// Runtimes the Auto probe found on the last connect; empty when it did not run.
     var detectedBackends: Set<ConnectionBackend> = []
     var isCoreMode: Bool { activeConfig?.backend == .core }
@@ -21,6 +28,32 @@ final class AppModel {
         if case .connected = phase { return true }
         return false
     }
+    var paneConnectionIdentity: ConnectionIdentity? {
+        connectionIdentity?.scopedToSession(activeConfig?.session?.name)
+    }
+    var sessions: [HerdrSession] = []
+    var isLoadingSessions = false
+    var sessionListError: String?
+
+    func refreshSessions(load: (() async throws -> [HerdrSession])? = nil) async {
+        guard !isCoreMode, isReadyForTerminalInput, !isLoadingSessions else { return }
+        let owned = ownership
+        let scope = activeConfig?.navigationScope
+        isLoadingSessions = true
+        defer { isLoadingSessions = false }
+        do {
+            let values: [HerdrSession]
+            if let load { values = try await load() }
+            else { values = try await connection.sessionList() }
+            guard !Task.isCancelled, ownership == owned, activeConfig?.navigationScope == scope else { return }
+            sessions = values
+            sessionListError = nil
+        } catch {
+            guard !Task.isCancelled, ownership == owned, activeConfig?.navigationScope == scope else { return }
+            sessionListError = HerdrConnection.friendlyMessage(for: error)
+        }
+    }
+
     var runtimeRevision: UInt64 = 0
     var runtimeRefreshTask: Task<Void, Never>?
 

@@ -42,12 +42,17 @@ final class ActiveMachine {
 
     func switchMachine(to entry: RecentConnection, config: ConnectionConfig? = nil, recordConnection: Bool = true) async -> SwitchOutcome {
         let identity = ConnectionIdentity(host: entry.host, port: entry.port, username: entry.username, backend: entry.backend)
-        if identity == model.connectionIdentity, case .connected = model.phase {
+        if identity == model.connectionIdentity,
+           config == nil || config?.sessionName == (model.activeConfig?.sessionName ?? "default"),
+           case .connected = model.phase {
             // Re-selecting the current machine is the latest choice; drop any switch in flight.
             await cancelSwitch()
             return .alreadyActive
         }
-        if let target, identity == ConnectionIdentity(target.config) { return .superseded }
+        if let target, identity == ConnectionIdentity(target.config),
+           entry.backend == .core || (config?.sessionName ?? "default") == target.config.sessionName {
+            return .superseded
+        }
         guard let config = config ?? RecentConnectionStore.config(for: entry) else {
             // The form opened for this machine replaces any earlier selection.
             await cancelSwitch()
@@ -66,10 +71,20 @@ final class ActiveMachine {
         pending = candidate
         pendingLabel = entry.shortDisplayName(among: recordConnection
             ? (try? RecentConnectionStore.load()) ?? [] : RecentConnectionStore.snapshot())
+        if let session = config.session { pendingLabel = (pendingLabel ?? entry.displayName) + " · " + session.name }
         target = (entry, config, recordConnection)
         switchError = nil
         signInFailure = nil
         return await dialAndFinish(candidate, entry: entry, config: config, revision: currentRevision, recordConnection: recordConnection)
+    }
+
+    func switchSession(to session: HerdrSession, from source: AppModel) async -> SwitchOutcome {
+        guard source === model else { return .superseded }
+        guard session.running, var config = model.activeConfig, config.backend == .tui else { return .failed }
+        config.session = session
+        let entry = RecentConnection(host: config.host, port: config.port, username: config.username,
+            authMode: "password", remember: false, backend: config.backend)
+        return await switchMachine(to: entry, config: config, recordConnection: false)
     }
 
     func finishPendingSwitch() async -> SwitchOutcome {

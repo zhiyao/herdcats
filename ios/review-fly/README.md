@@ -18,6 +18,10 @@ The app must already have its `review_data` volume and `REVIEW_SSH_PASSWORD`
 secret. For a new app, first provision these using the example Fly configuration.
 The deploy script disables spare-machine creation for this single-machine setup.
 
+The machine stops when there are no active connections and starts automatically
+on the next SSH connection. No machines are kept running while idle. Files on
+the volume persist, but running terminal processes end when the machine stops.
+
 **Deployment restarts the machine and interrupts its active terminals.** Finish
 important work first. The volume preserves files, credentials, settings, and Pi
 history; it does not preserve running processes. After deployment, open a fresh
