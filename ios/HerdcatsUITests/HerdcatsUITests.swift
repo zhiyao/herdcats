@@ -24,6 +24,24 @@ func openNewConnection(in app: XCUIApplication) {
 ///
 ///     TEST_RUNNER_HC_USER=$USER xcodebuild test -only-testing:HerdcatsUITests
 final class HerdcatsUITests: XCTestCase {
+    func testSessionChoicesAppearInSpacesAndAgentsHeaders() {
+        for tab in ["spaces", "agents"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", "spaces", "-hc.tab", tab]
+            app.launch()
+            let picker = app.buttons["machine-picker"]
+            XCTAssertTrue(picker.waitForExistence(timeout: 10))
+            picker.tap()
+            XCTAssertTrue(app.buttons["Refresh Sessions"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.buttons["default"].exists)
+            XCTAssertTrue(app.buttons["project"].exists)
+            let stopped = app.buttons["archived (Stopped)"]
+            XCTAssertTrue(stopped.exists)
+            XCTAssertFalse(stopped.isEnabled)
+            app.terminate()
+        }
+    }
+
     func testSpaceRowTapOpensDetail() {
         let app = XCUIApplication()
         app.launchArguments = ["-hc.screenshots", "-hc.screen", "spaces", "-hc.tab", "spaces"]

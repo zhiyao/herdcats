@@ -172,6 +172,13 @@ Herdcats logo. Give connections optional names and tap **Edit** in the connectio
 list to drag them into your preferred order. Auto-connect uses the last-used
 machine. Herdcats no longer uses Herdr's saved machines.
 
+The header menus in **Spaces** and **Agents** also list the current machine's
+legacy Herdr sessions. Choose a running session to switch; stopped sessions are
+shown but cannot be opened from the phone. **Refresh Sessions** reloads the list.
+The selection survives reconnecting the active connection; a new machine
+connection starts with its default session. Herdr Core shows **Persistent
+terminals** instead of named sessions.
+
 Remembered credentials and approved host keys stay in the iOS Keychain. A
 changed host key blocks connection, including automatic reconnects. The app shows
 both fingerprints and lets you replace the approved key after explicitly confirming

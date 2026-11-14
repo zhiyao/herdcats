@@ -37,6 +37,84 @@ struct MachineSwitchingTests {
         try await body(entries)
     }
 
+    @Test func sessionSwitchUsesSameMachineAndFreshModel() async throws {
+        let old = currentModel()
+        let config = ConnectionConfig(host: "current.example", port: 22,
+            username: "tester", auth: .password("fixture"))
+        old.activeConfig = config
+        let session = HerdrSession(name: "project", running: true, socketPath: "/config/project/herdr.sock")
+        let active = ActiveMachine(model: old, dial: { model, target in
+            #expect(ConnectionIdentity(target) == ConnectionIdentity(config))
+            #expect(target.session == session)
+            #expect(target.navigationScope != config.navigationScope)
+            model.activeConfig = target
+            self.connected(model, to: target)
+        })
+        #expect(await active.switchSession(to: session, from: active.model) == .switched)
+        #expect(active.model !== old)
+        #expect(active.model.activeConfig?.session == session)
+        #expect(await active.switchSession(to: session, from: old) == .superseded)
+        #expect(await active.switchSession(to: session, from: active.model) == .alreadyActive)
+    }
+
+    @Test func failedOrStoppedSessionDoesNotReplaceCurrentModel() async {
+        let old = currentModel()
+        old.activeConfig = ConnectionConfig(host: "current.example", port: 22,
+            username: "tester", auth: .password("fixture"))
+        let active = ActiveMachine(model: old, dial: { model, _ in model.lastError = "Session unavailable" })
+        #expect(await active.switchSession(to: HerdrSession(name: "stopped", running: false, socketPath: "/stopped"), from: old) == .failed)
+        #expect(active.pending == nil)
+        #expect(await active.switchSession(to: HerdrSession(name: "gone", running: true, socketPath: "/gone"), from: old) == .failed)
+        #expect(active.model === old)
+        #expect(old.hasActiveSession)
+        #expect(active.switchError?.contains("Session unavailable") == true)
+    }
+
+    @Test func lateSessionListCannotCrossConnectionAttempts() async throws {
+        let model = currentModel()
+        let started = ExternallyReleasedWait<Bool>()
+        let resume = ExternallyReleasedWait<Bool>()
+        let task = Task {
+            await model.refreshSessions(load: {
+                started.release(true)
+                _ = try await resume.wait()
+                return [HerdrSession(name: "old", running: true, socketPath: "/old")]
+            })
+        }
+        _ = try await started.wait()
+        #expect(model.isLoadingSessions)
+        await model.refreshSessions(load: { Issue.record("Do not duplicate an in-flight list"); return [] })
+        model.ownership.beginAttempt()
+        resume.release(true)
+        await task.value
+        #expect(model.sessions.isEmpty)
+        #expect(model.sessionListError == nil)
+        #expect(!model.isLoadingSessions)
+        await model.refreshSessions(load: {
+            model.activeConfig = ConnectionConfig(host: "different.example", port: 22,
+                username: "tester", auth: .password("fixture"))
+            return [HerdrSession(name: "wrong-host", running: true, socketPath: "/old")]
+        })
+        #expect(model.sessions.isEmpty)
+    }
+
+    @Test func sessionRefreshPreservesChoicesOnErrorAndSkipsCore() async {
+        let model = currentModel()
+        let session = HerdrSession(name: "default", running: true, socketPath: "/default")
+        await model.refreshSessions(load: { [session] })
+        #expect(model.sessions == [session])
+        await model.refreshSessions(load: { throw HerdrError.notConnected })
+        #expect(model.sessions == [session])
+        #expect(model.sessionListError != nil)
+        #expect(!model.isLoadingSessions)
+        await model.refreshSessions(load: { [] })
+        #expect(model.sessions.isEmpty)
+        #expect(model.sessionListError == nil)
+        model.activeConfig = ConnectionConfig(host: "current.example", port: 22,
+            username: "tester", auth: .password("fixture"), backend: .core)
+        await model.refreshSessions(load: { Issue.record("Core must not enumerate legacy sessions"); return [] })
+    }
+
     @Test func switchSwapsOnlyAfterTargetConnects() async throws {
         try await withConnections { (entries: [RecentConnection]) async throws in
             let old = currentModel()
