@@ -40,8 +40,34 @@ final class PaneInputSurfaceModel {
         case composeDraft
     }
 
-    private(set) var surface: Surface = .liveToolbar
-    private var composeVisibleByDefault = false
+    private(set) var surface: Surface
+    private var composeVisibleByDefault: Bool
+
+    init(composeVisibleByDefault: Bool = true) {
+        self.composeVisibleByDefault = composeVisibleByDefault
+        surface = composeVisibleByDefault ? .composeDraft : .liveToolbar
+    }
+    private(set) var requestsLiveKeyboardFocus = false
+
+    func cancelLiveKeyboardFocusRequest() {
+        requestsLiveKeyboardFocus = false
+    }
+
+    /// An explicit tap can arrive before the live session finishes attaching.
+    func consumeLiveKeyboardFocusRequest(isReady: Bool, isFocused: Bool) -> Bool {
+        guard requestsLiveKeyboardFocus, isLiveKeyboardSurface, isReady, isFocused else { return false }
+        requestsLiveKeyboardFocus = false
+        return true
+    }
+
+    /// Terminal keys work in Compose too; ordinary text still requires Live.
+    func allowsTerminalEvent(_ event: PaneLiveInputEvent, showsTimeline: Bool) -> Bool {
+        guard !showsTimeline, surface != .voiceRecording else { return false }
+        switch event {
+        case .keys: return true
+        case .text: return isLiveKeyboardSurface
+        }
+    }
 
     /// Applies the saved default without interrupting recording or discarding a draft.
     func setComposeVisibleByDefault(_ visible: Bool) {
@@ -68,7 +94,17 @@ final class PaneInputSurfaceModel {
     @discardableResult
     func requestComposeDraft() -> Bool {
         guard surface == .liveToolbar else { return false }
+        requestsLiveKeyboardFocus = false
         surface = .composeDraft
+        return true
+    }
+
+    /// Explicit keyboard-button toggle. Recording owns the input surface until it finishes.
+    @discardableResult
+    func toggleLiveInput() -> Bool {
+        guard surface != .voiceRecording else { return false }
+        surface = surface == .liveToolbar ? .composeDraft : .liveToolbar
+        requestsLiveKeyboardFocus = isLiveKeyboardSurface
         return true
     }
 
@@ -76,6 +112,7 @@ final class PaneInputSurfaceModel {
     /// image finishes loading. A selected photo always restores Compose.
     func notePhotoSelected() {
         guard surface != .voiceRecording else { return }
+        requestsLiveKeyboardFocus = false
         surface = .composeDraft
     }
 
@@ -84,6 +121,7 @@ final class PaneInputSurfaceModel {
     /// merge itself is `PaneDictation`'s `initialText` behavior).
     func requestVoiceRecording() {
         guard surface != .voiceRecording else { return }
+        requestsLiveKeyboardFocus = false
         surfaceBeforeVoice = surface
         surface = .voiceRecording
         isDrainingDictation = false
@@ -150,6 +188,7 @@ final class PaneInputSurfaceModel {
 
     /// Pane switches and view teardown reset to the preferred default surface.
     func resetToDefaultSurface() {
+        requestsLiveKeyboardFocus = false
         surface = composeVisibleByDefault ? .composeDraft : .liveToolbar
         isDrainingDictation = false
         sendsWhenDictationDone = false

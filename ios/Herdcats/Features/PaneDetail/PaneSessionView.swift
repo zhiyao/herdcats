@@ -57,10 +57,11 @@ struct PaneSessionView: View {
     /// Pane ID for which implicit Done→Idle already ran this visit.
     @State var autoMarkedPaneID: String?
 
-    /// Which input surface is shown: Live toolbar (default), Voice
-    /// recording bar, or Compose bubble. Owned here; `PaneVoiceComposeBar`
+    /// Which input surface is shown: Compose (default), Live toolbar,
+    /// or Voice recording bar. Owned here; `PaneVoiceComposeBar`
     /// renders the visuals for the current surface.
-    @State var surfaceModel = PaneInputSurfaceModel()
+    @State var surfaceModel = PaneInputSurfaceModel(
+        composeVisibleByDefault: PaneComposePreference.isVisibleByDefault())
     /// Cursor-owned modifier/chord model: Ctrl arms for the next key and
     /// emits `ctrl+<token>` through the ordered Live queue; ⌘ fails closed.
     @State var liveModifierComposer = PaneLiveModifierComposer()
@@ -156,11 +157,16 @@ struct PaneSessionView: View {
             if ScreenshotFixtures.screen == "timeline-offline-transition" {
                 _draft = State(initialValue: String(repeating: "A multiline draft stays editable while offline. ", count: 10))
             }
+            if ["pane", "agent-pane", "keys"].contains(ScreenshotFixtures.screen) {
+                // Captures must not inherit drafts left by interactive UI tests.
+                _draft = State(initialValue: "")
+            }
             if ProcessInfo.processInfo.arguments.contains("-hc.long-terminal-selection") {
                 _draft = State(initialValue: ProcessInfo.processInfo.arguments.contains("-hc.selection-draft")
                     ? "Selection draft" : "")
             }
-            let surface = PaneInputSurfaceModel()
+            let surface = PaneInputSurfaceModel(
+                composeVisibleByDefault: PaneComposePreference.isVisibleByDefault())
             if ["timeline-audit-dictation", "timeline-audit-hooks"].contains(ScreenshotFixtures.screen) {
                 surface.requestComposeDraft()
                 _draft = State(initialValue: "")
@@ -278,22 +284,13 @@ struct PaneSessionView: View {
                 onOutputInteraction?()
             },
             onTapOutput: {
-                guard surfaceModel.surface != .voiceRecording, liveInputEnabled else { return }
-                // Output is the direct terminal input surface. Preserve the
-                // pane-scoped Compose draft while moving keyboard focus.
-                let wasComposing = surfaceModel.isComposeSurface
-                surfaceModel.collapseToLiveToolbar()
-                composeFieldFocused = false
-                if wasComposing {
-                    // Let Compose relinquish first responder after its field
-                    // leaves the hierarchy, then focus the Live capture.
-                    DispatchQueue.main.async {
-                        guard surfaceModel.isLiveKeyboardSurface, liveInputEnabled else { return }
-                        liveInputFocused = true
-                    }
-                } else {
-                    liveInputFocused = true
+                guard surfaceModel.isLiveKeyboardSurface, liveInputEnabled else {
+                    composeFieldFocused = false
+                    return
                 }
+                // Only explicit Live mode treats output as a typing surface.
+                composeFieldFocused = false
+                liveInputFocused = true
             },
             onSelectionChange: { selecting in
                 if outputTextSelectionActive != selecting { outputTextSelectionActive = selecting }
@@ -430,6 +427,8 @@ struct PaneSessionView: View {
             isSending: isSending,
             onSend: handleSend
         )
+        bar.showsTerminalControls = !showsTimeline
+        bar.onToggleLiveInput = toggleLiveInput
         bar.modelControl = showsTimeline && timeline.matchesLivePane(paneId: pane.paneId, agent: pane.agent, connection: AgentTimelineConnectionState(phase: appModel.phase, generation: appModel.ownership.transportGeneration)) ? timeline.modelControl : nil
         bar.composeFieldIdentifier = showsTimeline ? "timeline-compose-field" : "pane-compose-field"
         bar.composeSendIdentifier = showsTimeline ? "timeline-compose-send" : "pane-compose-send-button"
@@ -444,6 +443,7 @@ struct PaneSessionView: View {
     /// binding (so the bar's Keyboard icon unlights) and force UIKit-level
     /// first-responder resignation in one action.
     func dismissLiveKeyboard() {
+        surfaceModel.cancelLiveKeyboardFocusRequest()
         guard liveInputFocused else { return }
         liveInputFocused = false
         UIApplication.shared.sendAction(
@@ -628,12 +628,10 @@ struct PaneSessionView: View {
         outputWithLiveTasks
         .task(id: showComposeByDefault) {
             surfaceModel.setComposeVisibleByDefault(showComposeByDefault)
-            guard showComposeByDefault else { return }
-            // Let SwiftUI mount the Compose field before requesting focus.
-            await Task.yield()
-            guard !Task.isCancelled, surfaceModel.isComposeSurface else { return }
-            dismissLiveKeyboard()
-            composeFieldFocused = true
+            if !showComposeByDefault, trimmedDraft.isEmpty, attachment == nil {
+                surfaceModel.collapseToLiveToolbar()
+            }
+            // Opening a pane presents its preferred surface without taking keyboard focus.
         }
         .onChange(of: showComposeByDefault) { _, visible in
             surfaceModel.setComposeVisibleByDefault(visible)
@@ -642,6 +640,8 @@ struct PaneSessionView: View {
             }
         }
         .onDisappear {
+            dismissLiveKeyboard()
+            composeFieldFocused = false
             flushDraftSave()
             dictation.cancel()
             attachmentUploadTask?.cancel()
@@ -662,7 +662,10 @@ struct PaneSessionView: View {
         }
         .onChange(of: liveInputEnabled) { _, enabled in
             // A slot that gained focus before its Live session was ready finishes the keyboard handoff now.
-            if enabled, paneIsFocused { Task { await takeOverKeyboard() } }
+            if enabled, paneIsFocused {
+                focusRequestedLiveKeyboard()
+                Task { await takeOverKeyboard() }
+            }
         }
         // Only the focused pane makes room for the software keyboard.
         .ignoresSafeArea(.keyboard, edges: paneIsFocused ? [] : .bottom)
@@ -688,6 +691,8 @@ struct PaneSessionView: View {
             // A different pane must never receive queued Live events, a
             // stale session token, an armed modifier, or another pane's
             // input surface.
+            composeFieldFocused = false
+            dismissLiveKeyboard()
             abandonLiveInput()
             surfaceModel.resetToDefaultSurface()
             resetLiveModifiers()

@@ -12,6 +12,7 @@ struct HerdcatsApp: App {
     }
 
     init() {
+        PaneComposePreference.migrateComposeFirstDefault()
 #if DEBUG && targetEnvironment(simulator)
         do {
             try ScreenshotFixtures.seedMachinesIfRequested()

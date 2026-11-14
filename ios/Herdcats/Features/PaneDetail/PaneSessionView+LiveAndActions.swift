@@ -40,6 +40,24 @@ extension PaneSessionView {
         composeFieldFocused = true
     }
 
+    func toggleLiveInput() {
+        guard !showsTimeline, surfaceModel.surface != .voiceRecording else { return }
+        composeFieldFocused = false
+        dismissLiveKeyboard()
+        surfaceModel.toggleLiveInput()
+        focusRequestedLiveKeyboard()
+    }
+
+    func focusRequestedLiveKeyboard() {
+        // Allow Compose to resign before the hidden Live capture requests focus.
+        DispatchQueue.main.async {
+            guard !showsTimeline,
+                  surfaceModel.consumeLiveKeyboardFocusRequest(
+                    isReady: liveInputEnabled, isFocused: paneIsFocused) else { return }
+            liveInputFocused = true
+        }
+    }
+
     /// Restarted per pane (and on reconnect), acquiring a session token
     /// after a successful pane read. The Voice/Compose detour keeps the
     /// session warm — it is the same pane and SSH generation.
@@ -118,10 +136,10 @@ extension PaneSessionView {
     /// Routes every Live pane mutation through the ordered queue. Controls
     /// are disabled without a session token, and the token's pane is
     /// re-checked so a stale view can never type into another pane. Only the
-    /// Live toolbar surface accepts live keys — the recording bar and
-    /// Compose bubble never enqueue terminal input.
+    /// Terminal keys work in Compose and Live; ordinary typed text requires
+    /// Live. Recording and Timeline never enqueue terminal input.
     func sendLiveEvent(_ event: PaneLiveInputEvent) {
-        guard surfaceModel.isLiveKeyboardSurface,
+        guard surfaceModel.allowsTerminalEvent(event, showsTimeline: showsTimeline),
               let queue = liveQueue,
               let session = liveSession,
               session.paneId == pane.paneId,

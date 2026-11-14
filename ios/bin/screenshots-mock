@@ -67,7 +67,8 @@ def main():
             subprocess.run(['xcrun', 'simctl', 'terminate', udid, BUNDLE], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             # Onboarding uses the read-only replay route, even with saved machines.
             launch = ['-hc.screenshots', '-hc.capture-surface', '-hc.screen', screen,
-                      '-hc.tab', screen, '-paneShowComposeByDefault', 'NO',
+                      '-hc.tab', screen, '-paneShowComposeByDefault',
+                      'YES' if screen in ('pane', 'agent-pane') else 'NO',
                       '-appearancePreference', options.appearance]
             if options.appearance == 'light':
                 launch.append('-hc.light')

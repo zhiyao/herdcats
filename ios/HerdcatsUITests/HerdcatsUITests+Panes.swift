@@ -3,7 +3,47 @@ import UIKit
 import XCTest
 
 extension HerdcatsUITests {
-    func testLiveKeyDiscoveryHintAndHomePeek() {
+    func testTerminalComposeStartsUnfocusedAndPreservesDraftAcrossLiveToggle() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "pane", "-hc.capture-surface", "-paneShowComposeByDefault", "YES"]
+        app.launch()
+        defer { app.terminate() }
+        let field = app.textFields["pane-compose-field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.keyboards.firstMatch.exists, "Opening a pane must leave the keyboard hidden")
+        let image = app.buttons["pane-compose-attach-button"]
+        let mic = app.buttons["pane-live-voice-button"]
+        let toggle = app.buttons["pane-live-keyboard-button"]
+        let strip = app.scrollViews["pane-live-key-strip"]
+        XCTAssertTrue(strip.exists)
+        XCTAssertTrue(image.isHittable)
+        XCTAssertTrue(mic.isHittable)
+        XCTAssertTrue(toggle.isHittable)
+        let keyWidth = app.buttons["pane-live-key-tab"].frame.width
+        for control in [image, mic, toggle] {
+            XCTAssertEqual(control.frame.width, keyWidth, accuracy: 1)
+            XCTAssertEqual(control.frame.height, app.buttons["pane-live-key-tab"].frame.height, accuracy: 1)
+        }
+        XCTAssertGreaterThanOrEqual(image.frame.minX, strip.frame.maxX)
+        XCTAssertLessThan(image.frame.midX, mic.frame.midX)
+        XCTAssertLessThan(mic.frame.midX, toggle.frame.midX)
+        XCTAssertLessThan(field.frame.midY, strip.frame.midY)
+        field.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        field.typeText("Keep this draft")
+        toggle.tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(toggle.label, "Turn off live input")
+        XCTAssertTrue(image.isHittable, "Image input stays available in Live")
+        XCTAssertLessThan(image.frame.midX, mic.frame.midX)
+        toggle.tap()
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        XCTAssertTrue((field.value as? String)?.contains("Keep this draft") == true)
+        XCTAssertEqual(toggle.label, "Turn on live input")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+    }
+
+    func testLiveKeyDiscoveryHintAndAltPeek() {
         let app = XCUIApplication()
         app.launchArguments = ["-hc.screenshots", "-hc.screen", "pane", "-paneShowComposeByDefault", "NO",
                                "-hc.reset-key-swipe-hint"]
@@ -15,29 +55,35 @@ extension HerdcatsUITests {
         XCTAssertEqual(strip.value as? String, "More keys to right")
         let hint = app.staticTexts["pane-live-key-swipe-hint"]
         XCTAssertTrue(hint.waitForExistence(timeout: 3))
-        app.buttons["pane-live-key-esc"].tap()
-        XCTAssertTrue(hint.exists, "A key tap should not dismiss the swipe hint")
-        let home = app.buttons["pane-live-extra-key-home"]
-        XCTAssertTrue(home.exists)
-        XCTAssertLessThan(home.frame.minX, strip.frame.maxX, "Home should peek into the strip")
-        XCTAssertGreaterThan(home.frame.maxX, strip.frame.maxX, "Home should be partially clipped")
+        let escape = app.buttons["pane-live-key-esc"]
+        if escape.isEnabled {
+            escape.tap()
+            XCTAssertTrue(hint.exists, "A key tap should not dismiss the swipe hint")
+        }
+        let alt = app.buttons["pane-live-key-alt"]
+        XCTAssertTrue(alt.exists)
+        XCTAssertLessThan(alt.frame.minX, strip.frame.maxX, "Alt should peek into the strip")
+        XCTAssertGreaterThan(alt.frame.maxX, strip.frame.maxX, "Alt should be partially clipped")
         let firstKeys = ["pane-live-key-esc", "pane-live-key-tab", "pane-live-key-up",
                          "pane-live-extra-key-down", "pane-live-extra-key-left",
-                         "pane-live-extra-key-right", "pane-live-key-ctrl", "pane-live-key-alt"]
+                         "pane-live-extra-key-right", "pane-live-key-ctrl"]
         for identifier in firstKeys {
-            XCTAssertEqual(app.buttons[identifier].frame.width, home.frame.width, accuracy: 1,
+            XCTAssertEqual(app.buttons[identifier].frame.width, alt.frame.width, accuracy: 1,
                            "Every key should use the same cell width")
         }
-        XCTAssertEqual(strip.frame.maxX - home.frame.minX, home.frame.width / 2, accuracy: 2,
-                       "The first view should expose half of Home")
-        XCTAssertEqual(home.value as? String, "H preview")
+        XCTAssertEqual(strip.frame.maxX - alt.frame.minX, alt.frame.width / 2, accuracy: 2,
+                       "The first view should expose half of Alt")
+        XCTAssertEqual(alt.value as? String, "Off")
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "terminal-key-discovery-initial"
         screenshot.lifetime = .keepAlways
         add(screenshot)
-        strip.swipeLeft()
-        XCTAssertTrue(home.isHittable)
-        XCTAssertEqual(home.value as? String, "Home")
+        // Move a few cells deliberately: a fast full-width swipe can now
+        // pass Alt entirely in the narrower strip beside three fixed controls.
+        strip.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+            .press(forDuration: 0.1, thenDragTo: strip.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5)))
+        XCTAssertTrue(alt.isHittable)
+        XCTAssertEqual(alt.value as? String, "Off")
         XCTAssertTrue(hint.waitForNonExistence(timeout: 3))
         XCTAssertEqual(strip.value as? String, "More keys to left and right")
         let scrolledScreenshot = XCTAttachment(screenshot: app.screenshot())
@@ -70,9 +116,9 @@ extension HerdcatsUITests {
         XCTAssertFalse(app.buttons["pane-live-key-extra"].exists)
         let firstRowIDs = ["pane-live-key-esc", "pane-live-key-tab", "pane-live-key-up",
                            "pane-live-extra-key-down", "pane-live-extra-key-left",
-                           "pane-live-extra-key-right", "pane-live-key-ctrl", "pane-live-key-alt"]
+                           "pane-live-extra-key-right", "pane-live-key-ctrl"]
         let firstRow = firstRowIDs.map { app.buttons[$0] }
-        XCTAssertTrue(firstRow.allSatisfy(\.isHittable), "All eight primary keys should fit before Voice")
+        XCTAssertTrue(firstRow.allSatisfy(\.isHittable), "Seven full keys should fit before the Alt preview")
         for (earlier, later) in zip(firstRow, firstRow.dropFirst()) {
             XCTAssertLessThan(earlier.frame.midX, later.frame.midX, "Primary key order")
         }

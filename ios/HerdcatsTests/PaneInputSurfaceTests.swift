@@ -4,21 +4,37 @@ import UIKit
 @testable import Herdcats
 
 /// Transition coverage for the pane input surface state machine that replaces
-/// the Compose/Live segmented control: keyboard opens Compose directly, Voice
-/// opens recording, and tapping output collapses Compose back to Live.
+/// the Compose/Live segmented control: the keyboard button toggles Live,
+/// terminal keys remain available in Compose, and Voice owns recording.
 @Suite("Pane input surface state machine")
 @MainActor
 struct PaneInputSurfaceTests {
-    @Test func liveToolbarIsTheDefaultSurface() {
+    @Test func composeIsTheDefaultSurfaceWithoutAKeyboardRequest() {
         let model = PaneInputSurfaceModel()
-        #expect(model.surface == .liveToolbar)
-        #expect(model.isLiveKeyboardSurface)
-        #expect(!model.isComposeSurface)
-        #expect(!model.isDrainingDictation)
+        #expect(model.isComposeSurface)
+        #expect(!model.isLiveKeyboardSurface)
+        #expect(!model.requestsLiveKeyboardFocus)
+        model.resetToDefaultSurface()
+        #expect(model.isComposeSurface)
+        #expect(!model.requestsLiveKeyboardFocus)
+    }
+
+    @Test func composeFirstMigrationReplacesOldDefaultOnlyOnce() throws {
+        let suite = "pane-compose-migration-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        #expect(PaneComposePreference.isVisibleByDefault(in: defaults))
+        defaults.set("NO", forKey: PaneComposePreference.storageKey)
+        #expect(!PaneComposePreference.isVisibleByDefault(in: defaults))
+        PaneComposePreference.migrateComposeFirstDefault(in: defaults)
+        #expect(defaults.bool(forKey: PaneComposePreference.storageKey))
+        defaults.set(false, forKey: PaneComposePreference.storageKey)
+        PaneComposePreference.migrateComposeFirstDefault(in: defaults)
+        #expect(!defaults.bool(forKey: PaneComposePreference.storageKey))
     }
 
     @Test func cancelRecordingReturnsToStartingSurface() {
-        let model = PaneInputSurfaceModel()
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
         model.requestVoiceRecording()
         #expect(model.cancelVoiceRecording())
         #expect(model.isLiveKeyboardSurface)
@@ -33,7 +49,7 @@ struct PaneInputSurfaceTests {
     }
 
     @Test func sendFromRecordingSendsOnlyAfterSuccessfulDrain() {
-        let model = PaneInputSurfaceModel()
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
         model.requestVoiceRecording()
         #expect(model.requestFinishDictation(sendWhenDone: true))
         #expect(model.sendsWhenDictationDone)
@@ -52,7 +68,7 @@ struct PaneInputSurfaceTests {
     }
 
     @Test func visibleComposeDefaultSurvivesSendAndReset() {
-        let model = PaneInputSurfaceModel()
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
         model.setComposeVisibleByDefault(PaneComposePreference.default)
         #expect(model.isComposeSurface)
         model.noteSendSucceeded()
@@ -65,7 +81,7 @@ struct PaneInputSurfaceTests {
     }
 
     @Test func changingDefaultDoesNotInterruptDictationOrDiscardCompose() {
-        let model = PaneInputSurfaceModel()
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
         model.requestVoiceRecording()
         model.requestFinishDictation()
         model.setComposeVisibleByDefault(true)
@@ -146,22 +162,79 @@ struct PaneInputSurfaceTests {
         #expect(live.spellCheckingType == .no)
     }
 
+    @Test func composeRoutesTerminalKeysButNeverLiveTextOrTimelineInput() {
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
+        model.setComposeVisibleByDefault(true)
+        #expect(model.allowsTerminalEvent(.keys(["esc"]), showsTimeline: false))
+        #expect(model.allowsTerminalEvent(.keys(["ctrl+c"]), showsTimeline: false))
+        #expect(!model.allowsTerminalEvent(.text("draft"), showsTimeline: false))
+        #expect(!model.allowsTerminalEvent(.keys(["enter"]), showsTimeline: true))
+        model.toggleLiveInput()
+        #expect(model.allowsTerminalEvent(.text("a"), showsTimeline: false))
+        model.requestVoiceRecording()
+        #expect(!model.allowsTerminalEvent(.keys(["esc"]), showsTimeline: false))
+    }
+
+    @Test func explicitLiveFocusWaitsForSessionAndCancelsOnModeOrPaneChange() {
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
+        model.setComposeVisibleByDefault(true)
+        #expect(!model.requestsLiveKeyboardFocus)
+        model.toggleLiveInput()
+        #expect(!model.consumeLiveKeyboardFocusRequest(isReady: false, isFocused: true))
+        #expect(model.requestsLiveKeyboardFocus)
+        #expect(!model.consumeLiveKeyboardFocusRequest(isReady: true, isFocused: false))
+        #expect(model.consumeLiveKeyboardFocusRequest(isReady: true, isFocused: true))
+        #expect(!model.consumeLiveKeyboardFocusRequest(isReady: true, isFocused: true))
+        model.toggleLiveInput()
+        model.toggleLiveInput()
+        model.resetToDefaultSurface()
+        #expect(!model.requestsLiveKeyboardFocus)
+        model.toggleLiveInput()
+        model.toggleLiveInput()
+        #expect(!model.requestsLiveKeyboardFocus)
+        model.toggleLiveInput()
+        model.cancelLiveKeyboardFocusRequest()
+        #expect(!model.requestsLiveKeyboardFocus)
+    }
+
+    @Test func explicitKeyboardToggleReturnsToComposeAndResetsToPreferredSurface() {
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
+        model.setComposeVisibleByDefault(true)
+        #expect(model.toggleLiveInput())
+        #expect(model.isLiveKeyboardSurface)
+        #expect(model.toggleLiveInput())
+        #expect(model.isComposeSurface)
+        model.toggleLiveInput()
+        model.resetToDefaultSurface()
+        #expect(model.isComposeSurface)
+    }
+
+    @Test func keyboardToggleCannotInterruptRecordingOrDrain() {
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
+        model.requestVoiceRecording()
+        #expect(!model.toggleLiveInput())
+        model.requestFinishDictation()
+        #expect(!model.toggleLiveInput())
+        #expect(model.surface == .voiceRecording)
+        #expect(model.isDrainingDictation)
+    }
+
     @Test func keyboardOpensComposeDirectly() {
-        let model = PaneInputSurfaceModel()
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
         #expect(model.requestComposeDraft())
         #expect(model.surface == .composeDraft)
         #expect(!model.requestComposeDraft())
     }
 
     @Test func keyboardCannotInterruptRecording() {
-        let model = PaneInputSurfaceModel()
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
         model.requestVoiceRecording()
         #expect(!model.requestComposeDraft())
         #expect(model.surface == .voiceRecording)
     }
 
     @Test func photoRestoresComposeAfterPickerResignsFocus() {
-        let model = PaneInputSurfaceModel()
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
         model.requestComposeDraft()
         model.collapseToLiveToolbar()
 
@@ -173,7 +246,7 @@ struct PaneInputSurfaceTests {
     }
 
     @Test func photoSelectionCannotInterruptRecording() {
-        let model = PaneInputSurfaceModel()
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
         model.requestVoiceRecording()
 
         model.notePhotoSelected()
@@ -181,7 +254,7 @@ struct PaneInputSurfaceTests {
     }
 
     @Test func voiceOpensRecordingFromToolbarAndComposeBubble() {
-        let model = PaneInputSurfaceModel()
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
 
         model.requestVoiceRecording()
         #expect(model.surface == .voiceRecording)
@@ -195,7 +268,7 @@ struct PaneInputSurfaceTests {
     }
 
     @Test func voiceWhileRecordingIsRejected() {
-        let model = PaneInputSurfaceModel()
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
         model.requestVoiceRecording()
 
         model.requestVoiceRecording()
@@ -204,7 +277,7 @@ struct PaneInputSurfaceTests {
     }
 
     @Test func checkmarkKeepsRecordingUntilDictationDrains() {
-        let model = PaneInputSurfaceModel()
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
         model.requestVoiceRecording()
 
         // `PaneDictation.finish()` returns immediately while `isBusy` stays
@@ -220,7 +293,7 @@ struct PaneInputSurfaceTests {
     }
 
     @Test func repeatedCheckmarkTapsDuringDrainAreNoOps() {
-        let model = PaneInputSurfaceModel()
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
         model.requestVoiceRecording()
         model.requestFinishDictation()
 
@@ -234,7 +307,7 @@ struct PaneInputSurfaceTests {
         // dictation without the checkmark; the captured draft must stay
         // visible and editable in the Compose bubble rather than vanishing
         // back to the toolbar.
-        let model = PaneInputSurfaceModel()
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
         model.requestVoiceRecording()
 
         model.noteDictationIdle()
@@ -243,14 +316,14 @@ struct PaneInputSurfaceTests {
     }
 
     @Test func dictationIdleIsIgnoredOutsideRecording() {
-        let model = PaneInputSurfaceModel()
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
 
         model.noteDictationIdle()
         #expect(model.surface == .liveToolbar)
     }
 
     @Test func sendSuccessReturnsToLiveToolbar() {
-        let model = PaneInputSurfaceModel()
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
         model.requestVoiceRecording()
         model.noteDictationIdle()
         #expect(model.surface == .composeDraft)
@@ -260,7 +333,7 @@ struct PaneInputSurfaceTests {
     }
 
     @Test func sendSuccessIsIgnoredOutsideCompose() {
-        let model = PaneInputSurfaceModel()
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
 
         model.noteSendSucceeded()
         #expect(model.surface == .liveToolbar)
@@ -271,7 +344,7 @@ struct PaneInputSurfaceTests {
     }
 
     @Test func collapseReturnsToLiveToolbarWithoutSending() {
-        let model = PaneInputSurfaceModel()
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
         model.requestVoiceRecording()
         model.noteDictationIdle()
 
@@ -280,7 +353,7 @@ struct PaneInputSurfaceTests {
     }
 
     @Test func collapseIsIgnoredOutsideCompose() {
-        let model = PaneInputSurfaceModel()
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
         model.requestVoiceRecording()
 
         model.collapseToLiveToolbar()
@@ -288,7 +361,7 @@ struct PaneInputSurfaceTests {
     }
 
     @Test func paneResetClearsSurfaceAndDrain() {
-        let model = PaneInputSurfaceModel()
+        let model = PaneInputSurfaceModel(composeVisibleByDefault: false)
         model.requestVoiceRecording()
         model.requestFinishDictation()
 

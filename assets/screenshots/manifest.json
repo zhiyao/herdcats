@@ -52,17 +52,20 @@
     {
       "file": "03-pane.png",
       "source": "04_workspace_pane.png",
-      "sha256": "2693e8ad1a1ff2343d0e33875b6d9d6b95d93ce379d2e534b0e0bec11d899131"
+      "sha256": "e957581dc8f4b9bf463f5b7e846819ace2682fb873adcda669bfc6cda04e1437",
+      "updatedAt": "2026-11-14T12:26:56.232071+00:00"
     },
     {
       "file": "04-keys.png",
       "source": "05_pane_keys.png",
-      "sha256": "f3fcd1375e9e23951738490c1ef9e72c44dc32ada450397f5166fa07db1663fc"
+      "sha256": "64f7a9c64d8a7a89682925dd3c4543284be3c14be7f9451c5f78cb14e3179ff4",
+      "updatedAt": "2026-11-14T12:26:56.232071+00:00"
     },
     {
       "file": "05-agent-pane.png",
       "source": "07_agent_pane.png",
-      "sha256": "2693e8ad1a1ff2343d0e33875b6d9d6b95d93ce379d2e534b0e0bec11d899131"
+      "sha256": "e957581dc8f4b9bf463f5b7e846819ace2682fb873adcda669bfc6cda04e1437",
+      "updatedAt": "2026-11-14T12:26:56.232071+00:00"
     },
     {
       "file": "06-quota.png",
@@ -88,6 +91,39 @@
       "file": "10-voice.png",
       "source": "11_voice.png",
       "sha256": "a5f070a16c592ef224d0487c54d959ce3841f56084a53c7c32cdde82f16d5fde"
+    }
+  ],
+  "updates": [
+    {
+      "createdAt": "2026-11-14T12:26:56.232071+00:00",
+      "capture": {
+        "mode": "simulator fixtures (onboarding uses read-only replay)",
+        "createdAt": "2026-11-14T12:25:43.114371+00:00",
+        "commit": "a408c07f2f3761b5eba4799ed83e96d676ff57d8",
+        "appearance": "dark",
+        "device": "iPhone 17 Pro",
+        "udid": "102F11E9-8B56-4FC3-A260-2A0C27C2D176",
+        "app": "/tmp/herdcats-compose-build/Build/Products/Debug-iphonesimulator/Herdcats.app",
+        "appSha256": "0dce35c88fbabee5a06d7e7abae8abc61df436bb7353658fc6bc5d335e2b8f77",
+        "fixtureSha256": "6fa5d10050d993d4e4dc3784ab5b7a4deec7241969f65af9d0888af5419cde84",
+        "frames": {
+          "04_workspace_pane": "pane",
+          "05_pane_keys": "keys",
+          "07_agent_pane": "agent-pane"
+        },
+        "sha256": {
+          "04_workspace_pane.png": "e957581dc8f4b9bf463f5b7e846819ace2682fb873adcda669bfc6cda04e1437",
+          "05_pane_keys.png": "64f7a9c64d8a7a89682925dd3c4543284be3c14be7f9451c5f78cb14e3179ff4",
+          "07_agent_pane.png": "e957581dc8f4b9bf463f5b7e846819ace2682fb873adcda669bfc6cda04e1437"
+        },
+        "workingTreeDirty": true,
+        "note": "Partial refresh of pane screenshots for the compose-first input layout."
+      },
+      "images": [
+        "03-pane.png",
+        "04-keys.png",
+        "05-agent-pane.png"
+      ]
     }
   ]
 }
