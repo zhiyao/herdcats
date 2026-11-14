@@ -117,6 +117,19 @@ enum LaunchPreference: String, CaseIterable, Identifiable {
 enum PaneComposePreference {
     static let storageKey = "paneShowComposeByDefault"
     static let `default` = true
+
+    static func isVisibleByDefault(in defaults: UserDefaults = .standard) -> Bool {
+        defaults.object(forKey: storageKey) == nil ? Self.default : defaults.bool(forKey: storageKey)
+    }
+
+    /// The new two-row composer replaces the old Live-first default once.
+    /// Later explicit preference changes remain respected.
+    static func migrateComposeFirstDefault(in defaults: UserDefaults = .standard) {
+        let migrationKey = "paneComposeFirstLayoutApplied"
+        guard !defaults.bool(forKey: migrationKey) else { return }
+        defaults.set(true, forKey: storageKey)
+        defaults.set(true, forKey: migrationKey)
+    }
 }
 
 /// Monospaced pane output size. Persisted via `@AppStorage` using `rawValue`.

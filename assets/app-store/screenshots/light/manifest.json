@@ -28,7 +28,7 @@
       "id": "04-keys",
       "source": "05_pane_keys.png",
       "headline": "Terminal keyboard.",
-      "accent": "Arrows, F1–F12 & modifiers.",
+      "accent": "Arrows, F1\u2013F12 & modifiers.",
       "layout": "device"
     },
     {
@@ -93,5 +93,11 @@
       "height": 2868,
       "manifest": "iphone-6.9/manifest.json"
     }
+  ],
+  "updatedAt": "2026-11-14T12:26:56.232071+00:00",
+  "updatedImages": [
+    "03-pane.png",
+    "04-keys.png",
+    "05-agent-pane.png"
   ]
 }

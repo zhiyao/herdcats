@@ -53,10 +53,10 @@
         "layout": "device"
       },
       "source": {
-        "file": "/Users/zhiyaochan/.herdr/worktrees/herdcats/refresh-app-screenshots/ios/maestro/screenshots-output/mock-iPhone-light/04_workspace_pane.png",
-        "width": 1320,
-        "height": 2868,
-        "sha256": "d46d244ed0a196f53916ac1fe72ed45599c17769dceeb12e3d72fe7e8b989107"
+        "file": "assets/screenshots/light/03-pane.png",
+        "width": 1206,
+        "height": 2622,
+        "sha256": "a91e3ce3fc309342e465cfbc311ee6c63926999033106cf399e8510a15822155"
       }
     },
     {
@@ -65,14 +65,14 @@
         "id": "04-keys",
         "source": "05_pane_keys.png",
         "headline": "Terminal keyboard.",
-        "accent": "Arrows, F1–F12 & modifiers.",
+        "accent": "Arrows, F1\u2013F12 & modifiers.",
         "layout": "device"
       },
       "source": {
-        "file": "/Users/zhiyaochan/.herdr/worktrees/herdcats/refresh-app-screenshots/ios/maestro/screenshots-output/mock-iPhone-light/05_pane_keys.png",
-        "width": 1320,
-        "height": 2868,
-        "sha256": "17a3137b06f1e879ae3aa2f8962a0cb6fb38dbf38e86c4e82fda73f76e81ec01"
+        "file": "assets/screenshots/light/04-keys.png",
+        "width": 1206,
+        "height": 2622,
+        "sha256": "7f4eec8357906514f295741427449205dbdbcd469854700a05fcfc5a8b5de704"
       }
     },
     {
@@ -85,10 +85,10 @@
         "layout": "device"
       },
       "source": {
-        "file": "/Users/zhiyaochan/.herdr/worktrees/herdcats/refresh-app-screenshots/ios/maestro/screenshots-output/mock-iPhone-light/07_agent_pane.png",
-        "width": 1320,
-        "height": 2868,
-        "sha256": "d46d244ed0a196f53916ac1fe72ed45599c17769dceeb12e3d72fe7e8b989107"
+        "file": "assets/screenshots/light/05-agent-pane.png",
+        "width": 1206,
+        "height": 2622,
+        "sha256": "a91e3ce3fc309342e465cfbc311ee6c63926999033106cf399e8510a15822155"
       }
     },
     {
@@ -171,5 +171,12 @@
         "sha256": "c3b17fcc201340dae188bca2ce5d226052e97a122d20cbf5e907c1ff5883d164"
       }
     }
-  ]
+  ],
+  "updatedAt": "2026-11-14T12:26:56.232071+00:00",
+  "updatedImages": [
+    "03-pane.png",
+    "04-keys.png",
+    "05-agent-pane.png"
+  ],
+  "updatedRendererVersion": "4.0.523"
 }

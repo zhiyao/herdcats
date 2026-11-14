@@ -75,15 +75,15 @@ This is an early release. See the limitations below before using it.
 
 ## Screenshots
 
-Current iPhone screenshots with sample data, captured from main in dark and light mode.
+Current iPhone screenshots with sample data, captured in dark and light mode.
 Click an image to view it larger. The website’s `/screenshots` gallery shows the
 same images and follows its light/dark switch.
 
 <p align="center">
   <a href="assets/screenshots/01-spaces.png"><img src="assets/screenshots/01-spaces.png" width="160" alt="Spaces tab listing three spaces: Herdcats (blocked), Checkout redesign (working), and API performance (done)."></a>
   <a href="assets/screenshots/02-agents.png"><img src="assets/screenshots/02-agents.png" width="160" alt="Agents tab listing a blocked Claude agent, a finished Cursor agent, and a working Codex agent, each with its project path."></a>
-  <a href="assets/screenshots/03-pane.png"><img src="assets/screenshots/03-pane.png" width="160" alt="Live terminal pane showing a Claude Code session waiting for input, with an Esc, Tab, Ctrl, Alt and Keys toolbar."></a>
-  <a href="assets/screenshots/04-keys.png"><img src="assets/screenshots/04-keys.png" width="160" alt="Terminal pane with the Keys panel open: arrow keys, Home, End, Page Up and Down, Del, Ins, Backspace, Shift, and F1 to F7."></a>
+  <a href="assets/screenshots/03-pane.png"><img src="assets/screenshots/03-pane.png" width="160" alt="Terminal pane with a two-row Compose input, scrollable terminal keys, and fixed image, microphone and keyboard buttons. The software keyboard is hidden."></a>
+  <a href="assets/screenshots/04-keys.png"><img src="assets/screenshots/04-keys.png" width="160" alt="Terminal pane in Live input mode with the scrollable key row showing additional navigation keys and modifiers."></a>
   <a href="assets/screenshots/05-agent-pane.png"><img src="assets/screenshots/05-agent-pane.png" width="160" alt="Agent pane for a blocked Claude session, with a pane card above the terminal output."></a>
 </p>
 
@@ -101,8 +101,8 @@ same images and follows its light/dark switch.
 <p align="center">
   <a href="assets/screenshots/light/01-spaces.png"><img src="assets/screenshots/light/01-spaces.png" width="160" alt="Light mode: Spaces tab listing three spaces: Herdcats (blocked), Checkout redesign (working), and API performance (done)."></a>
   <a href="assets/screenshots/light/02-agents.png"><img src="assets/screenshots/light/02-agents.png" width="160" alt="Light mode: Agents tab listing a blocked Claude agent, a finished Cursor agent, and a working Codex agent, each with its project path."></a>
-  <a href="assets/screenshots/light/03-pane.png"><img src="assets/screenshots/light/03-pane.png" width="160" alt="Light mode: Live terminal pane showing a Claude Code session waiting for input, with an Esc, Tab, Ctrl, Alt and Keys toolbar."></a>
-  <a href="assets/screenshots/light/04-keys.png"><img src="assets/screenshots/light/04-keys.png" width="160" alt="Light mode: Terminal pane with the Keys panel open: arrow keys, Home, End, Page Up and Down, Del, Ins, Backspace, Shift, and F1 to F7."></a>
+  <a href="assets/screenshots/light/03-pane.png"><img src="assets/screenshots/light/03-pane.png" width="160" alt="Light mode: Terminal pane with a two-row Compose input, scrollable terminal keys, and fixed image, microphone and keyboard buttons. The software keyboard is hidden."></a>
+  <a href="assets/screenshots/light/04-keys.png"><img src="assets/screenshots/light/04-keys.png" width="160" alt="Light mode: Terminal pane in Live input mode with the scrollable key row showing additional navigation keys and modifiers."></a>
   <a href="assets/screenshots/light/05-agent-pane.png"><img src="assets/screenshots/light/05-agent-pane.png" width="160" alt="Light mode: Agent pane for a blocked Claude session, with a pane card above the terminal output."></a>
 </p>
 <p align="center">

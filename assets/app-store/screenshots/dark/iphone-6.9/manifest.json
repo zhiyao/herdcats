@@ -53,10 +53,10 @@
         "layout": "device"
       },
       "source": {
-        "file": "/Users/zhiyaochan/.herdr/worktrees/herdcats/refresh-app-screenshots/ios/maestro/screenshots-output/mock-iPhone/04_workspace_pane.png",
-        "width": 1320,
-        "height": 2868,
-        "sha256": "2693e8ad1a1ff2343d0e33875b6d9d6b95d93ce379d2e534b0e0bec11d899131"
+        "file": "assets/screenshots/03-pane.png",
+        "width": 1206,
+        "height": 2622,
+        "sha256": "e957581dc8f4b9bf463f5b7e846819ace2682fb873adcda669bfc6cda04e1437"
       }
     },
     {
@@ -65,14 +65,14 @@
         "id": "04-keys",
         "source": "05_pane_keys.png",
         "headline": "Terminal keyboard.",
-        "accent": "Arrows, F1–F12 & modifiers.",
+        "accent": "Arrows, F1\u2013F12 & modifiers.",
         "layout": "device"
       },
       "source": {
-        "file": "/Users/zhiyaochan/.herdr/worktrees/herdcats/refresh-app-screenshots/ios/maestro/screenshots-output/mock-iPhone/05_pane_keys.png",
-        "width": 1320,
-        "height": 2868,
-        "sha256": "f3fcd1375e9e23951738490c1ef9e72c44dc32ada450397f5166fa07db1663fc"
+        "file": "assets/screenshots/04-keys.png",
+        "width": 1206,
+        "height": 2622,
+        "sha256": "64f7a9c64d8a7a89682925dd3c4543284be3c14be7f9451c5f78cb14e3179ff4"
       }
     },
     {
@@ -85,10 +85,10 @@
         "layout": "device"
       },
       "source": {
-        "file": "/Users/zhiyaochan/.herdr/worktrees/herdcats/refresh-app-screenshots/ios/maestro/screenshots-output/mock-iPhone/07_agent_pane.png",
-        "width": 1320,
-        "height": 2868,
-        "sha256": "2693e8ad1a1ff2343d0e33875b6d9d6b95d93ce379d2e534b0e0bec11d899131"
+        "file": "assets/screenshots/05-agent-pane.png",
+        "width": 1206,
+        "height": 2622,
+        "sha256": "e957581dc8f4b9bf463f5b7e846819ace2682fb873adcda669bfc6cda04e1437"
       }
     },
     {
@@ -171,5 +171,12 @@
         "sha256": "a5f070a16c592ef224d0487c54d959ce3841f56084a53c7c32cdde82f16d5fde"
       }
     }
-  ]
+  ],
+  "updatedAt": "2026-11-14T12:26:56.232071+00:00",
+  "updatedImages": [
+    "03-pane.png",
+    "04-keys.png",
+    "05-agent-pane.png"
+  ],
+  "updatedRendererVersion": "4.0.523"
 }
