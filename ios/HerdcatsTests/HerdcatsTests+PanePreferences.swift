@@ -7,6 +7,55 @@ import UIKit
 import Testing
 @testable import Herdcats
 
+@Suite("Terminal output links")
+struct PaneOutputLinkTests {
+    @Test func acceptsWebURLsFromAnyHost() {
+        #expect(PaneOutputLinks.isWeb(URL(string: "https://github.com/zhiyao/herdcats")!))
+        #expect(PaneOutputLinks.isWeb(URL(string: "https://example.com/page")!))
+        #expect(PaneOutputLinks.isWeb(URL(string: "http://localhost:3000")!))
+        #expect(!PaneOutputLinks.isWeb(URL(string: "https://")!))
+        #expect(!PaneOutputLinks.isWeb(URL(string: "javascript:alert(1)")!))
+        #expect(!PaneOutputLinks.isWeb(URL(string: "file:///tmp/test")!))
+    }
+
+    @MainActor @Test func linkHitTestingExcludesWhitespaceAndOtherText() {
+        let view = PaneOutputTextView(frame: CGRect(x: 0, y: 0, width: 350, height: 100))
+        let text = NSMutableAttributedString(string: "https://example.com\nplain", attributes: [
+            .font: UIFont.monospacedSystemFont(ofSize: 15, weight: .regular)
+        ])
+        PaneOutputLinks.apply(to: text)
+        view.attributedText = text
+        view.layoutIfNeeded()
+        #expect(view.link(at: CGPoint(x: 12, y: 15)) == URL(string: "https://example.com"))
+        #expect(view.link(at: CGPoint(x: 340, y: 15)) == nil)
+        #expect(view.link(at: CGPoint(x: 12, y: 80)) == nil)
+    }
+
+    @Test func detectsWebURLsAcrossStyleRunsUsingUTF16Ranges() {
+        let text = NSMutableAttributedString(string: "🐈 Visit https://example.com/path?q=cat#top and http://localhost:3000.")
+        let range = (text.string as NSString).range(of: "example.com")
+        text.addAttribute(.foregroundColor, value: UIColor.red, range: range)
+        PaneOutputLinks.apply(to: text)
+        let first = (text.string as NSString).range(of: "https://example.com/path?q=cat#top")
+        #expect(text.attribute(.link, at: first.location, effectiveRange: nil) as? URL
+            == URL(string: "https://example.com/path?q=cat#top"))
+        #expect(text.attribute(.link, at: NSMaxRange(first) - 1, effectiveRange: nil) != nil)
+        #expect(text.attribute(.foregroundColor, at: range.location, effectiveRange: nil) as? UIColor == .red)
+        let second = (text.string as NSString).range(of: "http://localhost:3000")
+        #expect(text.attribute(.link, at: second.location, effectiveRange: nil) as? URL
+            == URL(string: "http://localhost:3000"))
+        #expect(text.attribute(.link, at: text.length - 1, effectiveRange: nil) == nil)
+    }
+
+    @Test func leavesNonWebOutputUnlinked() {
+        let text = NSMutableAttributedString(string: "user@example.com file:///tmp/log ssh://host /tmp/file ordinary output")
+        PaneOutputLinks.apply(to: text)
+        text.enumerateAttribute(.link, in: NSRange(location: 0, length: text.length)) { value, _, _ in
+            #expect(value == nil)
+        }
+    }
+}
+
 @Suite("Pane preferences")
 struct PaneScrollBehaviorPreferenceTests {
     @Test func defaultsToHoldingTheReadersPosition() {
