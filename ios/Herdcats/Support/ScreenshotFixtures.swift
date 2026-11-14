@@ -77,6 +77,13 @@ enum ScreenshotFixtures {
     }
     static func response(_ args: String) throws -> String {
         if args == "--version" { return "herdr 0.8.0" }
+        if args == "session list --json" {
+            return try json(["sessions": [
+                ["name": "default", "running": true, "socket_path": "/fixture/herdr.sock"],
+                ["name": "project", "running": true, "socket_path": "/fixture/project/herdr.sock"],
+                ["name": "archived", "running": false, "socket_path": "/fixture/archived/herdr.sock"]
+            ]])
+        }
         if args.hasPrefix("pane read") { return terminal }
         let result: [String: Any]
         if args == "workspace list" { result = ["workspaces": workspaces] }
@@ -109,6 +116,9 @@ enum ScreenshotFixtures {
 
     static var terminal: String {
         if ProcessInfo.processInfo.arguments.contains("-hc.empty-terminal-output") { return "" }
+        if ProcessInfo.processInfo.arguments.contains("-hc.terminal-links") {
+            return "https://example.com/herdcats\nPlain terminal output"
+        }
         if ProcessInfo.processInfo.arguments.contains("-hc.long-terminal-selection") {
             return (0..<400).map { index in
                 let marker = String(format: "%04d", index)

@@ -76,7 +76,7 @@ extension AppModel {
             print("[HC] herdr version: \(version)")
             #endif
             if ownership.isCurrent(state.attempt) {
-                connectionProgressMessage = config.backend == .core ? "Reading Herdr Core terminals…" : "Checking default session…"
+                connectionProgressMessage = config.backend == .core ? "Reading Herdr Core terminals…" : "Checking \(config.sessionName) session…"
             }
             try await checkSessionReadiness()
             guard ownership.isCurrent(state.attempt) else {

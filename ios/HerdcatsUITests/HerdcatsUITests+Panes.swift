@@ -110,6 +110,43 @@ extension HerdcatsUITests {
         screenshot.lifetime = .keepAlways
         add(screenshot)
     }
+    func testTerminalLinkTapOpensExternalBrowserWithoutKeyboard() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "pane", "-hc.terminal-links",
+                               "-paneShowComposeByDefault", "NO"]
+        app.launch()
+        let terminal = app.buttons["timeline-open-terminal"]
+        if terminal.waitForExistence(timeout: 3) { terminal.tap() }
+        let output = app.textViews["pane-output-text"]
+        XCTAssertTrue(output.waitForExistence(timeout: 5))
+        output.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 70, dy: 8)).tap()
+        let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
+        XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 10),
+                      "Tapping a terminal URL should open iOS's external browser")
+        app.activate()
+        XCTAssertTrue(output.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+    }
+
+    func testTerminalLinkOffersOpenAndCopyWithoutKeyboard() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "pane", "-hc.terminal-links",
+                               "-paneShowComposeByDefault", "NO"]
+        app.launch()
+        let terminal = app.buttons["timeline-open-terminal"]
+        if terminal.waitForExistence(timeout: 3) { terminal.tap() }
+        let output = app.textViews["pane-output-text"]
+        XCTAssertTrue(output.waitForExistence(timeout: 5))
+        output.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: 70, dy: 8)).press(forDuration: 1)
+        XCTAssertTrue(app.buttons["Open Link"].waitForExistence(timeout: 3)
+                      || app.buttons["Open"].exists, "A terminal URL should offer opening the link")
+        XCTAssertTrue(app.buttons["Copy Link"].exists || app.buttons["Copy"].exists,
+                      "A terminal URL should offer copying the link")
+        XCTAssertFalse(app.keyboards.firstMatch.exists,
+                       "Opening the link menu should not focus live input")
+    }
+
     private func terminalGeometry(_ output: XCUIElement) -> [String: Any] {
         let data = (output.value as? String ?? "{}").data(using: .utf8)!
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]

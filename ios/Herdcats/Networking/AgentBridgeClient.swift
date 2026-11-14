@@ -395,7 +395,7 @@ extension HerdrConnection {
         do {
             try await bridge.open(
                 client: client,
-                command: Self.agentBridgeCommand,
+                command: Self.agentBridgeCommand(session: session),
                 paneId: paneId,
                 agent: agent,
                 onHandshake: { [weak self] capabilities, version in
@@ -464,9 +464,13 @@ extension HerdrConnection {
         return "exec /bin/sh -c \(shellSafeArgument(script))"
     }
 
-    static var agentBridgeScript: String {
+    static var agentBridgeScript: String { agentBridgeScript(session: nil) }
+
+    static func agentBridgeScript(session: HerdrSession?) -> String {
+        let socket = session.map { shellSafeArgument($0.socketPath) }
+            ?? "${HERDR_SOCKET_PATH:-${XDG_CONFIG_HOME:-$HOME/.config}/herdr/herdr.sock}"
         let exec = """
-            S=${HERDR_SOCKET_PATH:-${XDG_CONFIG_HOME:-$HOME/.config}/herdr/herdr.sock}
+            S=\(socket)
             exec "$B" serve --stdio --socket "$S"
             """
         return helperScript(
@@ -477,8 +481,10 @@ extension HerdrConnection {
         )
     }
 
-    static var agentBridgeCommand: String {
-        "exec /bin/sh -c \(shellSafeArgument(agentBridgeScript))"
+    static var agentBridgeCommand: String { agentBridgeCommand(session: nil) }
+
+    static func agentBridgeCommand(session: HerdrSession?) -> String {
+        "exec /bin/sh -c \(shellSafeArgument(agentBridgeScript(session: session)))"
     }
 }
 

@@ -61,6 +61,11 @@ field and keyboard ready. Turn it off in pane options or Settings → Pane to
 start with the Live toolbar. Compose supports spelling correction and keyboard
 suggestions; Live terminal input stays literal. Your saved preference is respected.
 
+Web URLs in terminal output are underlined. Tap a URL to open it in its associated
+app or default browser, or long-press for the native link menu (Open Link and
+Copy Link). Tapping plain output still focuses live input.
+Links open on your iPhone; `localhost` addresses refer to the phone, not the SSH host.
+
 [Tailscale](https://tailscale.com) is the recommended way to connect your phone
 and Herdr machine. Any network that can reach the SSH server also works.
 
@@ -171,6 +176,13 @@ Add each machine as its own SSH connection, then switch from the menu under the
 Herdcats logo. Give connections optional names and tap **Edit** in the connection
 list to drag them into your preferred order. Auto-connect uses the last-used
 machine. Herdcats no longer uses Herdr's saved machines.
+
+The header menus in **Spaces** and **Agents** also list the current machine's
+legacy Herdr sessions. Choose a running session to switch; stopped sessions are
+shown but cannot be opened from the phone. **Refresh Sessions** reloads the list.
+The selection survives reconnecting the active connection; a new machine
+connection starts with its default session. Herdr Core shows **Persistent
+terminals** instead of named sessions.
 
 Remembered credentials and approved host keys stay in the iOS Keychain. A
 changed host key blocks connection, including automatic reconnects. The app shows
