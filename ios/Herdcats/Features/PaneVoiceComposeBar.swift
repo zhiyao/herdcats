@@ -94,31 +94,6 @@ struct PaneInputGlassSurface: ViewModifier {
     }
 }
 
-/// Gives the arrow button one outcome per touch: a tap sends Up, while a
-/// completed long press opens the direction row. The gestures are exclusive,
-/// so releasing after a long hold cannot trigger the tap action.
-private struct PaneTapOrLongPressStyle: PrimitiveButtonStyle {
-    let isEnabled: Bool
-    let onLongPress: () -> Void
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .contentShape(Rectangle())
-            .gesture(
-                LongPressGesture(minimumDuration: 0.45)
-                    .exclusively(before: TapGesture())
-                    .onEnded { result in
-                        guard isEnabled else { return }
-                        switch result {
-                        case .first(true): onLongPress()
-                        case .second: configuration.trigger()
-                        default: break
-                        }
-                    }
-            )
-    }
-}
-
 // MARK: - Attachment Info
 
 /// Image attachment metadata for the Compose bar.
@@ -144,10 +119,26 @@ struct PaneAttachmentInfo: Identifiable, Sendable {
     }
 }
 
+enum PaneKeySwipeHintPreference {
+    static let storageKey = "paneLiveKeySwipeHintDismissed.v1"
+}
+
+private struct PaneLiveKeyStripMetrics: Equatable {
+    var minX: CGFloat = 0
+    var contentWidth: CGFloat = 0
+}
+
+private struct PaneLiveKeyStripMetricsKey: PreferenceKey {
+    static var defaultValue: PaneLiveKeyStripMetrics? = nil
+    static func reduce(value: inout PaneLiveKeyStripMetrics?, nextValue: () -> PaneLiveKeyStripMetrics?) {
+        if let next = nextValue() { value = next }
+    }
+}
+
 // MARK: - PaneVoiceComposeBar
 
 /// A unified SwiftUI input bar for Herdr terminal panes supporting:
-/// 1. Default Live mode: fixed rail (Esc, Tab, Up, Ctrl, Alt, Keys, Voice, Keyboard).
+/// 1. Default Live mode: swipeable terminal keys with fixed Voice and Keyboard controls.
 /// 2. Recording mode: cancel, a scrolling level waveform, Stop (edit in Compose), and Send.
 /// 3. Compose mode: message bubble with editable 1-to-6-row field, external image picker,
 ///    Voice immediately left of Send, and Send hidden for blank/whitespace text.
@@ -155,27 +146,63 @@ struct PaneVoiceComposeBar: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showsModelConfiguration = false
     var modelControl: AgentModelControlState? = nil
-    @State private var isKeysDrawerOpen = false
-    @State private var isArrowRowOpen = false
+    @State private var visibleKeyID: String?
+    @State private var keyStripMetrics = PaneLiveKeyStripMetrics()
+    @State private var keyStripViewportWidth: CGFloat = 0
+    @State private var swipeStartOffset: CGFloat?
+    @AppStorage(PaneKeySwipeHintPreference.storageKey) private var dismissedKeySwipeHint = false
 
-    private struct ExtraKey: Identifiable {
-        let label: String
-        let token: String
-        var id: String { token }
+    private func liveKeyWidth(for viewport: CGFloat) -> CGFloat {
+        max(28, viewport / 8.5)
     }
 
-    private let arrowKeys = [
-        ExtraKey(label: "←", token: "left"), ExtraKey(label: "↑", token: "up"),
-        ExtraKey(label: "↓", token: "down"), ExtraKey(label: "→", token: "right")
-    ]
-    private let navigationKeys = [
-        ExtraKey(label: "Home", token: "home"), ExtraKey(label: "End", token: "end"),
-        ExtraKey(label: "Pg↑", token: "pageup"), ExtraKey(label: "Pg↓", token: "pagedown")
-    ]
-    private let editingKeys = [
-        ExtraKey(label: "Del", token: "delete"), ExtraKey(label: "Ins", token: "insert"),
-        ExtraKey(label: "Bksp", token: "backspace"), ExtraKey(label: "↵", token: "enter")
-    ]
+    private var expectedKeyContentWidth: CGFloat {
+        guard keyStripViewportWidth > 0 else { return 0 }
+        return CGFloat(liveKeys.count) * liveKeyWidth(for: keyStripViewportWidth)
+    }
+
+    private var isHomeFullyVisible: Bool {
+        guard keyStripViewportWidth > 0 else { return false }
+        let width = liveKeyWidth(for: keyStripViewportWidth)
+        let homeMinX = keyStripMetrics.minX + 8 * width
+        return homeMinX >= -1 && homeMinX + width <= keyStripViewportWidth + 1
+    }
+
+    private var hasMoreKeysLeft: Bool { keyStripMetrics.minX < -2 }
+    private var hasMoreKeysRight: Bool {
+        keyStripMetrics.minX + expectedKeyContentWidth > keyStripViewportWidth + 2
+    }
+    private var keyStripOverflows: Bool { expectedKeyContentWidth > keyStripViewportWidth + 2 }
+
+    private struct LiveKey: Identifiable {
+        let id: String
+        let label: String
+        let token: String
+        var modifier: PaneLiveModifier? = nil
+    }
+
+    /// Stable IDs keep repeated labels independent and retain the scroll position.
+    private var liveKeys: [LiveKey] {
+        [
+            LiveKey(id: "esc", label: "Esc", token: "esc"),
+            LiveKey(id: "tab", label: "Tab", token: "tab"),
+            LiveKey(id: "up", label: "↑", token: "up"),
+            LiveKey(id: "down", label: "↓", token: "down"),
+            LiveKey(id: "left", label: "←", token: "left"),
+            LiveKey(id: "right", label: "→", token: "right"),
+            LiveKey(id: "ctrl", label: "Ctrl", token: "", modifier: .ctrl),
+            LiveKey(id: "alt", label: "Alt", token: "", modifier: .alt),
+            LiveKey(id: "home", label: "Home", token: "home"),
+            LiveKey(id: "end", label: "End", token: "end"),
+            LiveKey(id: "pageup", label: "Pg↑", token: "pageup"),
+            LiveKey(id: "pagedown", label: "Pg↓", token: "pagedown"),
+            LiveKey(id: "delete", label: "Del", token: "delete"),
+            LiveKey(id: "insert", label: "Ins", token: "insert"),
+            LiveKey(id: "backspace", label: "Bksp", token: "backspace"),
+            LiveKey(id: "enter", label: "↵", token: "enter"),
+            LiveKey(id: "shift", label: "Shift", token: "", modifier: .shift)
+        ] + (1...12).map { LiveKey(id: "f\($0)", label: "F\($0)", token: "f\($0)") }
+    }
 
     // Mode & Draft
     @Binding var mode: PaneVoiceComposeBarMode
@@ -249,7 +276,7 @@ struct PaneVoiceComposeBar: View {
     ) {
 #if DEBUG && targetEnvironment(simulator)
         if ScreenshotFixtures.enabled && ScreenshotFixtures.screen == "keys" {
-            _isKeysDrawerOpen = State(initialValue: true)
+            _visibleKeyID = State(initialValue: "left")
         }
 #endif
         self._mode = mode
@@ -303,18 +330,11 @@ struct PaneVoiceComposeBar: View {
                 isFocused: $isLiveKeyboardFocused,
                 onCompositionChanged: nil,
                 onEvent: { event in
-                    closeLiveMenus()
                     onLiveEvent(event)
                 }
             )
         }
         .animation(.snappy(duration: 0.22), value: mode)
-        .onChange(of: mode) { _, newMode in
-            if newMode != .live { closeLiveMenus() }
-        }
-        .onChange(of: isLiveEnabled) { _, enabled in
-            if !enabled { closeLiveMenus() }
-        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("pane-voice-compose-bar")
         .sheet(isPresented: $showsModelConfiguration) {
@@ -327,66 +347,92 @@ struct PaneVoiceComposeBar: View {
 
     // MARK: - 1. Live Mode Bar
 
-    /// Fixed rail; extra keys expand above it without shifting rail positions.
+    /// Only the left key area scrolls. Voice and Compose remain fixed on the right.
     private var liveBar: some View {
-        VStack(spacing: 8) {
-            if isKeysDrawerOpen { keysDrawer }
-            if isArrowRowOpen {
-                extraKeyRow(arrowKeys)
-                    .frame(maxWidth: 240)
-                    .padding(7)
-                    .modifier(PaneInputGlassSurface(cornerRadius: DesignSystem.CornerRadius.lg))
+        VStack(spacing: 4) {
+            if !dismissedKeySwipeHint && keyStripOverflows {
+                Text("Swipe for more keys")
+                    .font(.jost(11, weight: .medium))
+                    .foregroundStyle(Theme.textMuted)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 6)
+                    .accessibilityIdentifier("pane-live-key-swipe-hint")
             }
             liveRail
         }
-        .fixedSize(horizontal: false, vertical: true)
     }
 
     private var liveRail: some View {
         HStack(spacing: 0) {
-            liveKeyButton("Esc", style: .destructive) {
-                sendLiveKey("esc")
-            }
-            .accessibilityLabel("Send Escape")
-            .accessibilityIdentifier("pane-live-key-esc")
-
-            liveKeyButton("Tab") {
-                sendLiveKey("tab")
-            }
-            .accessibilityLabel("Send Tab")
-            .accessibilityIdentifier("pane-live-key-tab")
-
-            arrowButton
-
-            liveModifierButton("Ctrl", modifier: .ctrl)
-                .accessibilityLabel("Control modifier")
-                .accessibilityIdentifier("pane-live-key-ctrl")
-
-            liveModifierButton("Alt", modifier: .alt)
-                .accessibilityLabel("Alt modifier, Option on Mac")
-                .accessibilityIdentifier("pane-live-key-alt")
-
-            liveKeyButton("Keys", isSelected: isKeysDrawerOpen) {
-                isKeysDrawerOpen.toggle()
-                isArrowRowOpen = false
-            }
-            .overlay(alignment: .topTrailing) {
-                if armedModifiers.contains(.shift) {
-                    Text("⇧")
-                        .font(.jost(10, weight: .bold))
-                        .foregroundStyle(Theme.accent)
-                        .frame(width: 15, height: 15)
-                        .background(Theme.accent.opacity(0.16), in: Circle())
-                        .padding(2)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
+            GeometryReader { geometry in
+                // Eight and a half equal cells expose Home's preview at rest.
+                let keyWidth = liveKeyWidth(for: geometry.size.width)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 0) {
+                        ForEach(liveKeys) { key in
+                            liveStripButton(key, width: keyWidth)
+                                .id(key.id)
+                        }
+                    }
+                    .scrollTargetLayout()
+                    .background {
+                        GeometryReader { content in
+                            Color.clear.preference(key: PaneLiveKeyStripMetricsKey.self,
+                                value: PaneLiveKeyStripMetrics(
+                                    minX: content.frame(in: .named("pane-live-key-strip-space")).minX,
+                                    contentWidth: content.size.width))
+                        }
+                    }
                 }
+                .coordinateSpace(name: "pane-live-key-strip-space")
+                .scrollTargetBehavior(.viewAligned)
+                .scrollPosition(id: $visibleKeyID)
+                .simultaneousGesture(DragGesture(minimumDistance: 8)
+                    .onChanged { value in
+                        if swipeStartOffset == nil && abs(value.translation.width) > 8 {
+                            swipeStartOffset = keyStripMetrics.minX
+                        }
+                    }
+                    .onEnded { _ in
+                        if let start = swipeStartOffset,
+                           abs(keyStripMetrics.minX - start) > 2 {
+                            dismissedKeySwipeHint = true
+                        }
+                        swipeStartOffset = nil
+                    })
+                .overlay(alignment: .leading) {
+                    if hasMoreKeysLeft {
+                        LinearGradient(colors: [Theme.cardBackground, .clear],
+                            startPoint: .leading, endPoint: .trailing)
+                            .frame(width: 8)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .overlay(alignment: .trailing) {
+                    if hasMoreKeysRight {
+                        LinearGradient(colors: [.clear, Theme.cardBackground],
+                            startPoint: .leading, endPoint: .trailing)
+                            .frame(width: 8)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .onAppear { keyStripViewportWidth = geometry.size.width }
+                .onChange(of: geometry.size.width) { _, width in keyStripViewportWidth = width }
+                .onPreferenceChange(PaneLiveKeyStripMetricsKey.self) { metrics in
+                    guard let metrics else { return }
+                    keyStripMetrics = metrics
+                    if let start = swipeStartOffset, abs(metrics.minX - start) > 2 {
+                        dismissedKeySwipeHint = true
+                    }
+                }
+                .accessibilityIdentifier("pane-live-key-strip")
+                .accessibilityValue(hasMoreKeysLeft ?
+                    (hasMoreKeysRight ? "More keys to left and right" : "More keys to left") :
+                    (hasMoreKeysRight ? "More keys to right" : "All keys visible"))
             }
-            .accessibilityLabel("Extra keyboard keys")
-            .accessibilityValue(armedModifiers.contains(.shift) ? "Shift armed for next key" : (isKeysDrawerOpen ? "Open" : "Closed"))
-            .accessibilityAddTraits(isKeysDrawerOpen ? .isSelected : [])
-            .accessibilityIdentifier("pane-live-key-extra")
+            .frame(minWidth: 0, maxWidth: .infinity)
 
             liveDivider
 
@@ -397,8 +443,7 @@ struct PaneVoiceComposeBar: View {
                 Image(systemName: "mic.fill")
                     .font(.jost(16, weight: .semibold))
                     .foregroundStyle(Color.primary)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 42)
+                    .frame(width: 44, height: 42)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Start voice recording")
@@ -413,8 +458,7 @@ struct PaneVoiceComposeBar: View {
                 Image(systemName: "keyboard")
                     .font(.jost(16, weight: .semibold))
                     .foregroundStyle(Color.primary)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 42)
+                    .frame(width: 44, height: 42)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Compose message")
@@ -426,97 +470,39 @@ struct PaneVoiceComposeBar: View {
         .accessibilityIdentifier("pane-live-bar")
     }
 
-    private var arrowButton: some View {
-        Button {
+    private func liveStripButton(_ key: LiveKey, width: CGFloat) -> some View {
+        let isArmed = key.modifier.map { armedModifiers.contains($0) } ?? false
+        let showsHomePreview = key.id == "home" && !isHomeFullyVisible
+        return Button {
             HapticFeedback.impact(.light)
-            sendLiveKey("up")
+            if let modifier = key.modifier {
+                if let onLiveModifier { onLiveModifier(modifier) }
+                else if isArmed { armedModifiers.remove(modifier) }
+                else { armedModifiers.insert(modifier) }
+            } else {
+                onLiveKey(key.token)
+            }
         } label: {
-            Text("↑")
+            Text(showsHomePreview ? "H" : key.label)
                 .font(.jost(.caption, weight: .semibold).monospaced())
-                .foregroundStyle(Color.primary)
-                .frame(maxWidth: .infinity)
-                .frame(height: 42)
-        }
-        .buttonStyle(
-            PaneTapOrLongPressStyle(isEnabled: isLiveEnabled) {
-                HapticFeedback.impact(.light)
-                isArrowRowOpen = true
-            isKeysDrawerOpen = false
-        })
-        .disabled(!isLiveEnabled)
-        .opacity(isLiveEnabled ? 1 : 0.45)
-        .accessibilityLabel("Up arrow")
-        .accessibilityHint("Long press for all arrow keys")
-        .accessibilityIdentifier("pane-live-key-up")
-    }
-
-    private var keysDrawer: some View {
-        VStack(spacing: 4) {
-            extraKeyRow(arrowKeys)
-            extraKeyRow(navigationKeys)
-            extraKeyRow(editingKeys)
-            HStack(spacing: 4) {
-                liveModifierButton("Shift", modifier: .shift)
-                    .background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
-                    .accessibilityLabel("Shift modifier")
-                    .accessibilityIdentifier("pane-live-key-shift")
-                ForEach(0..<3, id: \.self) { _ in
-                    Color.clear.frame(maxWidth: .infinity)
-                }
-            }
-            .frame(height: 42)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
-                    ForEach(1...12, id: \.self) { number in
-                        extraKeyButton(ExtraKey(label: "F\(number)", token: "f\(number)"))
-                            .frame(width: 54)
-                    }
-                }
-            }
-            .frame(height: 38)
-            .accessibilityLabel("Function keys")
-        }
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(7)
-        .modifier(PaneInputGlassSurface(cornerRadius: DesignSystem.CornerRadius.lg))
-        .accessibilityIdentifier("pane-live-keys-drawer")
-    }
-
-    private func extraKeyRow(_ keys: [ExtraKey]) -> some View {
-        HStack(spacing: 4) {
-            ForEach(keys) { key in
-                extraKeyButton(key)
-            }
-        }
-    }
-
-    private func extraKeyButton(_ key: ExtraKey) -> some View {
-        Button {
-            HapticFeedback.impact(.light)
-            sendLiveKey(key.token)
-        } label: {
-            Text(key.label)
-                .font(.jost(.caption, weight: .semibold).monospaced())
+                .foregroundStyle(isArmed ? Theme.accent : (key.id == "esc" ? Theme.destructive : Color.primary))
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .frame(maxWidth: .infinity)
-                .frame(height: 38)
-                .background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                .minimumScaleFactor(0.75)
+                .frame(width: showsHomePreview ? width / 2 : width, height: 42)
+                .frame(width: width, height: 42, alignment: .leading)
+                .background(isArmed ? Theme.accent.opacity(0.16) : Color.clear)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!isLiveEnabled)
-        .accessibilityLabel("Send \(key.label)")
-        .accessibilityIdentifier("pane-live-extra-key-\(key.token)")
-    }
-
-    private func sendLiveKey(_ token: String) {
-        closeLiveMenus()
-        onLiveKey(token)
-    }
-
-    private func closeLiveMenus() {
-        isKeysDrawerOpen = false
-        isArrowRowOpen = false
+        .opacity(isLiveEnabled ? 1 : 0.45)
+        .accessibilityLabel(key.modifier.map { "\($0.displayLabel) modifier" } ?? "Send \(key.label)")
+        .accessibilityValue(key.id == "home" ? (showsHomePreview ? "H preview" : "Home") :
+            (key.modifier == nil ? "" : (isArmed ? "Armed for next key" : "Off")))
+        .accessibilityAddTraits(isArmed ? .isSelected : [])
+        .accessibilityIdentifier(key.modifier == nil ?
+            (key.id == "esc" ? "pane-live-key-esc" : key.id == "tab" ? "pane-live-key-tab" : key.id == "up" ? "pane-live-key-up" : "pane-live-extra-key-\(key.id)") :
+            "pane-live-key-\(key.id)")
     }
 
     private var liveDivider: some View {
@@ -524,72 +510,6 @@ struct PaneVoiceComposeBar: View {
             .fill(Color.primary.opacity(0.22))
             .frame(width: 1, height: 24)
             .accessibilityHidden(true)
-    }
-
-    private enum LiveKeyStyle {
-        case plain
-        case destructive
-    }
-
-    private func liveKeyButton(
-        _ title: String,
-        style: LiveKeyStyle = .plain,
-        isSelected: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button {
-            HapticFeedback.impact(.light)
-            action()
-        } label: {
-            Text(title)
-                .font(.jost(.caption, weight: .semibold).monospaced())
-                .foregroundStyle(isSelected ? Theme.accent : (style == .destructive ? Theme.destructive : Color.primary))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .frame(maxWidth: .infinity)
-                .frame(height: 42)
-                .background(isSelected ? Theme.accent.opacity(0.16) : Color.clear)
-        }
-        .buttonStyle(.plain)
-        .disabled(!isLiveEnabled)
-        .opacity(isLiveEnabled ? 1 : 0.45)
-    }
-
-    private func liveModifierButton(
-        _ title: String,
-        modifier: PaneLiveModifier,
-        isEnabled: Bool = true,
-        accessibilityHint: String? = nil
-    ) -> some View {
-        let isArmed = armedModifiers.contains(modifier)
-        let effectiveEnabled = isLiveEnabled && isEnabled
-        return Button {
-            HapticFeedback.impact(.light)
-            if let onLiveModifier {
-                onLiveModifier(modifier)
-            } else {
-                if isArmed {
-                    armedModifiers.remove(modifier)
-                } else {
-                    armedModifiers.insert(modifier)
-                }
-            }
-        } label: {
-            Text(title)
-                .font(.jost(.caption, weight: .semibold).monospaced())
-                .foregroundStyle(isArmed ? Theme.accent : (isEnabled ? Color.primary : Color.secondary))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .frame(maxWidth: .infinity)
-                .frame(height: 42)
-                .background(isArmed ? Theme.accent.opacity(0.16) : Color.clear)
-        }
-        .buttonStyle(.plain)
-        .disabled(!effectiveEnabled)
-        .opacity(effectiveEnabled ? 1 : 0.45)
-        .accessibilityAddTraits(isArmed ? .isSelected : [])
-        .accessibilityValue(isArmed ? "Armed for next key" : "Off")
-        .accessibilityHint(accessibilityHint ?? "")
     }
 
     // MARK: - 2. Recording Mode Bar

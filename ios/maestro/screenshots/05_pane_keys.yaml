@@ -1,6 +1,6 @@
 appId: com.enchantinglabs.herdrcat
 ---
-# Frame 05: Live terminal keys drawer — extended mobile keyboard controls.
+# Frame 05: Swipeable Live terminal key strip.
 - launchApp:
     clearState: true
     arguments:
@@ -31,16 +31,13 @@ appId: com.enchantinglabs.herdrcat
 
 - extendedWaitUntil:
     visible:
-      id: "pane-live-key-extra"
+      id: "pane-live-key-strip"
     timeout: 45000
 
-- tapOn:
-    id: "pane-live-key-extra"
-
-- extendedWaitUntil:
-    visible:
-      id: "pane-live-keys-drawer"
-    timeout: 10000
+- swipe:
+    start: 70%, 92%
+    end: 25%, 92%
+    duration: 450
 
 - waitForAnimationToEnd:
     timeout: 2000

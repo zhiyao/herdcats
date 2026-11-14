@@ -15,6 +15,9 @@ enum ScreenshotFixtures {
     }
 
     static func seedMachinesIfRequested() throws {
+        if ProcessInfo.processInfo.arguments.contains("-hc.reset-key-swipe-hint") {
+            UserDefaults.standard.removeObject(forKey: PaneKeySwipeHintPreference.storageKey)
+        }
         guard ProcessInfo.processInfo.arguments.contains("-hc.seed-machines"),
               let json = ProcessInfo.processInfo.environment["HC_SAVED_MACHINES"] else { return }
         let fixtures = try JSONDecoder().decode([SavedMachineFixture].self, from: Data(json.utf8))

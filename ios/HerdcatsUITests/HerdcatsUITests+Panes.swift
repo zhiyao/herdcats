@@ -3,6 +3,113 @@ import UIKit
 import XCTest
 
 extension HerdcatsUITests {
+    func testLiveKeyDiscoveryHintAndHomePeek() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "pane", "-paneShowComposeByDefault", "NO",
+                               "-hc.reset-key-swipe-hint"]
+        app.launch()
+        let terminal = app.buttons["timeline-open-terminal"]
+        if terminal.waitForExistence(timeout: 3) { terminal.tap() }
+        let strip = app.scrollViews["pane-live-key-strip"]
+        XCTAssertTrue(strip.waitForExistence(timeout: 5))
+        XCTAssertEqual(strip.value as? String, "More keys to right")
+        let hint = app.staticTexts["pane-live-key-swipe-hint"]
+        XCTAssertTrue(hint.waitForExistence(timeout: 3))
+        app.buttons["pane-live-key-esc"].tap()
+        XCTAssertTrue(hint.exists, "A key tap should not dismiss the swipe hint")
+        let home = app.buttons["pane-live-extra-key-home"]
+        XCTAssertTrue(home.exists)
+        XCTAssertLessThan(home.frame.minX, strip.frame.maxX, "Home should peek into the strip")
+        XCTAssertGreaterThan(home.frame.maxX, strip.frame.maxX, "Home should be partially clipped")
+        let firstKeys = ["pane-live-key-esc", "pane-live-key-tab", "pane-live-key-up",
+                         "pane-live-extra-key-down", "pane-live-extra-key-left",
+                         "pane-live-extra-key-right", "pane-live-key-ctrl", "pane-live-key-alt"]
+        for identifier in firstKeys {
+            XCTAssertEqual(app.buttons[identifier].frame.width, home.frame.width, accuracy: 1,
+                           "Every key should use the same cell width")
+        }
+        XCTAssertEqual(strip.frame.maxX - home.frame.minX, home.frame.width / 2, accuracy: 2,
+                       "The first view should expose half of Home")
+        XCTAssertEqual(home.value as? String, "H preview")
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "terminal-key-discovery-initial"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        strip.swipeLeft()
+        XCTAssertTrue(home.isHittable)
+        XCTAssertEqual(home.value as? String, "Home")
+        XCTAssertTrue(hint.waitForNonExistence(timeout: 3))
+        XCTAssertEqual(strip.value as? String, "More keys to left and right")
+        let scrolledScreenshot = XCTAttachment(screenshot: app.screenshot())
+        scrolledScreenshot.name = "terminal-key-discovery-scrolled"
+        scrolledScreenshot.lifetime = .keepAlways
+        add(scrolledScreenshot)
+        for _ in 0..<8 { strip.swipeLeft() }
+        XCTAssertEqual(strip.value as? String, "More keys to left")
+        let endScreenshot = XCTAttachment(screenshot: app.screenshot())
+        endScreenshot.name = "terminal-key-discovery-end"
+        endScreenshot.lifetime = .keepAlways
+        add(endScreenshot)
+        app.terminate()
+        app.launchArguments.removeAll { $0 == "-hc.reset-key-swipe-hint" }
+        app.launch()
+        if terminal.waitForExistence(timeout: 3) { terminal.tap() }
+        XCTAssertTrue(strip.waitForExistence(timeout: 5))
+        XCTAssertFalse(hint.exists, "The hint should stay dismissed across launches")
+    }
+    func testLiveKeyStripSwipesAndKeepsPositionAfterKeyTap() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "pane", "-paneShowComposeByDefault", "NO"]
+        app.launch()
+        let terminal = app.buttons["timeline-open-terminal"]
+        if terminal.waitForExistence(timeout: 3) { terminal.tap() }
+        let strip = app.scrollViews["pane-live-key-strip"]
+        XCTAssertTrue(strip.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["pane-live-voice-button"].exists)
+        XCTAssertTrue(app.buttons["pane-live-keyboard-button"].exists)
+        XCTAssertFalse(app.buttons["pane-live-key-extra"].exists)
+        let firstRowIDs = ["pane-live-key-esc", "pane-live-key-tab", "pane-live-key-up",
+                           "pane-live-extra-key-down", "pane-live-extra-key-left",
+                           "pane-live-extra-key-right", "pane-live-key-ctrl", "pane-live-key-alt"]
+        let firstRow = firstRowIDs.map { app.buttons[$0] }
+        XCTAssertTrue(firstRow.allSatisfy(\.isHittable), "All eight primary keys should fit before Voice")
+        for (earlier, later) in zip(firstRow, firstRow.dropFirst()) {
+            XCTAssertLessThan(earlier.frame.midX, later.frame.midX, "Primary key order")
+        }
+        let initialScreenshot = XCTAttachment(screenshot: app.screenshot())
+        initialScreenshot.name = "terminal-key-strip-initial"
+        initialScreenshot.lifetime = .keepAlways
+        add(initialScreenshot)
+
+        strip.swipeLeft()
+        let home = app.buttons["pane-live-extra-key-home"]
+        XCTAssertTrue(home.waitForExistence(timeout: 3))
+        XCTAssertTrue(home.isHittable)
+        let visibleKeys = firstRowIDs + ["pane-live-extra-key-home", "pane-live-extra-key-end",
+                                        "pane-live-extra-key-pageup", "pane-live-extra-key-pagedown"]
+        let firstVisible = visibleKeys.map { app.buttons[$0] }
+            .filter { $0.isHittable && $0.frame.minX >= strip.frame.minX - 1 }
+            .min { $0.frame.minX < $1.frame.minX }
+        XCTAssertNotNil(firstVisible)
+        if let firstVisible {
+            XCTAssertEqual(firstVisible.frame.minX, strip.frame.minX, accuracy: 3,
+                           "Swipe should snap the first visible key to the strip edge")
+        }
+        let homeX = home.frame.minX
+        let voice = app.buttons["pane-live-voice-button"]
+        let compose = app.buttons["pane-live-keyboard-button"]
+        let voiceX = voice.frame.minX
+        let composeX = compose.frame.minX
+        home.tap()
+        XCTAssertTrue(home.isHittable, "Sending a key must not reset the strip")
+        XCTAssertEqual(home.frame.minX, homeX, accuracy: 2, "Sending a key must retain the strip offset")
+        XCTAssertEqual(voice.frame.minX, voiceX, accuracy: 1)
+        XCTAssertEqual(compose.frame.minX, composeX, accuracy: 1)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "terminal-key-strip"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
     func testTerminalLinkTapOpensExternalBrowserWithoutKeyboard() {
         let app = XCUIApplication()
         app.launchArguments = ["-hc.screenshots", "-hc.screen", "pane", "-hc.terminal-links",
