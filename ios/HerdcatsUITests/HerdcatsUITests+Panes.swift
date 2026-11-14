@@ -14,29 +14,41 @@ extension HerdcatsUITests {
         XCTAssertTrue(app.buttons["pane-live-voice-button"].exists)
         XCTAssertTrue(app.buttons["pane-live-keyboard-button"].exists)
         XCTAssertFalse(app.buttons["pane-live-key-extra"].exists)
+        let firstRowIDs = ["pane-live-key-esc", "pane-live-key-tab", "pane-live-key-up",
+                           "pane-live-extra-key-down", "pane-live-extra-key-left",
+                           "pane-live-extra-key-right", "pane-live-key-ctrl", "pane-live-key-alt"]
+        let firstRow = firstRowIDs.map { app.buttons[$0] }
+        XCTAssertTrue(firstRow.allSatisfy(\.isHittable), "All eight primary keys should fit before Voice")
+        for (earlier, later) in zip(firstRow, firstRow.dropFirst()) {
+            XCTAssertLessThan(earlier.frame.midX, later.frame.midX, "Primary key order")
+        }
+        let initialScreenshot = XCTAttachment(screenshot: app.screenshot())
+        initialScreenshot.name = "terminal-key-strip-initial"
+        initialScreenshot.lifetime = .keepAlways
+        add(initialScreenshot)
+
         strip.swipeLeft()
-        let left = app.buttons["pane-live-extra-key-left"]
-        XCTAssertTrue(left.waitForExistence(timeout: 3))
-        XCTAssertTrue(left.isHittable)
-        let visibleKeys = ["pane-live-key-esc", "pane-live-key-tab", "pane-live-key-up",
-                           "pane-live-key-ctrl", "pane-live-key-alt", "pane-live-extra-key-left",
-                           "pane-live-extra-key-down", "pane-live-extra-key-right",
-                           "pane-live-extra-key-home", "pane-live-extra-key-end"].map { app.buttons[$0] }
-        let firstVisible = visibleKeys.filter { $0.isHittable && $0.frame.minX >= strip.frame.minX - 1 }
+        let home = app.buttons["pane-live-extra-key-home"]
+        XCTAssertTrue(home.waitForExistence(timeout: 3))
+        XCTAssertTrue(home.isHittable)
+        let visibleKeys = firstRowIDs + ["pane-live-extra-key-home", "pane-live-extra-key-end",
+                                        "pane-live-extra-key-pageup", "pane-live-extra-key-pagedown"]
+        let firstVisible = visibleKeys.map { app.buttons[$0] }
+            .filter { $0.isHittable && $0.frame.minX >= strip.frame.minX - 1 }
             .min { $0.frame.minX < $1.frame.minX }
         XCTAssertNotNil(firstVisible)
         if let firstVisible {
             XCTAssertEqual(firstVisible.frame.minX, strip.frame.minX, accuracy: 3,
                            "Swipe should snap the first visible key to the strip edge")
         }
-        let leftX = left.frame.minX
+        let homeX = home.frame.minX
         let voice = app.buttons["pane-live-voice-button"]
         let compose = app.buttons["pane-live-keyboard-button"]
         let voiceX = voice.frame.minX
         let composeX = compose.frame.minX
-        left.tap()
-        XCTAssertTrue(left.isHittable, "Sending a key must not reset the strip")
-        XCTAssertEqual(left.frame.minX, leftX, accuracy: 2, "Sending a key must retain the strip offset")
+        home.tap()
+        XCTAssertTrue(home.isHittable, "Sending a key must not reset the strip")
+        XCTAssertEqual(home.frame.minX, homeX, accuracy: 2, "Sending a key must retain the strip offset")
         XCTAssertEqual(voice.frame.minX, voiceX, accuracy: 1)
         XCTAssertEqual(compose.frame.minX, composeX, accuracy: 1)
         let screenshot = XCTAttachment(screenshot: app.screenshot())

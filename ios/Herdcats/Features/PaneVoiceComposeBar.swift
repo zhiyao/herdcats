@@ -137,6 +137,9 @@ struct PaneVoiceComposeBar: View {
         let label: String
         let token: String
         var modifier: PaneLiveModifier? = nil
+        var isPrimary: Bool {
+            ["esc", "tab", "up", "down", "left", "right", "ctrl", "alt"].contains(id)
+        }
     }
 
     /// Stable IDs keep repeated labels independent and retain the scroll position.
@@ -145,11 +148,11 @@ struct PaneVoiceComposeBar: View {
             LiveKey(id: "esc", label: "Esc", token: "esc"),
             LiveKey(id: "tab", label: "Tab", token: "tab"),
             LiveKey(id: "up", label: "↑", token: "up"),
+            LiveKey(id: "down", label: "↓", token: "down"),
+            LiveKey(id: "left", label: "←", token: "left"),
+            LiveKey(id: "right", label: "→", token: "right"),
             LiveKey(id: "ctrl", label: "Ctrl", token: "", modifier: .ctrl),
             LiveKey(id: "alt", label: "Alt", token: "", modifier: .alt),
-            LiveKey(id: "left", label: "←", token: "left"),
-            LiveKey(id: "down", label: "↓", token: "down"),
-            LiveKey(id: "right", label: "→", token: "right"),
             LiveKey(id: "home", label: "Home", token: "home"),
             LiveKey(id: "end", label: "End", token: "end"),
             LiveKey(id: "pageup", label: "Pg↑", token: "pageup"),
@@ -308,19 +311,25 @@ struct PaneVoiceComposeBar: View {
     /// Only the left key area scrolls. Voice and Compose remain fixed on the right.
     private var liveBar: some View {
         HStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 0) {
-                    ForEach(liveKeys) { key in
-                        liveStripButton(key)
-                            .id(key.id)
+            GeometryReader { geometry in
+                // Eight primary keys fill the available space on a typical phone.
+                // On narrower panes, keep a usable 32-point hit width and allow scrolling.
+                let primaryWidth = max(32, min(44, geometry.size.width / 8))
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 0) {
+                        ForEach(liveKeys) { key in
+                            liveStripButton(key, width: key.isPrimary ? primaryWidth :
+                                (key.label.count > 3 ? 52 : 44))
+                                .id(key.id)
+                        }
                     }
+                    .scrollTargetLayout()
                 }
-                .scrollTargetLayout()
+                .scrollTargetBehavior(.viewAligned)
+                .scrollPosition(id: $visibleKeyID)
+                .accessibilityIdentifier("pane-live-key-strip")
             }
-            .scrollTargetBehavior(.viewAligned)
-            .scrollPosition(id: $visibleKeyID)
             .frame(minWidth: 0, maxWidth: .infinity)
-            .accessibilityIdentifier("pane-live-key-strip")
 
             liveDivider
 
@@ -358,7 +367,7 @@ struct PaneVoiceComposeBar: View {
         .accessibilityIdentifier("pane-live-bar")
     }
 
-    private func liveStripButton(_ key: LiveKey) -> some View {
+    private func liveStripButton(_ key: LiveKey, width: CGFloat) -> some View {
         let isArmed = key.modifier.map { armedModifiers.contains($0) } ?? false
         return Button {
             HapticFeedback.impact(.light)
@@ -375,7 +384,7 @@ struct PaneVoiceComposeBar: View {
                 .foregroundStyle(isArmed ? Theme.accent : (key.id == "esc" ? Theme.destructive : Color.primary))
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
-                .frame(width: key.label.count > 3 ? 62 : 52, height: 42)
+                .frame(width: width, height: 42)
                 .background(isArmed ? Theme.accent.opacity(0.16) : Color.clear)
                 .contentShape(Rectangle())
         }
