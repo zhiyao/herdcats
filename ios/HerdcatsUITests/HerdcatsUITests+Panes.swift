@@ -3,6 +3,19 @@ import UIKit
 import XCTest
 
 extension HerdcatsUITests {
+    func testSharedMicrophoneIsDisabledWhileSending() {
+        for compose in ["YES", "NO"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-hc.screenshots", "-hc.screen", "pane", "-hc.capture-surface",
+                                   "-paneShowComposeByDefault", compose, "-hc.compose-sending"]
+            app.launch()
+            let microphone = app.buttons["pane-live-voice-button"]
+            XCTAssertTrue(microphone.waitForExistence(timeout: 5))
+            XCTAssertFalse(microphone.isEnabled, "Sending must block dictation in Compose and Live")
+            app.terminate()
+        }
+    }
+
     func testTerminalComposeStartsUnfocusedAndPreservesDraftAcrossLiveToggle() {
         let app = XCUIApplication()
         app.launchArguments = ["-hc.screenshots", "-hc.screen", "pane", "-hc.capture-surface", "-paneShowComposeByDefault", "YES"]
@@ -18,6 +31,7 @@ extension HerdcatsUITests {
         XCTAssertTrue(strip.exists)
         XCTAssertTrue(image.isHittable)
         XCTAssertTrue(mic.isHittable)
+        XCTAssertTrue(mic.isEnabled, "Dictation is available when no message is being sent")
         XCTAssertTrue(toggle.isHittable)
         let keyWidth = app.buttons["pane-live-key-tab"].frame.width
         for control in [image, mic, toggle] {

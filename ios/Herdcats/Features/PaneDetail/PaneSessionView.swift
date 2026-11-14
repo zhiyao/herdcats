@@ -427,6 +427,12 @@ struct PaneSessionView: View {
             isSending: isSending,
             onSend: handleSend
         )
+#if DEBUG && targetEnvironment(simulator)
+        if ScreenshotFixtures.enabled,
+           ProcessInfo.processInfo.arguments.contains("-hc.compose-sending") {
+            bar.isSending = true
+        }
+#endif
         bar.showsTerminalControls = !showsTimeline
         bar.onToggleLiveInput = toggleLiveInput
         bar.modelControl = showsTimeline && timeline.matchesLivePane(paneId: pane.paneId, agent: pane.agent, connection: AgentTimelineConnectionState(phase: appModel.phase, generation: appModel.ownership.transportGeneration)) ? timeline.modelControl : nil

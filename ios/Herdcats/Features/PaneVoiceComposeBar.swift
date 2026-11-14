@@ -448,6 +448,7 @@ struct PaneVoiceComposeBar: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .disabled(isSending)
                 .accessibilityLabel("Start voice recording")
                 .accessibilityIdentifier("pane-live-voice-button")
 
