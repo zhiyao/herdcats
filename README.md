@@ -61,8 +61,10 @@ field and keyboard ready. Turn it off in pane options or Settings → Pane to
 start with the Live toolbar. Compose supports spelling correction and keyboard
 suggestions; Live terminal input stays literal. Your saved preference is respected.
 
-Web URLs in terminal output are underlined. Long-press a URL to open the native
-link menu, then choose Open or Copy. Tapping output still focuses live input.
+Web URLs in terminal output are underlined. Tap a URL to browse in a drawer with
+back, forward, and reload controls. GitHub pages offer **Open in GitHub** to hand
+the current page to the installed iOS app. **Open in Browser** opens externally.
+Long-press a URL for the native link menu and Copy Link. Tapping plain output still focuses live input.
 Links open on your iPhone; `localhost` addresses refer to the phone, not the SSH host.
 
 [Tailscale](https://tailscale.com) is the recommended way to connect your phone

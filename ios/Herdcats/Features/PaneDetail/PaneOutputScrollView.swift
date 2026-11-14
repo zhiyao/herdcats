@@ -16,6 +16,16 @@ enum PaneOutputLinks {
     }
 }
 
+/// Shared touch classification lets the surrounding tap-to-type gesture yield to links.
+final class PaneOutputTouchState {
+    weak var textView: PaneOutputTextView?
+
+    @MainActor func containsLink(atWindowPoint point: CGPoint) -> Bool {
+        guard let textView else { return false }
+        return textView.link(at: textView.convert(point, from: nil)) != nil
+    }
+}
+
 // MARK: - Pane output scroll view
 
 struct PaneOutputScrollView: View, Equatable {
@@ -48,6 +58,8 @@ struct PaneOutputScrollView: View, Equatable {
     /// reliably reach. Fired from a content-level simultaneous drag.
     var onDismissKeyboardDrag: (() -> Void)?
 
+    @State private var browserLink: TerminalBrowserLink?
+    @State private var linkTouch = PaneOutputTouchState()
     @State private var selectionActive = false
     @State private var keyboardHeight: CGFloat = 0
     @State private var retainedKeyboardSpace: CGFloat = 0
@@ -125,7 +137,14 @@ struct PaneOutputScrollView: View, Equatable {
                     }
                     SelectablePaneOutput(
                         text: selectableText, revision: outputRevision, pointSize: outputPointSize,
-                        selectionActive: selectionActive
+                        selectionActive: selectionActive,
+                        linkTouch: linkTouch,
+                        onOpenLink: { url in
+                            onSelectionChange(true)
+                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                                            to: nil, from: nil, for: nil)
+                            browserLink = TerminalBrowserLink(url: url)
+                        }
                     ) { active, safeAreaBottom in
                         if active {
                             let keyboardSpace = max(pendingKeyboardSpace, max(0, keyboardHeight - safeAreaBottom))
@@ -158,7 +177,8 @@ struct PaneOutputScrollView: View, Equatable {
             // reliably during scrolling, including over selectable text.
             .contentShape(Rectangle())
             .simultaneousGesture(
-                TapGesture().onEnded {
+                SpatialTapGesture(coordinateSpace: .global).onEnded { value in
+                    guard !linkTouch.containsLink(atWindowPoint: value.location) else { return }
                     selectionActive = false
                     onSelectionChange(false)
                     onTapOutput()
@@ -301,6 +321,11 @@ struct PaneOutputScrollView: View, Equatable {
                 }
             }
         }
+        .sheet(item: $browserLink, onDismiss: { onSelectionChange(false) }) { link in
+            TerminalBrowserSheet(url: link.url)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
     }
 
     @ViewBuilder private var latestIcon: some View {
@@ -390,14 +415,12 @@ struct SelectablePaneOutput: UIViewRepresentable {
     final class Coordinator: NSObject, UITextViewDelegate {
         var lastRevision: UInt64?
         var lastFont: UIFont?
+        var onOpenLink: ((URL) -> Void)?
 
         func textView(_ textView: UITextView, primaryActionFor textItem: UITextItem,
                       defaultAction: UIAction) -> UIAction? {
-            // A normal tap still belongs to the terminal's live-input gesture.
-            // Long press retains UIKit's default Open/Copy link menu. VoiceOver
-            // activation can open the link directly without a touch gesture.
-            if UIAccessibility.isVoiceOverRunning { return defaultAction }
-            return UIAction { _ in }
+            guard case .link(let url) = textItem.content else { return defaultAction }
+            return UIAction { [weak self] _ in self?.onOpenLink?(url) }
         }
 
         static func shouldRender(
@@ -414,6 +437,8 @@ struct SelectablePaneOutput: UIViewRepresentable {
     let revision: UInt64
     let pointSize: CGFloat
     let selectionActive: Bool
+    var linkTouch: PaneOutputTouchState? = nil
+    var onOpenLink: ((URL) -> Void)? = nil
     var onSelectionFocusChange: (Bool, CGFloat) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -432,6 +457,8 @@ struct SelectablePaneOutput: UIViewRepresentable {
         #else
         view = PaneOutputTextView()
         #endif
+        context.coordinator.onOpenLink = onOpenLink
+        linkTouch?.textView = view
         view.onSelectionFocusChange = onSelectionFocusChange
         view.observeSelectionTouches()
         view.isEditable = false
@@ -445,11 +472,13 @@ struct SelectablePaneOutput: UIViewRepresentable {
         view.textContainer.lineFragmentPadding = 0
         view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         view.accessibilityIdentifier = "pane-output-text"
-        view.accessibilityHint = "Long-press an underlined web link to open or copy it."
+        view.accessibilityHint = "Tap an underlined web link to browse in the app. Long-press to copy it."
         return view
     }
 
     func updateUIView(_ view: PaneOutputTextView, context: Context) {
+        context.coordinator.onOpenLink = onOpenLink
+        linkTouch?.textView = view
         view.onSelectionFocusChange = onSelectionFocusChange
         let font = UIFont.monospacedSystemFont(ofSize: pointSize, weight: .regular)
         guard Coordinator.shouldRender(
@@ -492,6 +521,7 @@ struct SelectablePaneOutput: UIViewRepresentable {
 
     static func dismantleUIView(_ uiView: PaneOutputTextView, coordinator: Coordinator) {
         uiView.onSelectionFocusChange = nil
+        coordinator.onOpenLink = nil
         uiView.delegate = nil
         uiView.stopObservingSelection()
     }
@@ -505,6 +535,18 @@ struct SelectablePaneOutput: UIViewRepresentable {
 /// Capture the viewport at touch-down, before read-only selection dismisses
 /// another field's keyboard and changes the outer scroll view's bottom inset.
 class PaneOutputTextView: UITextView, UIGestureRecognizerDelegate {
+    func link(at point: CGPoint) -> URL? {
+        let location = CGPoint(x: point.x - textContainerInset.left, y: point.y - textContainerInset.top)
+        let index = layoutManager.characterIndex(for: location, in: textContainer,
+                                                fractionOfDistanceBetweenInsertionPoints: nil)
+        guard index < textStorage.length,
+              let url = textStorage.attribute(.link, at: index, effectiveRange: nil) as? URL else { return nil }
+        let glyph = layoutManager.glyphRange(forCharacterRange: NSRange(location: index, length: 1),
+                                            actualCharacterRange: nil)
+        guard layoutManager.boundingRect(forGlyphRange: glyph, in: textContainer).contains(location) else { return nil }
+        return url
+    }
+
     var onSelectionFocusChange: ((Bool, CGFloat) -> Void)?
     private weak var anchorScrollView: UIScrollView?
     private weak var anchorTouch: UITouch?

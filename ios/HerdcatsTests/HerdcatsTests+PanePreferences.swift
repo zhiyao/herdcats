@@ -9,6 +9,27 @@ import Testing
 
 @Suite("Terminal output links")
 struct PaneOutputLinkTests {
+    @Test func githubHandoffUsesOnlyExactWebHosts() {
+        #expect(TerminalBrowserPolicy.isGitHub(URL(string: "https://github.com/zhiyao/herdcats")!))
+        #expect(!TerminalBrowserPolicy.isGitHub(URL(string: "https://github.com.evil.test/repo")!))
+        #expect(!TerminalBrowserPolicy.isGitHub(URL(string: "https://example.com/github.com")!))
+        #expect(!TerminalBrowserPolicy.isWeb(URL(string: "javascript:alert(1)")!))
+        #expect(!TerminalBrowserPolicy.isWeb(URL(string: "file:///tmp/test")!))
+    }
+
+    @MainActor @Test func linkHitTestingExcludesWhitespaceAndOtherText() {
+        let view = PaneOutputTextView(frame: CGRect(x: 0, y: 0, width: 350, height: 100))
+        let text = NSMutableAttributedString(string: "https://example.com\nplain", attributes: [
+            .font: UIFont.monospacedSystemFont(ofSize: 15, weight: .regular)
+        ])
+        PaneOutputLinks.apply(to: text)
+        view.attributedText = text
+        view.layoutIfNeeded()
+        #expect(view.link(at: CGPoint(x: 12, y: 15)) == URL(string: "https://example.com"))
+        #expect(view.link(at: CGPoint(x: 340, y: 15)) == nil)
+        #expect(view.link(at: CGPoint(x: 12, y: 80)) == nil)
+    }
+
     @Test func detectsWebURLsAcrossStyleRunsUsingUTF16Ranges() {
         let text = NSMutableAttributedString(string: "🐈 Visit https://example.com/path?q=cat#top and http://localhost:3000.")
         let range = (text.string as NSString).range(of: "example.com")
