@@ -1,0 +1,3 @@
+Terminal panes now open in Compose without popping up the keyboard, the key row is a compact snapping strip, and tapping URLs in terminal output opens them in the browser or the associated app.
+You can now pick machine sessions directly from the Spaces and Agents headers, and start a Fly review machine on demand.
+Fixed the working status not appearing immediately after submitting a prompt, Codex timeline history now hides after /clear or /new, and the Kill Pane confirmation shows in the right place.
