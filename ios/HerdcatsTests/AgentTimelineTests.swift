@@ -78,7 +78,7 @@ struct AgentBridgeFramingTests {
     let owner = UUID()
     func frame(
         _ event: String, seq: Int = 1, generation: Int = 1, session: String = "session-a",
-        entries: [String] = ["a"], hasMore: Bool = false
+        entries: [String] = ["a"], hasMore: Bool = false, entryOrder: [String] = []
     ) throws -> AgentBridgeFrame {
         let rows = entries.map {
             ["id": "message:\($0)", "kind": "message", "text": $0, "role": "assistant", "truncated": false]
@@ -92,6 +92,7 @@ struct AgentBridgeFramingTests {
                         "pane_id": "w1:p1", "terminal_id": "t1", "agent": "claude",
                         "native_session_id": session,
                     ], "pane_id": "w1:p1", "generation": generation, "entries": rows, "has_more": hasMore,
+                    "entry_order": entryOrder.map { "message:\($0)" },
                     "before": rows.first?["id"] as Any, "code": "source_changing",
                 ],
             ]))
@@ -114,6 +115,18 @@ struct AgentBridgeFramingTests {
         let update = try AgentBridgeFrame.decode(Data(#"{"event":"timeline.updated","epoch":"epoch-a","seq":2,"data":{"identity":{"pane_id":"w1:p1","terminal_id":"t1","agent":"claude","native_session_id":"session-a"},"generation":1,"entries":[],"revised":[{"id":"message:a","kind":"message","text":"A","role":"assistant","truncated":false},{"id":"message:trimmed","kind":"message","text":"gone","role":"assistant","truncated":false}]}}"#.utf8))
         try s.consume(update, owner: owner)
         #expect(s.entries.map(\.text) == ["A", "b"])
+    }
+    @Test func backwardExpansionInBatchesPreservesLoadedHistoryOrder() throws {
+        let s = store()
+        try s.consume(frame("timeline.snapshot", entries: ["old", "m92", "m95", "m96", "live"]), owner: owner)
+        let order = ["m90", "m91", "m92", "m93", "m94", "m95", "m96", "new"]
+        var first = try frame("timeline.updated", seq: 2, entries: ["m90", "m91"], entryOrder: order)
+        first.data?.evictedIds = ["message:live"]
+        try s.consume(first, owner: owner)
+        try s.consume(frame("timeline.updated", seq: 3, entries: ["m92", "m93", "m94", "new"], entryOrder: order), owner: owner)
+        #expect(s.entries.map(\.text) == ["old"] + order)
+        #expect(s.generation == 1)
+        #expect(s.phase == .ready)
     }
     @Test func switchingPanesDoesNotShowPreviousPaneEntries() throws {
         // Pane 1 receives a snapshot and shows its entries

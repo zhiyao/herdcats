@@ -222,6 +222,10 @@ import Observation
             // the newest end.
             let revised = data.revised ?? []
             try validate(rows + revised)
+            let order = data.entryOrder ?? []
+            guard order.count <= 1000, Set(order).count == order.count,
+                order.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 264 })
+            else { throw AgentBridgeError.invalidFrame }
             let removed = data.evictedIds ?? []
             guard removed.count <= 1000, removed.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 264 }) else {
                 throw AgentBridgeError.invalidFrame
@@ -242,8 +246,11 @@ import Observation
                 if let index = entryIndex[row.id] {
                     entries[index] = row
                 } else {
-                    entryIndex[row.id] = entries.count
-                    entries.append(row)
+                    let following = order.firstIndex(of: row.id).flatMap { position in
+                        order.dropFirst(position + 1).compactMap { entryIndex[$0] }.first
+                    }
+                    entries.insert(row, at: following ?? entries.count)
+                    entryIndex = Dictionary(uniqueKeysWithValues: entries.enumerated().map { ($0.element.id, $0.offset) })
                 }
             }
             for row in revised where !evictedIds.contains(row.id) {
@@ -253,6 +260,10 @@ import Observation
                 entries.removeFirst(entries.count - Self.maxEntries)
                 // Older local entries were discarded; history can still be
                 // requested relative to the first retained entity.
+                hasMore = true
+                before = entries.first?.id
+            }
+            if data.hasMore == true {
                 hasMore = true
                 before = entries.first?.id
             }

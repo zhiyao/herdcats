@@ -122,7 +122,7 @@ pub struct Follower {
     /// Leading file bytes, compared on every poll once `bytes_base` is past 0.
     head: Vec<u8>,
     session: String,
-    pi_branch_ids: Vec<String>,
+    pi_anchor: Option<String>,
     pi_has_older: bool,
     pi_older_cursor: Option<String>,
     buf: Vec<u8>,
@@ -327,6 +327,15 @@ impl Follower {
             .map_err(|_| "content_unavailable")?;
         Ok((chunk, length))
     }
+    pub fn pi_anchor(&self) -> Option<&str> {
+        self.pi_anchor.as_deref()
+    }
+    pub fn pi_window_continues(&self, entries: &[serde_json::Value], before: Option<&str>, session: &str) -> bool {
+        self.session == session && self.pi_anchor().is_none_or(|anchor| {
+            entries.iter().any(|row| row["id"].as_str() == Some(anchor))
+                || before.and_then(|cursor| cursor.strip_prefix("herdcats-through:")) == Some(anchor)
+        })
+    }
     pub fn refresh_pi_entries(&mut self, entries: &[serde_json::Value], session: &str) -> Result<bool> {
         self.refresh_pi_window(entries, false, None, session)
     }
@@ -337,36 +346,20 @@ impl Follower {
         before: Option<&str>,
         session: &str,
     ) -> Result<bool> {
-        let mut transcript = Transcript::default();
+        let mut transcript = Transcript { uncapped: true, ..Transcript::default() };
         let header = serde_json::json!({"type":"session","id":session});
         transcript.apply_pi(&header, session)?;
         for row in entries {
             transcript.apply_pi(row, session)?;
         }
         // Streaming entries are temporary projections, not native branch nodes.
-        let branch_ids: Vec<String> = entries
-            .iter()
+        let anchor = entries.iter().rev()
             .filter_map(|row| row["id"].as_str())
-            .filter(|id| !id.starts_with("herdcats-live:"))
-            .map(str::to_owned)
-            .collect();
-        let overlap = if self.session != session {
-            None
-        } else if branch_ids.starts_with(&self.pi_branch_ids) {
-            Some(0)
-        } else {
-            branch_ids.first().and_then(|first| self.pi_branch_ids
-                .iter()
-                .position(|id| id == first)
-                .filter(|&pos| branch_ids.starts_with(&self.pi_branch_ids[pos..])))
-                .or_else(|| self.pi_branch_ids.first().and_then(|first| {
-                    branch_ids.iter().position(|id| id == first)
-                        .filter(|&pos| branch_ids[pos..].starts_with(&self.pi_branch_ids))
-                        .map(|_| 0)
-                }))
-        };
-        let reset = overlap.is_none();
-        if let Some(pos) = overlap {
+            .find(|id| !id.starts_with("herdcats-live:"))
+            .or_else(|| before.and_then(|cursor| cursor.strip_prefix("herdcats-through:")))
+            .map(str::to_owned);
+        let reset = !self.pi_window_continues(entries, before, session);
+        if !reset {
             for entry in &mut transcript.entries {
                 if let Some(previous) = self.transcript.entries.iter().chain(&self.older).find(|e| e.id == entry.id) {
                     reconcile_pi_entry(entry, previous);
@@ -374,18 +367,13 @@ impl Follower {
             }
             let live_ids: HashSet<&str> = transcript.entries.iter().map(|e| e.id.as_str()).collect();
             self.older.retain(|entry| !live_ids.contains(entry.id.as_str()));
-            if pos > 0 {
-                let mut older_ids: HashSet<String> = self.older.iter().map(|e| e.id.clone()).collect();
-                for old in &self.transcript.entries {
-                    if !old.id.starts_with("pi:herdcats-live:")
-                        && !live_ids.contains(old.id.as_str())
-                        && older_ids.insert(old.id.clone())
-                    {
-                        if self.older.len() >= 100_000 {
-                            return Err("transcript_identity_limit");
-                        }
-                        self.older.push(old.clone());
-                    }
+            let mut older_ids: HashSet<String> = self.older.iter().map(|e| e.id.clone()).collect();
+            for old in &self.transcript.entries {
+                if !old.id.starts_with("pi:herdcats-live:")
+                    && !live_ids.contains(old.id.as_str())
+                    && older_ids.insert(old.id.clone())
+                {
+                    self.older.push(old.clone());
                 }
             }
         } else {
@@ -401,8 +389,17 @@ impl Follower {
             self.pi_has_older = has_more;
             self.pi_older_cursor = before.map(str::to_owned);
         }
+        if transcript.entries.len() > crate::claude::MAX_ENTRIES {
+            let newest = transcript.entries.split_off(transcript.entries.len() - crate::claude::MAX_ENTRIES);
+            self.revised.extend(transcript.entries.iter().map(|entry| entry.id.clone()));
+            self.older.append(&mut transcript.entries);
+            transcript.entries = newest;
+        }
+        if self.older.len() > 100_000 {
+            return Err("transcript_identity_limit");
+        }
         let changed = reset || self.transcript.entries != transcript.entries;
-        self.pi_branch_ids = branch_ids;
+        self.pi_anchor = anchor;
         self.transcript = transcript;
         self.session = session.to_owned();
         Ok(changed)
