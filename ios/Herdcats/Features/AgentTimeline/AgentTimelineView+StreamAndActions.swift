@@ -374,9 +374,17 @@ extension AgentTimelineView {
         } catch {
             TimelineHistoryDiagnostics.record("history.failed attempt=\(attempt) stage=\(stage) reason=\(TimelineHistoryDiagnostics.reason(error)) elapsed=\(started.duration(to: .now)) task_cancelled=\(Task.isCancelled) owner_current=\(activeOwner == owner) generation_current=\(timeline.generation == generation) connection_current=\(ownedConnection == connectionState)", failure: true)
             if !Task.isCancelled, activeOwner == owner, timeline.generation == generation {
-                pageError = "Earlier messages could not load. Pull down to try again."
+                pageError = Self.historyPageErrorMessage(for: error)
             }
         }
+    }
+
+    static func historyPageErrorMessage(for error: Error) -> String {
+        if let bridgeError = error as? AgentBridgeError,
+           ["pi_state_too_large", "record_too_large"].contains(bridgeError.code) {
+            return "An earlier message exceeds the 1 MiB Timeline limit. Continue in Terminal."
+        }
+        return "Earlier messages could not load. Pull down to try again."
     }
 }
 

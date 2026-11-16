@@ -72,6 +72,7 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
     var recordContent: Bool? = nil
     var modelControl: Bool = false
     var piExtensionInstall: Bool = false
+    var piHistory: Bool = false
 
     init(
         claudeTimeline: Bool,
@@ -85,10 +86,12 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
         recordContent: Bool? = nil,
         approvals: Bool? = nil,
         questions: Bool? = nil,
-        modelControl: Bool = false
+        modelControl: Bool = false,
+        piHistory: Bool = false
     ) {
         self.agy = agy
         self.pi = pi
+        self.piHistory = piHistory
         self.cursor = cursor
         self.cursorPrompts = cursorPrompts
         self.claudeTimeline = claudeTimeline
@@ -109,6 +112,7 @@ struct AgentBridgeCapabilities: Codable, Equatable, Sendable {
         self.cursorPrompts = try container.decodeIfPresent(Bool.self, forKey: .cursorPrompts) ?? false
         self.modelControl = try container.decodeIfPresent(Bool.self, forKey: .modelControl) ?? false
         self.piExtensionInstall = try container.decodeIfPresent(Bool.self, forKey: .piExtensionInstall) ?? false
+        self.piHistory = try container.decodeIfPresent(Bool.self, forKey: .piHistory) ?? false
         self.claudeTimeline = try container.decode(Bool.self, forKey: .claudeTimeline)
         self.codexTimeline = try container.decodeIfPresent(Bool.self, forKey: .codexTimeline) ?? false
         self.codexDaemonConfig = try container.decodeIfPresent(Bool.self, forKey: .codexDaemonConfig) ?? false

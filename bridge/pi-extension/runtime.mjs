@@ -5,7 +5,9 @@ import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { isAbsolute, join, parse, relative } from 'node:path';
 const MAX_FRAME = 1024 * 1024;
-const MAX_ENTRIES = 2000;
+const MAX_STATE_ENTRIES = 100;
+const MAX_PAGE_ENTRIES = 100;
+const MAX_CURSOR_BYTES = 256;
 const UUID = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
 const fail = code => { throw new Error(code); };
 function plain(value) { return typeof value === 'string' && Buffer.byteLength(value) <= 256 * 1024 && !value.includes('\0'); }
@@ -35,6 +37,47 @@ export function createIntegration(pi, {getSupportedThinkingLevels, version}) {
     const available = ctx.modelRegistry.getAvailable();
     return available.map(model => ({native:model,id:key(model),label:`${model.name || model.id} (${model.provider})`,efforts:getSupportedThinkingLevels(model).map(id=>({id,label:id}))}));
   }
+  function packWindow(branch, end, maxEntries, tailEntry, makeEnvelope) {
+    if (!Array.isArray(branch)) fail('invalid_pi_response');
+    if (end <= 0) {
+      const entries = tailEntry ? [tailEntry] : [];
+      const result = makeEnvelope(entries, false, null);
+      if (Buffer.byteLength(JSON.stringify({ result })) + 1 > MAX_FRAME) fail('pi_state_too_large');
+      return result;
+    }
+    const emptyBytes = Buffer.byteLength(JSON.stringify({ result: makeEnvelope([], false, null) })) + 1;
+    const tailBytes = tailEntry ? Buffer.byteLength(JSON.stringify(tailEntry)) : 0;
+    if (emptyBytes + tailBytes > MAX_FRAME) fail('pi_state_too_large');
+    const minStart = Math.max(0, end - maxEntries);
+    let usedBytes = emptyBytes + tailBytes;
+    let start = end;
+    let chosenCount = 0;
+    for (let i = end - 1; i >= minStart; i--) {
+      const itemBytes = Buffer.byteLength(JSON.stringify(branch[i])) + (chosenCount > 0 || tailEntry ? 1 : 0);
+      const id = branch[i]?.id;
+      const cursorOverhead = i > 0 && typeof id === 'string' ? Math.max(0, Buffer.byteLength(JSON.stringify(id)) - 4) : 0;
+      if (usedBytes + itemBytes + cursorOverhead > MAX_FRAME) {
+        if (chosenCount === 0) fail('pi_state_too_large');
+        break;
+      }
+      usedBytes += itemBytes;
+      start = i;
+      chosenCount++;
+    }
+    while (start < end) {
+      const slice = branch.slice(start, end);
+      const before = start > 0 ? slice[0]?.id : null;
+      if (start > 0 && (typeof before !== 'string' || !before || Buffer.byteLength(before) > MAX_CURSOR_BYTES)) {
+        fail('invalid_pi_response');
+      }
+      const entries = tailEntry ? [...slice, tailEntry] : slice;
+      const result = makeEnvelope(entries, start > 0, before);
+      if (Buffer.byteLength(JSON.stringify({ result })) + 1 <= MAX_FRAME) return result;
+      if (end - start === 1) fail('pi_state_too_large');
+      start++;
+    }
+    fail('pi_state_too_large');
+  }
   function state() {
     if (!ctx || closed) fail('pi_extension_unavailable');
     const models = catalog();
@@ -42,9 +85,43 @@ export function createIntegration(pi, {getSupportedThinkingLevels, version}) {
     const authoritative = JSON.stringify({session:current(),file:ctx.sessionManager.getSessionFile(),leaf:branch.at(-1)?.id,model:ctx.model && key(ctx.model),effort:pi.getThinkingLevel(),idle:ctx.isIdle(),queued:ctx.hasPendingMessages(),draft:ctx.ui.getEditorText()});
     if (fingerprint && fingerprint !== authoritative) bump();
     fingerprint = authoritative;
-    const entries = branch.slice(-MAX_ENTRIES);
-    if (live) entries.push({type:'message',id:liveID, message:live});
-    return {protocol:1,version,session_id:current(),session_file:ctx.sessionManager.getSessionFile() ?? null,instance_id:instance,revision,status:pending.length ? 'blocked' : (ctx.isIdle() && !changing && !prompting ? 'idle' : 'working'),model:ctx.model ? {id:key(ctx.model),label:`${ctx.model.name || ctx.model.id} (${ctx.model.provider})`,effort:pi.getThinkingLevel()} : null,models:models.map(({native,...model})=>model),entries,pending:pending.at(-1)?.public ?? null,capabilities:{prompts:true,cancel:true,model_control:true,dialogs:true,dialog_kinds:['confirm','select','input'],editor:false,custom:false}};
+    const tailEntry = live ? {type:'message',id:liveID, message:live} : null;
+    const base = {
+      protocol: 1,
+      version,
+      session_id: current(),
+      session_file: ctx.sessionManager.getSessionFile() ?? null,
+      instance_id: instance,
+      revision,
+      status: pending.length ? 'blocked' : (ctx.isIdle() && !changing && !prompting ? 'idle' : 'working'),
+      model: ctx.model ? {id:key(ctx.model),label:`${ctx.model.name || ctx.model.id} (${ctx.model.provider})`,effort:pi.getThinkingLevel()} : null,
+      models: models.map(({native,...model})=>model),
+      pending: pending.at(-1)?.public ?? null,
+      capabilities: {prompts:true,cancel:true,model_control:true,dialogs:true,dialog_kinds:['confirm','select','input'],editor:false,custom:false,history:true},
+    };
+    return packWindow(branch, branch.length, MAX_STATE_ENTRIES, tailEntry, (entries, has_more, before) => ({
+      ...base,
+      entries,
+      has_more,
+      before,
+    }));
+  }
+  function history(params = {}) {
+    if (!ctx || closed) fail('pi_extension_unavailable');
+    if (!params?.expect || params.expect.session_id !== current() || params.expect.instance_id !== instance) fail('stale');
+    const before = params.before;
+    if (typeof before !== 'string' || !before || Buffer.byteLength(before) > MAX_CURSOR_BYTES) fail('invalid_cursor');
+    const branch = ctx.sessionManager.getBranch();
+    const index = branch.findIndex(entry => entry?.id === before);
+    if (index < 0) fail('stale_cursor');
+    return packWindow(branch, index, MAX_PAGE_ENTRIES, null, (entries, has_more, nextBefore) => ({
+      protocol: 1,
+      session_id: current(),
+      instance_id: instance,
+      entries,
+      has_more,
+      before: nextBefore,
+    }));
   }
   function check(expect) {
     const now=state();
@@ -92,6 +169,7 @@ export function createIntegration(pi, {getSupportedThinkingLevels, version}) {
   }
   async function request(method, params={}) {
     if(method==='state')return state();
+    if(method==='history')return history(params);
     // Serializing the async model mutation prevents another request from
     // passing guards while setModel awaits credentials/model hooks.
     const run=async()=>{
@@ -164,7 +242,7 @@ export function createIntegration(pi, {getSupportedThinkingLevels, version}) {
         const newline=buffer.indexOf(10);if(newline<0)return;received=true;
         let frame;try{frame=JSON.parse(buffer.subarray(0,newline).toString('utf8'));}catch{socket.end(JSON.stringify({error:{code:'invalid_request'}})+'\n');return;}
         request(frame.method,frame.params).then(result=>{
-          let output=JSON.stringify({result});if(Buffer.byteLength(output)>MAX_FRAME)output=JSON.stringify({error:{code:'pi_state_too_large'}});socket.end(output+'\n');
+          let output=JSON.stringify({result});if(Buffer.byteLength(output)+1>MAX_FRAME)output=JSON.stringify({error:{code:'pi_state_too_large'}});socket.end(output+'\n');
         },error=>socket.end(JSON.stringify({error:{code:/^[a-z_]+$/.test(error.message)?error.message:'pi_extension_error'}})+'\n'));
       });
     });

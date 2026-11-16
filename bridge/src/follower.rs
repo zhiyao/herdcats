@@ -123,6 +123,8 @@ pub struct Follower {
     head: Vec<u8>,
     session: String,
     pi_branch_ids: Vec<String>,
+    pi_has_older: bool,
+    pi_older_cursor: Option<String>,
     buf: Vec<u8>,
     /// Absolute file offset of `buf[0]` during a pass.
     buf_base: u64,
@@ -185,9 +187,12 @@ impl Follower {
         revised.dedup();
         revised
     }
-    /// Whether file bytes before `older()` remain to be loaded.
+    /// Whether file or live-extension entries before `older()` remain to be loaded.
     pub fn has_unread_older(&self) -> bool {
-        self.floor > 0
+        self.floor > 0 || self.pi_has_older
+    }
+    pub fn pi_older_cursor(&self) -> Option<&str> {
+        self.pi_older_cursor.as_deref()
     }
     /// Loads older batches until `older()` holds `want` entries or the file
     /// start is reached. Returns how many entries were added.
@@ -309,28 +314,125 @@ impl Follower {
         Ok((chunk, length))
     }
     pub fn refresh_pi_entries(&mut self, entries: &[serde_json::Value], session: &str) -> Result<bool> {
+        self.refresh_pi_window(entries, false, None, session)
+    }
+    pub fn refresh_pi_window(
+        &mut self,
+        entries: &[serde_json::Value],
+        has_more: bool,
+        before: Option<&str>,
+        session: &str,
+    ) -> Result<bool> {
         let mut transcript = Transcript::default();
         let header = serde_json::json!({"type":"session","id":session});
         transcript.apply_pi(&header, session)?;
-        for row in entries { transcript.apply_pi(row, session)?; }
+        for row in entries {
+            transcript.apply_pi(row, session)?;
+        }
         // Streaming entries are temporary projections, not native branch nodes.
-        let branch_ids: Vec<String> = entries.iter()
+        let branch_ids: Vec<String> = entries
+            .iter()
             .filter_map(|row| row["id"].as_str())
             .filter(|id| !id.starts_with("herdcats-live:"))
-            .map(str::to_owned).collect();
-        let reset = self.session != session || !branch_ids.starts_with(&self.pi_branch_ids);
-        let changed = reset || self.transcript.entries != transcript.entries;
-        if reset {
+            .map(str::to_owned)
+            .collect();
+        let overlap = if self.session != session {
+            None
+        } else if branch_ids.starts_with(&self.pi_branch_ids) {
+            Some(0)
+        } else if let Some(first) = branch_ids.first() {
+            self.pi_branch_ids
+                .iter()
+                .position(|id| id == first)
+                .filter(|&pos| branch_ids.starts_with(&self.pi_branch_ids[pos..]))
+        } else {
+            None
+        };
+        let reset = overlap.is_none();
+        if let Some(pos) = overlap {
+            if pos > 0 {
+                // Keep details/truncation for tool entries whose call slid past
+                // the live extension window before their result arrived.
+                for entry in &mut transcript.entries {
+                    if entry.details.is_none()
+                        && let Some(prev) = self.transcript.entries.iter().find(|e| e.id == entry.id)
+                        && prev.details.is_some()
+                    {
+                        entry.details = prev.details.clone();
+                        entry.truncated |= prev.truncated;
+                    }
+                }
+                let live_ids: HashSet<&str> = transcript.entries.iter().map(|e| e.id.as_str()).collect();
+                let mut older_ids: HashSet<String> = self.older.iter().map(|e| e.id.clone()).collect();
+                for old in &self.transcript.entries {
+                    if !old.id.starts_with("pi:herdcats-live:")
+                        && !live_ids.contains(old.id.as_str())
+                        && older_ids.insert(old.id.clone())
+                    {
+                        if self.older.len() >= 100_000 {
+                            return Err("transcript_identity_limit");
+                        }
+                        self.older.push(old.clone());
+                    }
+                }
+            }
+        } else {
             self.generation += 1;
             self.offset = 0;
             self.bytes.clear();
             self.bytes_base = 0;
             self.stamp = None;
+            self.older.clear();
+            self.floor = 0;
+            self.deferred.clear();
+            self.revised.clear();
+            self.pi_has_older = has_more;
+            self.pi_older_cursor = before.map(str::to_owned);
         }
+        let changed = reset || self.transcript.entries != transcript.entries;
         self.pi_branch_ids = branch_ids;
         self.transcript = transcript;
         self.session = session.to_owned();
         Ok(changed)
+    }
+    pub fn prepend_pi_older(
+        &mut self,
+        entries: &[serde_json::Value],
+        has_more: bool,
+        before: Option<&str>,
+        session: &str,
+    ) -> Result<usize> {
+        if self.session != session {
+            return Err("stale_cursor");
+        }
+        let mut batch = Transcript {
+            uncapped: true,
+            ..Transcript::default()
+        };
+        let header = serde_json::json!({"type":"session","id":session});
+        batch.apply_pi(&header, session)?;
+        for row in entries {
+            batch.apply_pi(row, session)?;
+        }
+        let known: HashSet<&str> = self
+            .older
+            .iter()
+            .chain(&self.transcript.entries)
+            .map(|e| e.id.as_str())
+            .collect();
+        let added_entries: Vec<Entry> = batch
+            .entries
+            .into_iter()
+            .filter(|e| !known.contains(e.id.as_str()))
+            .collect();
+        if self.older.len() + added_entries.len() > 100_000 {
+            return Err("transcript_identity_limit");
+        }
+        let count = added_entries.len();
+        self.older.splice(0..0, added_entries);
+        self.pi_has_older = has_more;
+        self.pi_older_cursor = before.map(str::to_owned);
+        Ok(count)
     }
     /// Action guard: accepts an append, but rejects rotation or any modification
     /// to the verified bytes that authorized the displayed request/generation.

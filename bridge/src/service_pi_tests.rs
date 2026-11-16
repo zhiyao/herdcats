@@ -386,3 +386,96 @@ fn pi_branch_a_b_a_emits_fresh_snapshots_restoring_original_messages() {
     h.join().unwrap(); extension.join().unwrap();
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn pi_progressive_history_pages_back_and_preserves_state_too_large() {
+    let root = PathBuf::from("/tmp").join(format!("pi-prog-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(root.join("sessions/project")).unwrap();
+    fs::create_dir_all(root.join("herdcats")).unwrap();
+    let root = root.canonicalize().unwrap();
+    let session = "16246b9d-4c3d-54fc-b6d3-2a765d418491";
+    let path = root.join(format!("sessions/project/{session}.jsonl"));
+    fs::write(&path, format!("{{\"type\":\"session\",\"id\":\"{session}\"}}\n")).unwrap();
+    let socket = root.join("h.sock");
+    let listener = UnixListener::bind(&socket).unwrap();
+    let pane = json!({"pane_id":"pane","terminal_id":"terminal","agent":"pi","agent_status":"idle","agent_session":{"agent":"pi","source":"herdr:pi","kind":"path","value":path}});
+    let host = thread::spawn(move || {
+        for _ in 0..5 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut line = String::new();
+            BufReader::new(stream.try_clone().unwrap()).read_line(&mut line).unwrap();
+            let request: Value = serde_json::from_str(&line).unwrap();
+            writeln!(stream,"{}",json!({"id":request["id"],"result":{"type":"session_snapshot","snapshot":{"protocol":22,"panes":[pane]}}})).unwrap();
+        }
+    });
+    let listener = UnixListener::bind(root.join(format!("herdcats/{session}.sock"))).unwrap();
+    let state_path = path.clone();
+    let extension = thread::spawn(move || {
+        let msg = |id: &str| json!({"type":"message","id":id,"message":{"role":"user","content":id}});
+        let live = json!({"type":"message","id":"herdcats-live:tmp","message":{"role":"assistant","content":"live"}});
+        // 1: watch state [m2, m3] + live
+        // 2: poll slide [m3, m4]
+        // 3: history poll_with_refresh -> state [m3, m4]
+        // 4: history RPC -> returns [m0, m1]
+        // 5: next poll -> oversized state error pi_state_too_large
+        for step in 0..5 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut line = String::new();
+            BufReader::new(stream.try_clone().unwrap()).read_line(&mut line).unwrap();
+            let req: Value = serde_json::from_str(&line).unwrap();
+            let frame = match (step, req["method"].as_str()) {
+                (0, Some("state")) => json!({"result":{"protocol":1,"version":"1.5.0","session_id":session,"session_file":state_path,"instance_id":"rt","revision":1,"entries":[msg("m2"),msg("m3"),live],"has_more":true,"before":"m2","status":"working","capabilities":{"history":true}}}),
+                (1 | 2, Some("state")) => json!({"result":{"protocol":1,"version":"1.5.0","session_id":session,"session_file":state_path,"instance_id":"rt","revision":2,"entries":[msg("m3"),msg("m4")],"has_more":true,"before":"m3","status":"idle","capabilities":{"history":true}}}),
+                (3, Some("history")) => {
+                    assert_eq!(req["params"]["before"], "m2");
+                    assert_eq!(req["params"]["expect"]["instance_id"], "rt");
+                    json!({"result":{"protocol":1,"session_id":session,"instance_id":"rt","entries":[msg("m0"),msg("m1")],"has_more":false,"before":null}})
+                }
+                (4, Some("state")) => json!({"error":{"code":"pi_state_too_large"}}),
+                _ => panic!("unexpected extension step {step} req={req}"),
+            };
+            writeln!(stream, "{frame}").unwrap();
+        }
+    });
+    let mut service = Service::with_resolvers(socket, None, None).with_pi_agent_dir(root.clone());
+    let mut init_out = Vec::new();
+    service.request(br#"{"id":"init","method":"initialize","params":{"protocol":1,"record_content":true}}"#, &mut init_out).unwrap();
+    let init: Value = serde_json::from_slice(&init_out).unwrap();
+    assert_eq!(init["result"]["capabilities"]["pi_history"], true);
+
+    let mut out = Vec::new();
+    service.request(br#"{"id":"w","method":"watch","params":{"pane_id":"pane"}}"#, &mut out).unwrap();
+    let frames: Vec<Value> = String::from_utf8(out).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    let snap = frames.iter().find(|f| f["event"] == "timeline.snapshot").unwrap();
+    let generation = snap["data"]["generation"].as_u64().unwrap();
+    assert_eq!(snap["data"]["has_more"], true);
+    assert_eq!(snap["data"]["before"], "pi:m2");
+
+    let mut poll_out = Vec::new();
+    service.poll(&mut poll_out).unwrap();
+    let updates: Vec<Value> = String::from_utf8(poll_out).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    let upd = updates.iter().find(|f| f["event"] == "timeline.updated").expect("slide should update, not reset");
+    assert_eq!(upd["data"]["generation"], generation);
+    let evicted = upd["data"]["evicted_ids"].as_array().unwrap();
+    assert!(evicted.iter().any(|id| id == "pi:herdcats-live:tmp"));
+    assert!(!evicted.iter().any(|id| id == "pi:m2"), "slid branch entry m2 moved to older and must not be evicted");
+
+    let mut hist_out = Vec::new();
+    let hist_req = json!({"id":"h","method":"history","params":{"generation":generation,"before":"pi:m2"}});
+    service.request(&serde_json::to_vec(&hist_req).unwrap(), &mut hist_out).unwrap();
+    let hist: Value = serde_json::from_slice(&hist_out).unwrap();
+    let ids: Vec<_> = hist["result"]["entries"].as_array().unwrap().iter().map(|e| e["id"].as_str().unwrap()).collect();
+    assert_eq!(ids, vec!["pi:m0", "pi:m1"]);
+    assert_eq!(hist["result"]["has_more"], false);
+
+    let mut err_out = Vec::new();
+    service.poll(&mut err_out).unwrap();
+    let err_frame: Value = serde_json::from_slice(&err_out).unwrap();
+    assert_eq!(err_frame["event"], "timeline.unavailable");
+    assert_eq!(err_frame["data"]["code"], "pi_state_too_large");
+
+    host.join().unwrap();
+    extension.join().unwrap();
+    fs::remove_dir_all(root).unwrap();
+}

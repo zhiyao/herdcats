@@ -123,8 +123,139 @@ test('missing required Pi APIs refuse startup before publishing a control socket
     const root = await mkdtemp(join(testTmp, 'hpi-api-'));
     t.after(() => rm(root, {recursive:true, force:true}));
     t.after(() => f.integration.stop());
-    await assert.rejects(f.integration.start(f.ctx, {directory:join(root, 'control')}), /pi_api_unavailable/);
+  await assert.rejects(f.integration.start(f.ctx, {directory:join(root, 'control')}), /pi_api_unavailable/);
     assert.equal(f.integration.socketPath, undefined);
     assert.deepEqual(f.sent, []);
   }
+});
+
+async function socketCall(socketPath, payload) {
+  return await new Promise((resolve, reject) => {
+    const socket = connect(socketPath);
+    const chunks = [];
+    socket.on('error', reject);
+    socket.on('connect', () => socket.write(JSON.stringify(payload) + '\n'));
+    socket.on('data', chunk => chunks.push(chunk));
+    socket.on('end', () => {
+      const raw = Buffer.concat(chunks);
+      resolve({ bytes: raw.length, frame: JSON.parse(raw.toString('utf8')) });
+    });
+  });
+}
+
+test('progressive history opens 2.58 MiB and >5 MiB sessions within 1 MiB frames without gaps or duplicates', async t => {
+  for (const [count, textBytes] of [[100, 27000], [180, 34000]]) {
+    const branch = Array.from({ length: count }, (_, i) => ({
+      type: 'message',
+      id: `m-${String(i).padStart(4, '0')}`,
+      message: { role: i % 2 === 0 ? 'user' : 'assistant', content: `entry-${i}-` + 'x'.repeat(textBytes) },
+    }));
+    const totalBytes = Buffer.byteLength(JSON.stringify(branch));
+    assert.ok(count === 100 ? totalBytes > 2_580_000 : totalBytes > 5 * 1024 * 1024);
+
+    const f = fixture();
+    f.ctx.sessionManager.getBranch = () => branch;
+    const root = await mkdtemp(join(testTmp, 'hpi-prog-'));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    await f.integration.start(f.ctx, { directory: join(root, 'control') });
+    t.after(() => f.integration.stop());
+
+    const initial = await socketCall(f.integration.socketPath, { method: 'state' });
+    assert.ok(initial.bytes <= 1024 * 1024);
+    assert.equal(initial.frame.result.capabilities.history, true);
+    assert.equal(initial.frame.result.has_more, true);
+
+    const collected = [...initial.frame.result.entries];
+    let hasMore = initial.frame.result.has_more;
+    let before = initial.frame.result.before;
+    const expect = { session_id: initial.frame.result.session_id, instance_id: initial.frame.result.instance_id };
+    while (hasMore) {
+      const page = await socketCall(f.integration.socketPath, { method: 'history', params: { expect, before } });
+      assert.ok(page.bytes <= 1024 * 1024, `page exceeded 1 MiB: ${page.bytes}`);
+      const r = page.frame.result;
+      assert.ok(r.entries.length > 0 || !r.has_more);
+      collected.unshift(...r.entries);
+      hasMore = r.has_more;
+      before = r.before;
+    }
+    assert.equal(before, null);
+    assert.deepEqual(collected.map(e => e.id), branch.map(e => e.id));
+  }
+});
+
+test('UTF-8 multibyte boundaries stay strictly within 1 MiB and oversized single items fail explicitly', async t => {
+  const f = fixture();
+  let branch = [
+    { type: 'message', id: 'old-utf8', message: { role: 'user', content: '界'.repeat(200_000) } },
+    { type: 'message', id: 'mid-utf8', message: { role: 'assistant', content: 'é'.repeat(300_000) } },
+    { type: 'message', id: 'new-utf8', message: { role: 'user', content: 'é'.repeat(300_000) } },
+  ];
+  f.ctx.sessionManager.getBranch = () => branch;
+  const root = await mkdtemp(join(testTmp, 'hpi-utf8-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await f.integration.start(f.ctx, { directory: join(root, 'control') });
+  t.after(() => f.integration.stop());
+
+  const st = await socketCall(f.integration.socketPath, { method: 'state' });
+  assert.ok(st.bytes <= 1024 * 1024);
+  assert.deepEqual(st.frame.result.entries.map(e => e.id), ['new-utf8']);
+  assert.equal(st.frame.result.has_more, true);
+
+  const p1 = await socketCall(f.integration.socketPath, {
+    method: 'history',
+    params: { expect: { session_id: sid, instance_id: st.frame.result.instance_id }, before: st.frame.result.before },
+  });
+  assert.ok(p1.bytes <= 1024 * 1024);
+  assert.deepEqual(p1.frame.result.entries.map(e => e.id), ['mid-utf8']);
+
+  // Single oversized older item fails explicitly without skipping 'old-utf8'.
+  branch[1] = { type: 'message', id: 'huge-old', message: { role: 'assistant', content: '界'.repeat(350_000) } };
+  const hugeOlder = await socketCall(f.integration.socketPath, {
+    method: 'history',
+    params: { expect: { session_id: sid, instance_id: st.frame.result.instance_id }, before: 'new-utf8' },
+  });
+  assert.equal(hugeOlder.frame.error.code, 'pi_state_too_large');
+
+  // Single oversized newest item fails explicitly instead of silently returning older items.
+  branch.push({ type: 'message', id: 'huge-new', message: { role: 'assistant', content: '界'.repeat(350_000) } });
+  const hugeNew = await socketCall(f.integration.socketPath, { method: 'state' });
+  assert.equal(hugeNew.frame.error.code, 'pi_state_too_large');
+});
+
+test('history cursor survives appends and streaming but rejects branch switches, session swaps, and invalid cursors', async t => {
+  const f = fixture();
+  let currentSid = sid;
+  f.ctx.sessionManager.getSessionId = () => currentSid;
+  let branch = Array.from({ length: 4 }, (_, i) => ({
+    type: 'message',
+    id: `n-${i}`,
+    message: { role: 'user', content: 'b'.repeat(300_000) },
+  }));
+  f.ctx.sessionManager.getBranch = () => branch;
+  const root = await mkdtemp(join(testTmp, 'hpi-cur-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await f.integration.start(f.ctx, { directory: join(root, 'control') });
+  t.after(() => f.integration.stop());
+
+  const initial = await f.integration.request('state');
+  const expect = { session_id: initial.session_id, instance_id: initial.instance_id };
+  const cursor = initial.before;
+
+  // Append and stream (bumps revision): history cursor remains valid.
+  branch.push({ type: 'message', id: 'n-4', message: { role: 'assistant', content: 'ok' } });
+  f.hooks.get('message_update')({ message: { role: 'assistant', content: [{ type: 'text', text: 'stream' }] } }, f.ctx);
+  const afterAppend = await f.integration.request('state');
+  assert.ok(afterAppend.revision > initial.revision);
+  const older = await f.integration.request('history', { expect, before: cursor });
+  assert.ok(older.entries.length > 0);
+  f.hooks.get('message_end')({}, f.ctx);
+
+  // Branch switch removes cursor node -> stale_cursor.
+  branch = [{ type: 'message', id: 'alt-0', message: { role: 'user', content: 'alt' } }];
+  await assert.rejects(f.integration.request('history', { expect, before: cursor }), /stale_cursor/);
+  await assert.rejects(f.integration.request('history', { expect, before: '' }), /invalid_cursor/);
+
+  // Session swap -> stale.
+  currentSid = '99999999-1234-4234-8234-123456789abc';
+  await assert.rejects(f.integration.request('history', { expect, before: 'alt-0' }), /stale/);
 });

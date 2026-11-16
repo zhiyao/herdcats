@@ -1207,3 +1207,99 @@ struct ModelCatalogProvenanceTests {
         #expect(!TimelineAgentAvailability.sameSession(agent: "pi", live: nil, native: id))
     }
 }
+
+@Suite("Pi progressive history and oversized handling")
+@MainActor struct PiProgressiveHistoryTests {
+    @Test func piHistoryCapabilityDefaultsOffAndDecodesWhenPresent() throws {
+        let old = try AgentBridgeFrame.decode(Data(#"{"result":{"capabilities":{"claude_timeline":true,"pi":true}}}"#.utf8))
+        #expect(old.result?.capabilities?.piHistory == false)
+        let current = try AgentBridgeFrame.decode(Data(#"{"result":{"capabilities":{"claude_timeline":true,"pi":true,"pi_history":true}}}"#.utf8))
+        #expect(current.result?.capabilities?.piHistory == true)
+    }
+
+    @Test func piStateTooLargeShowsActionableNonLoopingGuidanceUnlessExtensionOutdated() {
+        let view = AgentTimelineView(
+            paneId: "p-pi",
+            agent: "pi",
+            connection: HerdrConnection(),
+            timeline: AgentTimelineState(),
+            topOverlayInset: 0,
+            bottomOverlayInset: 0,
+            onOutputInteraction: {},
+            setupTarget: ConnectionIdentity(host: "localhost", port: 22, username: "test"),
+            onUseTerminal: {},
+            onSetupComplete: {}
+        )
+        #expect(view.title("pi_state_too_large") == "Pi message exceeds Timeline limit")
+        let explanation = view.explanation("pi_state_too_large")
+        #expect(explanation.contains("1 MiB"))
+        #expect(explanation.contains("Terminal"))
+        #expect(!explanation.contains("/reload"))
+        #expect(!explanation.contains("Install"))
+        #expect(!explanation.contains("check again"))
+        #expect(!AgentTimelineView.showsPaneCheckAgain(code: "pi_state_too_large", agent: "pi", bridgeVersion: "0.6.1"))
+        #expect(!AgentTimelineView.showsInstallOrUpgrade(code: "pi_state_too_large", agent: "pi", bridgeVersion: "0.6.1"))
+
+        var caps = AgentBridgeCapabilities(claudeTimeline: true, pi: true, piHistory: true)
+        caps.piExtensionInstall = true
+        let current = PiExtensionResult(status: .current, dir: "/u/.pi/agent/extensions/herdcats", error: nil)
+        let outdated = PiExtensionResult(status: .outdated, dir: "/u/.pi/agent/extensions/herdcats", error: nil)
+        #expect(!AgentTimelineView.showsOutdatedPiExtensionUpdate(code: "pi_state_too_large", agent: "pi", capabilities: caps, result: nil, feedback: nil))
+        #expect(!AgentTimelineView.showsOutdatedPiExtensionUpdate(code: "pi_state_too_large", agent: "pi", capabilities: caps, result: current, feedback: nil))
+        #expect(AgentTimelineView.showsOutdatedPiExtensionUpdate(code: "pi_state_too_large", agent: "pi", capabilities: caps, result: outdated, feedback: nil))
+        #expect(AgentTimelineView.showsOutdatedPiExtensionUpdate(code: "pi_state_too_large", agent: "pi", capabilities: caps, result: current, feedback: "Extension updated."))
+    }
+
+    @Test func piProgressiveHistoryMergesInOrderWithoutDuplicates() throws {
+        let state = AgentTimelineState()
+        let owner = UUID()
+        state.begin(owner: owner, paneId: "p-pi", agent: "pi")
+        let identity: [String: Any] = [
+            "pane_id": "p-pi",
+            "terminal_id": "t1",
+            "agent": "pi",
+            "native_session_id": "s1",
+            "native_instance_id": "i1",
+        ]
+        func makeEntry(_ id: String, _ text: String) -> [String: Any] {
+            ["id": id, "kind": "message", "text": text, "role": "user", "truncated": false]
+        }
+        let snapData: [String: Any] = [
+            "identity": identity,
+            "generation": 1,
+            "entries": [makeEntry("pi:m3", "third"), makeEntry("pi:m4", "fourth")],
+            "has_more": true,
+            "before": "pi:m3",
+            "agent_status": "idle",
+        ]
+        let snapFrame = try AgentBridgeFrame.decode(JSONSerialization.data(withJSONObject: [
+            "event": "timeline.snapshot", "epoch": "e", "seq": 1, "data": snapData,
+        ]))
+        try state.consume(snapFrame, owner: owner)
+        #expect(state.hasMore)
+        #expect(state.before == "pi:m3")
+        #expect(state.entries.map(\.id) == ["pi:m3", "pi:m4"])
+
+        // Prepend page with an overlapping ID to confirm deduplication and order.
+        let histPayload = try #require(AgentBridgeFrame.decode(JSONSerialization.data(withJSONObject: [
+            "id": "h1",
+            "result": [
+                "identity": identity,
+                "generation": 1,
+                "entries": [makeEntry("pi:m1", "first"), makeEntry("pi:m2", "second"), makeEntry("pi:m3", "dup")],
+                "has_more": false,
+                "dropped_entries": 0,
+            ],
+        ])).result)
+        try state.mergeHistory(histPayload, owner: owner, generation: 1)
+        #expect(state.entries.map(\.id) == ["pi:m1", "pi:m2", "pi:m3", "pi:m4"])
+        #expect(!state.hasMore)
+        #expect(state.before == "pi:m1")
+
+        let oversizedMsg = AgentTimelineView.historyPageErrorMessage(for: AgentBridgeError.unavailable("pi_state_too_large"))
+        #expect(oversizedMsg.contains("1 MiB"))
+        #expect(oversizedMsg.contains("Terminal"))
+        #expect(!oversizedMsg.contains("try again"))
+        #expect(AgentTimelineView.historyPageErrorMessage(for: AgentBridgeError.closed).contains("try again"))
+    }
+}

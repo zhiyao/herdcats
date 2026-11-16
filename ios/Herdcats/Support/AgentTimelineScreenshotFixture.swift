@@ -159,6 +159,7 @@
             if ScreenshotFixtures.screen == "timeline-disconnected" { throw AgentBridgeError.closed }
             let unavailableCode: String? = switch ScreenshotFixtures.screen {
             case "timeline-pi-reload": "pi_extension_unavailable"
+            case "timeline-pi-oversized", "timeline-pi-outdated": "pi_state_too_large"
             case "timeline-unavailable": "unsupported_agent"
             case "timeline-codex-no-session", "timeline-session-unresolved": "session_reference_unavailable"
             case "timeline-codex-helper-old" where !helperInstalled: "helper_update_required"
@@ -297,7 +298,7 @@
                         "identity": [
                             "pane_id": paneId, "terminal_id": "fixture-terminal", "agent": splitCheckout ? "codex" : ScreenshotFixtures.paneAgent,
                             "native_session_id": "fixture-session",
-                        ], "generation": 1, "entries": entries, "has_more": ScreenshotFixtures.screen.hasPrefix("timeline-history"), "before": "message:user", "agent_status": (showsApproval || showsQuestion) ? "blocked" : "idle",
+                        ], "generation": 1, "entries": entries, "has_more": ScreenshotFixtures.screen.hasPrefix("timeline-history") || ScreenshotFixtures.screen == "timeline-pi-progressive", "before": "message:user", "agent_status": (showsApproval || showsQuestion) ? "blocked" : "idle",
                         "unknown_records": ProcessInfo.processInfo.arguments.contains("-hc.timeline-long") ? 2 : 0, "dropped_entries": 0,
                     ],
                 ]))

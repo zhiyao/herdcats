@@ -16,11 +16,14 @@ const INDEX_HASHES: &[&str] = &[
     "648606a2797d22984d1f962f90dead01df4919aeed5d1268d529a0a63c18586d",
     // 0.5.1: public API contract check instead of a Pi version gate.
     "58db9fb35a0847c68e13e38bd6d5d2e94880a3192d21a1bb3871346b2950cf85",
+    // Progressive history & Pi /reload ESM cache-busting loader.
+    "5d8669b183b60b3d4334976fe95cf0f5602a9654765b3ed1ebbecb619a80f8a8",
 ];
 const RUNTIME_HASHES: &[&str] = &[
     "fccdd4a506bf53922a0d9c56568283e68ab1435c8bd2ef2c15f68a89265e16c2", // 4f1bd95 pre-release
     "86d55d475b23ae9e196c4e0b45b3767ca3bd562b5da5e65b0187b40838d5f064", // 0.5.0
     "4f3c226482533de9559bb9e25de1c07ce729a9e932ef162f5110fcc46fd8fd9e", // 0.5.1
+    "af77fb43ee4b4adc09576d2dbf8134b7a448051292a8230afd3ee7993bfbf5aa", // progressive history
 ];
 const BUNDLE: [(&str, &[u8], &[&str]); 2] =
     [("index.ts", INDEX, INDEX_HASHES), ("runtime.mjs", RUNTIME, RUNTIME_HASHES)];

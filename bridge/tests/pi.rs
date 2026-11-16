@@ -310,3 +310,61 @@ fn pi_uuid_references_resolve_native_timestamped_files_and_reject_ambiguity() {
     assert!(adapter.resolve_pi_live(&pane).is_err());
     fs::remove_dir_all(p).unwrap();
 }
+
+#[test]
+fn pi_extension_errors_preserve_state_too_large_and_cursor_codes() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::os::unix::net::UnixListener;
+    let p = root();
+    let sock = p.join("err.sock");
+    let listener = UnixListener::bind(&sock).unwrap();
+    let codes = ["pi_state_too_large", "stale_cursor", "invalid_cursor", "unsupported_method", "weird_internal"];
+    let t = std::thread::spawn(move || {
+        for code in codes {
+            let (mut s, _) = listener.accept().unwrap();
+            let mut line = String::new();
+            BufReader::new(s.try_clone().unwrap()).read_line(&mut line).unwrap();
+            writeln!(s, "{}", serde_json::json!({"error":{"code":code}})).unwrap();
+        }
+    });
+    let expected = [
+        ("pi_state_too_large", "pi_state_too_large"),
+        ("stale_cursor", "stale_cursor"),
+        ("invalid_cursor", "invalid_cursor"),
+        ("unsupported_method", "unsupported_capability"),
+        ("weird_internal", "pi_extension_unavailable"),
+    ];
+    for (_, want) in expected {
+        assert_eq!(herdcats_bridge::pi::extension_request_at(&sock, "state", serde_json::json!({})).unwrap_err(), want);
+    }
+    t.join().unwrap();
+    fs::remove_dir_all(p).unwrap();
+}
+
+#[test]
+fn pi_sliding_tail_window_moves_prefix_to_older_without_reset_or_duplicates() {
+    use serde_json::json;
+    let msg = |id: &str| json!({"type":"message","id":id,"message":{"role":"user","content":format!("text {id}")}});
+    let mut f = Follower::for_agent(AgentType::Pi);
+    f.refresh_pi_window(&[msg("m2"), msg("m3")], true, Some("m2"), ID).unwrap();
+    let generation = f.generation;
+    assert!(f.has_unread_older());
+    assert_eq!(f.pi_older_cursor(), Some("m2"));
+
+    // Simulate streaming entry + slide forward ([m2, m3] + live -> [m3, m4]).
+    let live = json!({"type":"message","id":"herdcats-live:s1","message":{"role":"assistant","content":"..."}});
+    f.refresh_pi_window(&[msg("m2"), msg("m3"), live], true, Some("m2"), ID).unwrap();
+    assert_eq!(f.generation, generation);
+
+    f.refresh_pi_window(&[msg("m3"), msg("m4")], true, Some("m3"), ID).unwrap();
+    assert_eq!(f.generation, generation, "sliding window must not reset generation");
+    assert_eq!(f.pi_older_cursor(), Some("m2"), "unread cursor before older() stays anchored");
+    let older_ids: Vec<_> = f.older().iter().map(|e| e.id.as_str()).collect();
+    assert_eq!(older_ids, vec!["pi:m2"]);
+
+    let added = f.prepend_pi_older(&[msg("m0"), msg("m1"), msg("m2")], false, None, ID).unwrap();
+    assert_eq!(added, 2);
+    assert!(!f.has_unread_older());
+    let all_ids: Vec<_> = f.older().iter().chain(&f.transcript.entries).map(|e| e.id.as_str()).collect();
+    assert_eq!(all_ids, vec!["pi:m0", "pi:m1", "pi:m2", "pi:m3", "pi:m4"]);
+}
