@@ -145,6 +145,20 @@ pub struct Follower {
     /// `take_revised`.
     revised: Vec<String>,
 }
+fn reconcile_pi_entry(entry: &mut Entry, previous: &Entry) {
+    if entry.kind != "tool" || previous.kind != "tool" {
+        return;
+    }
+    if entry.status.as_deref() == Some("running")
+        && matches!(previous.status.as_deref(), Some("completed" | "failed"))
+    {
+        let call = std::mem::replace(entry, previous.clone());
+        reconcile_pi_entry(entry, &call);
+    } else if entry.details.is_none() {
+        entry.details = previous.details.clone();
+        entry.truncated |= previous.truncated;
+    }
+}
 impl Follower {
     pub fn for_agent(agent_type: AgentType) -> Self {
         Self {
@@ -340,29 +354,27 @@ impl Follower {
             None
         } else if branch_ids.starts_with(&self.pi_branch_ids) {
             Some(0)
-        } else if let Some(first) = branch_ids.first() {
-            self.pi_branch_ids
+        } else {
+            branch_ids.first().and_then(|first| self.pi_branch_ids
                 .iter()
                 .position(|id| id == first)
-                .filter(|&pos| branch_ids.starts_with(&self.pi_branch_ids[pos..]))
-        } else {
-            None
+                .filter(|&pos| branch_ids.starts_with(&self.pi_branch_ids[pos..])))
+                .or_else(|| self.pi_branch_ids.first().and_then(|first| {
+                    branch_ids.iter().position(|id| id == first)
+                        .filter(|&pos| branch_ids[pos..].starts_with(&self.pi_branch_ids))
+                        .map(|_| 0)
+                }))
         };
         let reset = overlap.is_none();
         if let Some(pos) = overlap {
-            if pos > 0 {
-                // Keep details/truncation for tool entries whose call slid past
-                // the live extension window before their result arrived.
-                for entry in &mut transcript.entries {
-                    if entry.details.is_none()
-                        && let Some(prev) = self.transcript.entries.iter().find(|e| e.id == entry.id)
-                        && prev.details.is_some()
-                    {
-                        entry.details = prev.details.clone();
-                        entry.truncated |= prev.truncated;
-                    }
+            for entry in &mut transcript.entries {
+                if let Some(previous) = self.transcript.entries.iter().chain(&self.older).find(|e| e.id == entry.id) {
+                    reconcile_pi_entry(entry, previous);
                 }
-                let live_ids: HashSet<&str> = transcript.entries.iter().map(|e| e.id.as_str()).collect();
+            }
+            let live_ids: HashSet<&str> = transcript.entries.iter().map(|e| e.id.as_str()).collect();
+            self.older.retain(|entry| !live_ids.contains(entry.id.as_str()));
+            if pos > 0 {
                 let mut older_ids: HashSet<String> = self.older.iter().map(|e| e.id.clone()).collect();
                 for old in &self.transcript.entries {
                     if !old.id.starts_with("pi:herdcats-live:")
@@ -414,17 +426,20 @@ impl Follower {
         for row in entries {
             batch.apply_pi(row, session)?;
         }
-        let known: HashSet<&str> = self
-            .older
-            .iter()
-            .chain(&self.transcript.entries)
-            .map(|e| e.id.as_str())
-            .collect();
-        let added_entries: Vec<Entry> = batch
-            .entries
-            .into_iter()
-            .filter(|e| !known.contains(e.id.as_str()))
-            .collect();
+        let mut added_entries = Vec::new();
+        for entry in batch.entries {
+            if let Some(existing) = self.older.iter_mut().find(|e| e.id == entry.id) {
+                let previous = existing.clone();
+                reconcile_pi_entry(existing, &entry);
+                if *existing != previous {
+                    self.revised.push(existing.id.clone());
+                }
+            } else if let Some(existing) = self.transcript.entries.iter_mut().find(|e| e.id == entry.id) {
+                reconcile_pi_entry(existing, &entry);
+            } else {
+                added_entries.push(entry);
+            }
+        }
         if self.older.len() + added_entries.len() > 100_000 {
             return Err("transcript_identity_limit");
         }

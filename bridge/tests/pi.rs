@@ -368,3 +368,81 @@ fn pi_sliding_tail_window_moves_prefix_to_older_without_reset_or_duplicates() {
     let all_ids: Vec<_> = f.older().iter().chain(&f.transcript.entries).map(|e| e.id.as_str()).collect();
     assert_eq!(all_ids, vec!["pi:m0", "pi:m1", "pi:m2", "pi:m3", "pi:m4"]);
 }
+
+fn pi_message(id: &str) -> serde_json::Value {
+    serde_json::json!({"type":"message","id":id,"message":{"role":"user","content":id}})
+}
+
+fn pi_call() -> serde_json::Value {
+    serde_json::json!({"type":"message","id":"call","message":{"role":"assistant","content":[{"type":"toolCall","id":"c","name":"bash","arguments":{"command":"pwd"}}]}})
+}
+
+fn pi_result(error: bool) -> serde_json::Value {
+    serde_json::json!({"type":"message","id":"result","message":{"role":"toolResult","toolCallId":"c","toolName":"bash","isError":error,"content":"output"}})
+}
+
+#[test]
+fn pi_tool_context_survives_sliding_and_repeated_polls() {
+    for error in [false, true] {
+        let mut f = Follower::for_agent(AgentType::Pi);
+        f.refresh_pi_window(&[pi_call(), pi_result(error)], true, Some("call"), ID).unwrap();
+        let expected = f.transcript.entries[0].clone();
+        for _ in 0..3 {
+            f.refresh_pi_window(&[pi_result(error), pi_message("new")], true, Some("result"), ID).unwrap();
+            assert_eq!(f.transcript.entries[0], expected);
+        }
+        f.refresh_pi_window(&[pi_message("new"), pi_message("next")], true, Some("new"), ID).unwrap();
+        assert_eq!(f.older()[0], expected);
+        f.refresh_pi_window(&[pi_result(error), pi_message("new"), pi_message("next")], true, Some("result"), ID).unwrap();
+        assert_eq!(f.transcript.entries[0], expected);
+        assert!(f.older().is_empty());
+    }
+}
+
+#[test]
+fn pi_history_joins_call_arguments_into_live_and_older_results() {
+    for result_in_older in [false, true] {
+        for error in [false, true] {
+            let mut f = Follower::for_agent(AgentType::Pi);
+            f.refresh_pi_window(&[pi_result(error), pi_message("new")], true, Some("result"), ID).unwrap();
+            if result_in_older {
+                f.refresh_pi_window(&[pi_message("new"), pi_message("next")], true, Some("new"), ID).unwrap();
+            }
+            assert_eq!(f.prepend_pi_older(&[pi_call()], false, None, ID).unwrap(), 0);
+            let expected = {
+                let mut full = Follower::for_agent(AgentType::Pi);
+                full.refresh_pi_entries(&[pi_call(), pi_result(error)], ID).unwrap();
+                full.transcript.entries[0].clone()
+            };
+            let entry = f.older().iter().chain(&f.transcript.entries).find(|e| e.id == "pi:tool:c").unwrap();
+            assert_eq!(entry, &expected);
+            assert_eq!(f.take_revised(), if result_in_older { vec!["pi:tool:c"] } else { vec![] });
+            if result_in_older {
+                f.refresh_pi_window(&[pi_result(error), pi_message("new"), pi_message("next")], true, Some("result"), ID).unwrap();
+            } else {
+                f.refresh_pi_window(&[pi_result(error), pi_message("new")], true, Some("result"), ID).unwrap();
+            }
+            assert_eq!(f.transcript.entries[0], expected);
+            assert!(f.older().is_empty());
+        }
+    }
+}
+
+#[test]
+fn pi_stream_completion_expands_backwards_without_losing_history() {
+    let mut f = Follower::for_agent(AgentType::Pi);
+    f.refresh_pi_window(&[pi_message("m2"), pi_message("m3")], true, Some("m2"), ID).unwrap();
+    f.prepend_pi_older(&[pi_message("m0"), pi_message("m1")], false, None, ID).unwrap();
+    let generation = f.generation;
+    let live = serde_json::json!({"type":"message","id":"herdcats-live:s","message":{"role":"assistant","content":"stream"}});
+    f.refresh_pi_window(&[pi_message("m3"), live], true, Some("m3"), ID).unwrap();
+    assert_eq!(f.older().len(), 3);
+    f.refresh_pi_window(&[pi_message("m1"), pi_message("m2"), pi_message("m3")], true, Some("m1"), ID).unwrap();
+    assert_eq!(f.generation, generation);
+    assert!(!f.has_unread_older());
+    let ids: Vec<_> = f.older().iter().chain(&f.transcript.entries).map(|e| e.id.as_str()).collect();
+    assert_eq!(ids, vec!["pi:m0", "pi:m1", "pi:m2", "pi:m3"]);
+    f.refresh_pi_window(&[pi_message("m1"), pi_message("m2"), pi_message("alternate")], true, Some("m1"), ID).unwrap();
+    assert_eq!(f.generation, generation + 1);
+    assert!(f.older().is_empty());
+}

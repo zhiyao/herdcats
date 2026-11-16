@@ -78,10 +78,11 @@ export function createIntegration(pi, {getSupportedThinkingLevels, version}) {
     }
     fail('pi_state_too_large');
   }
-  function state() {
+  function stateData() {
     if (!ctx || closed) fail('pi_extension_unavailable');
     const models = catalog();
     const branch = ctx.sessionManager.getBranch();
+    if (!Array.isArray(branch)) fail('invalid_pi_response');
     const authoritative = JSON.stringify({session:current(),file:ctx.sessionManager.getSessionFile(),leaf:branch.at(-1)?.id,model:ctx.model && key(ctx.model),effort:pi.getThinkingLevel(),idle:ctx.isIdle(),queued:ctx.hasPendingMessages(),draft:ctx.ui.getEditorText()});
     if (fingerprint && fingerprint !== authoritative) bump();
     fingerprint = authoritative;
@@ -99,6 +100,10 @@ export function createIntegration(pi, {getSupportedThinkingLevels, version}) {
       pending: pending.at(-1)?.public ?? null,
       capabilities: {prompts:true,cancel:true,model_control:true,dialogs:true,dialog_kinds:['confirm','select','input'],editor:false,custom:false,history:true},
     };
+    return {branch, tailEntry, base};
+  }
+  function state() {
+    const {branch, tailEntry, base} = stateData();
     return packWindow(branch, branch.length, MAX_STATE_ENTRIES, tailEntry, (entries, has_more, before) => ({
       ...base,
       entries,
@@ -228,7 +233,7 @@ export function createIntegration(pi, {getSupportedThinkingLevels, version}) {
     ]) {
       if (methods.some(method => typeof object?.[method] !== 'function')) fail('pi_api_unavailable');
     }
-    state(); // Check readable session/model data before exposing controls.
+    stateData();
     const id=current();if(!UUID.test(id))fail('invalid_session_reference');
     await privateDirectory(directory);const candidate=join(directory,`${id}.sock`);
     // Never unlink another live or stale process's endpoint automatically.

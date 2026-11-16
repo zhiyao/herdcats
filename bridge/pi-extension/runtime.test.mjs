@@ -143,6 +143,29 @@ async function socketCall(socketPath, payload) {
   });
 }
 
+test('oversized startup and reload retain an endpoint with an explicit state error', async t => {
+  for (const kind of ['newest', 'empty-metadata', 'metadata']) {
+    const f = fixture();
+    const huge = 'x'.repeat(1024 * 1024);
+    f.ctx.sessionManager.getBranch = () => kind === 'empty-metadata' ? [] : [
+      {type:'message', id:'newest', message:{role:'user', content:kind === 'newest' ? huge : 'hello'}},
+    ];
+    if (kind !== 'newest') f.ctx.modelRegistry.getAvailable = () => [{provider:'provider', id:'model', name:huge}];
+    const root = await mkdtemp(join(testTmp, 'hpi-size-'));
+    t.after(() => rm(root, {recursive:true, force:true}));
+    t.after(() => f.integration.stop());
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await f.integration.start(f.ctx, {directory:join(root, 'control')});
+      const reply = await socketCall(f.integration.socketPath, {method:'state'});
+      assert.equal(reply.frame.error.code, 'pi_state_too_large');
+      assert.ok(reply.bytes <= 1024 * 1024);
+    }
+    f.ctx.sessionManager.getBranch = () => [];
+    f.ctx.modelRegistry.getAvailable = () => [];
+    assert.equal((await socketCall(f.integration.socketPath, {method:'state'})).frame.result.session_id, sid);
+  }
+});
+
 test('progressive history opens 2.58 MiB and >5 MiB sessions within 1 MiB frames without gaps or duplicates', async t => {
   for (const [count, textBytes] of [[100, 27000], [180, 34000]]) {
     const branch = Array.from({ length: count }, (_, i) => ({
