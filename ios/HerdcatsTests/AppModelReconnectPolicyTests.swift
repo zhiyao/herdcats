@@ -41,6 +41,27 @@ struct AppModelReconnectPolicyTests {
         #expect(state.nextDelaySeconds(jitterUnit: 1.0) == 2.5)
     }
 
+    @Test func successfulButShortLivedReconnectsBackOffFromZero() {
+        var state = ReconnectBackoffState()
+        state.noteConnected(at: 0)
+        state.noteDisconnectedFromConnected(at: 60)
+        #expect(state.failureCount == 0)
+        #expect(state.nextDelaySeconds(jitterUnit: 1) == 2.5)
+
+        for (index, expectedDelay) in [5.0, 10.0, 20.0, 40.0, 60.0, 60.0].enumerated() {
+            let connectedAt = 100.0 + Double(index) * 20
+            state.noteConnected(at: connectedAt)
+            state.noteDisconnectedFromConnected(at: connectedAt + 10)
+            #expect(state.failureCount == index + 1)
+            #expect(state.nextDelaySeconds(jitterUnit: 1) == expectedDelay)
+        }
+
+        state.noteConnected(at: 300)
+        state.noteDisconnectedFromConnected(at: 330)
+        #expect(state.failureCount == 0)
+        #expect(state.nextDelaySeconds(jitterUnit: 1) == 2.5)
+    }
+
     @Test func pendingAutoReconnectCancelsWhenSceneBecomesInactiveAndLossWhileInactiveNeverDials() async throws {
         let config = makeConfig()
         let model = AppModel(autoConnectOnLaunch: false)

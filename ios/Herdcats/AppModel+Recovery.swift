@@ -36,8 +36,7 @@ struct ReconnectBackoffState: Equatable, Sendable {
         defer { connectedAt = nil }
         if let connectedAt, now - connectedAt >= ReconnectBackoffPolicy.stableConnectionThreshold {
             failureCount = 0
-        } else if failureCount > 0 {
-            // A short-lived connection after earlier failures is still unstable.
+        } else {
             failureCount += 1
         }
     }

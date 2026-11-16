@@ -1,4 +1,9 @@
+@testable import Citadel
+import Crypto
 import Foundation
+import NIOCore
+import NIOPosix
+import NIOSSH
 import Testing
 @testable import Herdcats
 
@@ -420,34 +425,63 @@ struct PaneTimelinePowerPolicyTests {
     }
 
     @Test func cancelledBeginPaneLiveInputDoesNotLeaveActiveSessionInstalled() async throws {
-        let connection = HerdrConnection()
-        let firstEntered = ExternallyReleasedWait<Void>()
-        let releaseFirst = ExternallyReleasedWait<Void>()
-
-        // Hold the paneInput lane with a pending mutation.
-        let blocker = Task {
-            try await connection.paneInput.run(paneId: "w1:p1") {
-                firstEntered.release(())
-                _ = try await releaseFirst.wait()
+        try await withConnectedLiveInputFixture { connection, shell in
+            let firstEntered = ExternallyReleasedWait<Void>()
+            let releaseFirst = ExternallyReleasedWait<Void>()
+            let blocker = Task {
+                try await connection.paneInput.run(paneId: "w1:p1") {
+                    firstEntered.release(())
+                    _ = try await releaseFirst.wait()
+                }
             }
-        }
-        try await firstEntered.wait()
+            try await firstEntered.wait()
 
-        let cancelledBegin = Task {
-            try await connection.beginPaneLiveInput(paneId: "w1:p1")
-        }
-        try await Task.sleep(for: .milliseconds(20))
-        cancelledBegin.cancel()
-        releaseFirst.release(())
-        try? await blocker.value
+            let cancelledBegin = Task {
+                try await connection.beginPaneLiveInput(paneId: "w1:p1")
+            }
+            for _ in 0..<1_000 {
+                if await connection.paneInput.queuedCount(paneId: "w1:p1") == 1 { break }
+                try await Task.sleep(for: .milliseconds(1))
+            }
+            let queued = await connection.paneInput.queuedCount(paneId: "w1:p1")
+            cancelledBegin.cancel()
+            releaseFirst.release(())
+            try await blocker.value
 
-        do {
-            _ = try await cancelledBegin.value
-            Issue.record("Cancelled beginPaneLiveInput should throw")
-        } catch {
-            #expect(error is CancellationError || (error as? HerdrError) == .notConnected)
+            do {
+                _ = try await cancelledBegin.value
+                Issue.record("Cancelled beginPaneLiveInput should throw")
+            } catch {
+                #expect(error is CancellationError)
+            }
+            #expect(queued == 1)
+            #expect(await connection.hasActiveLiveSession(paneId: "w1:p1") == false)
+
+            shell.release.release(())
+            let session = try await connection.beginPaneLiveInput(paneId: "w1:p1")
+            #expect(await connection.hasActiveLiveSession(paneId: "w1:p1"))
+            await connection.endPaneLiveInput(session)
+            #expect(await connection.hasActiveLiveSession(paneId: "w1:p1") == false)
         }
-        #expect(await connection.hasActiveLiveSession(paneId: "w1:p1") == false)
+    }
+
+    @Test func cancellationDuringShellSetupRetiresInstalledLiveSession() async throws {
+        try await withConnectedLiveInputFixture { connection, shell in
+            let begin = Task {
+                try await connection.beginPaneLiveInput(paneId: "w1:p1")
+            }
+            try await shell.entered.wait()
+            #expect(await connection.hasActiveLiveSession(paneId: "w1:p1"))
+            begin.cancel()
+            shell.release.release(())
+            do {
+                _ = try await begin.value
+                Issue.record("Cancelled shell setup should throw")
+            } catch {
+                #expect(error is CancellationError)
+            }
+            #expect(await connection.hasActiveLiveSession(paneId: "w1:p1") == false)
+        }
     }
 }
 
@@ -469,4 +503,76 @@ private extension HerdrConnection {
     func hasActiveLiveSession(paneId: String) -> Bool {
         activeLiveSessions[paneId] != nil
     }
+}
+
+private struct LiveInputFixtureAuthentication: NIOSSHServerUserAuthenticationDelegate {
+    let supportedAuthenticationMethods: NIOSSHAvailableUserAuthenticationMethods = [.password]
+
+    func requestReceived(
+        request: NIOSSHUserAuthenticationRequest,
+        responsePromise: EventLoopPromise<NIOSSHUserAuthenticationOutcome>
+    ) {
+        responsePromise.succeed(.success)
+    }
+}
+
+@MainActor
+private func withConnectedLiveInputFixture(
+    _ operation: (HerdrConnection, LiveInputFixtureShell) async throws -> Void
+) async throws {
+    let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+    let server = try await SSHServer.host(
+        host: "127.0.0.1", port: 0,
+        hostKeys: [.init(ed25519Key: Curve25519.Signing.PrivateKey())],
+        authenticationDelegate: LiveInputFixtureAuthentication(), group: group
+    )
+    let shell = LiveInputFixtureShell()
+    server.enableExec(withDelegate: shell)
+    var ssh: SSHClient?
+    do {
+        let port = try #require(server.channel.localAddress?.port)
+        let settings = SSHClientSettings(
+            host: "127.0.0.1", port: port,
+            authenticationMethod: { .passwordBased(username: "fixture", password: "fixture") },
+            hostKeyValidator: .acceptAnything()
+        )
+        let client = try await SSHClient.connect(to: settings)
+        ssh = client
+        let connection = HerdrConnection()
+        await connection.installLiveInputFixture(client)
+        try await operation(connection, shell)
+    } catch {
+        try? await ssh?.close()
+        try? await server.close()
+        try? await group.shutdownGracefully()
+        throw error
+    }
+    try await ssh?.close()
+    try await server.close()
+    try await group.shutdownGracefully()
+}
+
+private extension HerdrConnection {
+    func installLiveInputFixture(_ client: SSHClient) {
+        let reserved = slot.beginReplace().attempt
+        _ = slot.install(client, expected: reserved)
+    }
+}
+
+private final class LiveInputFixtureShell: ExecDelegate, Sendable {
+    let entered = ExternallyReleasedWait<Void>()
+    let release = ExternallyReleasedWait<Void>()
+
+    func start(command: String, outputHandler: ExecOutputHandler) async throws -> ExecCommandContext {
+        entered.release(())
+        try await release.wait()
+        outputHandler.succeed(exitCode: 1)
+        return LiveInputFixtureCommand()
+    }
+
+    func setEnvironmentValue(_ value: String, forKey key: String) async throws {}
+}
+
+private struct LiveInputFixtureCommand: ExecCommandContext {
+    func terminate() async throws {}
 }
