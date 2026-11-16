@@ -1210,13 +1210,6 @@ struct ModelCatalogProvenanceTests {
 
 @Suite("Pi progressive history and oversized handling")
 @MainActor struct PiProgressiveHistoryTests {
-    @Test func piHistoryCapabilityDefaultsOffAndDecodesWhenPresent() throws {
-        let old = try AgentBridgeFrame.decode(Data(#"{"result":{"capabilities":{"claude_timeline":true,"pi":true}}}"#.utf8))
-        #expect(old.result?.capabilities?.piHistory == false)
-        let current = try AgentBridgeFrame.decode(Data(#"{"result":{"capabilities":{"claude_timeline":true,"pi":true,"pi_history":true}}}"#.utf8))
-        #expect(current.result?.capabilities?.piHistory == true)
-    }
-
     @Test func piStateTooLargeShowsActionableNonLoopingGuidanceUnlessExtensionOutdated() {
         let view = AgentTimelineView(
             paneId: "p-pi",
@@ -1240,7 +1233,7 @@ struct ModelCatalogProvenanceTests {
         #expect(!AgentTimelineView.showsPaneCheckAgain(code: "pi_state_too_large", agent: "pi", bridgeVersion: "0.6.1"))
         #expect(!AgentTimelineView.showsInstallOrUpgrade(code: "pi_state_too_large", agent: "pi", bridgeVersion: "0.6.1"))
 
-        var caps = AgentBridgeCapabilities(claudeTimeline: true, pi: true, piHistory: true)
+        var caps = AgentBridgeCapabilities(claudeTimeline: true, pi: true)
         caps.piExtensionInstall = true
         let current = PiExtensionResult(status: .current, dir: "/u/.pi/agent/extensions/herdcats", error: nil)
         let outdated = PiExtensionResult(status: .outdated, dir: "/u/.pi/agent/extensions/herdcats", error: nil)

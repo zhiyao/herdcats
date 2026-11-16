@@ -28,7 +28,6 @@
     "routed_hosts": false,
     "record_content": "true; rich entries and bounded content retrieval are enabled only when initialize params.record_content is true",
     "pi": "true when the Pi sessions root is available; exact Herdr source and a live Pi extension speaking Herdcats protocol 1 are required per pane",
-    "pi_history": "true when this binary supports progressive Pi extension history paging and explicit pi_state_too_large error preservation",
     "agy": "source adapter implemented; exact Herdr agent agy/antigravity_cli and source herdr:antigravity_cli required; delayed transcript creation retried",
     "cursor": "read-only timeline adapter implemented; exact Herdr agent cursor and source herdr:cursor required; true when the adapter has a configured root; per-pane source validation still required",
     "cursor_prompts": "true when the Cursor adapter has a configured root; the bridge, not the phone, reads the screen and submits Cursor prompts through prompt.submit"
@@ -540,7 +539,7 @@
     "actions": "pi.prompt (text), pi.cancel, pi.dialog.respond (request_id and value) require pane_id and expect.identity/generation; the bridge binds them to the live instance and revision. Confirmation returns confirmed:true; actions are never automatically resent.",
     "dialogs": "pi.dialog carries identity, generation, request_id, kind, title, message and dialog_options. confirm returns boolean, select returns the exact option, input returns text; custom/editor dialogs remain terminal-only. pi.dialog.cleared retires the matching request_id.",
     "limits": "1 MiB extension frames (1,048,576 UTF-8 bytes including JSON envelope and trailing newline); newest window and older history pages pack up to 100 native branch records bounded to 1 MiB UTF-8 bytes, paging back through arbitrary branch lengths without silent drops; 1000 retained bridge entries; 8192-byte previews. A single item or envelope exceeding 1 MiB explicitly returns pi_state_too_large and uses Terminal fallback.",
-    "history": "Extension method history requires expect {session_id, instance_id} and before (native branch record ID). Revision changes from live appends/streaming keep cursors valid; branch switches, compaction, or session swaps reject stale cursors cleanly.",
+    "history": "Extension method history requires expect {session_id, instance_id} and before (opaque cursor, at most 512 UTF-8 bytes; a native branch record ID excludes that record, while herdcats-through:<ID> includes it for a live-only window). Revision changes from live appends/streaming keep cursors valid; branch switches, compaction, or session swaps reject stale cursors cleanly.",
     "distribution": "The bridge binary bundles the extension. The app runs herdcats-bridge pi-extension install only after an explicit Install or Update tap on a Pi pane, and after a user-started bridge update only when a known older Herdcats extension is already installed. It then offers to type /reload (no Enter) when Herdr reports the pane idle. See ios/docs/pi-conversations.md and bridge/pi-extension/README.md."
   },
   "cursor_cli": {

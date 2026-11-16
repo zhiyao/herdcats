@@ -539,7 +539,7 @@ impl Service {
             let has_more = reply["has_more"].as_bool().ok_or("invalid_pi_response")?;
             let next_before = match reply.get("before") {
                 None | Some(Value::Null) => None,
-                Some(Value::String(s)) if !s.is_empty() && s.len() <= 256 => Some(s.as_str()),
+                Some(Value::String(s)) if !s.is_empty() && s.len() <= 512 => Some(s.as_str()),
                 _ => return Err("invalid_pi_response"),
             };
             if has_more
@@ -614,7 +614,7 @@ impl Service {
                 let has_more = state["has_more"].as_bool().ok_or("invalid_pi_response")?;
                 let before = match state.get("before") {
                     None | Some(Value::Null) => None,
-                    Some(Value::String(s)) if !s.is_empty() && s.len() <= 256 => Some(s.as_str()),
+                    Some(Value::String(s)) if !s.is_empty() && s.len() <= 512 => Some(s.as_str()),
                     _ => return Err("invalid_pi_response"),
                 };
                 if has_more
@@ -2892,7 +2892,7 @@ impl Service {
             let codex_available = self.adapter_for("codex").is_some_and(|a| a.is_available());
             return Self::write(
                 out,
-                &json!({"id":id,"result":{"protocol":1,"bridge_version":env!("CARGO_PKG_VERSION"),"epoch":self.epoch,"capabilities":{"agy":self.adapter_for("agy").is_some_and(|a| a.is_available()),"pi":self.adapter_for("pi").is_some_and(|a|a.is_available()),"pi_history":self.adapter_for("pi").is_some_and(|a|a.is_available()),"cursor":self.adapter_for("cursor").is_some_and(|a| a.is_available()),"cursor_prompts":self.adapter_for("cursor").is_some_and(|a| a.is_available()),"claude_timeline":claude_available,"record_content":true,"codex_timeline":codex_available,"codex_daemon_config":true,"codex_daemon_stop":true,"pi_extension_install":true,"git":false,"prompts":false,"approvals":true,"questions":true,"model_control":true,"routed_hosts":false}}}),
+                &json!({"id":id,"result":{"protocol":1,"bridge_version":env!("CARGO_PKG_VERSION"),"epoch":self.epoch,"capabilities":{"agy":self.adapter_for("agy").is_some_and(|a| a.is_available()),"pi":self.adapter_for("pi").is_some_and(|a|a.is_available()),"cursor":self.adapter_for("cursor").is_some_and(|a| a.is_available()),"cursor_prompts":self.adapter_for("cursor").is_some_and(|a| a.is_available()),"claude_timeline":claude_available,"record_content":true,"codex_timeline":codex_available,"codex_daemon_config":true,"codex_daemon_stop":true,"pi_extension_install":true,"git":false,"prompts":false,"approvals":true,"questions":true,"model_control":true,"routed_hosts":false}}}),
             );
         }
         if !self.initialized {

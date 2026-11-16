@@ -442,7 +442,7 @@ fn pi_progressive_history_pages_back_and_preserves_state_too_large() {
     let mut init_out = Vec::new();
     service.request(br#"{"id":"init","method":"initialize","params":{"protocol":1,"record_content":true}}"#, &mut init_out).unwrap();
     let init: Value = serde_json::from_slice(&init_out).unwrap();
-    assert_eq!(init["result"]["capabilities"]["pi_history"], true);
+    assert_eq!(init["result"]["capabilities"]["pi"], true);
 
     let mut out = Vec::new();
     service.request(br#"{"id":"w","method":"watch","params":{"pane_id":"pane"}}"#, &mut out).unwrap();

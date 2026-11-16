@@ -24,6 +24,8 @@ const RUNTIME_HASHES: &[&str] = &[
     "86d55d475b23ae9e196c4e0b45b3767ca3bd562b5da5e65b0187b40838d5f064", // 0.5.0
     "4f3c226482533de9559bb9e25de1c07ce729a9e932ef162f5110fcc46fd8fd9e", // 0.5.1
     "af77fb43ee4b4adc09576d2dbf8134b7a448051292a8230afd3ee7993bfbf5aa", // progressive history
+    "80ba7a9acb6a2e024d60826453f729c0d6d94606a07845bc0e5ce56723e9eaed",
+    "44d4b6f0516e6bfcdc3b6c30ceb8cb315740942db03b945fcbfa8e2f5260993e",
 ];
 const BUNDLE: [(&str, &[u8], &[&str]); 2] =
     [("index.ts", INDEX, INDEX_HASHES), ("runtime.mjs", RUNTIME, RUNTIME_HASHES)];

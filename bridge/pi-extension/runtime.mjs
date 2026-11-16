@@ -7,7 +7,8 @@ import { isAbsolute, join, parse, relative } from 'node:path';
 const MAX_FRAME = 1024 * 1024;
 const MAX_STATE_ENTRIES = 100;
 const MAX_PAGE_ENTRIES = 100;
-const MAX_CURSOR_BYTES = 256;
+const MAX_CURSOR_BYTES = 512;
+const THROUGH_CURSOR = 'herdcats-through:';
 const UUID = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
 const fail = code => { throw new Error(code); };
 function plain(value) { return typeof value === 'string' && Buffer.byteLength(value) <= 256 * 1024 && !value.includes('\0'); }
@@ -57,23 +58,24 @@ export function createIntegration(pi, {getSupportedThinkingLevels, version}) {
       const id = branch[i]?.id;
       const cursorOverhead = i > 0 && typeof id === 'string' ? Math.max(0, Buffer.byteLength(JSON.stringify(id)) - 4) : 0;
       if (usedBytes + itemBytes + cursorOverhead > MAX_FRAME) {
-        if (chosenCount === 0) fail('pi_state_too_large');
+        if (chosenCount === 0 && !tailEntry) fail('pi_state_too_large');
         break;
       }
       usedBytes += itemBytes;
       start = i;
       chosenCount++;
     }
-    while (start < end) {
+    while (start < end || tailEntry) {
       const slice = branch.slice(start, end);
-      const before = start > 0 ? slice[0]?.id : null;
-      if (start > 0 && (typeof before !== 'string' || !before || Buffer.byteLength(before) > MAX_CURSOR_BYTES)) {
+      const anchor = start === end ? branch[end - 1]?.id : slice[0]?.id;
+      if (start > 0 && (typeof anchor !== 'string' || !anchor || Buffer.byteLength(anchor) > 256)) {
         fail('invalid_pi_response');
       }
+      const before = start === end ? THROUGH_CURSOR + anchor : start > 0 ? anchor : null;
       const entries = tailEntry ? [...slice, tailEntry] : slice;
       const result = makeEnvelope(entries, start > 0, before);
       if (Buffer.byteLength(JSON.stringify({ result })) + 1 <= MAX_FRAME) return result;
-      if (end - start === 1) fail('pi_state_too_large');
+      if (start === end || (!tailEntry && end - start === 1)) fail('pi_state_too_large');
       start++;
     }
     fail('pi_state_too_large');
@@ -117,9 +119,11 @@ export function createIntegration(pi, {getSupportedThinkingLevels, version}) {
     const before = params.before;
     if (typeof before !== 'string' || !before || Buffer.byteLength(before) > MAX_CURSOR_BYTES) fail('invalid_cursor');
     const branch = ctx.sessionManager.getBranch();
-    const index = branch.findIndex(entry => entry?.id === before);
+    const inclusive = before.startsWith(THROUGH_CURSOR);
+    const anchor = inclusive ? before.slice(THROUGH_CURSOR.length) : before;
+    const index = branch.findIndex(entry => entry?.id === anchor);
     if (index < 0) fail('stale_cursor');
-    return packWindow(branch, index, MAX_PAGE_ENTRIES, null, (entries, has_more, nextBefore) => ({
+    return packWindow(branch, index + (inclusive ? 1 : 0), MAX_PAGE_ENTRIES, null, (entries, has_more, nextBefore) => ({
       protocol: 1,
       session_id: current(),
       instance_id: instance,

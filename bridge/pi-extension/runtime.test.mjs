@@ -282,3 +282,41 @@ test('history cursor survives appends and streaming but rejects branch switches,
   currentSid = '99999999-1234-4234-8234-123456789abc';
   await assert.rejects(f.integration.request('history', { expect, before: 'alt-0' }), /stale/);
 });
+
+test('live-only windows retain cancel and page the omitted native tail without gaps', async t => {
+  for (const nativeID of ['native-tail', 'n'.repeat(256)]) {
+    const f = await started(t);
+    const native = {type:'message', id:nativeID, message:{role:'user', content:'n'.repeat(600 * 1024)}};
+    let branch = [{type:'message', id:'old', message:{role:'user', content:'old'}}, native];
+    f.ctx.sessionManager.getBranch = () => branch;
+    f.ctx.isIdle = () => false;
+    const initial = await socketCall(f.integration.socketPath, {method:'state'});
+    assert.deepEqual(initial.frame.result.entries, branch);
+    const message = {role:'assistant', content:'s'.repeat(600 * 1024)};
+    f.hooks.get('message_update')({message}, f.ctx);
+    const reply = await socketCall(f.integration.socketPath, {method:'state'});
+    assert.ok(reply.bytes <= 1024 * 1024);
+    const state = reply.frame.result;
+    assert.equal(state.status, 'working');
+    assert.equal(state.entries.length, 1);
+    assert.deepEqual(state.entries[0].message, message);
+    assert.equal(state.has_more, true);
+    const expect = expectOf(state);
+    const older = await socketCall(f.integration.socketPath, {method:'history', params:{expect, before:state.before}});
+    assert.ok(older.bytes <= 1024 * 1024);
+    assert.deepEqual(older.frame.result.entries, branch);
+    assert.equal(older.frame.result.has_more, false);
+    const cancel = await socketCall(f.integration.socketPath, {method:'cancel', params:{expect}});
+    assert.equal(cancel.frame.result.accepted, true);
+    assert.equal(f.aborted, 1);
+    branch = [...branch, {type:'message', id:'finished', message}];
+    f.hooks.get('message_end')({}, f.ctx);
+    const afterEnd = await socketCall(f.integration.socketPath, {method:'history', params:{expect, before:state.before}});
+    assert.deepEqual(afterEnd.frame.result.entries, branch.slice(0, -1));
+    const completed = await socketCall(f.integration.socketPath, {method:'state'});
+    assert.ok(completed.bytes <= 1024 * 1024);
+    assert.deepEqual(completed.frame.result.entries, branch.slice(-1));
+    branch = [{type:'message', id:'alternate', message:{role:'user', content:'other'}}];
+    await assert.rejects(f.integration.request('history', {expect, before:state.before}), /stale_cursor/);
+  }
+});
