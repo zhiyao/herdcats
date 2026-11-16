@@ -224,6 +224,7 @@ struct AppRootView: View {
         // and never touches an SSH machine.
         .task { await active.bridgeUpdates.refresh(force: true) }
         .onChange(of: scenePhase) { _, phase in
+            appModel.isSceneActive = phase == .active
             if phase == .active { Task { await active.bridgeUpdates.refresh() } }
         }
         // After the active SSH connection is up, read the installed bridge
@@ -240,6 +241,7 @@ struct AppRootView: View {
             }
         }
         .task {
+            appModel.isSceneActive = scenePhase == .active
             if let config = AutoConnect.configIfRequested()
                 ?? LaunchPreference.autoConnectConfig() {
                 await appModel.connect(config: config)

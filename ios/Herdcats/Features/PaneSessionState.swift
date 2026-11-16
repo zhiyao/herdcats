@@ -190,11 +190,172 @@ enum PaneFocusPolicy {
 
 /// Whether periodic pane polling should run a tick.
 enum PaneRefreshPolicy {
+    static let terminalPollInterval: TimeInterval = 5
+
     static func shouldAutoPoll(
         autoRefreshEnabled: Bool,
         isSceneActive: Bool
     ) -> Bool {
         autoRefreshEnabled && isSceneActive
+    }
+
+    static func shouldRunTerminalInitialRead(
+        showsTimeline: Bool,
+        isSceneActive: Bool,
+        isOffline: Bool = false
+    ) -> Bool {
+        !showsTimeline && isSceneActive && !isOffline
+    }
+
+    static func shouldPollTerminal(
+        showsTimeline: Bool,
+        autoRefreshEnabled: Bool,
+        isSceneActive: Bool,
+        isOffline: Bool = false
+    ) -> Bool {
+        !showsTimeline && autoRefreshEnabled && isSceneActive && !isOffline
+    }
+
+    static func shouldPrepareLiveSession(
+        showsTimeline: Bool,
+        isFocused: Bool,
+        isSceneActive: Bool,
+        isOffline: Bool = false
+    ) -> Bool {
+        !showsTimeline && isFocused && isSceneActive && !isOffline
+    }
+
+    static func shouldParseTerminalOutput(showsTimeline: Bool) -> Bool {
+        !showsTimeline
+    }
+}
+
+struct TerminalRefreshTaskKey: Equatable {
+    let paneId: String
+    let showsTimeline: Bool
+    let isSceneActive: Bool
+    let isOffline: Bool
+    let autoRefreshEnabled: Bool
+}
+
+/// Deterministic terminal snapshot + polling loop shared by `PaneSessionView`
+/// and unit tests. Hidden timelines never read or sleep-poll terminal output.
+@MainActor
+struct PaneTerminalPollingRunner {
+    let key: TerminalRefreshTaskKey
+    let currentKey: () -> TerminalRefreshTaskKey
+    let needsInitialRead: Bool
+    let markInitialReadDone: () -> Void
+    let reloadAndParse: () async -> Void
+    let sleep: (TimeInterval) async throws -> Void
+
+    private var isCurrent: Bool { key == currentKey() }
+
+    func run() async {
+        guard !Task.isCancelled,
+              isCurrent,
+              PaneRefreshPolicy.shouldRunTerminalInitialRead(
+                  showsTimeline: key.showsTimeline,
+                  isSceneActive: key.isSceneActive,
+                  isOffline: key.isOffline
+              ) else { return }
+
+        if needsInitialRead || key.autoRefreshEnabled {
+            markInitialReadDone()
+            await reloadAndParse()
+        }
+
+        guard key.autoRefreshEnabled else { return }
+
+        while !Task.isCancelled {
+            do {
+                try await sleep(PaneRefreshPolicy.terminalPollInterval)
+            } catch {
+                return
+            }
+            let latest = currentKey()
+            guard !Task.isCancelled,
+                  latest == key,
+                  PaneRefreshPolicy.shouldPollTerminal(
+                      showsTimeline: latest.showsTimeline,
+                      autoRefreshEnabled: latest.autoRefreshEnabled,
+                      isSceneActive: latest.isSceneActive,
+                      isOffline: latest.isOffline
+                  ) else { return }
+            await reloadAndParse()
+        }
+    }
+}
+
+/// Deterministic Live session acquisition loop shared by `PaneSessionView`
+/// and unit tests. Enforces visibility, barrier-then-read ordering, and
+/// cancellation-safe retirement of prepared tokens/shells.
+@MainActor
+struct PaneLiveSessionRunner {
+    let targetPaneId: String
+    let isEligible: () -> Bool
+    let isEnabled: () -> Bool
+    let needsResyncOrMissingSession: () -> Bool
+    let retireCurrentSession: () -> Void
+    let beginLiveInput: (String) async throws -> PaneLiveInputSession
+    let endLiveInput: (PaneLiveInputSession) async -> Void
+    let reloadPostBarrier: () async -> String?
+    let installSession: (PaneLiveInputSession) -> Void
+    let noteTimeout: () -> Void
+    let sleep: (TimeInterval) async throws -> Void
+
+    func run() async {
+        var retryDelay = 2.0
+        while !Task.isCancelled && isEligible() {
+            guard !isEnabled() else { return }
+            if needsResyncOrMissingSession() {
+                await acquireOnce()
+                retryDelay = isEnabled() ? 2 : min(retryDelay * 2, 10)
+            }
+            guard !Task.isCancelled, isEligible(), !isEnabled() else { return }
+            do {
+                try await sleep(retryDelay)
+            } catch {
+                return
+            }
+        }
+    }
+
+    func acquireOnce() async {
+        guard !Task.isCancelled, isEligible() else { return }
+        retireCurrentSession()
+        do {
+            let token = try await beginLiveInput(targetPaneId)
+            var installed = false
+            defer {
+                if !installed {
+                    Task { await endLiveInput(token) }
+                }
+            }
+            guard !Task.isCancelled, isEligible() else {
+                await Task { await endLiveInput(token) }.value
+                installed = true
+                return
+            }
+            let errorMessage = await reloadPostBarrier()
+            guard !Task.isCancelled, isEligible() else {
+                await Task { await endLiveInput(token) }.value
+                installed = true
+                return
+            }
+            if let errorMessage {
+                if errorMessage.contains("Timed out") {
+                    noteTimeout()
+                }
+                await Task { await endLiveInput(token) }.value
+                installed = true
+                return
+            }
+            installSession(token)
+            installed = true
+        } catch {
+            retireCurrentSession()
+        }
     }
 }
 

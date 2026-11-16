@@ -8,6 +8,7 @@ import UIKit
 
 struct LiveSessionTaskKey: Equatable {
     let paneId: String
+    let showsTimeline: Bool
     let isOffline: Bool
     let isSceneActive: Bool
     let liveInputEnabled: Bool
@@ -16,6 +17,7 @@ struct LiveSessionTaskKey: Equatable {
 
 struct LiveRefreshTaskKey: Equatable {
     let paneId: String
+    let showsTimeline: Bool
     let isActive: Bool
     let hasActiveAck: Bool
     let isFocused: Bool
@@ -64,6 +66,7 @@ extension PaneSessionView {
     var liveSessionTaskKey: LiveSessionTaskKey {
         LiveSessionTaskKey(
             paneId: pane.paneId,
+            showsTimeline: showsTimeline,
             isOffline: appModel.isOffline,
             isSceneActive: appModel.isSceneActive,
             liveInputEnabled: liveInputEnabled,
@@ -76,9 +79,54 @@ extension PaneSessionView {
     var liveRefreshTaskKey: LiveRefreshTaskKey {
         LiveRefreshTaskKey(
             paneId: pane.paneId,
+            showsTimeline: showsTimeline,
             isActive: appModel.isSceneActive,
             hasActiveAck: lastLiveAckAt != nil,
             isFocused: paneIsFocused
+        )
+    }
+
+    var liveSessionRunner: PaneLiveSessionRunner {
+        let targetPaneId = pane.paneId
+        return PaneLiveSessionRunner(
+            targetPaneId: targetPaneId,
+            isEligible: {
+                pane.paneId == targetPaneId
+                    && PaneRefreshPolicy.shouldPrepareLiveSession(
+                        showsTimeline: showsTimeline,
+                        isFocused: paneIsFocused,
+                        isSceneActive: appModel.isSceneActive,
+                        isOffline: appModel.isOffline
+                    )
+            },
+            isEnabled: { liveInputEnabled },
+            needsResyncOrMissingSession: { liveSession == nil || liveQueueState == .needsResync },
+            retireCurrentSession: {
+                PaneLiveSessionTeardown.retire(&liveSession, connection: appModel.connection)
+                resetLiveModifiers()
+            },
+            beginLiveInput: { paneId in
+                try await appModel.connection.beginPaneLiveInput(paneId: paneId)
+            },
+            endLiveInput: { token in
+                await appModel.connection.endPaneLiveInput(token)
+            },
+            reloadPostBarrier: {
+                await reload()
+                updateSessionParsedOutput()
+                return session.errorMessage
+            },
+            installSession: { token in
+                let queue = liveQueue ?? PaneLiveInputQueue(sender: appModel.connection)
+                if queue.state == .needsResync {
+                    queue.noteResynced()
+                }
+                liveQueue = queue
+                liveSession = token
+                liveModifierComposer.noteSession(token)
+            },
+            noteTimeout: { liveMetrics.noteTimeout() },
+            sleep: { seconds in try await Task.sleep(for: .seconds(seconds)) }
         )
     }
 
@@ -92,45 +140,7 @@ extension PaneSessionView {
     /// lifetime after every await so a stale token can never be installed
     /// for a pane or mode the user has left.
     func resumeLiveInput() async {
-        let targetPaneId = pane.paneId
-        guard !appModel.isOffline else { return }
-        PaneLiveSessionTeardown.retire(&liveSession, connection: appModel.connection)
-        resetLiveModifiers()
-        do {
-            let token = try await appModel.connection.beginPaneLiveInput(paneId: targetPaneId)
-            var installed = false
-            defer {
-                if !installed {
-                    Task { await appModel.connection.endPaneLiveInput(token) }
-                }
-            }
-            guard !Task.isCancelled,
-                  pane.paneId == targetPaneId,
-                  !appModel.isOffline else { return }
-            await reload()
-            updateSessionParsedOutput()
-            guard !Task.isCancelled,
-                  pane.paneId == targetPaneId,
-                  !appModel.isOffline else { return }
-            guard session.errorMessage == nil else {
-                if session.errorMessage?.contains("Timed out") == true {
-                    liveMetrics.noteTimeout()
-                }
-                return
-            }
-            let queue = liveQueue ?? PaneLiveInputQueue(sender: appModel.connection)
-            if queue.state == .needsResync {
-                queue.noteResynced()
-            }
-            liveQueue = queue
-            liveSession = token
-            installed = true
-            liveModifierComposer.noteSession(token)
-        } catch {
-            // Keep later input disabled until the recovery loop acquires a
-            // fresh token; never retry an uncertain key.
-            PaneLiveSessionTeardown.retire(&liveSession, connection: appModel.connection)
-        }
+        await liveSessionRunner.acquireOnce()
     }
 
     /// Routes every Live pane mutation through the ordered queue. Controls
@@ -351,7 +361,7 @@ extension PaneSessionView {
     /// stops; the five-second lifecycle-aware poll remains the fallback.
     func runLiveForegroundRefresh() async {
         while !Task.isCancelled {
-            guard paneIsFocused, appModel.isSceneActive, let ackAt = lastLiveAckAt else { return }
+            guard !showsTimeline, paneIsFocused, appModel.isSceneActive, let ackAt = lastLiveAckAt else { return }
             if ProcessInfo.processInfo.systemUptime - ackAt > PaneLiveRefreshPolicy.activityWindow {
                 lastLiveAckAt = nil
                 return
@@ -359,7 +369,7 @@ extension PaneSessionView {
             do {
                 try await Task.sleep(for: .seconds(PaneLiveRefreshPolicy.tickInterval))
             } catch { return }
-            guard appModel.isSceneActive, !session.isReading else { continue }
+            guard !showsTimeline, appModel.isSceneActive, !session.isReading else { continue }
             let now = ProcessInfo.processInfo.systemUptime
             guard PaneLiveRefreshPolicy.shouldRead(
                 now: now,
@@ -539,10 +549,13 @@ extension PaneSessionView {
             surfaceModel.noteSendSucceeded()
             composeFieldFocused = false
             liveInputFocused = false
-            // Give the remote terminal a beat to echo the input before re-reading.
-            try? await Task.sleep(for: .milliseconds(800))
-            await reload()
-            updateSessionParsedOutput()
+            if !showsTimeline {
+                // Give the remote terminal a beat to echo the input before re-reading.
+                try? await Task.sleep(for: .milliseconds(800))
+                guard !Task.isCancelled, !showsTimeline else { return }
+                await reload()
+                updateSessionParsedOutput()
+            }
         } catch {
             // Keep draft + attachment so the user can retry; the Compose
             // bubble stays up and the existing error banner reports why.

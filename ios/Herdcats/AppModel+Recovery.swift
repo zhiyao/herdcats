@@ -1,6 +1,57 @@
 import Observation
 import SwiftUI
 
+enum ReconnectBackoffPolicy {
+    static let initialDelaySeconds: TimeInterval = 2.5
+    static let maxDelaySeconds: TimeInterval = 60.0
+    static let stableConnectionThreshold: TimeInterval = 30.0
+    /// Bounded jitter spreads retries within [0.75 * base, base] so outages
+    /// back off progressively without exceeding `maxDelaySeconds`.
+    static let minJitterMultiplier: Double = 0.75
+
+    static func delaySeconds(failureCount: Int, jitterUnit: Double) -> TimeInterval {
+        let clampedFailures = max(0, failureCount)
+        let exponent = min(clampedFailures, 10)
+        let base = min(maxDelaySeconds, initialDelaySeconds * pow(2.0, Double(exponent)))
+        let unit = min(1.0, max(0.0, jitterUnit))
+        let multiplier = minJitterMultiplier + (1.0 - minJitterMultiplier) * unit
+        return min(maxDelaySeconds, base * multiplier)
+    }
+}
+
+struct ReconnectBackoffState: Equatable, Sendable {
+    private(set) var failureCount = 0
+    private(set) var connectedAt: TimeInterval?
+
+    mutating func noteConnected(at now: TimeInterval) {
+        connectedAt = now
+    }
+
+    mutating func noteFailure() {
+        connectedAt = nil
+        failureCount += 1
+    }
+
+    mutating func noteDisconnectedFromConnected(at now: TimeInterval) {
+        defer { connectedAt = nil }
+        if let connectedAt, now - connectedAt >= ReconnectBackoffPolicy.stableConnectionThreshold {
+            failureCount = 0
+        } else if failureCount > 0 {
+            // A short-lived connection after earlier failures is still unstable.
+            failureCount += 1
+        }
+    }
+
+    mutating func reset() {
+        connectedAt = nil
+        failureCount = 0
+    }
+
+    func nextDelaySeconds(jitterUnit: Double) -> TimeInterval {
+        ReconnectBackoffPolicy.delaySeconds(failureCount: failureCount, jitterUnit: jitterUnit)
+    }
+}
+
 extension AppModel {
     func prepareConnectionStatus(for config: ConnectionConfig) {
         lastError = nil
@@ -83,6 +134,8 @@ extension AppModel {
 
     func disconnect() async {
         cancelReconnect()
+        reconnectBackoff.reset()
+        lastScheduledAutoReconnectDelay = nil
         dismissBannerTask?.cancel()
         connectionBanner = nil
         hasActiveSession = false
@@ -117,10 +170,12 @@ extension AppModel {
             connection.forceClose(generation: generation)
             connectionIdentity = nil
             if hasActiveSession, let config = activeConfig {
+                reconnectBackoff.noteFailure()
                 phase = .offline(host: config.host, username: config.username)
                 connectionBanner = .offline(message: "Offline · Connection timed out", canRetry: true)
-                scheduleAutoReconnect(delaySeconds: 5.0)
+                scheduleAutoReconnect()
             } else {
+                reconnectBackoff.reset()
                 phase = .disconnected
             }
         }
@@ -131,20 +186,24 @@ extension AppModel {
         guard ownership.handleLoss(generation: generation) else { return }
         switch phase {
         case let .connected(host, username):
+            reconnectBackoff.noteDisconnectedFromConnected(at: nowUptime())
             phase = .offline(host: host, username: username)
             connectionBanner = .offline(message: "Offline · Connection lost", canRetry: true)
             scheduleAutoReconnect()
         case .connecting:
             if hasActiveSession, let config = activeConfig {
+                reconnectBackoff.noteFailure()
                 phase = .offline(host: config.host, username: config.username)
                 connectionBanner = .offline(message: "Offline · Connection lost", canRetry: true)
                 scheduleAutoReconnect()
             } else {
+                reconnectBackoff.reset()
                 connectionIdentity = nil
                 phase = .disconnected
                 lastError = "The connection was lost during handshake."
             }
         case .offline:
+            reconnectBackoff.noteFailure()
             scheduleAutoReconnect()
         case .disconnected:
             break
