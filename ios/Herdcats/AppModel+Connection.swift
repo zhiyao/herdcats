@@ -2,24 +2,51 @@ import Observation
 import SwiftUI
 
 extension AppModel {
-    func connect(config: ConnectionConfig) async {
+    func connect(config: ConnectionConfig, isAutomatic: Bool = false) async {
         var config = config
+        if isAutomatic, !canAutoReconnectNow() { return }
         guard !isDialing else { return }
+        if !isAutomatic, !isOffline {
+            reconnectBackoff.reset()
+        }
         isDialing = true
         defer { isDialing = false }
         guard let state = await prepareConnectAttempt(config: config) else { return }
 
+        if isAutomatic,
+           !isSceneActive || !hasActiveSession || hostKeyVerificationBlocked || !ownership.isCurrent(state.attempt) {
+            state.watchdog.cancel()
+            if case let .failed(generation) = ownership.fail(for: state.attempt) {
+                connection.forceClose(generation: generation)
+            }
+            connectionIdentity = nil
+            if hasActiveSession {
+                phase = .offline(host: config.host, username: config.username)
+                connectionBanner = .offline(message: "Offline · Connection lost", canRetry: true)
+            } else {
+                phase = .disconnected
+                connectionBanner = nil
+            }
+            return
+        }
+
         var isCheckingHerdr = false
         do {
-            let generation = try await connection.connect(
-                config,
-                expected: state.reserved,
-                onDisconnect: { [weak self] lostGeneration in
-                    Task { @MainActor in
-                        self?.handleConnectionLost(generation: lostGeneration)
-                    }
+            let onDisconnect: @Sendable (ConnectionGeneration) -> Void = { [weak self] lostGeneration in
+                Task { @MainActor in
+                    self?.handleConnectionLost(generation: lostGeneration)
                 }
-            )
+            }
+            let generation: ConnectionGeneration
+            if let customDialTransport {
+                generation = try await customDialTransport(config, state.reserved, onDisconnect)
+            } else {
+                generation = try await connection.connect(
+                    config,
+                    expected: state.reserved,
+                    onDisconnect: onDisconnect
+                )
+            }
             if !ownership.noteTransportInstalled(generation, for: state.attempt) {
                 connection.forceClose(generation: generation)
                 state.watchdog.cancel()
@@ -29,56 +56,60 @@ extension AppModel {
             // their own command deadlines and must report their own errors.
             state.watchdog.cancel()
             isCheckingHerdr = true
-            // Auto looks for both runtimes up front. A saved runtime is checked on its own.
-            let usesSavedRuntime = !config.detectsBackend
-            if config.detectsBackend {
-                connectionProgressMessage = "Detecting Herdr…"
-                let found = try await connection.detectBackends()
-                guard ownership.isCurrent(state.attempt) else {
-                    connection.forceClose(generation: generation)
-                    return
-                }
-                // TUI has every feature; the machine picker offers Herdr Core when both exist.
-                config.backend = found.contains(.core) && !found.contains(.tui) ? .core : .tui
-                config.detectsBackend = false
-                await connection.adoptBackend(config.backend)
-                activeConfig = config
-                connectionIdentity = ConnectionIdentity(config)
-                detectedBackends = found
-            }
-            connectionProgressMessage = config.backend == .core ? "Checking Herdr Core…" : "Checking Herdr…"
-            #if DEBUG
-            print("[HC] ssh connected, checking herdr…")
-            #endif
-
             let version: String
-            do {
-                version = try await connection.serverVersion(timeoutPolicy: .teardownSilently)
-            } catch {
-                guard usesSavedRuntime, HerdrConnection.mayMeanRuntimeIsMissing(error, backend: config.backend) else {
-                    throw error
+            if let customCheckHerdr {
+                version = try await customCheckHerdr(config, generation)
+            } else {
+                // Auto looks for both runtimes up front. A saved runtime is checked on its own.
+                let usesSavedRuntime = !config.detectsBackend
+                if config.detectsBackend {
+                    connectionProgressMessage = "Detecting Herdr…"
+                    let found = try await connection.detectBackends()
+                    guard ownership.isCurrent(state.attempt) else {
+                        connection.forceClose(generation: generation)
+                        return
+                    }
+                    // TUI has every feature; the machine picker offers Herdr Core when both exist.
+                    config.backend = found.contains(.core) && !found.contains(.tui) ? .core : .tui
+                    config.detectsBackend = false
+                    await connection.adoptBackend(config.backend)
+                    activeConfig = config
+                    connectionIdentity = ConnectionIdentity(config)
+                    detectedBackends = found
                 }
-                // The saved runtime seems to be missing. Look for both runtimes on this
-                // connection, so the error can name the one the machine has instead.
-                guard ownership.isCurrent(state.attempt) else {
-                    connection.forceClose(generation: generation)
-                    return
+                connectionProgressMessage = config.backend == .core ? "Checking Herdr Core…" : "Checking Herdr…"
+                #if DEBUG
+                print("[HC] ssh connected, checking herdr…")
+                #endif
+
+                do {
+                    version = try await connection.serverVersion(timeoutPolicy: .teardownSilently)
+                } catch {
+                    guard usesSavedRuntime, HerdrConnection.mayMeanRuntimeIsMissing(error, backend: config.backend) else {
+                        throw error
+                    }
+                    // The saved runtime seems to be missing. Look for both runtimes on this
+                    // connection, so the error can name the one the machine has instead.
+                    guard ownership.isCurrent(state.attempt) else {
+                        connection.forceClose(generation: generation)
+                        return
+                    }
+                    connectionProgressMessage = "Detecting Herdr…"
+                    let found = try? await connection.detectBackends(expected: generation)
+                    guard ownership.isCurrent(state.attempt) else {
+                        connection.forceClose(generation: generation)
+                        return
+                    }
+                    throw HerdrConnection.missingRuntimeError(error, saved: config.backend, found: found)
                 }
-                connectionProgressMessage = "Detecting Herdr…"
-                let found = try? await connection.detectBackends(expected: generation)
-                guard ownership.isCurrent(state.attempt) else {
-                    connection.forceClose(generation: generation)
-                    return
+                #if DEBUG
+                print("[HC] herdr version: \(version)")
+                #endif
+                if ownership.isCurrent(state.attempt) {
+                    connectionProgressMessage = config.backend == .core ? "Reading Herdr Core terminals…" : "Checking \(config.sessionName) session…"
                 }
-                throw HerdrConnection.missingRuntimeError(error, saved: config.backend, found: found)
+                try await checkSessionReadiness()
             }
-            #if DEBUG
-            print("[HC] herdr version: \(version)")
-            #endif
-            if ownership.isCurrent(state.attempt) {
-                connectionProgressMessage = config.backend == .core ? "Reading Herdr Core terminals…" : "Checking \(config.sessionName) session…"
-            }
-            try await checkSessionReadiness()
             guard ownership.isCurrent(state.attempt) else {
                 connection.forceClose(generation: generation)
                 return
@@ -86,6 +117,7 @@ extension AppModel {
             herdrVersion = version.trimmingCharacters(in: .whitespacesAndNewlines)
             phase = .connected(host: config.host, username: config.username)
             hasActiveSession = true
+            reconnectBackoff.noteConnected(at: nowUptime())
             cancelReconnect()
             showBackOnline(message: state.wasOffline ? "Back online" : "Connected")
         } catch {
@@ -202,17 +234,24 @@ extension AppModel {
                 // require setup recovery. Clear the session so connection selection
                 // is reachable and the launch overlay cannot remain blocking.
                 hasActiveSession = false
+                reconnectBackoff.reset()
                 cancelReconnect()
                 connectionBanner = nil
                 phase = .disconnected
             case .offlineRetry:
+                if hostKeyVerificationBlocked {
+                    reconnectBackoff.reset()
+                } else {
+                    reconnectBackoff.noteFailure()
+                }
                 phase = .offline(host: config.host, username: config.username)
                 connectionBanner = .offline(
                     message: "Offline · \(message)",
                     canRetry: true
                 )
-                scheduleAutoReconnect(delaySeconds: 5.0)
+                scheduleAutoReconnect()
             case .disconnected:
+                reconnectBackoff.reset()
                 phase = .disconnected
             }
         }

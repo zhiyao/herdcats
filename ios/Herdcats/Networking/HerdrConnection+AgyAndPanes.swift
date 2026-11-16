@@ -275,10 +275,17 @@ extension HerdrConnection {
         let session = try await paneInput.run(paneId: trimmed) {
             try await self.paneLiveBeginBarrierUnlocked(paneId: trimmed, owned: owned)
         }
-        // Core input goes over its RPC channel; the persistent shells run the TUI CLI.
-        if backend == .tui { await prepareLiveShells(session: session) }
-        try requireGeneration(owned)
-        return session
+        do {
+            try Task.checkCancellation()
+            // Core input goes over its RPC channel; the persistent shells run the TUI CLI.
+            if backend == .tui { await prepareLiveShells(session: session) }
+            try requireGeneration(owned)
+            try Task.checkCancellation()
+            return session
+        } catch {
+            endPaneLiveInput(session)
+            throw error
+        }
     }
 
     func paneLiveBeginBarrierUnlocked(
@@ -286,8 +293,8 @@ extension HerdrConnection {
         owned: ConnectionGeneration
     ) async throws -> PaneLiveInputSession {
         try requireGeneration(owned)
+        try Task.checkCancellation()
         // No remote command — lane acquisition itself serializes behind Compose.
-        try requireGeneration(owned)
         let session = PaneLiveInputSession(paneId: paneId, generation: owned)
         activeLiveSessions[paneId] = session
         return session

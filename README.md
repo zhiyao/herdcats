@@ -56,6 +56,13 @@ no verifiable checksum, the app shows manual instructions instead. Pi also needs
 see [Pi conversations](ios/docs/pi-conversations.md). The terminal view works
 without the bridge.
 
+While native Timeline is visible, Herdcats stops terminal snapshot polling,
+ANSI parsing and terminal Live-shell setup, and retires the pane's Live input
+session. While connected and active, switching to Terminal reads fresh output
+even with auto-refresh off; the focused pane enables Live input after acquiring
+a fresh session and reading output. Periodic terminal polling runs only while
+Terminal is visible, the app is active and connected, and auto-refresh is enabled.
+
 **Show Compose by Default** is enabled initially, so panes open with the compose
 field and keyboard ready. Turn it off in pane options or Settings → Pane to
 start with the Live toolbar. Compose supports spelling correction and keyboard
@@ -188,6 +195,14 @@ Remembered credentials and approved host keys stay in the iOS Keychain. A
 changed host key blocks connection, including automatic reconnects. The app shows
 both fingerprints and lets you replace the approved key after explicitly confirming
 that you verified the new fingerprint through a trusted channel.
+
+Polling pauses in the background, and automatic reconnect waits while the app
+is inactive. Failed attempts and short-lived reconnects increase the retry delay
+with jitter, up to one minute;
+a connection that stays up for at least 30 seconds resets the backoff when it
+next drops. Returning to the foreground while offline or tapping **Retry**
+starts recovery immediately, without waiting for the pending delay. Host-key
+approval still applies, and explicitly disconnecting ends automatic recovery.
 
 Optional: install [quota-axi](https://www.npmjs.com/package/quota-axi) on the
 connected machine to show provider quota. It is not required for pane access.
@@ -352,8 +367,9 @@ pipeline (see [RELEASING.md](RELEASING.md#website-deployment-cloudflare-pages)).
   1–256 rounds. Other key formats and encryption settings are unsupported.
   Remembering the passphrase is optional; without it, unlock the key again
   after restarting the app.
-- A readable Herdr default session is required; session selection is not wired up.
-- Backgrounding pauses polling. This is not a general-purpose SSH shell.
+- A readable selected Herdr session is required.
+- For background polling and recovery behavior, see [connection setup](#connect-to-herdr).
+  Herdcats is not a general-purpose SSH shell.
 - Host-key changes require manual verification and explicit replacement approval.
   Automatic reconnects remain blocked until approval.
 - In TUI mode, uploaded photos remain under `~/.cache/herdrcat/attachments` on

@@ -56,6 +56,9 @@ struct PaneSessionView: View {
     @State var locallyClearedDone = false
     /// Pane ID for which implicit Done→Idle already ran this visit.
     @State var autoMarkedPaneID: String?
+    /// Pane ID that has already loaded a fresh terminal snapshot for the
+    /// current Terminal visit and connection state.
+    @State var loadedTerminalPaneID: String?
 
     /// Which input surface is shown: Compose (default), Live toolbar,
     /// or Voice recording bar. Owned here; `PaneVoiceComposeBar`
@@ -104,7 +107,7 @@ struct PaneSessionView: View {
     var isSending: Bool { session.isSending || isTimelineSending }
 
     // Observable queue projections so SwiftUI tracks Live delivery state.
-    private var liveQueueState: PaneLiveInputQueueState? { liveQueue?.state }
+    var liveQueueState: PaneLiveInputQueueState? { liveQueue?.state }
     private var livePendingCount: Int { liveQueue?.pendingCount ?? 0 }
     private var isLiveDraining: Bool { liveQueue?.isDraining ?? false }
     /// Monotonic count of delivered Live events; each increment is one
@@ -209,6 +212,7 @@ struct PaneSessionView: View {
     }
 
     func updateSessionParsedOutput() {
+        guard PaneRefreshPolicy.shouldParseTerminalOutput(showsTimeline: showsTimeline) else { return }
         session.updateParsedOutput(palette: terminalPalette)
     }
 
@@ -552,11 +556,28 @@ struct PaneSessionView: View {
                 if height > 0 || !paneIsFocused { bottomDockHeight = height }
             }
         }
-        .onChange(of: showsTimeline) { _, _ in
-            dismissLiveKeyboard(); composeFieldFocused = false; dictation.cancel()
+        .onChange(of: showsTimeline) { _, showingTimeline in
+            dismissLiveKeyboard()
+            composeFieldFocused = false
+            dictation.cancel()
             surfaceModel.resetToDefaultSurface()
-            updateSessionParsedOutput()
+            loadedTerminalPaneID = nil
+            if showingTimeline {
+                abandonLiveInput()
+            } else {
+                updateSessionParsedOutput()
+            }
         }
+    }
+
+    private var terminalRefreshTaskKey: TerminalRefreshTaskKey {
+        TerminalRefreshTaskKey(
+            paneId: pane.paneId,
+            showsTimeline: showsTimeline,
+            isSceneActive: appModel.isSceneActive,
+            isOffline: appModel.isOffline,
+            autoRefreshEnabled: spacesModel?.autoRefreshEnabled ?? true
+        )
     }
 
     private var outputWithLiveTasks: some View {
@@ -564,34 +585,25 @@ struct PaneSessionView: View {
             .task(id: pane.id) {
                 locallyClearedDone = false
                 autoMarkedPaneID = nil
-                await reload()
-                updateSessionParsedOutput()
                 await considerImplicitMarkSeen()
-                while !Task.isCancelled {
-                    do { try await Task.sleep(for: .seconds(5)) } catch { return }
-                    let auto = spacesModel?.autoRefreshEnabled ?? true
-                    guard
-                        PaneRefreshPolicy.shouldAutoPoll(
-                            autoRefreshEnabled: auto,
-                            isSceneActive: appModel.isSceneActive
-                        )
-                    else { continue }
-                    await reload()
-                    updateSessionParsedOutput()
-                }
+            }
+            .task(id: terminalRefreshTaskKey) {
+                let capturedKey = terminalRefreshTaskKey
+                let targetPaneId = pane.paneId
+                await PaneTerminalPollingRunner(
+                    key: capturedKey,
+                    currentKey: { terminalRefreshTaskKey },
+                    needsInitialRead: loadedTerminalPaneID != targetPaneId,
+                    markInitialReadDone: { loadedTerminalPaneID = targetPaneId },
+                    reloadAndParse: {
+                        await reload()
+                        updateSessionParsedOutput()
+                    },
+                    sleep: { seconds in try await Task.sleep(for: .seconds(seconds)) }
+                ).run()
             }
         .task(id: liveSessionTaskKey) {
-            var retryDelay = 2.0
-            while !Task.isCancelled && paneIsFocused && !appModel.isOffline && appModel.isSceneActive {
-                guard !liveInputEnabled else { return }
-                if liveSession == nil || liveQueueState == .needsResync {
-                    await resumeLiveInput()
-                    retryDelay = liveInputEnabled ? 2 : min(retryDelay * 2, 10)
-                }
-                do {
-                    try await Task.sleep(for: .seconds(liveInputEnabled ? 1 : retryDelay))
-                } catch { return }
-            }
+            await liveSessionRunner.run()
         }
         .task(id: liveRefreshTaskKey) {
             await runLiveForegroundRefresh()
@@ -600,7 +612,11 @@ struct PaneSessionView: View {
             // A disconnect invalidates the Live session generation; queued
             // input is discarded rather than replayed after reconnect, and a
             // half-armed modifier must not leak across SSH generations.
-            guard offline else { return }
+            guard offline else {
+                loadedTerminalPaneID = nil
+                return
+            }
+            loadedTerminalPaneID = nil
             abandonLiveInput()
             resetLiveModifiers()
         }
@@ -668,7 +684,7 @@ struct PaneSessionView: View {
         }
         .onChange(of: liveInputEnabled) { _, enabled in
             // A slot that gained focus before its Live session was ready finishes the keyboard handoff now.
-            if enabled, paneIsFocused {
+            if enabled, paneIsFocused, !showsTimeline {
                 focusRequestedLiveKeyboard()
                 Task { await takeOverKeyboard() }
             }
@@ -697,6 +713,7 @@ struct PaneSessionView: View {
             // A different pane must never receive queued Live events, a
             // stale session token, an armed modifier, or another pane's
             // input surface.
+            loadedTerminalPaneID = nil
             composeFieldFocused = false
             dismissLiveKeyboard()
             abandonLiveInput()

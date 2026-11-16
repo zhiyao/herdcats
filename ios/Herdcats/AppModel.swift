@@ -87,7 +87,12 @@ final class AppModel {
     }
     var hostKeyChallenge: SSHHostKeyChallenge?
     var hostKeyVerificationBlocked = false
-    var isSceneActive = true
+    var isSceneActive = true {
+        didSet {
+            guard oldValue != isSceneActive, !isSceneActive else { return }
+            cancelReconnect()
+        }
+    }
 
     /// Production ownership primitive — unit tests exercise this same type.
     var ownership = ConnectionSessionOwnership() {
@@ -102,6 +107,19 @@ final class AppModel {
     var dismissBannerTask: Task<Void, Never>?
     var autoReconnectTask: Task<Void, Never>?
     var isDialing = false
+    var reconnectBackoff = ReconnectBackoffState()
+    @ObservationIgnored var lastScheduledAutoReconnectDelay: TimeInterval?
+
+    /// Test seams for deterministic fake-clock, jitter, sleep, and dial tests.
+    @ObservationIgnored var nowUptime: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    @ObservationIgnored var sleepSeconds: (TimeInterval) async throws -> Void = { seconds in
+        try await Task.sleep(for: .seconds(seconds))
+    }
+    @ObservationIgnored var reconnectJitterUnit: () -> Double = { Double.random(in: 0...1) }
+    @ObservationIgnored var customDialTransport: (
+        (ConnectionConfig, ConnectionGeneration, @escaping @Sendable (ConnectionGeneration) -> Void) async throws -> ConnectionGeneration
+    )?
+    @ObservationIgnored var customCheckHerdr: ((ConnectionConfig, ConnectionGeneration) async throws -> String)?
 
     var machineDisplayName: String {
         if case let .connected(host, _) = phase { return host }
@@ -153,14 +171,32 @@ final class AppModel {
         }
     }
 
-    func scheduleAutoReconnect(delaySeconds: Double = 2.5) {
-        guard !hostKeyVerificationBlocked else { return }
+    var canScheduleAutoReconnect: Bool {
+        isSceneActive
+            && hasActiveSession
+            && activeConfig != nil
+            && isOffline
+            && !hostKeyVerificationBlocked
+    }
+
+    func canAutoReconnectNow() -> Bool {
+        canScheduleAutoReconnect && !isDialing
+    }
+
+    func scheduleAutoReconnect() {
         autoReconnectTask?.cancel()
-        guard hasActiveSession, activeConfig != nil else { return }
+        autoReconnectTask = nil
+        guard canScheduleAutoReconnect else { return }
+        let delaySeconds = reconnectBackoff.nextDelaySeconds(jitterUnit: reconnectJitterUnit())
+        lastScheduledAutoReconnectDelay = delaySeconds
         autoReconnectTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(delaySeconds))
+            do {
+                try await self?.sleepSeconds(delaySeconds)
+            } catch {
+                return
+            }
             guard !Task.isCancelled, let self else { return }
-            guard self.isOffline, self.hasActiveSession else { return }
+            guard self.canAutoReconnectNow() else { return }
             // The reconnect task is handing control to reconnect(). Clear its
             // slot first so reconnect() does not cancel the task that is now
             // performing the SSH attempt.
@@ -175,14 +211,17 @@ final class AppModel {
     }
 
     func reconnect(automatically: Bool = false) async {
-        guard !automatically || !hostKeyVerificationBlocked else { return }
+        if automatically {
+            guard canAutoReconnectNow() else { return }
+        } else {
+            guard activeConfig != nil, !isDialing else { return }
+        }
         guard let config = activeConfig else { return }
-        guard !isDialing else { return }
         cancelReconnect()
         #if DEBUG
         print("[HC] reconnecting to \(config.host):\(config.port)")
         #endif
         connectionBanner = .connecting(message: "Reconnecting…")
-        await connect(config: config)
+        await connect(config: config, isAutomatic: automatically)
     }
 }
