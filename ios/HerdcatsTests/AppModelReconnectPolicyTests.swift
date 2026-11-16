@@ -98,11 +98,12 @@ struct AppModelReconnectPolicyTests {
         #expect(model.autoReconnectTask != nil)
         try await sleepStarted.wait()
         #expect(sleepDelays == [2.5])
+        let pendingRetry = try #require(model.autoReconnectTask)
 
         // Scene becomes inactive while retry timer is pending: cancels immediately, zero dials.
         model.isSceneActive = false
         releaseSleep.release(())
-        await Task.yield()
+        await pendingRetry.value
         #expect(model.autoReconnectTask == nil)
         #expect(dialCount == 1)
 
@@ -118,6 +119,64 @@ struct AppModelReconnectPolicyTests {
         await model.reconnect(automatically: true)
         #expect(dialCount == 2)
         #expect(model.phase == .connected(host: config.host, username: config.username))
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func scheduledRetriesDialAndBackOffAcrossShortLivedSuccesses() async throws {
+        let config = makeConfig()
+        let model = AppModel(autoConnectOnLaunch: false)
+        var now: TimeInterval = 0
+        var dials = 0
+        var delays: [TimeInterval] = []
+        var timers: [ExternallyReleasedWait<Void>] = []
+        model.nowUptime = { now }
+        model.reconnectJitterUnit = { 1 }
+        model.customDialTransport = { _, reserved, _ in
+            dials += 1
+            return reserved
+        }
+        model.customCheckHerdr = { _, _ in "herdr 0.8.6" }
+        model.sleepSeconds = { delay in
+            let timer = ExternallyReleasedWait<Void>()
+            delays.append(delay)
+            timers.append(timer)
+            try await timer.wait()
+        }
+        defer {
+            model.cancelReconnect()
+            for timer in timers { timer.release(()) }
+        }
+
+        await model.connect(config: config)
+        #expect(dials == 1)
+        now = 60
+        model.handleConnectionLost(generation: try #require(model.ownership.transportGeneration))
+
+        // Drive the scheduled task itself, rather than calling reconnect from
+        // the test. Each successful dial then loses transport before stability.
+        let expectedDelays: [TimeInterval] = [2.5, 5, 10, 20, 40, 60, 60]
+        for (index, expected) in expectedDelays.enumerated() {
+            try await waitUntilDelayCount(index + 1, in: { delays.count })
+            try #require(delays.count == index + 1)
+            #expect(delays[index] == expected)
+            #expect(dials == index + 1, "No dial before its timer is released")
+            let retry = try #require(model.autoReconnectTask)
+            timers[index].release(())
+            await retry.value
+            #expect(dials == index + 2)
+            try #require(model.phase == .connected(host: config.host, username: config.username))
+
+            now += index == expectedDelays.count - 1 ? 30 : 10
+            model.handleConnectionLost(generation: try #require(model.ownership.transportGeneration))
+        }
+        try await waitUntilDelayCount(8, in: { delays.count })
+        #expect(delays == [2.5, 5, 10, 20, 40, 60, 60, 2.5])
+        #expect(dials == 8)
+        let pending = try #require(model.autoReconnectTask)
+        model.cancelReconnect()
+        timers.last?.release(())
+        await pending.value
+        #expect(dials == 8, "Cancelled scheduled recovery must not dial")
     }
 
     @Test func repeatedReconnectFailuresBackOffAndResetOnlyAfterStableSuccess() async throws {

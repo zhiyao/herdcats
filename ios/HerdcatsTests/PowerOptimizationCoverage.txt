@@ -1,0 +1,82 @@
+Power optimization: bounded behavioral coverage
+
+Scope: C1 hidden terminal work and C2 scene-aware recovery. These checks
+exercise executable interfaces; none inspect implementation source strings.
+
+Evidence levels
+- App-driven: XCTest UI navigation and foreground restoration in the existing
+  screenshot-fixture simulator. This exercises SwiftUI lifecycle/navigation,
+  but the fixture bypasses SSH, Live-shell setup, and remote input delivery.
+- Component integration: production polling/Live runners, PaneSessionState,
+  ANSI parsing, input coordinator, session retirement, and AppModel recovery
+  with controlled clocks/transports. Connected cancellation tests use a
+  test-owned Citadel SSH server bound to 127.0.0.1 on an ephemeral port.
+  Its exec delegate rejects persistent shell setup; it is not a Herdr/Pi lab.
+
+Scenario coverage and limits
+1. Timeline stops terminal polling/parsing/Live acquisition:
+   hiddenTimelineNeverReadsParsesOrSleepsInTerminalPollingRunner and
+   hiddenTimelineNeverAcquiresLiveSessionOrShells assert zero work at the
+   production runner boundaries. The mode-switch test executes ANSI parsing.
+   No app-driven backend command counters or power measurements are available.
+2. Terminal entry is fresh with auto-refresh disabled; Timeline retires shells:
+   modeSwitchingStartsFreshTerminalWorkOnEntryAndRetiresShellsOnTimelineReturn
+   checks successive snapshots/revisions and both shell close side effects.
+   The UI mode-switch check proves navigation/rendering only, not remote input.
+3. Leave Terminal during acquisition/Compose:
+   cancellationOrTimelineSwitchMidBeginOrReadRetiresTokenWithoutInstalling,
+   connected cancellation tests, and
+   leavingTerminalDuringComposeRetiresConnectedAcquisition cover stale-token
+   rejection and retirement, including a rejected send using the late token.
+   Compose is represented by holding the production input lane, not a remote
+   mutation. Persistent shell success and real Herdr input replay are not
+   driven by the loopback exec fixture.
+4. Background during recovery/resync; foreground restores recovery:
+   pendingAutoReconnectCancelsWhenSceneBecomesInactiveAndLossWhileInactiveNeverDials
+   checks pending timer cancellation and foreground dial eligibility.
+   The queued-Compose check also backgrounds while Live resync is blocked.
+   The UI foreground test exercises app lifecycle with static Timeline data;
+   it does not interrupt or restore an authenticated remote session.
+5. Outage and short-lived reconnect backoff:
+   repeatedReconnectFailuresBackOffAndResetOnlyAfterStableSuccess covers dial
+   failures. scheduledRetriesDialAndBackOffAcrossShortLivedSuccesses releases
+   each actual AppModel timer, observes its dial, drops short-lived successes,
+   reaches the cap, then verifies reset after 30 seconds of injected stable time.
+   This is deterministic timing proof, not wall-clock SSH outage evidence.
+6. Retry bypasses backoff; host-key/disconnect protection:
+   explicitManualRetryDialsImmediatelyEvenDuringLongOutageBackoff and
+   hostKeyChallengeBlocksAutomaticReconnectUntilApprovedAndUserDisconnectResetsSession
+   exercise recovery entry points and state. UI tapping Retry against a real
+   host-key challenge remains untested.
+
+Ownership/tool limitation
+Only the previously assigned iPhone 18 Pro simulator
+7BB936BF-2009-419F-B04B-388CE60C09FA is used. No shared phone or remote host is
+accessed. This worktree contains no bridge-live-smoke.json/core-live-smoke.json
+resource, and HC_CORE_LIVE_CONFIG was not supplied. The Fly review-machine
+instructions do not establish task ownership, disposable credentials, a running
+native Timeline pane, or authority to interrupt its session. No unowned-device
+installation, remote Pi/Herdr lifecycle change, service change, or host-key
+mutation is used to fill that gap. Faithful app-to-real-backend proof of all six
+scenarios therefore remains unavailable; component checks are supplemental.
+
+Focused verification (2026-11-16, Xcode 27.2, iOS 27.0 simulator)
+The original reported command passed all 16 tests before changes. No existing
+test failure reproduced; the selected finding was missing behavioral evidence.
+After these test changes, both suites passed: 18 tests, including the two
+parameter cases of connected acquisition (19 leaf cases), zero failures/skips.
+Both named fixture-backed UI checks also passed, zero failures/skips.
+
+Common command:
+xcodebuild test -project ios/Herdcats.xcodeproj -scheme Herdcats
+  -destination 'platform=iOS Simulator,id=7BB936BF-2009-419F-B04B-388CE60C09FA'
+  -derivedDataPath .test-derived -clonedSourcePackagesDirPath .test-packages
+  -parallel-testing-enabled NO CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO
+Unit/component selectors (before and after):
+  -only-testing:HerdcatsTests/PaneTimelinePowerPolicyTests
+  -only-testing:HerdcatsTests/AppModelReconnectPolicyTests
+UI selectors (separate run):
+  -only-testing:HerdcatsUITests/AgentTimelineUITests/testTimelineLightAndDarkRenderToolCardsAndKeepTerminalAvailable
+  -only-testing:HerdcatsUITests/AgentTimelineUITests/testTimelineForegroundRestorationDoesNotShowDisconnected
+xcresulttool summaries confirmed results. No full suite, linter, formatter,
+static analyzer, remote deployment, push, PR, or CI phase was run.

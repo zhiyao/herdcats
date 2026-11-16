@@ -424,6 +424,81 @@ struct PaneTimelinePowerPolicyTests {
         ])
     }
 
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true])
+    func leavingTerminalDuringComposeRetiresConnectedAcquisition(background: Bool) async throws {
+        try await withConnectedLiveInputFixture { connection, shell in
+            var showsTimeline = false
+            var isSceneActive = true
+            var installed: PaneLiveInputSession?
+            var prepared: PaneLiveInputSession?
+            var reads = 0
+            let enteredCompose = ExternallyReleasedWait<Void>()
+            let releaseCompose = ExternallyReleasedWait<Void>()
+            defer {
+                releaseCompose.release(())
+                shell.release.release(())
+            }
+            let compose = Task {
+                try await connection.paneInput.run(paneId: "w1:p1") {
+                    enteredCompose.release(())
+                    try await releaseCompose.wait()
+                }
+            }
+            try await enteredCompose.wait()
+
+            let acquisition = Task { @MainActor in
+                await PaneLiveSessionRunner(
+                    targetPaneId: "w1:p1",
+                    isEligible: {
+                        PaneRefreshPolicy.shouldPrepareLiveSession(
+                            showsTimeline: showsTimeline, isFocused: true,
+                            isSceneActive: isSceneActive, isOffline: false
+                        )
+                    },
+                    isEnabled: { installed != nil },
+                    needsResyncOrMissingSession: { true },
+                    retireCurrentSession: {},
+                    beginLiveInput: { paneId in
+                        let token = try await connection.beginPaneLiveInput(paneId: paneId)
+                        prepared = token
+                        return token
+                    },
+                    endLiveInput: { await connection.endPaneLiveInput($0) },
+                    reloadPostBarrier: { reads += 1; return nil },
+                    installSession: { installed = $0 },
+                    noteTimeout: {},
+                    sleep: { _ in }
+                ).acquireOnce()
+            }
+            for _ in 0..<1_000 {
+                if await connection.paneInput.queuedCount(paneId: "w1:p1") == 1 { break }
+                try await Task.sleep(for: .milliseconds(1))
+            }
+            let queued = await connection.paneInput.queuedCount(paneId: "w1:p1")
+            // Change eligibility at the real input-lane boundary, without
+            // cancelling the task: the late token must still be retired.
+            showsTimeline = !background
+            isSceneActive = !background
+            releaseCompose.release(())
+            shell.release.release(())
+            try await compose.value
+            await acquisition.value
+
+            #expect(queued == 1)
+            try #require(prepared != nil, "Must reach the connected acquisition path")
+            #expect(installed == nil)
+            #expect(reads == 0)
+            #expect(await connection.hasActiveLiveSession(paneId: "w1:p1") == false)
+            // A stale token cannot deliver input after the mode/lifecycle change.
+            do {
+                try await connection.sendPaneLiveText("must-not-replay", session: try #require(prepared))
+                Issue.record("Retired Live input must reject delivery")
+            } catch {
+                #expect(error as? HerdrError == .notConnected)
+            }
+        }
+    }
+
     @Test func cancelledBeginPaneLiveInputDoesNotLeaveActiveSessionInstalled() async throws {
         try await withConnectedLiveInputFixture { connection, shell in
             let firstEntered = ExternallyReleasedWait<Void>()
