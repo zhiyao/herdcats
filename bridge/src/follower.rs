@@ -391,9 +391,8 @@ impl Follower {
         }
         if transcript.entries.len() > crate::claude::MAX_ENTRIES {
             let newest = transcript.entries.split_off(transcript.entries.len() - crate::claude::MAX_ENTRIES);
-            self.revised.extend(transcript.entries.iter().map(|entry| entry.id.clone()));
-            self.older.append(&mut transcript.entries);
-            transcript.entries = newest;
+            transcript.spilled = std::mem::replace(&mut transcript.entries, newest);
+            self.older.extend(transcript.spilled.iter().cloned());
         }
         if self.older.len() > 100_000 {
             return Err("transcript_identity_limit");

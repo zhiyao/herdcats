@@ -570,3 +570,84 @@ fn pi_disjoint_windows_join_history_and_live_only_branches_reset() {
         }
     }
 }
+
+#[test]
+fn pi_recovered_overflow_is_published_as_ordered_inserts() {
+    let root = PathBuf::from("/tmp").join(format!("pi-o-{}", std::process::id()));
+    fs::create_dir_all(root.join("sessions/project")).unwrap();
+    fs::create_dir_all(root.join("herdcats")).unwrap();
+    let root = root.canonicalize().unwrap();
+    let session = "16246b9d-4c3d-54fc-b6d3-2a765d418491";
+    let path = root.join(format!("sessions/project/{session}.jsonl"));
+    fs::write(&path, format!("{{\"type\":\"session\",\"id\":\"{session}\"}}\n")).unwrap();
+    let socket = root.join("h.sock");
+    let listener = UnixListener::bind(&socket).unwrap();
+    let pane = json!({"pane_id":"pane","terminal_id":"terminal","agent":"pi","agent_status":"idle","agent_session":{"agent":"pi","source":"herdr:pi","kind":"path","value":path}});
+    let host = thread::spawn(move || {
+        for _ in 0..4 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut line = String::new();
+            BufReader::new(stream.try_clone().unwrap()).read_line(&mut line).unwrap();
+            let request: Value = serde_json::from_str(&line).unwrap();
+            writeln!(stream,"{}",json!({"id":request["id"],"result":{"type":"session_snapshot","snapshot":{"protocol":22,"panes":[pane]}}})).unwrap();
+        }
+    });
+    let listener = UnixListener::bind(root.join(format!("herdcats/{session}.sock"))).unwrap();
+    let extension = thread::spawn(move || {
+        let msg = |index: usize| json!({"type":"message","id":format!("m{index}"),"message":{"role":"user","content":format!("m{index}")}});
+        for step in 0..15 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut line = String::new();
+            BufReader::new(stream.try_clone().unwrap()).read_line(&mut line).unwrap();
+            let request: Value = serde_json::from_str(&line).unwrap();
+            let response = if request["method"] == "state" {
+                let index = if step == 0 { 0 } else { 1200 };
+                json!({"protocol":1,"session_id":session,"session_file":path,"instance_id":"rt","revision":index+1,"entries":[msg(index)],"has_more":index>0,"before":if index==0 {None} else {Some("m1200")},"status":"idle","capabilities":{"history":true}})
+            } else {
+                assert_eq!(request["method"], "history");
+                let end: usize = request["params"]["before"].as_str().unwrap().strip_prefix('m').unwrap().parse().unwrap();
+                let start = end.saturating_sub(100);
+                json!({"protocol":1,"session_id":session,"instance_id":"rt","entries":(start..end).map(msg).collect::<Vec<_>>(),"has_more":start>0,"before":if start>0 {Some(format!("m{start}"))} else {None}})
+            };
+            writeln!(stream,"{}",json!({"result":response})).unwrap();
+        }
+    });
+    let mut service = Service::with_resolvers(socket, None, None).with_pi_agent_dir(root.clone());
+    service.request(br#"{"id":"i","method":"initialize","params":{"protocol":1}}"#, &mut Vec::new()).unwrap();
+    let mut output = Vec::new();
+    service.request(br#"{"id":"w","method":"watch","params":{"pane_id":"pane"}}"#, &mut output).unwrap();
+    let generation = service.generation;
+    output.clear();
+    service.poll(&mut output).unwrap();
+    let frames: Vec<Value> = String::from_utf8(output).unwrap().lines().map(|line| {
+        assert!(line.len() + 1 <= MAX_RECORD);
+        serde_json::from_str(line).unwrap()
+    }).collect();
+    let mut held = vec!["pi:m0".to_owned()];
+    for frame in frames {
+        assert_eq!(frame["event"], "timeline.updated");
+        assert_eq!(frame["data"]["generation"], generation);
+        let rows = frame["data"]["entries"].as_array().unwrap();
+        let order = frame["data"]["entry_order"].as_array().unwrap();
+        assert!(rows.len() <= 1000 && order.len() <= 1000);
+        for row in rows {
+            let id = row["id"].as_str().unwrap();
+            if !held.iter().any(|entry| entry == id) {
+                let position = order.iter().position(|entry| entry == id).unwrap();
+                let next = order[position+1..].iter().find_map(|entry| held.iter().position(|id| id == entry.as_str().unwrap()));
+                held.insert(next.unwrap_or(held.len()), id.to_owned());
+            }
+        }
+    }
+    assert_eq!(held, (0..=1200).map(|index| format!("pi:m{index}")).collect::<Vec<_>>());
+    assert_eq!(service.generation, generation);
+    let follower = &service.watch.as_ref().unwrap().follower;
+    assert_eq!(follower.older().len(), 201);
+    assert_eq!(follower.transcript.entries.len(), 1000);
+    let mut repeated = Vec::new();
+    service.poll(&mut repeated).unwrap();
+    assert!(repeated.is_empty());
+    host.join().unwrap();
+    extension.join().unwrap();
+    fs::remove_dir_all(root).unwrap();
+}

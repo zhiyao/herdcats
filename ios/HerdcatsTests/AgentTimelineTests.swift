@@ -128,6 +128,22 @@ struct AgentBridgeFramingTests {
         #expect(s.generation == 1)
         #expect(s.phase == .ready)
     }
+    @Test func recoveredOverflowInsertsFillInteriorHistoryGaps() throws {
+        let s = store()
+        try s.consume(frame("timeline.snapshot", entries: ["m0"]), owner: owner)
+        let retained = (201...1200).map { "m\($0)" }
+        try s.consume(frame("timeline.updated", seq: 2, entries: retained, entryOrder: retained), owner: owner)
+        var seq = 3
+        for end in stride(from: 201, through: 1, by: -100) {
+            let start = max(0, end - 100)
+            let rows = (start..<end).map { "m\($0)" }
+            try s.consume(frame("timeline.updated", seq: seq, entries: rows, entryOrder: rows + ["m\(end)"]), owner: owner)
+            seq += 1
+        }
+        #expect(s.entries.map(\.text) == (0...1200).map { "m\($0)" })
+        #expect(s.generation == 1)
+        #expect(s.phase == .ready)
+    }
     @Test func switchingPanesDoesNotShowPreviousPaneEntries() throws {
         // Pane 1 receives a snapshot and shows its entries
         let pane1 = store()

@@ -944,6 +944,11 @@ impl Service {
                 } else {
                     watch.follower.older().iter().filter(|e| revised.binary_search(&e.id).is_ok()).cloned().collect()
                 };
+                let inserted = if is_pi_window {
+                    std::mem::take(&mut watch.follower.transcript.spilled)
+                } else {
+                    Vec::new()
+                };
                 let data = &watch.follower.transcript;
                 // Tail-first followers keep entries past retention as older
                 // batches the phone can page back to, so they are not deletions.
@@ -1069,6 +1074,21 @@ impl Service {
                         }
                         let body = update(&batch, &revisions, &evictions);
                         self.event(out, "timeline.updated", body)?;
+                    }
+                    let mut end = inserted.len();
+                    while end > 0 {
+                        let mut body = page(&inserted, end);
+                        let start = end - body["entries"].as_array().map_or(0, Vec::len);
+                        let following = inserted.get(end).or_else(|| data.entries.first());
+                        let order: Vec<&str> = inserted[start..end].iter()
+                            .chain(following)
+                            .map(|entry| entry.id.as_str()).collect();
+                        body["entry_order"] = json!(order);
+                        body["identity"] = json!(identity);
+                        body["generation"] = json!(self.generation);
+                        body["agent_status"] = json!(status);
+                        self.event(out, "timeline.updated", body)?;
+                        end = start;
                     }
                 }
                 watch.unknown_records = data.unknown_records;
