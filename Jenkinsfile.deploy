@@ -1,0 +1,150 @@
+// Manual deploy pipeline for the Herdcats website (web/ → Cloudflare Pages).
+//
+// Create a Jenkins Pipeline job and set Script Path = Jenkinsfile.deploy.
+// No automatic triggers — run via "Build with Parameters".
+//
+// Deploys the Next.js static export (web/out/) to the herdcats Cloudflare Pages
+// project (https://herdcats.dev) via the existing web/bin/deploy script,
+// including screenshot sync (prebuild), static export, Pages deployment, and
+// post-deploy HTTPS smoke checks.
+//
+// iOS / TestFlight release scripts (ios/bin/deploy) are separate and untouched
+// by this pipeline.
+//
+// Operator setup, including the Cloudflare API-token permission list, is in
+// RELEASING.md ("Website deployment (Cloudflare Pages)").
+//
+// Required Jenkins credentials (verify/create before first run):
+//   cloudflare-api-token   Secret text — Cloudflare API token (Cloudflare Pages Edit)
+//   cloudflare-account-id  Secret text — Cloudflare account ID
+//   enchantinglabs-jenkins Already exists — git username/password (job SCM checkout)
+
+pipeline {
+  agent { label 'mac-mini' }
+
+  options {
+    timestamps()
+    ansiColor('xterm')
+    // Clean npm ci + Next.js static export + Cloudflare Pages deploy + smoke check:
+    // 30 min gives headroom over a warm local deploy without letting a hang
+    // run all day.
+    timeout(time: 30, unit: 'MINUTES')
+    // Never queue-break a deploy mid-flight, and never run two at once against
+    // the same workspace or Cloudflare Pages project.
+    disableConcurrentBuilds()
+    buildDiscarder(logRotator(numToKeepStr: '30'))
+  }
+
+  parameters {
+    string(
+      name: 'REF',
+      defaultValue: 'main',
+      description: 'Git ref to deploy. Branch: "main". Tag: "refs/tags/herdrcat-v0.3.1". SHA: full commit hash.'
+    )
+    booleanParam(
+      name: 'SKIP_BUILD',
+      defaultValue: false,
+      description: 'Reuse an existing web/out/ static export — skips npm run build.'
+    )
+  }
+
+  environment {
+    // xcodebuild-era locale settings; keep output deterministic.
+    LANG   = 'en_US.UTF-8'
+    LC_ALL = 'en_US.UTF-8'
+
+    // Jenkins doesn't inherit the user shell PATH, so Homebrew tools
+    // (node, npm) won't be found without this.
+    PATH   = "/opt/homebrew/bin:${env.PATH}"
+
+    // Wrangler authenticates from these environment variables;
+    // no `wrangler login` state is ever needed on the agent.
+    CLOUDFLARE_API_TOKEN  = credentials('cloudflare-api-token')
+    CLOUDFLARE_ACCOUNT_ID = credentials('cloudflare-account-id')
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout([
+          $class: 'GitSCM',
+          branches: [[name: params.REF]],
+          userRemoteConfigs: scm.userRemoteConfigs,
+          extensions: [[$class: 'CloneOption', noTags: false, shallow: false]]
+        ])
+        sh 'git log -1 --oneline'
+      }
+    }
+
+    stage('Toolchain') {
+      steps {
+        sh '''
+          set -euo pipefail
+          command -v node >/dev/null 2>&1 || { echo "Node.js not found on PATH"; exit 1; }
+          command -v npm >/dev/null 2>&1 || { echo "npm not found on PATH"; exit 1; }
+          # web/ requires Node 22+ (matches .github/workflows/ci.yml and README.md).
+          node -e 'const [maj]=process.versions.node.split(".").map(Number);
+            if (maj<22) { console.error("Node >= 22.0.0 required, found " + process.versions.node); process.exit(1); }'
+          node --version
+          npm --version
+        '''
+      }
+    }
+
+    stage('Install deps') {
+      steps {
+        dir('web') {
+          // Cap each npm ci attempt and retry once on transient registry/network stalls.
+          script {
+            int attempts = 2
+            for (int i = 1; i <= attempts; i++) {
+              try {
+                timeout(time: 6, unit: 'MINUTES') {
+                  sh 'npm ci'
+                }
+                break
+              } catch (err) {
+                if (i == attempts) { throw err }
+                echo "npm ci attempt ${i} failed/timed out — retrying"
+              }
+            }
+          }
+        }
+      }
+    }
+
+    stage('Test') {
+      steps {
+        dir('web') {
+          sh '''
+            set -euo pipefail
+            node --test test/server.test.js
+            if [ -f test/deploy.test.js ]; then
+              node --test test/deploy.test.js
+            fi
+          '''
+        }
+      }
+    }
+
+    stage('Deploy') {
+      steps {
+        dir('web') {
+          script {
+            def flags = params.SKIP_BUILD ? '--skip-build' : ''
+            sh "bin/deploy ${flags}".trim()
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+      echo "Deployed ${params.REF} to Cloudflare Pages (herdcats): https://herdcats.dev"
+    }
+    failure {
+      echo "Deploy of ${params.REF} FAILED — check the failing stage logs."
+    }
+  }
+}

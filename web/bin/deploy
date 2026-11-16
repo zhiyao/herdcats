@@ -5,6 +5,43 @@ set -euo pipefail
 WEB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$WEB_DIR"
 
+DEPLOY_URL="${DEPLOY_URL:-https://herdcats.dev}"
+SMOKE_RETRY_DELAY="${SMOKE_RETRY_DELAY:-5}"
+
+usage() {
+  cat <<'EOF'
+Usage: web/bin/deploy [--skip-build]
+
+Builds the Next.js static export (web/out/), deploys it to the herdcats
+Cloudflare Pages project (production branch: main), and smoke-checks the
+live site.
+
+Options:
+  --skip-build     Skip npm run build (reuse an existing web/out/ export)
+  -h, --help       Show this help
+EOF
+}
+
+SKIP_BUILD=false
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --skip-build)
+      SKIP_BUILD=true
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
 if ! command -v npm >/dev/null 2>&1 || ! command -v node >/dev/null 2>&1; then
   echo "Node.js and npm are required to deploy the website." >&2
   exit 1
@@ -18,5 +55,34 @@ fi
 
 WRANGLER="node_modules/wrangler/bin/wrangler.js"
 "$NODE_BIN" "$WRANGLER" whoami
-npm run build
+
+if [[ "$SKIP_BUILD" == false ]]; then
+  npm run build
+fi
+
+if [[ ! -s out/index.html ]]; then
+  echo "Error: missing static export at web/out/index.html. Run without --skip-build first." >&2
+  exit 1
+fi
+
 "$NODE_BIN" "$WRANGLER" pages deploy out --project-name=herdcats --branch=main
+
+echo "==> Smoke-checking $DEPLOY_URL..."
+SMOKE_OK=false
+for attempt in 1 2 3; do
+  if curl -fsSL -o /dev/null --max-time 15 "$DEPLOY_URL"; then
+    SMOKE_OK=true
+    break
+  fi
+  if [[ "$attempt" -lt 3 ]]; then
+    echo "  attempt $attempt failed, retrying in ${SMOKE_RETRY_DELAY}s..."
+    sleep "$SMOKE_RETRY_DELAY"
+  fi
+done
+
+if [[ "$SMOKE_OK" == true ]]; then
+  echo "==> Deployed: $DEPLOY_URL"
+else
+  echo "!! Deploy succeeded but smoke check failed at $DEPLOY_URL" >&2
+  exit 1
+fi

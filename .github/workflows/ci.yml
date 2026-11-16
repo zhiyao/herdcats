@@ -132,7 +132,9 @@ jobs:
         run: npm ci
 
       - name: Test server
-        run: node --test test/server.test.js
+        run: |
+          node --test test/server.test.js
+          node --test test/deploy.test.js
 
       - name: Build static website
         run: npm run build

@@ -166,3 +166,56 @@ CLI releases are not exact-version gated. Cursor and Agy controls validate live
 catalogs and terminal screens; Pi requires the opt-in extension with compatible
 public APIs and Herdcats extension protocol `1`. Terminal fallback
 and each integration's existing guards still apply.
+
+## Website deployment (Cloudflare Pages)
+
+The `web/` landing page is deployed independently of the iOS app and bridge to
+the `herdcats` Cloudflare Pages project (`https://herdcats.dev`, configured in
+`web/wrangler.json`).
+
+### Local / CLI deployment
+
+From a clean checkout with Node.js 22+ and Wrangler authenticated
+(`npx wrangler login` or `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`):
+
+```sh
+./web/bin/deploy
+# Or reuse an existing web/out/ static export without rebuilding:
+./web/bin/deploy --skip-build
+```
+
+`web/bin/deploy` installs locked dependencies when needed (`npm ci`), checks
+Wrangler authentication (`wrangler whoami`), runs `npm run build` (which syncs
+`assets/screenshots` into `web/public/assets/screenshots` and exports the static
+site to `web/out/`), deploys `web/out/` with
+`wrangler pages deploy out --project-name=herdcats --branch=main`, and
+smoke-checks `https://herdcats.dev`.
+
+### Manual Jenkins deployment (`Jenkinsfile.deploy`)
+
+`Jenkinsfile.deploy` wraps `web/bin/deploy` as a manual, parameterized Jenkins
+Pipeline job on the `mac-mini` agent (Node.js 22+ and npm via
+`/opt/homebrew/bin`):
+
+1. Jenkins → New Item → **Pipeline** (plain Pipeline job, not Multibranch).
+2. Pipeline → Definition: **Pipeline script from SCM**, repository URL
+   `https://github.com/zhiyao/herdcats.git`, branch `*/main`, credential
+   `enchantinglabs-jenkins`, and **Script Path** = `Jenkinsfile.deploy`.
+3. Build Triggers: leave all triggers unchecked. Run manually via **Build with
+   Parameters** on a CI-green commit.
+
+| Credential ID | Kind | Used for |
+|---|---|---|
+| `cloudflare-api-token` | Secret text | `CLOUDFLARE_API_TOKEN` — Wrangler Cloudflare Pages deploy |
+| `cloudflare-account-id` | Secret text | `CLOUDFLARE_ACCOUNT_ID` — Cloudflare account selection (`web/wrangler.json` omits `account_id`) |
+| `enchantinglabs-jenkins` | Username/password (existing) | Git SCM checkout |
+
+Minimum Cloudflare API token permissions:
+
+- **Account · Cloudflare Pages · Edit** — deploy to the `herdcats` Pages project.
+- **Account · Account Settings · Read** — account resolution (`wrangler whoami`).
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `REF` | `main` | Git ref to deploy: branch (`main`), tag (`refs/tags/herdrcat-v0.3.1`), or full commit SHA |
+| `SKIP_BUILD` | `false` | Reuse an existing `web/out/` static export (`web/bin/deploy --skip-build`) |
