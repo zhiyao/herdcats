@@ -341,7 +341,9 @@ npm run dev
 ```
 
 The production build exports static files to `web/out/`. The website can be
-hosted independently of the iPhone app.
+hosted independently of the iPhone app; deploy to Cloudflare Pages with
+`web/bin/deploy` or the manual [`Jenkinsfile.deploy`](Jenkinsfile.deploy)
+pipeline (see [RELEASING.md](RELEASING.md#website-deployment-cloudflare-pages)).
 
 ## Current limitations
 
