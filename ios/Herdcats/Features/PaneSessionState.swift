@@ -239,7 +239,8 @@ struct TerminalRefreshTaskKey: Equatable {
 }
 
 /// Deterministic terminal snapshot + polling loop shared by `PaneSessionView`
-/// and unit tests. Hidden timelines never read or sleep-poll terminal output.
+/// and unit tests. While Timeline is visible, hidden terminal output is never
+/// read or sleep-polled by this runner.
 @MainActor
 struct PaneTerminalPollingRunner {
     let key: TerminalRefreshTaskKey
