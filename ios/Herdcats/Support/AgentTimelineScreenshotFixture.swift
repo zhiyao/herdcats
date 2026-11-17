@@ -63,6 +63,20 @@
                 ]
             ]))
         }
+        static func overflowFrame(paneId: String, start: Int, end: Int, seq: Int) throws -> AgentBridgeFrame {
+            try AgentBridgeFrame.decode(JSONSerialization.data(withJSONObject: [
+                "event": "timeline.updated", "epoch": "fixture", "seq": seq,
+                "data": [
+                    "identity": ["pane_id": paneId, "terminal_id": "fixture-terminal", "agent": ScreenshotFixtures.paneAgent,
+                                 "native_session_id": "fixture-session"],
+                    "generation": 1,
+                    "entries": (start...end).map { index in
+                        ["id": "message:overflow-\(index)", "kind": "message", "role": index.isMultiple(of: 2) && index != 1050 ? "user" : "assistant",
+                         "text": "Overflow message \(index).", "truncated": false] as [String: Any]
+                    }, "has_more": false
+                ]
+            ]))
+        }
         static var showsApproval: Bool {
             ["timeline-approval-codex", "timeline-approval-claude", "timeline-approval-agy"].contains(ScreenshotFixtures.screen)
         }
@@ -283,6 +297,14 @@
                      "text": "Recent update \(index + 1). " + String(repeating: "Reviewed the connection and checked the implementation. ", count: 4),
                      "truncated": false] as [String: Any]
                 }
+            }
+            if ScreenshotFixtures.screen == "timeline-pi-overflow" {
+                entries = [
+                    ["id": "message:root", "kind": "message", "role": "user",
+                     "text": "Large root " + String(repeating: "r", count: 8000), "truncated": true],
+                    ["id": "message:overflow-1", "kind": "message", "role": "assistant",
+                     "text": "Overflow message 1.", "truncated": false]
+                ]
             }
             if ProcessInfo.processInfo.arguments.contains("-hc.timeline-long") {
                 entries += (0..<12).map { index in

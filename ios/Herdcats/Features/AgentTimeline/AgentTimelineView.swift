@@ -57,6 +57,11 @@ struct AgentTimelineView: View {
     @State var pageError: String?
     @State var following = true
     @State var atBottom = true
+    @State private var scrollRowID: String?
+    @State private var latestScrollRequest = 0
+    @State private var tailVisible = false
+    @State private var tailLayoutEpoch = 0
+    @State private var recoveredTailRequest = -1
     @State var entryFrames = TimelineEntryFrameStore()
     @State var viewportHeight: CGFloat = 0
     @State private var focusedQuestionField: QuestionFieldTarget?
@@ -214,7 +219,6 @@ struct AgentTimelineView: View {
                                             loadContent: { reference in try await loadContent(reference, scope: scope) })
                                     }
                                 }
-                                .id("\(scope):\(item.id)")
                                 .background {
                                     GeometryReader { row in
                                         Color.clear.preference(
@@ -264,31 +268,33 @@ struct AgentTimelineView: View {
                         } else {
                             availability
                         }
-                        // Clear scroll space lets the final entry sit above the
-                        // floating Compose bubble without an opaque dock panel.
-                        Color.clear
-                            .frame(height: bottomOverlayInset + approvalInset)
-                            .padding(.bottom, DesignSystem.Spacing.base)
-                            .id("timeline-bottom")
+                        Color.clear.frame(height: 0).id("timeline-bottom")
                     }
                     .scrollTargetLayout()
                     .padding([.horizontal, .top], DesignSystem.Spacing.base)
                     .padding(.top, topOverlayInset)
-                    .frame(minHeight: viewport.size.height + 1, alignment: .top)
+                    .frame(minHeight: max(0, viewport.size.height - bottomScrollMargin + 1), alignment: .top)
                     .background {
                         GeometryReader { content in
                             Color.clear.preference(key: TimelineAtBottomPreferenceKey.self,
-                                value: content.frame(in: .named("timeline-viewport")).maxY <= viewport.size.height + 8)
+                                value: content.frame(in: .named("timeline-viewport")).maxY <= viewport.size.height - bottomScrollMargin + 8)
                         }
                     }
                 }
+                // Keep overlay clearance outside the lazy targets: Latest names
+                // a message row, rather than an estimated empty spacer below it.
+                .contentMargins(.bottom, bottomScrollMargin, for: .scrollContent)
+                .scrollPosition(id: $scrollRowID, anchor: .bottom)
                 .timelineInitialScrollAnchor(initialScrollAnchor)
+                .task(id: "\(contentScope):\(latestScrollRequest):\(following):\(atBottom):\(tailVisible)") {
+                    await ensureVisibleTail()
+                }
                 .coordinateSpace(name: "timeline-viewport")
                 .onChange(of: viewport.size.height, initial: true) { _, height in
                     viewportHeight = height
                     if focusedQuestionField != nil {
                         revealQuestionField(using: proxy, viewport: viewport)
-                    } else if following && showsApproval { proxy.scrollTo("timeline-bottom", anchor: .bottom) }
+                    } else if following && showsApproval { scrollToLatest() }
                 }
                 .onChange(of: viewport.safeAreaInsets.bottom) { _, _ in
                     revealQuestionField(using: proxy, viewport: viewport)
@@ -306,7 +312,7 @@ struct AgentTimelineView: View {
                     following = true
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                     withAnimation(reduceMotion ? nil : .smooth(duration: 0.4)) {
-                        proxy.scrollTo("timeline-bottom", anchor: .bottom)
+                        scrollToLatest()
                     }
                 }
                 .onChange(of: timeline.pendingApproval?.requestId, initial: true) { _, requestId in
@@ -314,7 +320,7 @@ struct AgentTimelineView: View {
                     following = true
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                     withAnimation(reduceMotion ? nil : .smooth(duration: 0.4)) {
-                        proxy.scrollTo("timeline-bottom", anchor: .bottom)
+                        scrollToLatest()
                     }
                 }
                 .onChange(of: showsQuestion ? timeline.pendingQuestion?.requestId : nil, initial: true) { _, requestId in
@@ -323,7 +329,7 @@ struct AgentTimelineView: View {
                     following = true
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                     withAnimation(reduceMotion ? nil : .smooth(duration: 0.4)) {
-                        proxy.scrollTo("timeline-bottom", anchor: .bottom)
+                        scrollToLatest()
                     }
                 }
                 .onChange(of: focusedQuestionField) { _, target in
@@ -339,14 +345,18 @@ struct AgentTimelineView: View {
                     questionFieldFrames = frames
                     revealQuestionField(using: proxy, viewport: viewport)
                 }
-                .onPreferenceChange(TimelineEntryFramesPreferenceKey.self) { entryFrames.frames = $0 }
+                .onPreferenceChange(TimelineEntryFramesPreferenceKey.self) { frames in
+                    entryFrames.frames = frames
+                    tailVisible = conversationItems.last.flatMap { frames[$0.id] }.map(tailIntersectsViewport) ?? false
+                }
                 .onChange(of: historyScrollAnchor) { _, anchor in
                     guard let anchor else { return }
                     following = false
+                    scrollRowID = nil
                     var transaction = Transaction(animation: nil)
                     transaction.disablesAnimations = true
                     withTransaction(transaction) {
-                        proxy.scrollTo("\(contentScope):\(anchor.id)", anchor: UnitPoint(x: 0, y: anchor.unitY))
+                        proxy.scrollTo(anchor.id, anchor: UnitPoint(x: 0, y: anchor.unitY))
                     }
                 }
                 .onPreferenceChange(TimelineAtBottomPreferenceKey.self) { bottom in
@@ -374,7 +384,7 @@ struct AgentTimelineView: View {
                 )
                 .onChange(of: timeline.revision) { _, _ in
                     guard following, timeline.pendingQuestion == nil, timeline.pendingPiDialog == nil, (!conversationItems.isEmpty || showsApproval) else { return }
-                    proxy.scrollTo("timeline-bottom", anchor: .bottom)
+                    scrollToLatest()
                 }
                 .onChange(of: contentScope) { _, _ in
                     following = true
@@ -389,14 +399,14 @@ struct AgentTimelineView: View {
                     if focusedQuestionField != nil {
                         revealQuestionField(using: proxy, viewport: viewport)
                     } else if following && (!conversationItems.isEmpty || showsApproval) {
-                        proxy.scrollTo("timeline-bottom", anchor: .bottom)
+                        scrollToLatest()
                     }
                 }
                 .onChange(of: approvalInset) { _, _ in
                     if focusedQuestionField != nil {
                         revealQuestionField(using: proxy, viewport: viewport)
                     } else if following && (!conversationItems.isEmpty || showsApproval) {
-                        proxy.scrollTo("timeline-bottom", anchor: .bottom)
+                        scrollToLatest()
                     }
                 }
                 .overlay(alignment: .bottom) {
@@ -413,12 +423,10 @@ struct AgentTimelineView: View {
                 }
                 .overlay(alignment: .bottomTrailing) {
                     Group {
-                    if !atBottom && timeline.phase == .ready {
+                    if (!atBottom || (!tailVisible && !conversationItems.isEmpty && latestTargetID != "timeline-bottom")) && timeline.phase == .ready {
                         Button {
                             following = true
-                            withAnimation(reduceMotion ? nil : .smooth(duration: 0.4)) {
-                                proxy.scrollTo("timeline-bottom", anchor: .bottom)
-                            }
+                            scrollToLatest()
                         } label: {
                             latestIcon
                         }
@@ -434,9 +442,9 @@ struct AgentTimelineView: View {
                 }
             }
         }
-        // Replace the reader too: its proxy retains the old lazy scroll targets.
-        // History prepends keep this scope and preserve their reading anchor.
-        .id(contentScope)
+        // Rebuild stale lazy geometry only for a new source or a blank Latest
+        // destination. Ordinary history prepends retain their reading anchor.
+        .id("\(contentScope):\(tailLayoutEpoch)")
         // Let messages scroll behind the pane cards, but keep them below
         // the navigation bar and status area.
         .overlay(alignment: .bottom) {
@@ -607,6 +615,38 @@ struct AgentTimelineView: View {
     @MainActor func updateTimelineSheet() {
         sheetState.sync(visible: matchesLiveTimeline && approvalViewVisible && scenePhase == .active,
             phone: phoneAnswersSelection != nil, helper: showsSetup, codex: showsCodexDaemonConfirm)
+    }
+    var bottomScrollMargin: CGFloat {
+        bottomOverlayInset + approvalInset + DesignSystem.Spacing.base
+    }
+    private var latestTargetID: String? {
+        if showsApproval || showsQuestion || timeline.pendingPiDialog != nil || timeline.piActionError != nil || timeline.delayed {
+            return "timeline-bottom"
+        }
+        return conversationItems.last?.id
+    }
+    private func scrollToLatest() {
+        scrollRowID = latestTargetID
+        latestScrollRequest += 1
+    }
+    private func tailIntersectsViewport(_ frame: CGRect) -> Bool {
+        frame.maxY > topOverlayInset && frame.minY < viewportHeight - bottomScrollMargin
+    }
+    @MainActor private func ensureVisibleTail() async {
+        guard following, atBottom, !tailVisible, let target = latestTargetID,
+              target == conversationItems.last?.id,
+              recoveredTailRequest != latestScrollRequest else { return }
+        let request = latestScrollRequest
+        do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
+        guard !Task.isCancelled, following, atBottom, latestTargetID == target,
+              latestScrollRequest == request,
+              !entryFrames.frames.values.contains(where: tailIntersectsViewport) else { return }
+        // Native row positioning can retain an estimated bottom with no rows
+        // mounted after a large insert. Discard that layout cache once per
+        // Latest request, without replacing the timeline or its held history.
+        recoveredTailRequest = request
+        entryFrames.frames = [:]
+        tailLayoutEpoch += 1
     }
     private var initialScrollAnchor: UnitPoint {
         #if DEBUG && targetEnvironment(simulator)

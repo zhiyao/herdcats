@@ -293,6 +293,14 @@ extension AgentTimelineView {
                         paneId: paneId,
                         helperInstalled: fixtureHelperInstalled || (retry > 0 && ProcessInfo.processInfo.arguments.contains("-hc.timeline-helper-installed"))
                     ), owner: owner)
+                    if ScreenshotFixtures.screen == "timeline-pi-overflow" {
+                        try await Task.sleep(for: .seconds(12))
+                        for (batch, start) in stride(from: 2, through: 1050, by: 1000).enumerated() {
+                            try timeline.consume(AgentTimelineScreenshotFixture.overflowFrame(
+                                paneId: paneId, start: start, end: min(start + 999, 1050), seq: batch + 2), owner: owner)
+                            try await Task.sleep(for: .milliseconds(30))
+                        }
+                    }
                     if AgentTimelineScreenshotFixture.showsApproval {
                         try timeline.consume(AgentTimelineScreenshotFixture.approvalFrame(paneId: paneId, agent: ScreenshotFixtures.paneAgent), owner: owner)
                         AgentTimelineScreenshotFixture.prepareApprovalResponse(approvalResponse, pending: timeline.pendingApproval)
@@ -324,7 +332,8 @@ extension AgentTimelineView {
               let item = conversationItems.first(where: { $0.entries.contains { $0.id == visible.key } })
         else { return }
         historyScrollAnchor = TimelineHistoryScrollAnchor(
-            id: item.id, top: visible.value.minY, height: visible.value.height, viewportHeight: viewportHeight)
+            id: item.id, top: visible.value.minY, height: visible.value.height,
+            viewportHeight: viewportHeight - bottomScrollMargin)
     }
 
     @MainActor func refreshHistory() async {
