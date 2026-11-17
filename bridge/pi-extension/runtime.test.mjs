@@ -166,6 +166,32 @@ test('oversized startup and reload retain an endpoint with an explicit state err
   }
 });
 
+test('trailing metadata cannot hide the newest message or its oversized error', async t => {
+  const f = await started(t);
+  const newest = {type:'message', id:'newest', message:{role:'user', content:'x'.repeat(1024 * 1024)}};
+  const metadata = Array.from({length:110}, (_, i) => ({type:'thinking_level_change', id:`meta-${i}`, thinkingLevel:'low'}));
+  let branch = [newest, ...metadata];
+  f.ctx.sessionManager.getBranch = () => branch;
+  const oversized = await socketCall(f.integration.socketPath, {method:'state'});
+  assert.equal(oversized.frame.error?.code, 'pi_state_too_large');
+  assert.ok(oversized.bytes <= 1024 * 1024);
+  newest.message.content = 'hello';
+  const initial = await socketCall(f.integration.socketPath, {method:'state'});
+  assert.ok(initial.bytes <= 1024 * 1024);
+  assert.ok(initial.frame.result.entries.some(entry => entry.id === newest.id));
+  newest.message.content = 'x'.repeat(1024 * 1024);
+
+  // Paging to the same native message must surface the same explicit error.
+  branch = [...branch, {type:'message', id:'after', message:{role:'assistant', content:'after'}}];
+  const current = (await socketCall(f.integration.socketPath, {method:'state'})).frame.result;
+  assert.equal(current.has_more, true);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const page = await socketCall(f.integration.socketPath, {method:'history', params:{expect:expectOf(current), before:current.before}});
+    assert.equal(page.frame.error.code, 'pi_state_too_large');
+    assert.ok(page.bytes <= 1024 * 1024);
+  }
+});
+
 test('progressive history opens 2.58 MiB and >5 MiB sessions within 1 MiB frames without gaps or duplicates', async t => {
   for (const [count, textBytes] of [[100, 27000], [180, 34000]]) {
     const branch = Array.from({ length: count }, (_, i) => ({

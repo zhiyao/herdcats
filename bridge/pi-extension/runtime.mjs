@@ -40,6 +40,11 @@ export function createIntegration(pi, {getSupportedThinkingLevels, version}) {
   }
   function packWindow(branch, end, maxEntries, tailEntry, makeEnvelope) {
     if (!Array.isArray(branch)) fail('invalid_pi_response');
+    // Native metadata is not projected into Timeline. Do not let a suffix of
+    // those records conceal the newest message (including an oversized one).
+    if (!tailEntry) {
+      while (end > 0 && branch[end - 1]?.type !== 'message') end--;
+    }
     if (end <= 0) {
       const entries = tailEntry ? [tailEntry] : [];
       const result = makeEnvelope(entries, false, null);

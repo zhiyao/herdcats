@@ -4,6 +4,7 @@
 Does not inspect existing sessions, use provider credentials, or control active panes.
 """
 import argparse
+import fcntl, struct, termios
 import os, pty, subprocess, tempfile, time, glob, socket, json, select, shutil
 from pathlib import Path
 parser = argparse.ArgumentParser(description=__doc__)
@@ -20,7 +21,9 @@ export default function(pi) {
 pi.registerProvider('hc-synthetic',{baseUrl:'http://127.0.0.1:1',apiKey:'synthetic-no-network',api:'hc-synthetic-api',models:['one','two'].map(id=>({id,name:'Synthetic '+id,reasoning:true,input:['text'],cost:{input:0,output:0,cacheRead:0,cacheWrite:0},contextWindow:8192,maxTokens:1024})),streamSimple:(model,context,opts)=>{const stream=createAssistantMessageEventStream();setTimeout(async()=>{const message={role:'assistant',content:[{type:'text',text:''}],api:model.api,provider:model.provider,model:model.id,timestamp:Date.now(),stopReason:'pending',usage:{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}};stream.push({type:'start',partial:message});message.content[0].text='Synthetic streaming response';stream.push({type:'text_start',contentIndex:0,partial:message});stream.push({type:'text_delta',contentIndex:0,delta:message.content[0].text,partial:message});await new Promise(resolve=>{opts.signal.addEventListener('abort',resolve,{once:true});setTimeout(resolve,5000);});if(opts.signal.aborted){message.stopReason='aborted';message.errorMessage='Synthetic cancellation';stream.push({type:'error',reason:'aborted',error:message});}else{message.stopReason='stop';stream.push({type:'text_end',contentIndex:0,content:message.content[0].text,partial:message});stream.push({type:'done',reason:'stop',message});}stream.end();},0);return stream;}});
 pi.registerCommand('hc-probe', {handler:async (_args,ctx)=>{ const value=await ctx.ui.confirm('Synthetic permission','Run synthetic test once?'); writeFileSync(process.env.HC_PROBE_RESULT,JSON.stringify({value})); }}); }
 ''')
-master,slave=pty.openpty();env=dict(os.environ,PI_CODING_AGENT_DIR=root+'/agent',HC_PROBE_RESULT=root+'/result.json',TERM='xterm-256color')
+master,slave=pty.openpty()
+fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 40, 120, 0, 0))
+env=dict(os.environ,PI_CODING_AGENT_DIR=root+'/agent',HC_PROBE_RESULT=root+'/result.json',TERM='xterm-256color')
 p=subprocess.Popen(['node',str(pi_package/'dist/bundle/cli.js'),'--no-extensions','--no-skills','--no-prompt-templates','-e',repo+'/bridge/pi-extension/index.ts','-e',probe,'--session',root+'/session.jsonl'],stdin=slave,stdout=slave,stderr=slave,env=env,cwd=root);os.close(slave)
 output=b''
 def drain():
