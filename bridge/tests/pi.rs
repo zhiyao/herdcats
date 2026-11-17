@@ -451,7 +451,7 @@ fn pi_stream_completion_expands_backwards_without_losing_history() {
 fn pi_live_only_windows_preserve_native_anchors_and_reset_sibling_branches() {
     let mut f = Follower::for_agent(AgentType::Pi);
     let live = serde_json::json!({"type":"message","id":"herdcats-live:stream","message":{"role":"assistant","content":"stream"}});
-    f.refresh_pi_window(&[live.clone()], true, Some("herdcats-through:a"), ID).unwrap();
+    f.refresh_pi_window(std::slice::from_ref(&live), true, Some("herdcats-through:a"), ID).unwrap();
     let generation = f.generation;
     assert_eq!(f.pi_anchor(), Some("a"));
     f.prepend_pi_older(&[pi_message("old"), pi_message("a")], false, None, ID).unwrap();

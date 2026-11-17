@@ -620,7 +620,7 @@ fn pi_recovered_overflow_is_published_as_ordered_inserts() {
     output.clear();
     service.poll(&mut output).unwrap();
     let frames: Vec<Value> = String::from_utf8(output).unwrap().lines().map(|line| {
-        assert!(line.len() + 1 <= MAX_RECORD);
+        assert!(line.len() < MAX_RECORD);
         serde_json::from_str(line).unwrap()
     }).collect();
     let mut held = vec!["pi:m0".to_owned()];
