@@ -1035,6 +1035,27 @@ final class AgentTimelineUITests: XCTestCase {
         app.terminate()
     }
 
+    func testSameIdentitySnapshotReplacementRevealsNewGeneration() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-history-position",
+            "-hc.timeline-replace-after-history", "-hc.light", "-paneShowComposeByDefault", "NO"]
+        launch(app)
+        defer { app.terminate() }
+        let scroll = app.scrollViews["agent-timeline-scroll"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: 5))
+        let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+        let end = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95))
+        for _ in 0..<4 {
+            start.press(forDuration: 0.05, thenDragTo: end)
+            if app.staticTexts["Loading earlier messages…"].exists { break }
+        }
+        let leaf = app.staticTexts["Replacement generation is visible."]
+        XCTAssertTrue(leaf.waitForExistence(timeout: 20))
+        XCTAssertTrue(leaf.isHittable, "A replacement snapshot must reveal its newest row without reopening Terminal")
+        XCTAssertGreaterThan(leaf.frame.maxY, scroll.frame.minY)
+        XCTAssertLessThan(leaf.frame.minY, scroll.frame.maxY)
+    }
+
     func testLoadingEarlierMessagesPreservesVisibleMessageOffset() {
         let app = XCUIApplication()
         app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-history-position", "-hc.light", "-paneShowComposeByDefault", "NO"]

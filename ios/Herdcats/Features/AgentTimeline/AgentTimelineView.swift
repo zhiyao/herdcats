@@ -282,6 +282,7 @@ struct AgentTimelineView: View {
                         }
                     }
                 }
+                .timelineInitialScrollAnchor(initialScrollAnchor)
                 .coordinateSpace(name: "timeline-viewport")
                 .onChange(of: viewport.size.height, initial: true) { _, height in
                     viewportHeight = height
@@ -375,10 +376,11 @@ struct AgentTimelineView: View {
                     guard following, timeline.pendingQuestion == nil, timeline.pendingPiDialog == nil, (!conversationItems.isEmpty || showsApproval) else { return }
                     proxy.scrollTo("timeline-bottom", anchor: .bottom)
                 }
-                .onChange(of: timeline.identity) { _, _ in
+                .onChange(of: contentScope) { _, _ in
                     following = true
                     #if DEBUG && targetEnvironment(simulator)
-                        if ScreenshotFixtures.enabled && ScreenshotFixtures.screen == "timeline-history-position" {
+                        if ScreenshotFixtures.enabled && ScreenshotFixtures.screen == "timeline-history-position",
+                           timeline.generation == 1 {
                             following = false
                         }
                     #endif
@@ -432,6 +434,9 @@ struct AgentTimelineView: View {
                 }
             }
         }
+        // Replace the reader too: its proxy retains the old lazy scroll targets.
+        // History prepends keep this scope and preserve their reading anchor.
+        .id(contentScope)
         // Let messages scroll behind the pane cards, but keep them below
         // the navigation bar and status area.
         .overlay(alignment: .bottom) {
@@ -603,6 +608,13 @@ struct AgentTimelineView: View {
         sheetState.sync(visible: matchesLiveTimeline && approvalViewVisible && scenePhase == .active,
             phone: phoneAnswersSelection != nil, helper: showsSetup, codex: showsCodexDaemonConfirm)
     }
+    private var initialScrollAnchor: UnitPoint {
+        #if DEBUG && targetEnvironment(simulator)
+        if ScreenshotFixtures.enabled && ScreenshotFixtures.screen == "timeline-history-position",
+           timeline.generation == 1 { return .top }
+        #endif
+        return .bottom
+    }
     private var contentScope: String {
         "\(activeOwner?.uuidString ?? "none"):\(timeline.generation ?? 0):\(timeline.identity?.nativeSessionId ?? "")"
     }
@@ -698,6 +710,16 @@ private struct PiDialogCard: View {
     private func option(_ label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(verbatim: label).frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder func timelineInitialScrollAnchor(_ anchor: UnitPoint) -> some View {
+        if #available(iOS 18, *) {
+            defaultScrollAnchor(anchor, for: .initialOffset)
+        } else {
+            defaultScrollAnchor(anchor)
         }
     }
 }

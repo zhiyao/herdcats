@@ -358,6 +358,11 @@ extension AgentTimelineView {
                     let page = try AgentTimelineScreenshotFixture.historyPage(paneId: paneId, generation: generation)
                     try mergeHistoryPreservingPosition(page, owner: owner, generation: generation)
                     TimelineHistoryDiagnostics.record("history.fixture_merged attempt=\(attempt) loaded_entries=\(timeline.entries.count)")
+                    if ProcessInfo.processInfo.arguments.contains("-hc.timeline-replace-after-history") {
+                        try await Task.sleep(for: .seconds(3))
+                        try timeline.consume(AgentTimelineScreenshotFixture.replacementFrame(
+                            paneId: paneId, generation: generation + 1), owner: owner)
+                    }
                     return
                 }
             #endif

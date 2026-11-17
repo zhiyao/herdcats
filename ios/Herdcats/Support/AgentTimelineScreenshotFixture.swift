@@ -47,6 +47,22 @@
             decoder.keyDecodingStrategy = .convertFromSnakeCase
             return try decoder.decode(AgentBridgePayload.self, from: data)
         }
+        static func replacementFrame(paneId: String, generation: UInt64) throws -> AgentBridgeFrame {
+            try AgentBridgeFrame.decode(JSONSerialization.data(withJSONObject: [
+                "event": "timeline.snapshot", "epoch": "fixture", "seq": 2,
+                "data": [
+                    "identity": ["pane_id": paneId, "terminal_id": "fixture-terminal", "agent": ScreenshotFixtures.paneAgent,
+                                 "native_session_id": "fixture-session"],
+                    "generation": generation,
+                    "entries": [
+                        ["id": "message:replacement-root", "kind": "message", "role": "user",
+                         "text": "Replacement root " + String(repeating: "r", count: 8000), "truncated": true],
+                        ["id": "message:replacement-leaf", "kind": "message", "role": "assistant",
+                         "text": "Replacement generation is visible.", "truncated": false]
+                    ], "has_more": false
+                ]
+            ]))
+        }
         static var showsApproval: Bool {
             ["timeline-approval-codex", "timeline-approval-claude", "timeline-approval-agy"].contains(ScreenshotFixtures.screen)
         }
