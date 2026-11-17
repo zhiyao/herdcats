@@ -43,7 +43,7 @@ Frames are newline-delimited JSON capped at 1 MiB (`1,048,576` UTF-8 bytes inclu
 
 ## Local protocol
 
-Request: `{ "method": "state", "params": {} }` or `{ "method": "history", "params": { "expect": { "session_id", "instance_id" }, "before": "<opaque history cursor>" } }`. Response: `{ "result": ... }` or `{ "error": { "code": "stale" } }`.
+Request: `{ "method": "state", "params": {} }` or `{ "method": "history", "params": { "expect": { "session_id": "<native session UUID>", "instance_id": "<live instance ID>" }, "before": "<opaque history cursor>" } }`. Response: `{ "result": ... }` or `{ "error": { "code": "stale" } }`.
 
 State returns `protocol: 1`, actual Pi CLI `version`, native `session_id` and `session_file`, `instance_id`, `revision`, `status`, `model`, `models`, native `entries`, `has_more`, `before`, `pending`, and explicit `capabilities` (including `history: true`). Models use `provider/id` identities; each catalog item includes `efforts: [{id,label}]`. Older-page `history` requires matching `session_id` and `instance_id` (not `revision`, so live appends do not break scrollback) and returns `stale_cursor` when the cursor anchor is no longer on the active branch. Cursors are at most 512 UTF-8 bytes: native record IDs are exclusive, while `herdcats-through:<ID>` includes the native tail omitted by a live-only window.
 

@@ -790,7 +790,7 @@ extension AgentTimelineView {
     }
 
     /// Surface oversized Pi state honestly without Reload/Check-again loops;
-    /// only offer an Update action if probing confirms an outdated extension on disk.
+    /// offer setup for an outdated on-disk extension or to finish a confirmed update.
     @ViewBuilder var piOversizedNotice: some View {
         if Self.showsOutdatedPiExtensionUpdate(
             code: "pi_state_too_large",
