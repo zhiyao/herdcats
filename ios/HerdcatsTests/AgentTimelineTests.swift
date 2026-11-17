@@ -230,6 +230,59 @@ struct AgentBridgeFramingTests {
         #expect(s.entries.first?.text == "m0")
         #expect(!s.hasMore)
     }
+    @Test func exhaustedHistoryStaysFalseAcrossLiveUpdatesEvenWhenBridgeHasMore() throws {
+        let s = store()
+        let tail = (100..<200).map { "m\($0)" }
+        try s.consume(frame("timeline.snapshot", entries: tail, hasMore: true), owner: owner)
+        let firstPage = try frame("timeline.snapshot", entries: (0..<100).map { "m\($0)" }, hasMore: false).data!
+        try s.mergeHistory(firstPage, owner: owner, generation: 1)
+        #expect(!s.hasMore)
+        #expect(s.before == "message:m0")
+
+        // Bridge older cache still holds m0..m99 so live updates carry has_more: true
+        // alongside the recent window's entry_order.
+        try s.consume(
+            frame("timeline.updated", seq: 2, entries: ["m200"], hasMore: true, entryOrder: tail + ["m200"]),
+            owner: owner)
+        #expect(!s.hasMore)
+        #expect(s.before == "message:m0")
+        #expect(s.entries.count == 201)
+        #expect(s.entries.last?.text == "m200")
+
+        // A follow-up empty/streaming revision update must also preserve exhausted state.
+        try s.consume(
+            frame("timeline.updated", seq: 3, entries: ["m201"], hasMore: true, entryOrder: tail + ["m200", "m201"]),
+            owner: owner)
+        #expect(!s.hasMore)
+        #expect(s.before == "message:m0")
+        #expect(s.entries.count == 202)
+    }
+    @Test func liveUpdateInsertingGenuineEarlierEntriesEnablesHistoryAndUpdatesCursor() throws {
+        let s = store()
+        let tail = (100..<200).map { "m\($0)" }
+        try s.consume(frame("timeline.snapshot", entries: tail, hasMore: true), owner: owner)
+        let initialPage = try frame("timeline.snapshot", entries: (50..<100).map { "m\($0)" }, hasMore: false).data!
+        try s.mergeHistory(initialPage, owner: owner, generation: 1)
+        #expect(!s.hasMore)
+        #expect(s.before == "message:m50")
+
+        let recovered = (25..<50).map { "m\($0)" }
+        try s.consume(
+            frame("timeline.updated", seq: 2, entries: recovered, hasMore: true, entryOrder: recovered + ["m50"]),
+            owner: owner)
+        #expect(s.hasMore)
+        #expect(s.before == "message:m25")
+        #expect(s.entries.first?.text == "m25")
+        #expect(s.entries.count == 175)
+    }
+    @Test func emptySnapshotThenLiveUpdateWithHistoryEnablesPagination() throws {
+        let s = store()
+        try s.consume(frame("timeline.snapshot", entries: [], hasMore: false), owner: owner)
+        #expect(!s.hasMore)
+        try s.consume(frame("timeline.updated", seq: 2, entries: ["m50"], hasMore: true, entryOrder: ["m50"]), owner: owner)
+        #expect(s.hasMore)
+        #expect(s.before == "message:m50")
+    }
     @Test func delayedEventsAndFailuresCannotReplaceNewOwner() throws {
         let s = store()
         let next = UUID()

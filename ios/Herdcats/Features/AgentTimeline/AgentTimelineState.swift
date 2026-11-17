@@ -233,6 +233,7 @@ import Observation
             let removedSet = Set(removed)
             guard evictedIds.union(removedSet).count <= 100_000 else { throw AgentBridgeError.invalidFrame }
             evictedIds.formUnion(removedSet)
+            let survivingFirstId = entries.first { !removedSet.contains($0.id) }?.id
             entries.removeAll { removedSet.contains($0.id) }
             if let cursor = before, removedSet.contains(cursor) {
                 before = entries.first?.id
@@ -256,6 +257,9 @@ import Observation
             for row in revised where !evictedIds.contains(row.id) {
                 if let index = entryIndex[row.id] { entries[index] = row }
             }
+            let insertedBeforeFirst = survivingFirstId.map { id in
+                (entries.firstIndex { $0.id == id } ?? 0) > 0
+            } ?? !entries.isEmpty
             if entries.count > Self.maxEntries {
                 entries.removeFirst(entries.count - Self.maxEntries)
                 // Older local entries were discarded; history can still be
@@ -263,7 +267,10 @@ import Observation
                 hasMore = true
                 before = entries.first?.id
             }
-            if data.hasMore == true {
+            // Bridge live updates report `has_more` whenever its older cache is
+            // nonempty, even if the client already paged to the start. Preserve
+            // an exhausted boundary unless this update inserts earlier entries.
+            if !cutReached, data.hasMore == true, hasMore || insertedBeforeFirst {
                 hasMore = true
                 before = entries.first?.id
             }
