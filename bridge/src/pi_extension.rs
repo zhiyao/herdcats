@@ -26,6 +26,7 @@ const RUNTIME_HASHES: &[&str] = &[
     "af77fb43ee4b4adc09576d2dbf8134b7a448051292a8230afd3ee7993bfbf5aa", // progressive history
     "80ba7a9acb6a2e024d60826453f729c0d6d94606a07845bc0e5ce56723e9eaed",
     "44d4b6f0516e6bfcdc3b6c30ceb8cb315740942db03b945fcbfa8e2f5260993e",
+    "b94796e6f7f3f4944a722d34bcfb9a9b69c0bcca369945affc1afe92519834d2", // metadata-tail window packing
 ];
 const BUNDLE: [(&str, &[u8], &[&str]); 2] =
     [("index.ts", INDEX, INDEX_HASHES), ("runtime.mjs", RUNTIME, RUNTIME_HASHES)];
