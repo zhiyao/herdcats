@@ -275,6 +275,39 @@ struct AgentBridgeFramingTests {
         #expect(s.entries.first?.text == "m25")
         #expect(s.entries.count == 175)
     }
+    @Test func exhaustedHistorySurvivesRevisionInteriorInsertionAndEarliestEviction() throws {
+        let s = store()
+        try s.consume(frame("timeline.snapshot", entries: ["a", "c", "d"]), owner: owner)
+        var revision = try frame("timeline.updated", seq: 2, entries: [], hasMore: true)
+        revision.data?.revised = [AgentTimelineEntry(
+            id: "message:a", kind: "message", text: "revised a", role: "assistant",
+            toolName: nil, status: nil, details: nil, truncated: false)]
+        try s.consume(revision, owner: owner)
+        #expect(!s.hasMore)
+        #expect(s.entries.first?.text == "revised a")
+        #expect(s.before == "message:a")
+
+        try s.consume(
+            frame("timeline.updated", seq: 3, entries: ["b"], hasMore: true, entryOrder: ["a", "b", "c", "d"]),
+            owner: owner)
+        #expect(!s.hasMore)
+        #expect(s.entries.map(\.id) == ["message:a", "message:b", "message:c", "message:d"])
+        #expect(s.before == "message:a")
+
+        var eviction = try frame("timeline.updated", seq: 4, entries: ["e"], hasMore: true, entryOrder: ["c", "d", "e"])
+        eviction.data?.evictedIds = ["message:a", "message:b"]
+        try s.consume(eviction, owner: owner)
+        #expect(!s.hasMore)
+        #expect(s.entries.map(\.text) == ["c", "d", "e"])
+        #expect(s.before == "message:c")
+
+        try s.consume(
+            frame("timeline.updated", seq: 5, entries: ["earlier"], hasMore: true, entryOrder: ["earlier", "c", "d", "e"]),
+            owner: owner)
+        #expect(s.hasMore)
+        #expect(s.before == "message:earlier")
+        #expect(s.entries.map(\.text) == ["earlier", "c", "d", "e"])
+    }
     @Test func emptySnapshotThenLiveUpdateWithHistoryEnablesPagination() throws {
         let s = store()
         try s.consume(frame("timeline.snapshot", entries: [], hasMore: false), owner: owner)
