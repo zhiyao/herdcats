@@ -85,8 +85,12 @@ struct AgentEntry: Decodable, Hashable, Identifiable {
     let name: String?
     var workspaceLabel: String? = nil
     var tabLabel: String? = nil
-    var originMachine: String? = nil
-    var foregroundCwd: String? = nil
+    struct CoreContext: Hashable {
+        let machine: String?
+        let directory: String?
+    }
+
+    var coreContext: CoreContext? = nil
 
     var id: String { paneId }
 
@@ -95,7 +99,6 @@ struct AgentEntry: Decodable, Hashable, Identifiable {
         case agentStatus = "agent_status"
         case stateChangeSeq = "state_change_seq"
         case cwd
-        case foregroundCwd = "foreground_cwd"
         case paneId = "pane_id"
         case tabId = "tab_id"
         case workspaceId = "workspace_id"
@@ -130,12 +133,16 @@ struct AgentListPresentation {
     let title: String
     private let machine: String?
     private let directory: String?
+    private let terminalTitle: String?
 
     init(agent: AgentEntry) {
         let tab = Self.nonempty(agent.tabLabel) == nil ? nil : agent.tabLabel
         title = Self.nonempty(agent.workspaceLabel) ?? tab ?? Self.nonempty(agent.name) ?? agent.displayTitle
-        machine = Self.nonempty(agent.originMachine)
-        directory = (Self.nonempty(agent.foregroundCwd) ?? Self.nonempty(agent.cwd)).map(AgentEntry.compactCwd)
+        machine = Self.nonempty(agent.coreContext?.machine)
+        let path = if let core = agent.coreContext { core.directory } else { agent.cwd }
+        directory = Self.nonempty(path).map(AgentEntry.compactCwd)
+        let terminal = Self.nonempty(agent.terminalTitleStripped)
+        terminalTitle = terminal == Self.nonempty(title) || terminal == agent.paneId || terminal == directory ? nil : terminal
     }
 
     private static func nonempty(_ value: String?) -> String? {
@@ -145,10 +152,11 @@ struct AgentListPresentation {
     }
 
     func subtitle(connectionHost: String?) -> (text: String, isPath: Bool)? {
-        guard let machine = machine ?? Self.nonempty(connectionHost) else {
-            return directory.map { ($0, true) }
-        }
-        return (directory.map { "\(machine) · \($0)" } ?? machine, false)
+        let machine = machine ?? Self.nonempty(connectionHost)
+        let terminal = terminalTitle == machine ? nil : terminalTitle
+        let parts = [machine, directory, terminal].compactMap { $0 }
+        guard !parts.isEmpty else { return nil }
+        return (parts.joined(separator: " · "), machine == nil && terminal == nil)
     }
 }
 

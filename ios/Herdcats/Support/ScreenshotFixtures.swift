@@ -43,7 +43,7 @@ enum ScreenshotFixtures {
         ? ["firstmate", "2ndmate-tingxiemao", "2ndmate-herdrcat"]
         : ["Herdcats", "Checkout redesign", "API performance"]
     static let providers = collision ? ["pi", "pi", "pi"] : ["claude", "codex", "cursor"]
-    static let statuses = collision ? ["working", "working", "blocked"] : ["blocked", "working", "done"]
+    static let statuses = ["blocked", "working", "done"]
     static let titles = collision
         ? Array(repeating: "π · firstmate", count: 3)
         : ["Review the onboarding flow", "Build the checkout screens", "Optimize database queries"]

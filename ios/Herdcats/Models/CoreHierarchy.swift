@@ -51,6 +51,7 @@ private struct CoreHierarchyBuilder {
             let spaceID = identity("space", machine: machine, raw: rawSpaceID)
             guard spaceIDs.insert(spaceID).inserted else { continue }
             let workspaceName = nonempty(space["name"])
+            let workspaceFolder = nonempty(space["folder"])
             let firstPane = result.panes.count
             let firstTab = result.tabs.count
             for (index, tab) in tabs.enumerated() {
@@ -72,7 +73,7 @@ private struct CoreHierarchyBuilder {
                 for address in addresses {
                     addTerminal(
                         address, workspaceID: spaceID, tabID: tabID,
-                        workspaceName: workspaceName, tabName: tabName
+                        workspaceName: workspaceName, tabName: tabName, workspaceFolder: workspaceFolder
                     )
                 }
                 let panes = Array(result.panes[before...])
@@ -85,7 +86,7 @@ private struct CoreHierarchyBuilder {
             let panes = Array(result.panes[firstPane...])
             let mappedTabs = Array(result.tabs[firstTab...])
             let localName = workspaceName
-                ?? nonempty(space["folder"]).map { ($0 as NSString).lastPathComponent }
+                ?? workspaceFolder.map { ($0 as NSString).lastPathComponent }
                 ?? rawSpaceID
             let label = machine.map { "\($0) · \(localName)" } ?? localName
             result.workspaces.append(Workspace(
@@ -119,12 +120,13 @@ private struct CoreHierarchyBuilder {
 
     private mutating func addTerminal(
         _ address: String, workspaceID: String, tabID: String,
-        workspaceName: String? = nil, tabName: String? = nil
+        workspaceName: String? = nil, tabName: String? = nil, workspaceFolder: String? = nil
     ) {
         guard let terminal = live[address], assigned.insert(address).inserted else { return }
         let status = nonempty(terminal["status"]["state"]) ?? "unknown"
         let agent = agentName(terminal)
-        let cwd = nonempty(terminal["foreground"]["cwd"]) ?? nonempty(terminal["cwd"])
+        let launchCwd = nonempty(terminal["cwd"])
+        let cwd = nonempty(terminal["foreground"]["cwd"]) ?? launchCwd
         let name = nonempty(terminal["name"])
         let title = nonempty(terminal["title"]) ?? name ?? address
         result.panes.append(PaneEntry(
@@ -141,7 +143,10 @@ private struct CoreHierarchyBuilder {
                 terminalTitle: title, terminalTitleStripped: title,
                 focused: false, revision: snapshot.revisions[address],
                 name: name, workspaceLabel: workspaceName, tabLabel: tabName,
-                originMachine: address.split(separator: "/").dropLast().last.map(String.init)
+                coreContext: AgentEntry.CoreContext(
+                    machine: address.split(separator: "/").dropLast().last.map(String.init),
+                    directory: launchCwd ?? workspaceFolder
+                )
             ))
         }
     }
