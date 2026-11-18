@@ -88,6 +88,7 @@
 		75EDADEF0A8C1036937AC270 /* LicensesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D67B69724707A16FD4618DF /* LicensesView.swift */; };
 		776F879809FF4E220D02A5B1 /* HapticFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 945BC05E891ACD9EC97F059A /* HapticFeedback.swift */; };
 		77947C1B161CE63AA7748E24 /* BridgeReleaseUpdateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78112FF776853D669F8BA164 /* BridgeReleaseUpdateTests.swift */; };
+		798DB2FAAF3FA1C232F2871F /* PowerOptimizationCoverage.txt in Resources */ = {isa = PBXBuildFile; fileRef = 69F7F2F601A9E9CF6932415F /* PowerOptimizationCoverage.txt */; };
 		7D9C0412FD3751EE593CDEB8 /* CodexQuestionInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A4516469F0D486DC64EFF43 /* CodexQuestionInput.swift */; };
 		7EB7BA2B85B63F035AD51C29 /* ConnectionOwnership.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2DBC72D55F63C7915ECC5EB /* ConnectionOwnership.swift */; };
 		7F6AC3D0D020273FCEE052D2 /* PanePersistentShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23CCE443AC3F99C2EC4C56DD /* PanePersistentShell.swift */; };
@@ -153,6 +154,7 @@
 		DA7B25BE2115655CF67F2D04 /* CoreRPCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 691B7C7DD3FA9BD5F5661DEA /* CoreRPCClient.swift */; };
 		DB245951720AF5ACA9209508 /* PaneHeaderBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = F468DA0CB58A8497CF538FB4 /* PaneHeaderBar.swift */; };
 		DC0A40BA4F3F046A4AEAA18A /* AgentStatusAlerts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 276245D2931453A0D298BEA4 /* AgentStatusAlerts.swift */; };
+		DC4BDD55D98C57AF27D0B767 /* AgentListPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58A59F6DAE0B6E13BB27AA7A /* AgentListPresentationTests.swift */; };
 		DD031217170E5A6F5E67FCCD /* ScreenshotFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F54450F78CCB68F3776BF68 /* ScreenshotFixtures.swift */; };
 		DE737B5F385D5A11A2522BF2 /* AgentTimelineState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A3BFF904815E2BD66B154D9 /* AgentTimelineState.swift */; };
 		E09AD38403575BEA82C7E9DB /* TimelineActivityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E975FAE29F163919BD723995 /* TimelineActivityViews.swift */; };
@@ -254,6 +256,7 @@
 		53A869CC09EA1C9876BF7A3D /* AgentBridgeSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentBridgeSetupView.swift; sourceTree = "<group>"; };
 		565E52FF93633CC2CB6D65E5 /* HerdcatsTests+PaneLiveInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdcatsTests+PaneLiveInput.swift"; sourceTree = "<group>"; };
 		568BEE7592258AE6D1351685 /* PhoneAnswersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneAnswersTests.swift; sourceTree = "<group>"; };
+		58A59F6DAE0B6E13BB27AA7A /* AgentListPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentListPresentationTests.swift; sourceTree = "<group>"; };
 		58D221D9158228E5593662D7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		59460EB647F68FC33C825D67 /* HerdrConnection+Queries.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdrConnection+Queries.swift"; sourceTree = "<group>"; };
 		5E030A59A32EEE2D37BBF028 /* Herdcats.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Herdcats.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -262,6 +265,7 @@
 		690A325C18C2D89D90900F04 /* QuestionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionCard.swift; sourceTree = "<group>"; };
 		691B7C7DD3FA9BD5F5661DEA /* CoreRPCClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreRPCClient.swift; sourceTree = "<group>"; };
 		693BA4491F3178B3C64D8348 /* QuotaUnavailable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaUnavailable.swift; sourceTree = "<group>"; };
+		69F7F2F601A9E9CF6932415F /* PowerOptimizationCoverage.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = PowerOptimizationCoverage.txt; sourceTree = "<group>"; };
 		6C7B6E6D948BEF8026CA725D /* PhoneAnswersViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneAnswersViews.swift; sourceTree = "<group>"; };
 		6C922AABFF229CB5E4A9417E /* HerdcatsTests+Quota.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdcatsTests+Quota.swift"; sourceTree = "<group>"; };
 		6DA2F1E24E13EBD50583460C /* HerdcatsTests+PanePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdcatsTests+PanePicker.swift"; sourceTree = "<group>"; };
@@ -613,6 +617,7 @@
 			children = (
 				92640BC7EDFFEEFCA4FB2AB6 /* AgentBridgeClientTests.swift */,
 				4B56912BC83A7EAE644E879C /* AgentBridgeLiveSSHTests.swift */,
+				58A59F6DAE0B6E13BB27AA7A /* AgentListPresentationTests.swift */,
 				D7E08942D9153ADBB0BA2D65 /* AgentTimelineConnectionTests.swift */,
 				FA18C20C79CD1BC62B36405C /* AgentTimelineTests.swift */,
 				B880E90055367DB1DD0810BD /* AgySignInTests.swift */,
@@ -658,6 +663,7 @@
 				D2383B8A18E364E6440F23DD /* PanePersistentShellTests.swift */,
 				883ED648B521CED2913166FD /* PaneTimelinePowerPolicyTests.swift */,
 				568BEE7592258AE6D1351685 /* PhoneAnswersTests.swift */,
+				69F7F2F601A9E9CF6932415F /* PowerOptimizationCoverage.txt */,
 				8AA651ECCA572E1B7EA98DD4 /* QuestionTests.swift */,
 				1713B5A6CA721FB613186C7E /* SpacesRefreshPolicyTests.swift */,
 				97046A3F25D35B65A7CA7425 /* test_attachment_storage.py */,
@@ -804,6 +810,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				798DB2FAAF3FA1C232F2871F /* PowerOptimizationCoverage.txt in Resources */,
 				059E8BD914E797E5B932DE90 /* test_attachment_storage.py in Resources */,
 				635A9D6C1E6E8D8A237A5662 /* test_deploy_command.py in Resources */,
 				15FEC407996EE698BF8092C9 /* test_release_preparation.py in Resources */,
@@ -958,6 +965,7 @@
 			files = (
 				1875AA3FC9948777DD351BB0 /* AgentBridgeClientTests.swift in Sources */,
 				4F60BAF0321042EAE770DE08 /* AgentBridgeLiveSSHTests.swift in Sources */,
+				DC4BDD55D98C57AF27D0B767 /* AgentListPresentationTests.swift in Sources */,
 				201B6E732A356623057BE685 /* AgentTimelineConnectionTests.swift in Sources */,
 				ADFC18A5AA7610891CA0ABC7 /* AgentTimelineTests.swift in Sources */,
 				84B6D5646FFDB3E086EA785A /* AgySignInTests.swift in Sources */,

@@ -130,7 +130,8 @@ private struct CoreHierarchyBuilder {
                 stateChangeSeq: snapshot.statusSequences[address], cwd: cwd,
                 paneId: address, tabId: tabID, workspaceId: workspaceID,
                 terminalTitle: title, terminalTitleStripped: title,
-                focused: false, revision: snapshot.revisions[address]
+                focused: false, revision: snapshot.revisions[address],
+                name: nil, workspaceLabel: nil, tabLabel: nil
             ))
         }
     }

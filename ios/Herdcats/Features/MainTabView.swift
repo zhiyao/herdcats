@@ -506,7 +506,17 @@ struct AgentListItem: Identifiable, Hashable {
     }
 
     var title: String {
-        agent.displayTitle
+        AgentListPresentation.title(agent: agent, workspaceLabel: space.workspace.label)
+    }
+
+    /// Machine/workspace context when a Herdr name titled the row; cwd for terminal fallback.
+    func subtitle(machineName: String?) -> String? {
+        AgentListPresentation.subtitle(
+            agent: agent,
+            workspaceLabel: space.workspace.label,
+            machineName: machineName,
+            title: title
+        )
     }
 
     /// Herdr's attention queue: `AgentStatus.attentionPriority` descending,
@@ -544,12 +554,24 @@ struct AgentListItem: Identifiable, Hashable {
 
 struct AgentListRow: View {
     @Environment(\.paneRowBadges) private var paneBadges
+    @Environment(AppModel.self) private var appModel
     let item: AgentListItem
     /// The row open in the split view's detail column.
     var isSelected = false
     var lastUpdated: Date?
 
     private var agent: AgentEntry { item.agent }
+
+    private var subtitleText: String? {
+        item.subtitle(machineName: appModel.machineDisplayName)
+    }
+
+    private var usesTerminalFallbackSubtitle: Bool {
+        AgentListPresentation.nonempty(agent.workspaceLabel) == nil
+            && AgentListPresentation.nonempty(item.space.workspace.label) == nil
+            && AgentListPresentation.nonempty(agent.tabLabel) == nil
+            && AgentListPresentation.nonempty(agent.name) == nil
+    }
 
     var body: some View {
         HStack(alignment: .listTitleCenter, spacing: QuietListMetrics.columnSpacing) {
@@ -575,9 +597,9 @@ struct AgentListRow: View {
                     AgentKindIcon(kind: agent.agent, size: 13)
                         .accessibilityElement()
                         .accessibilityLabel(AgentKindVisual.displayName(for: agent.agent))
-                    if !agent.shortCwd.isEmpty {
-                        Text(agent.shortCwd)
-                            .font(.caption.monospaced())
+                    if let subtitleText {
+                        Text(subtitleText)
+                            .font(usesTerminalFallbackSubtitle ? .caption.monospaced() : .caption)
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }

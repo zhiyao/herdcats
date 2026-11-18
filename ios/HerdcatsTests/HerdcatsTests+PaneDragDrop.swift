@@ -88,11 +88,12 @@ struct PaneDragDropTests {
 
     // MARK: partner title
 
-    @Test func partnerTitlePrefersTheAgentThenTheSpace() {
+    @Test func partnerTitlePrefersWorkspaceNameThenFallsBack() {
         let agent = AgentEntry(
             agent: "codex", agentStatus: "idle", stateChangeSeq: nil, cwd: nil,
             paneId: "p2", tabId: "t", workspaceId: "b",
-            terminalTitle: "Fix build", terminalTitleStripped: "Fix build", focused: false, revision: nil
+            terminalTitle: "Fix build", terminalTitleStripped: "Fix build", focused: false, revision: nil,
+            name: nil, workspaceLabel: nil, tabLabel: nil
         )
         let space = Space(
             workspace: Workspace(
@@ -101,7 +102,8 @@ struct PaneDragDropTests {
             ),
             agents: [agent]
         )
-        #expect(b.displayTitle(in: [space]) == "Fix build")
+        // Agent rows prefer the Herdr workspace name over the terminal title.
+        #expect(b.displayTitle(in: [space]) == "Beta")
         #expect(PaneRef(spaceID: "b", paneID: nil).displayTitle(in: [space]) == "Beta")
         #expect(PaneRef(spaceID: "b", paneID: "shell").displayTitle(in: [space]) == "Beta")
         #expect(a.displayTitle(in: [space]) == "a")

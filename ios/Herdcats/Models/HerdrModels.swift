@@ -81,6 +81,12 @@ struct AgentEntry: Decodable, Hashable, Identifiable {
     let focused: Bool
     /// Monotonic Herdr pane revision; bumps when pane state changes.
     let revision: UInt64?
+    /// Optional Herdr agent display name (for example `iap-impl`).
+    let name: String?
+    /// Optional workspace label embedded on the agent list row.
+    let workspaceLabel: String?
+    /// Optional tab label embedded on the agent list row.
+    let tabLabel: String?
 
     var id: String { paneId }
 
@@ -96,14 +102,15 @@ struct AgentEntry: Decodable, Hashable, Identifiable {
         case terminalTitleStripped = "terminal_title_stripped"
         case focused
         case revision
+        case name
+        case workspaceLabel = "workspace_label"
+        case tabLabel = "tab_label"
     }
 
-    /// Human-readable row title — the stripped terminal title when present.
+    /// Terminal-title fallback — stripped title when present, else pane id.
+    /// Prefer `AgentListPresentation.title` when workspace/tab/agent names exist.
     var displayTitle: String {
-        if let stripped = terminalTitleStripped, !stripped.isEmpty {
-            return stripped
-        }
-        return paneId
+        AgentListPresentation.terminalTitle(for: self)
     }
 
     /// Compact `~/last/two/components` form of the working directory.
@@ -111,6 +118,66 @@ struct AgentEntry: Decodable, Hashable, Identifiable {
         guard let cwd else { return "" }
         let suffix = cwd.split(separator: "/").suffix(2).joined(separator: "/")
         return suffix.isEmpty ? cwd : "~/\(suffix)"
+    }
+}
+
+/// Agents list title/subtitle: workspace name, then tab name, then agent name,
+/// then the existing terminal-title rendering.
+enum AgentListPresentation {
+    static func nonempty(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    static func terminalTitle(for agent: AgentEntry) -> String {
+        if let stripped = nonempty(agent.terminalTitleStripped) {
+            return stripped
+        }
+        return agent.paneId
+    }
+
+    /// `workspaceLabel` is the joined workspace list label when the agent row
+    /// omitted `workspace_label`.
+    static func title(agent: AgentEntry, workspaceLabel: String?) -> String {
+        if let label = nonempty(agent.workspaceLabel) ?? nonempty(workspaceLabel) {
+            return label
+        }
+        if let tab = nonempty(agent.tabLabel) {
+            return tab
+        }
+        if let name = nonempty(agent.name) {
+            return name
+        }
+        return terminalTitle(for: agent)
+    }
+
+    /// Machine/workspace context when a Herdr name supplied the title; otherwise
+    /// the existing cwd subtitle used with terminal-title fallback.
+    static func subtitle(
+        agent: AgentEntry,
+        workspaceLabel: String?,
+        machineName: String?,
+        title: String
+    ) -> String? {
+        let named = nonempty(agent.workspaceLabel) != nil
+            || nonempty(workspaceLabel) != nil
+            || nonempty(agent.tabLabel) != nil
+            || nonempty(agent.name) != nil
+        guard named else {
+            let cwd = agent.shortCwd
+            return cwd.isEmpty ? nil : cwd
+        }
+
+        var parts: [String] = []
+        if let machine = nonempty(machineName) {
+            parts.append(machine)
+        }
+        if let workspace = nonempty(agent.workspaceLabel) ?? nonempty(workspaceLabel),
+           workspace != title {
+            parts.append(workspace)
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 }
 

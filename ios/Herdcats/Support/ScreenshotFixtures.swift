@@ -38,18 +38,26 @@ enum ScreenshotFixtures {
         return args[index + 1]
     }
 
-    static let projects = ["Herdcats", "Checkout redesign", "API performance"]
-    static let providers = ["claude", "codex", "cursor"]
-    static let statuses = ["blocked", "working", "done"]
-    static let titles = ["Review the onboarding flow", "Build the checkout screens", "Optimize database queries"]
+    /// Representative firstmate + secondmates collision: identical terminal titles,
+    /// distinct Herdr workspace/tab identities (and optional agent `name` unused here).
+    static let projects = ["firstmate", "2ndmate-tingxiemao", "2ndmate-herdrcat"]
+    static let tabLabels = ["1", "fm-tingxiemao", "fm-herdrcat"]
+    static let providers = ["pi", "pi", "pi"]
+    static let statuses = ["working", "working", "blocked"]
+    static let titles = ["π - firstmate", "π - firstmate", "π - firstmate"]
+    static let cwds = [
+        "/Users/demo/1/firstmate",
+        "/Users/demo/Projects/firstmate",
+        "/Users/demo/2/firstmate"
+    ]
     static var workspaces: [[String: Any]] {
         projects.enumerated().map { index, label in
             ["workspace_id": "w\(index)", "label": label, "number": index + 1,
              "tab_count": 1, "pane_count": 1, "active_tab_id": "t\(index)",
              "agent_status": statuses[index], "focused": index == 0,
-             "worktree": ["checkout_path": "/Users/demo/Projects/\(label.lowercased().replacingOccurrences(of: " ", with: "-"))",
-                          "repo_name": label.lowercased().replacingOccurrences(of: " ", with: "-"),
-                          "repo_root": "/Users/demo/Projects/\(label.lowercased().replacingOccurrences(of: " ", with: "-"))",
+             "worktree": ["checkout_path": cwds[index],
+                          "repo_name": "firstmate",
+                          "repo_root": cwds[index],
                           "is_linked_worktree": false]]
         }
     }
@@ -65,11 +73,16 @@ enum ScreenshotFixtures {
     }
     static var panes: [[String: Any]] {
         projects.indices.map { index in
-            ["pane_id": "p\(index)", "tab_id": "t\(index)", "workspace_id": "w\(index)",
-             "agent": index == 0 ? paneAgent : providers[index], "agent_status": statuses[index],
-             "cwd": "/Users/demo/Projects/\(projects[index].lowercased().replacingOccurrences(of: " ", with: "-"))",
-             "terminal_title_stripped": titles[index], "terminal_title": titles[index],
-             "focused": index == 0, "revision": 1, "state_change_seq": 10 - index]
+            [
+                "pane_id": "p\(index)", "tab_id": "t\(index)", "workspace_id": "w\(index)",
+                "agent": index == 0 ? (screen.hasPrefix("timeline-") ? paneAgent : providers[index]) : providers[index],
+                "agent_status": statuses[index],
+                "cwd": cwds[index],
+                "terminal_title_stripped": titles[index], "terminal_title": titles[index],
+                "workspace_label": projects[index],
+                "tab_label": tabLabels[index],
+                "focused": index == 0, "revision": 1, "state_change_seq": 10 - index
+            ] as [String: Any]
         }
     }
     static func json(_ object: Any) throws -> String {
@@ -96,7 +109,7 @@ enum ScreenshotFixtures {
             result = ["tabs": projects.indices.filter {
                 args.contains(HerdrConnection.shellSafeArgument("w\($0)"))
             }.map { index in
-                ["tab_id": "t\(index)", "workspace_id": "w\(index)", "label": "Agent", "number": 1,
+                ["tab_id": "t\(index)", "workspace_id": "w\(index)", "label": tabLabels[index], "number": 1,
                  "pane_count": 1, "agent_status": statuses[index], "focused": true] as [String: Any]
             }]
         } else { throw HerdrError.invalidConfiguration("Screenshot fixtures are read-only: \(args)") }
