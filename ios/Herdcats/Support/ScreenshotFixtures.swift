@@ -42,7 +42,7 @@ enum ScreenshotFixtures {
     static let projects = collision
         ? ["firstmate", "2ndmate-tingxiemao", "2ndmate-herdrcat"]
         : ["Herdcats", "Checkout redesign", "API performance"]
-    static let providers = collision ? ["pi", "pi", "pi"] : ["claude", "codex", "cursor"]
+    static let providers = ["claude", "codex", "cursor"]
     static let statuses = ["blocked", "working", "done"]
     static let titles = collision
         ? Array(repeating: "π · firstmate", count: 3)
@@ -72,7 +72,7 @@ enum ScreenshotFixtures {
     static var panes: [[String: Any]] {
         projects.indices.map { index in
             ["pane_id": "p\(index)", "tab_id": "t\(index)", "workspace_id": "w\(index)",
-             "agent": index == 0 ? paneAgent : providers[index], "agent_status": statuses[index],
+             "agent": collision || index == 0 ? paneAgent : providers[index], "agent_status": statuses[index],
              "cwd": "/Users/demo/Projects/\(projects[index].lowercased().replacingOccurrences(of: " ", with: "-"))",
              "terminal_title_stripped": titles[index], "terminal_title": titles[index],
              "focused": index == 0, "revision": 1, "state_change_seq": 10 - index]

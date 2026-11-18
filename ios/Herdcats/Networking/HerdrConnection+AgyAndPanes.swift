@@ -21,12 +21,14 @@ extension HerdrConnection {
         async let fetchedAgents = agentList()
         let (workspaces, agents) = try await (fetchedWorkspaces, fetchedAgents)
         guard generation == owned else { throw HerdrError.notConnected }
-        let workspaceLabels = Dictionary(
-            workspaces.map { ($0.workspaceId, $0.label) }, uniquingKeysWith: { first, _ in first }
+        let workspacesByID = Dictionary(
+            workspaces.map { ($0.workspaceId, $0) }, uniquingKeysWith: { first, _ in first }
         )
         return (workspaces, agents.map { agent in
             var entry = agent
-            entry.workspaceLabel = workspaceLabels[agent.workspaceId]
+            let workspace = workspacesByID[agent.workspaceId]
+            entry.workspaceLabel = workspace?.label
+            entry.workspaceFolder = workspace?.worktree?.checkoutPath
             return entry
         })
     }

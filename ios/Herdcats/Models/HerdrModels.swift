@@ -84,6 +84,7 @@ struct AgentEntry: Decodable, Hashable, Identifiable {
     /// Optional Herdr agent display name (for example `iap-impl`).
     let name: String?
     var workspaceLabel: String? = nil
+    var workspaceFolder: String? = nil
     var tabLabel: String? = nil
     struct CoreContext: Hashable {
         let machine: String?
@@ -139,9 +140,10 @@ struct AgentListPresentation {
         let tab = Self.nonempty(agent.tabLabel) == nil ? nil : agent.tabLabel
         title = Self.nonempty(agent.workspaceLabel) ?? tab ?? Self.nonempty(agent.name) ?? agent.displayTitle
         machine = Self.nonempty(agent.coreContext?.machine)
-        let path = if let core = agent.coreContext { core.directory } else { agent.cwd }
-        directory = Self.nonempty(path).map(AgentEntry.compactCwd)
-        let terminal = Self.nonempty(agent.terminalTitleStripped)
+        let launchPath = Self.nonempty(agent.cwd) == nil ? nil : agent.cwd
+        let path = if let core = agent.coreContext { core.directory } else { launchPath ?? agent.workspaceFolder }
+        directory = path.flatMap { Self.nonempty($0) == nil ? nil : AgentEntry.compactCwd($0) }
+        let terminal = Self.nonempty(agent.terminalTitleStripped) ?? Self.nonempty(agent.terminalTitle)
         terminalTitle = terminal == Self.nonempty(title) || terminal == agent.paneId || terminal == directory ? nil : terminal
     }
 
