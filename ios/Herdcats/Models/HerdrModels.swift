@@ -83,10 +83,9 @@ struct AgentEntry: Decodable, Hashable, Identifiable {
     let revision: UInt64?
     /// Optional Herdr agent display name (for example `iap-impl`).
     let name: String?
-    var workspaceLabel: String? = nil
-    var workspaceFolder: String? = nil
     var tabLabel: String? = nil
     struct CoreContext: Hashable {
+        let workspaceName: String?
         let machine: String?
         let directory: String?
         let usesSyntheticTerminalTitle: Bool
@@ -137,12 +136,13 @@ struct AgentListPresentation {
     private let directory: String?
     private let terminalTitle: String?
 
-    init(agent: AgentEntry) {
+    init(agent: AgentEntry, workspace: Workspace) {
+        let workspaceName = if let core = agent.coreContext { core.workspaceName } else { workspace.label }
         let tab = Self.nonempty(agent.tabLabel) == nil ? nil : agent.tabLabel
-        title = Self.nonempty(agent.workspaceLabel) ?? tab ?? Self.nonempty(agent.name) ?? agent.displayTitle
+        title = Self.nonempty(workspaceName) ?? tab ?? Self.nonempty(agent.name) ?? agent.displayTitle
         machine = Self.nonempty(agent.coreContext?.machine)
         let launchPath = Self.nonempty(agent.cwd) == nil ? nil : agent.cwd
-        let path = if let core = agent.coreContext { core.directory } else { launchPath ?? agent.workspaceFolder }
+        let path = if let core = agent.coreContext { core.directory } else { launchPath ?? workspace.worktree?.checkoutPath }
         directory = path.flatMap { Self.nonempty($0) == nil ? nil : AgentEntry.compactCwd($0) }
         let terminal: String? = if agent.coreContext?.usesSyntheticTerminalTitle == true {
             nil

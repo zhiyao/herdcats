@@ -4,10 +4,10 @@ import Testing
 
 @Suite("Agent list presentation")
 struct AgentListPresentationTests {
-    private func workspace(_ label: String) -> Workspace {
+    private func workspace(_ label: String, worktree: Worktree? = nil) -> Workspace {
         Workspace(
             workspaceId: "w1", label: label, number: 1, tabCount: 1, paneCount: 1,
-            activeTabId: "t1", agentStatus: "working", focused: true, worktree: nil
+            activeTabId: "t1", agentStatus: "working", focused: true, worktree: worktree
         )
     }
 
@@ -26,10 +26,9 @@ struct AgentListPresentationTests {
 
     @Test(arguments: [" fm-tingxiemao ", "1"])
     func tuiWorkspaceAndMatchingTabTakePriorityOverAgentName(tabLabel: String) throws {
-        var entry = try decodeAgent(name: #""iap-impl""#, tab: tabLabel)
-        #expect(AgentListPresentation(agent: entry).title == tabLabel)
-        entry.workspaceLabel = "firstmate"
-        let presentation = AgentListPresentation(agent: entry)
+        let entry = try decodeAgent(name: #""iap-impl""#, tab: tabLabel)
+        #expect(AgentListPresentation(agent: entry, workspace: workspace("")).title == tabLabel)
+        let presentation = AgentListPresentation(agent: entry, workspace: workspace("firstmate"))
         #expect(presentation.title == "firstmate")
         #expect(presentation.subtitle(connectionHost: "studio-mac")?.text == "studio-mac · ~/1/firstmate · π · firstmate")
         #expect(entry.displayTitle == "π · firstmate")
@@ -37,13 +36,13 @@ struct AgentListPresentationTests {
         #expect(entry.agentStatus == "working")
 
         let agent = try decodeAgent(name: #""iap-impl""#)
-        #expect(AgentListPresentation(agent: agent).title == "iap-impl")
+        #expect(AgentListPresentation(agent: agent, workspace: workspace("")).title == "iap-impl")
     }
 
     @Test(arguments: ["null", #""   ""#])
     func tuiMissingNamesUseTerminalTitleAndKeepMachineContext(name: String) throws {
         let entry = try decodeAgent(name: name, tab: " ")
-        let presentation = AgentListPresentation(agent: entry)
+        let presentation = AgentListPresentation(agent: entry, workspace: workspace(""))
         #expect(presentation.title == "π · firstmate")
         #expect(presentation.subtitle(connectionHost: "studio-mac")?.text == "studio-mac · ~/1/firstmate")
         #expect(presentation.subtitle(connectionHost: nil)?.text == "~/1/firstmate")
@@ -58,7 +57,7 @@ struct AgentListPresentationTests {
         ]}}
         """
         let agent = try #require(HerdrConnection.decode(rows, as: AgentListResult.self).agents.first)
-        #expect(AgentListPresentation(agent: agent).subtitle(connectionHost: "studio")?.text == "studio · ~/work/launch")
+        #expect(AgentListPresentation(agent: agent, workspace: workspace("")).subtitle(connectionHost: "studio")?.text == "studio · ~/work/launch")
     }
 
     @Test(arguments: ["null", #""  ""#, #""/work/launch ""#])
@@ -68,10 +67,11 @@ struct AgentListPresentationTests {
           {"agent":"pi","agent_status":"working","cwd":\(cwd),"pane_id":"p1","tab_id":"t1","workspace_id":"w1","focused":false,"terminal_title":"Review","terminal_title_stripped":null}
         ]}}
         """
-        var agent = try #require(HerdrConnection.decode(rows, as: AgentListResult.self).agents.first)
-        agent.workspaceLabel = "ExampleApp"
-        agent.workspaceFolder = "/repos/example "
-        let presentation = AgentListPresentation(agent: agent)
+        let agent = try #require(HerdrConnection.decode(rows, as: AgentListResult.self).agents.first)
+        let example = workspace("ExampleApp", worktree: Worktree(
+            checkoutPath: "/repos/example ", repoName: "app", repoRoot: "/repos/app", isLinkedWorktree: true
+        ))
+        let presentation = AgentListPresentation(agent: agent, workspace: example)
         let directory = cwd == #""/work/launch ""# ? "~/work/launch " : "~/repos/example "
         #expect(presentation.title == "ExampleApp")
         #expect(presentation.subtitle(connectionHost: "studio")?.text == "studio · \(directory) · Review")
@@ -85,9 +85,8 @@ struct AgentListPresentationTests {
           {"agent":"pi","agent_status":"working","cwd":"/work/launch","pane_id":"p1","tab_id":"t1","workspace_id":"w1","focused":false,"terminal_title":"p1","terminal_title_stripped":\(strippedTitle)}
         ]}}
         """
-        var agent = try #require(HerdrConnection.decode(rows, as: AgentListResult.self).agents.first)
-        agent.workspaceLabel = "ExampleApp"
-        let presentation = AgentListPresentation(agent: agent)
+        let agent = try #require(HerdrConnection.decode(rows, as: AgentListResult.self).agents.first)
+        let presentation = AgentListPresentation(agent: agent, workspace: workspace("ExampleApp"))
         #expect(presentation.title == "ExampleApp")
         #expect(presentation.subtitle(connectionHost: "studio")?.text == "studio · ~/work/launch · p1")
     }
@@ -100,12 +99,9 @@ struct AgentListPresentationTests {
           {"agent":"pi","agent_status":"working","cwd":"/two/project/app","pane_id":"b","tab_id":"t2","workspace_id":"w1","focused":false,"terminal_title_stripped":"Build"}
         ]}}
         """
-        let entries = try HerdrConnection.decode(rows, as: AgentListResult.self).agents.map { entry in
-            var entry = entry
-            entry.workspaceLabel = "ExampleApp"
-            return entry
-        }
-        let presentations = entries.map { AgentListPresentation(agent: $0) }
+        let entries = try HerdrConnection.decode(rows, as: AgentListResult.self).agents
+        let example = workspace("ExampleApp")
+        let presentations = entries.map { AgentListPresentation(agent: $0, workspace: example) }
         #expect(presentations.map(\.title) == ["ExampleApp", "ExampleApp"])
         #expect(presentations.compactMap { $0.subtitle(connectionHost: "studio")?.text } == [
             "studio · ~/project/app · Build",
@@ -119,15 +115,11 @@ struct AgentListPresentationTests {
         let entries = [
             try decodeAgent(name: "null", paneID: "p1", terminal: "Zulu"),
             try decodeAgent(name: "null", paneID: "p2", terminal: "Alpha")
-        ].map { entry in
-            var entry = entry
-            entry.workspaceLabel = example.label
-            return entry
-        }
+        ]
         let space = Space(workspace: example, agents: entries)
         let items = entries.map { AgentListItem(space: space, agent: $0) }
         #expect(items.sorted(by: AgentListItem.attentionOrder).map(\.id) == ["p2", "p1"])
-        let presentations = items.map { AgentListPresentation(agent: $0.agent) }
+        let presentations = items.map { AgentListPresentation(agent: $0.agent, workspace: $0.space.workspace) }
         #expect(presentations.map(\.title) == ["ExampleApp", "ExampleApp"])
         #expect(presentations.compactMap { $0.subtitle(connectionHost: "studio")?.text } == [
             "studio · ~/1/firstmate · Zulu",
@@ -169,19 +161,19 @@ struct AgentListPresentationTests {
         let spaces = Space.join(workspaces: hierarchy.workspaces, agents: hierarchy.agents)
         let items = AgentListItem.grouped(in: spaces).flatMap(\.items)
 
-        #expect(items.first { $0.id == "studio/t1" }.map { AgentListPresentation(agent: $0.agent).title } == "firstmate")
-        #expect(items.first { $0.id == "studio/peer/t2" }.map { AgentListPresentation(agent: $0.agent).title } == "2ndmate-tingxiemao")
-        #expect(items.first { $0.id == "studio/peer/t3" }.map { AgentListPresentation(agent: $0.agent).title } == "First terminal")
-        #expect(items.first { $0.id == "t4" }.map { AgentListPresentation(agent: $0.agent).title } == "Second terminal")
-        #expect(items.first { $0.id == "t5" }.map { AgentListPresentation(agent: $0.agent).title } == "iap-impl")
+        #expect(items.first { $0.id == "studio/t1" }.map { AgentListPresentation(agent: $0.agent, workspace: $0.space.workspace).title } == "firstmate")
+        #expect(items.first { $0.id == "studio/peer/t2" }.map { AgentListPresentation(agent: $0.agent, workspace: $0.space.workspace).title } == "2ndmate-tingxiemao")
+        #expect(items.first { $0.id == "studio/peer/t3" }.map { AgentListPresentation(agent: $0.agent, workspace: $0.space.workspace).title } == "First terminal")
+        #expect(items.first { $0.id == "t4" }.map { AgentListPresentation(agent: $0.agent, workspace: $0.space.workspace).title } == "Second terminal")
+        #expect(items.first { $0.id == "t5" }.map { AgentListPresentation(agent: $0.agent, workspace: $0.space.workspace).title } == "iap-impl")
         let subtitles = Dictionary(uniqueKeysWithValues: items.compactMap { item in
-            AgentListPresentation(agent: item.agent).subtitle(connectionHost: "gateway").map { (item.id, $0.text) }
+            AgentListPresentation(agent: item.agent, workspace: item.space.workspace).subtitle(connectionHost: "gateway").map { (item.id, $0.text) }
         })
         let namedWithoutTerminalTitle = try #require(items.first { $0.id == "studio/t6" })
         let standaloneWithoutTerminalTitle = try #require(items.first { $0.id == "studio/t7" })
-        #expect(AgentListPresentation(agent: namedWithoutTerminalTitle.agent).title == "firstmate")
+        #expect(AgentListPresentation(agent: namedWithoutTerminalTitle.agent, workspace: namedWithoutTerminalTitle.space.workspace).title == "firstmate")
         #expect(namedWithoutTerminalTitle.agent.displayTitle == "studio/t6")
-        #expect(AgentListPresentation(agent: standaloneWithoutTerminalTitle.agent).title == "studio/t7")
+        #expect(AgentListPresentation(agent: standaloneWithoutTerminalTitle.agent, workspace: standaloneWithoutTerminalTitle.space.workspace).title == "studio/t7")
         #expect(subtitles["studio/t6"] == "studio")
         #expect(subtitles["studio/t9"] == "studio · studio/t9")
         #expect(subtitles["studio/t7"] == "studio")

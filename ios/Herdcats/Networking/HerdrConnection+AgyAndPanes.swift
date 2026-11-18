@@ -21,16 +21,7 @@ extension HerdrConnection {
         async let fetchedAgents = agentList()
         let (workspaces, agents) = try await (fetchedWorkspaces, fetchedAgents)
         guard generation == owned else { throw HerdrError.notConnected }
-        let workspacesByID = Dictionary(
-            workspaces.map { ($0.workspaceId, $0) }, uniquingKeysWith: { first, _ in first }
-        )
-        return (workspaces, agents.map { agent in
-            var entry = agent
-            let workspace = workspacesByID[agent.workspaceId]
-            entry.workspaceLabel = workspace?.label
-            entry.workspaceFolder = workspace?.worktree?.checkoutPath
-            return entry
-        })
+        return (workspaces, agents)
     }
 
     /// Reads local provider quotas via `quota-axi` on the Herdr machine.

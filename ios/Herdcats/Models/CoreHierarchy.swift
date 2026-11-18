@@ -143,8 +143,9 @@ private struct CoreHierarchyBuilder {
                 paneId: address, tabId: tabID, workspaceId: workspaceID,
                 terminalTitle: title, terminalTitleStripped: title,
                 focused: false, revision: snapshot.revisions[address],
-                name: name, workspaceLabel: workspaceName, tabLabel: tabName,
+                name: name, tabLabel: tabName,
                 coreContext: AgentEntry.CoreContext(
+                    workspaceName: workspaceName,
                     machine: address.split(separator: "/").dropLast().last.map(String.init),
                     directory: launchCwd ?? workspaceFolder,
                     usesSyntheticTerminalTitle: suppliedTitle == nil

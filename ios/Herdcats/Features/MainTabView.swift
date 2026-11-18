@@ -438,7 +438,7 @@ struct AgentsScreen: View {
             item: item,
             isSelected: isRegular && isOpen(item),
             lastUpdated: model.lastUpdatedByPaneID[item.agent.paneId],
-            presentation: AgentListPresentation(agent: item.agent)
+            presentation: AgentListPresentation(agent: item.agent, workspace: item.space.workspace)
         )
         Group {
             if isRegular {
