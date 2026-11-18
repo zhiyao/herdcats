@@ -129,34 +129,13 @@ struct AgentEntry: Decodable, Hashable, Identifiable {
 struct AgentListPresentation {
     let title: String
     private let machine: String?
-    private let secondary: (text: String, isPath: Bool)?
+    private let directory: String?
 
-    init(agent: AgentEntry, peers: [AgentEntry] = []) {
-        let title = Self.title(for: agent)
-        self.title = title
+    init(agent: AgentEntry) {
+        let tab = Self.nonempty(agent.tabLabel) == nil ? nil : agent.tabLabel
+        title = Self.nonempty(agent.workspaceLabel) ?? tab ?? Self.nonempty(agent.name) ?? agent.displayTitle
         machine = Self.nonempty(agent.originMachine)
-        let peersWithSameTitle = peers.filter { $0.id != agent.id && Self.title(for: $0) == title }
-        let otherFields = peersWithSameTitle.flatMap { Self.context(for: $0, title: title) }
-        let otherValues = Set(otherFields.map(\.text))
-        let values = Self.context(for: agent, title: title)
-        let secondary: (text: String, isPath: Bool)?
-        if let distinct = values.first(where: { !otherValues.contains($0.text) }) {
-            secondary = (distinct.text, distinct.isPath)
-        } else if let distinct = values.first(where: { field in
-            !otherFields.contains { $0.role == field.role && $0.text == field.text }
-        }) {
-            secondary = ("\(distinct.role): \(distinct.text)", false)
-        } else if !values.isEmpty {
-            let fields = values.filter { !$0.isPath } + values.filter { $0.isPath }.suffix(1)
-            secondary = (fields.map { "\($0.role): \($0.text)" }.joined(separator: " · "), false)
-        } else {
-            secondary = nil
-        }
-        self.secondary = secondary
-    }
-
-    private static func title(for agent: AgentEntry) -> String {
-        nonempty(agent.workspaceLabel) ?? tabLabel(for: agent) ?? nonempty(agent.name) ?? agent.displayTitle
+        directory = (Self.nonempty(agent.foregroundCwd) ?? Self.nonempty(agent.cwd)).map(AgentEntry.compactCwd)
     }
 
     private static func nonempty(_ value: String?) -> String? {
@@ -165,34 +144,11 @@ struct AgentListPresentation {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    private static func tabLabel(for agent: AgentEntry) -> String? {
-        nonempty(agent.tabLabel) == nil ? nil : agent.tabLabel
-    }
-
-    private typealias Context = (role: String, text: String, isPath: Bool)
-
-    private static func context(for agent: AgentEntry, title: String) -> [Context] {
-        let labels = [
-            ("Terminal", nonempty(agent.terminalTitleStripped)),
-            ("Tab", tabLabel(for: agent)),
-            ("Agent", nonempty(agent.name))
-        ]
-        let fields = labels.compactMap { role, value -> Context? in
-            guard let value, value != title else { return nil }
-            return (role, value, false)
-        }
-        guard let directory = nonempty(agent.foregroundCwd) ?? nonempty(agent.cwd) else {
-            return fields
-        }
-        let compact = AgentEntry.compactCwd(directory)
-        let compactField: [Context] = compact == title ? [] : [("Directory", compact, true)]
-        let fullField: [Context] = directory == compact || directory == title ? [] : [("Directory", directory, true)]
-        return compactField + fields + fullField
-    }
-
     func subtitle(connectionHost: String?) -> (text: String, isPath: Bool)? {
-        guard let machine = machine ?? Self.nonempty(connectionHost) else { return secondary }
-        return (secondary.map { "\(machine) · \($0.text)" } ?? machine, false)
+        guard let machine = machine ?? Self.nonempty(connectionHost) else {
+            return directory.map { ($0, true) }
+        }
+        return (directory.map { "\(machine) · \($0)" } ?? machine, false)
     }
 }
 

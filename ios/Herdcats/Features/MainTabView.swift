@@ -273,16 +273,15 @@ struct AgentsScreen: View {
                         LazyVStack(spacing: 0) {
                             switch sort {
                             case .priority:
-                                let peers = currentItems.map(\.agent)
                                 ForEach(currentItems) { item in
-                                    agentRow(item, peers: peers)
+                                    agentRow(item)
                                 }
                             case .spaces:
                                 let currentSections = sections
                                 ForEach(currentSections, id: \.space.id) { section in
                                     spaceHeader(section.space)
                                     ForEach(section.items) { item in
-                                        agentRow(item, peers: section.space.agents)
+                                        agentRow(item)
                                     }
                                 }
                             }
@@ -433,13 +432,13 @@ struct AgentsScreen: View {
     }
 
     @ViewBuilder
-    private func agentRow(_ item: AgentListItem, peers: [AgentEntry]) -> some View {
+    private func agentRow(_ item: AgentListItem) -> some View {
         let isRegular = horizontalSizeClass == .regular
         let row = AgentListRow(
             item: item,
             isSelected: isRegular && isOpen(item),
             lastUpdated: model.lastUpdatedByPaneID[item.agent.paneId],
-            presentation: AgentListPresentation(agent: item.agent, peers: peers)
+            presentation: AgentListPresentation(agent: item.agent)
         )
         Group {
             if isRegular {
