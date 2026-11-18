@@ -21,22 +21,63 @@ extension HerdrConnection {
         async let fetchedAgents = agentList()
         let (workspaces, agents) = try await (fetchedWorkspaces, fetchedAgents)
         let workspaceByID = Dictionary(workspaces.map { ($0.workspaceId, $0) }, uniquingKeysWith: { first, _ in first })
-        let occupiedWorkspaces = Set(agents.map(\.workspaceId))
+        guard generation == owned else { throw HerdrError.notConnected }
+        if overviewTabGeneration != owned {
+            overviewTabGeneration = owned
+            overviewTabLookups.removeAll()
+        }
+        let agentsByWorkspace = Dictionary(grouping: agents, by: \.workspaceId)
         var tabsByWorkspace: [String: [TabEntry]] = [:]
-        let tabDeadline = ProcessInfo.processInfo.systemUptime + 10
-        for workspace in workspaces where occupiedWorkspaces.contains(workspace.workspaceId)
-            && AgentListPresentation.nonempty(workspace.label) == nil {
+        let tabBudget: TimeInterval = 10
+        let enrichmentStart = ProcessInfo.processInfo.systemUptime
+        let tabDeadline = enrichmentStart + tabBudget
+        recentTUITabs = recentTUITabs.filter {
+            $0.value.generation == owned && enrichmentStart - $0.value.fetchedAt < tabBudget
+        }
+        let orderedWorkspaces = workspaceByID.values.sorted { lhs, rhs in
+            let lhsNamed = AgentListPresentation.nonempty(lhs.label) == nil ? 0 : 1
+            let rhsNamed = AgentListPresentation.nonempty(rhs.label) == nil ? 0 : 1
+            return (lhsNamed, lhs.number, lhs.workspaceId) < (rhsNamed, rhs.number, rhs.workspaceId)
+        }
+        for workspace in orderedWorkspaces {
             try Task.checkCancellation()
-            let remaining = tabDeadline - ProcessInfo.processInfo.systemUptime
-            guard remaining > 0 else { break }
-            let output = try? await executeHerdr(
-                Self.tabListArguments(workspaceId: workspace.workspaceId),
-                timeout: remaining, allowEmptyOutput: false, timeoutPolicy: .preserveConnection,
-                expectedGeneration: owned
-            )
-            if let output {
-                tabsByWorkspace[workspace.workspaceId] = try? Self.decode(output, as: TabListResult.self).tabs
+            guard generation == owned else { throw HerdrError.notConnected }
+            let workspaceID = workspace.workspaceId
+            guard let entries = agentsByWorkspace[workspaceID] else { continue }
+            let now = ProcessInfo.processInfo.systemUptime
+            if let recent = recentTUITabs[workspaceID],
+               now - recent.fetchedAt < tabBudget, recent.tabs.count == workspace.tabCount,
+               Set(entries.map(\.tabId)).isSubset(of: Set(recent.tabs.map(\.tabId))) {
+                tabsByWorkspace[workspaceID] = recent.tabs
+                continue
             }
+
+            let terminalGroups = Dictionary(grouping: entries) {
+                AgentListPresentation.nonempty($0.terminalTitleStripped) ?? ""
+            }
+            let needsTabContext = terminalGroups.values.contains { Set($0.map(\.tabId)).count > 1 }
+            let remaining = tabDeadline - now
+            guard remaining > 0,
+                  AgentListPresentation.nonempty(workspace.label) == nil || needsTabContext,
+                  overviewTabLookups.insert(workspaceID).inserted else { continue }
+            do {
+                let output = try await executeHerdr(
+                    Self.tabListArguments(workspaceId: workspaceID),
+                    timeout: remaining, allowEmptyOutput: false, timeoutPolicy: .preserveConnection,
+                    expectedGeneration: owned
+                )
+                guard generation == owned else { throw HerdrError.notConnected }
+                let tabs = try Self.decode(output, as: TabListResult.self).tabs
+                recordTUITabs(tabs, workspaceID: workspaceID, generation: owned)
+                tabsByWorkspace[workspaceID] = tabs
+            } catch HerdrError.timeout(_) {
+                continue
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                guard generation == owned else { throw HerdrError.notConnected }
+            }
+            overviewTabLookups.remove(workspaceID)
         }
         try Task.checkCancellation()
         guard generation == owned else { throw HerdrError.notConnected }
@@ -156,7 +197,15 @@ extension HerdrConnection {
 
     func tabList(workspaceId: String) async throws -> [TabEntry] {
         if backend == .core { return try await corePresentation().tabs.filter { $0.workspaceId == workspaceId } }
-        return try await fetch(TabListResult.self, args: Self.tabListArguments(workspaceId: workspaceId)).tabs
+        let owned = generation
+        let tabs = try await fetch(TabListResult.self, args: Self.tabListArguments(workspaceId: workspaceId)).tabs
+        recordTUITabs(tabs, workspaceID: workspaceId, generation: owned)
+        return tabs
+    }
+
+    private func recordTUITabs(_ tabs: [TabEntry], workspaceID: String, generation owned: ConnectionGeneration) {
+        guard generation == owned else { return }
+        recentTUITabs[workspaceID] = (owned, ProcessInfo.processInfo.systemUptime, tabs)
     }
 
     /// Creates a tab with its own root pane and returns that pane's ID.

@@ -129,12 +129,35 @@ struct AgentEntry: Decodable, Hashable, Identifiable {
 
 struct AgentListPresentation {
     let title: String
-    private let agent: AgentEntry
+    private let machine: String?
+    private let secondary: (text: String, isPath: Bool)?
+    let dragTitle: String
 
-    init(agent: AgentEntry) {
-        self.agent = agent
-        let tabLabel = Self.nonempty(agent.tabLabel) == nil ? nil : agent.tabLabel
-        title = Self.nonempty(agent.workspaceLabel) ?? tabLabel ?? Self.nonempty(agent.name) ?? agent.displayTitle
+    init(agent: AgentEntry, peers: [AgentEntry] = []) {
+        let title = Self.title(for: agent)
+        self.title = title
+        machine = Self.nonempty(agent.originMachine)
+        let peersWithSameTitle = peers.filter { $0.id != agent.id && Self.title(for: $0) == title }
+        let otherValues = Set(peersWithSameTitle.flatMap { Self.context(for: $0, title: title).map(\.text) })
+        let values = Self.context(for: agent, title: title)
+        let secondary: (text: String, isPath: Bool)?
+        if let distinct = values.first(where: { !otherValues.contains($0.text) }) {
+            secondary = distinct
+        } else if values.count > 1 {
+            secondary = (values.map(\.text).joined(separator: " · "), false)
+        } else {
+            secondary = values.first
+        }
+        self.secondary = secondary
+        if let secondary, title != agent.displayTitle || !peersWithSameTitle.isEmpty {
+            dragTitle = "\(title) · \(secondary.text)"
+        } else {
+            dragTitle = title
+        }
+    }
+
+    static func title(for agent: AgentEntry) -> String {
+        nonempty(agent.workspaceLabel) ?? tabLabel(for: agent) ?? nonempty(agent.name) ?? agent.displayTitle
     }
 
     static func nonempty(_ value: String?) -> String? {
@@ -143,24 +166,22 @@ struct AgentListPresentation {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    private var paneTitle: String? {
-        let terminalTitle = agent.displayTitle
-        return terminalTitle == title ? nil : terminalTitle
+    private static func tabLabel(for agent: AgentEntry) -> String? {
+        nonempty(agent.tabLabel) == nil ? nil : agent.tabLabel
     }
 
-    var dragTitle: String {
-        guard let paneTitle else { return title }
-        return "\(title) · \(paneTitle)"
+    private static func context(for agent: AgentEntry, title: String) -> [(text: String, isPath: Bool)] {
+        var seen: Set<String> = [title]
+        let labels = [nonempty(agent.terminalTitleStripped), tabLabel(for: agent), nonempty(agent.name)]
+            .compactMap { $0 }.filter { seen.insert($0).inserted }
+        let paths = [nonempty(agent.shortCwd), nonempty(agent.cwd)]
+            .compactMap { $0 }.filter { seen.insert($0).inserted }
+        return labels.map { ($0, false) } + paths.map { ($0, true) }
     }
 
     func subtitle(connectionHost: String?) -> (text: String, isPath: Bool)? {
-        let machine = Self.nonempty(agent.originMachine) ?? Self.nonempty(connectionHost)
-        let paneTitle = paneTitle
-        let context = paneTitle ?? Self.nonempty(agent.shortCwd)
-        if let machine {
-            return (context.map { "\(machine) · \($0)" } ?? machine, false)
-        }
-        return context.map { ($0, paneTitle == nil) }
+        guard let machine = machine ?? Self.nonempty(connectionHost) else { return secondary }
+        return (secondary.map { "\(machine) · \($0.text)" } ?? machine, false)
     }
 }
 

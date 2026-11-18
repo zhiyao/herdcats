@@ -193,6 +193,9 @@ actor HerdrConnection {
     var slot = ConnectionClientSlot<SSHClient>()
     var backend: ConnectionBackend = .tui
     var session: HerdrSession?
+    var overviewTabGeneration: ConnectionGeneration?
+    var overviewTabLookups: Set<String> = []
+    var recentTUITabs: [String: (generation: ConnectionGeneration, fetchedAt: TimeInterval, tabs: [TabEntry])] = [:]
     var coreRPC: CoreRPCClient?
     var coreOpening: Task<Void, Error>?
     var coreSessionID: UUID?

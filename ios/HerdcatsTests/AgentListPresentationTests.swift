@@ -85,6 +85,48 @@ struct AgentListPresentationTests {
     }
 
     @Test
+    func matchingTerminalTitlesUseDistinctTabNameAgentNameOrDirectory() throws {
+        let example = workspace("ExampleApp")
+        let rows = """
+        {"result":{"agents":[
+          {"agent":"pi","agent_status":"working","cwd":"/work/review","pane_id":"a","tab_id":"t1","workspace_id":"w1","focused":false,"terminal_title_stripped":"π · firstmate"},
+          {"agent":"pi","agent_status":"working","cwd":"/work/review","pane_id":"b","tab_id":"t2","workspace_id":"w1","focused":false,"terminal_title_stripped":"π · firstmate","name":"Build App"},
+          {"agent":"pi","agent_status":"working","cwd":"/one/project/app","pane_id":"c","tab_id":"t2","workspace_id":"w1","focused":false,"terminal_title_stripped":"π · firstmate"},
+          {"agent":"pi","agent_status":"working","cwd":"/two/project/app","pane_id":"d","tab_id":"t2","workspace_id":"w1","focused":false,"terminal_title_stripped":"π · firstmate"},
+          {"agent":"pi","agent_status":"working","cwd":"/work/docs","pane_id":"e","tab_id":"t2","workspace_id":"w1","focused":false}
+        ]}}
+        """
+        let tabs = [
+            TabEntry(tabId: "t1", workspaceId: "w1", label: "Review", number: 1,
+                     paneCount: 1, agentStatus: "working", focused: false),
+            TabEntry(tabId: "t2", workspaceId: "w1", label: "Build", number: 2,
+                     paneCount: 4, agentStatus: "working", focused: false)
+        ]
+        let entries = try HerdrConnection.decode(rows, as: AgentListResult.self).agents
+            .map { $0.withTUIListNames(workspace: example, tabs: tabs) }
+        let items = AgentListItem.grouped(in: Space.join(workspaces: [example], agents: entries))
+            .flatMap(\.items).sorted { $0.id < $1.id }
+        let context = ["Review", "Build App", "/one/project/app", "/two/project/app", "~/work/docs"]
+        #expect(items.map(\.title) == Array(repeating: "ExampleApp", count: 5))
+        #expect(items.compactMap { $0.presentation.subtitle(connectionHost: "studio")?.text }
+            == context.map { "studio · \($0)" })
+        #expect(items.map { $0.presentation.dragTitle }
+            == context.map { "ExampleApp · \($0)" })
+    }
+
+    @Test
+    func priorityTiesUseTerminalTitles() throws {
+        let example = workspace("ExampleApp")
+        let entries = [
+            try decodeAgent(name: "null", paneID: "p1", terminal: "Zulu"),
+            try decodeAgent(name: "null", paneID: "p2", terminal: "Alpha")
+        ].map { $0.withTUIListNames(workspace: example, tabs: []) }
+        let space = Space(workspace: example, agents: entries)
+        let items = entries.map { AgentListItem(space: space, agent: $0) }
+        #expect(items.sorted(by: AgentListItem.attentionOrder).map(\.id) == ["p2", "p1"])
+    }
+
+    @Test
     func coreUsesLayoutNamesAndKeepsStandaloneTerminalTitles() throws {
         let snapshot = try CoreSnapshot(subscription: JSONDecoder().decode(CoreJSON.self, from: Data("""
         {"seq":1,"terminals":[

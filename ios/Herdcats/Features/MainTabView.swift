@@ -505,8 +505,8 @@ struct AgentListItem: Identifiable, Hashable {
         AgentStatus(rawValue: agent.agentStatus) ?? .unknown
     }
 
-    var presentation: AgentListPresentation { AgentListPresentation(agent: agent) }
-    var title: String { presentation.title }
+    var presentation: AgentListPresentation { AgentListPresentation(agent: agent, peers: space.agents) }
+    var title: String { AgentListPresentation.title(for: agent) }
 
     /// Herdr's attention queue: `AgentStatus.attentionPriority` descending,
     /// then the most recent state change first — the same order herdr's
@@ -523,8 +523,8 @@ struct AgentListItem: Identifiable, Hashable {
         case (nil, _?): return false
         default: break
         }
-        return (lhs.space.workspace.number, lhs.title, lhs.id)
-            < (rhs.space.workspace.number, rhs.title, rhs.id)
+        return (lhs.space.workspace.number, lhs.agent.displayTitle, lhs.id)
+            < (rhs.space.workspace.number, rhs.agent.displayTitle, rhs.id)
     }
 
     /// One section per space that actually hosts agents — spaces in workspace
