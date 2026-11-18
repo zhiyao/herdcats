@@ -144,7 +144,11 @@ struct PanePickerSheet: View {
     private var agentRows: some View {
         let items = AgentListItem.grouped(in: spacesModel?.spaces ?? [])
             .flatMap(\.items)
-            .filter { PanePicker.matches($0.title, query: query) || PanePicker.matches($0.space.label, query: query) }
+            .filter {
+                PanePicker.matches($0.title, query: query)
+                    || PanePicker.matches($0.agent.displayTitle, query: query)
+                    || PanePicker.matches($0.space.label, query: query)
+            }
             .sorted(by: AgentListItem.attentionOrder)
         ForEach(items) { item in
             let ref = PaneRef(spaceID: item.space.id, paneID: item.agent.paneId)

@@ -51,11 +51,11 @@ extension PaneLayout {
 }
 
 extension PaneRef {
-    /// The agent's list title when the ref names one, else the space's name.
+    /// The agent's title when the ref names one, else the space's name.
     func displayTitle(in spaces: [Space]) -> String {
         guard let space = spaces.first(where: { $0.id == spaceID }) else { return spaceID }
         if let paneID, let agent = space.agents.first(where: { $0.paneId == paneID }) {
-            return AgentListPresentation.title(agent: agent, workspaceLabel: space.workspace.label)
+            return agent.displayTitle
         }
         return space.label
     }

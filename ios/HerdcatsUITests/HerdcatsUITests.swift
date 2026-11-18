@@ -24,6 +24,24 @@ func openNewConnection(in app: XCUIApplication) {
 ///
 ///     TEST_RUNNER_HC_USER=$USER xcodebuild test -only-testing:HerdcatsUITests
 final class HerdcatsUITests: XCTestCase {
+    func testAgentsListDistinguishesMatchingTerminalTitles() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "agents-collision", "-hc.tab", "agents"]
+        app.launch()
+
+        for title in ["firstmate", "2ndmate-tingxiemao", "2ndmate-herdrcat"] {
+            let row = app.descendants(matching: .any).matching(
+                NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", title, "studio-mac")
+            ).firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: 10), "Missing agent row for \(title)")
+        }
+
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "agents-collision-after"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
     func testSessionChoicesAppearInSpacesAndAgentsHeaders() {
         for tab in ["spaces", "agents"] {
             let app = XCUIApplication()

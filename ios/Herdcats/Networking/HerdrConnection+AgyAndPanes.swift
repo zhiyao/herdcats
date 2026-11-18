@@ -10,6 +10,42 @@ extension HerdrConnection {
         return try await fetch(AgentListResult.self, args: "agent list").agents
     }
 
+    func spaceOverview() async throws -> ([Workspace], [AgentEntry]) {
+        if backend == .core {
+            let hierarchy = try await corePresentation()
+            return (hierarchy.workspaces, hierarchy.agents)
+        }
+
+        let owned = generation
+        async let fetchedWorkspaces = workspaceList()
+        async let fetchedAgents = agentList()
+        let (workspaces, agents) = try await (fetchedWorkspaces, fetchedAgents)
+        let workspaceByID = Dictionary(workspaces.map { ($0.workspaceId, $0) }, uniquingKeysWith: { first, _ in first })
+        let occupiedWorkspaces = Set(agents.map(\.workspaceId))
+        var tabsByWorkspace: [String: [TabEntry]] = [:]
+        for workspace in workspaces where occupiedWorkspaces.contains(workspace.workspaceId)
+            && AgentListPresentation.nonempty(workspace.label) == nil {
+            try Task.checkCancellation()
+            let output = try? await executeHerdr(
+                Self.tabListArguments(workspaceId: workspace.workspaceId),
+                timeout: 20, allowEmptyOutput: false, timeoutPolicy: .preserveConnection,
+                expectedGeneration: owned
+            )
+            if let output {
+                tabsByWorkspace[workspace.workspaceId] = try? Self.decode(output, as: TabListResult.self).tabs
+            }
+        }
+        try Task.checkCancellation()
+        guard generation == owned else { throw HerdrError.notConnected }
+
+        return (workspaces, agents.map { agent in
+            agent.withTUIListNames(
+                workspace: workspaceByID[agent.workspaceId],
+                tabs: tabsByWorkspace[agent.workspaceId] ?? []
+            )
+        })
+    }
+
     /// Reads local provider quotas via `quota-axi` on the Herdr machine.
     /// Soft dependency: missing binary throws `.quotaAxiNotFound`.
     /// `provider` scopes the read to one quota-axi provider (card retry).

@@ -505,19 +505,8 @@ struct AgentListItem: Identifiable, Hashable {
         AgentStatus(rawValue: agent.agentStatus) ?? .unknown
     }
 
-    var title: String {
-        AgentListPresentation.title(agent: agent, workspaceLabel: space.workspace.label)
-    }
-
-    /// Machine/workspace context when a Herdr name titled the row; cwd for terminal fallback.
-    func subtitle(machineName: String?) -> String? {
-        AgentListPresentation.subtitle(
-            agent: agent,
-            workspaceLabel: space.workspace.label,
-            machineName: machineName,
-            title: title
-        )
-    }
+    var presentation: AgentListPresentation { AgentListPresentation(agent: agent) }
+    var title: String { presentation.title }
 
     /// Herdr's attention queue: `AgentStatus.attentionPriority` descending,
     /// then the most recent state change first — the same order herdr's
@@ -562,24 +551,15 @@ struct AgentListRow: View {
 
     private var agent: AgentEntry { item.agent }
 
-    private var subtitleText: String? {
-        item.subtitle(machineName: appModel.machineDisplayName)
-    }
-
-    private var usesTerminalFallbackSubtitle: Bool {
-        AgentListPresentation.nonempty(agent.workspaceLabel) == nil
-            && AgentListPresentation.nonempty(item.space.workspace.label) == nil
-            && AgentListPresentation.nonempty(agent.tabLabel) == nil
-            && AgentListPresentation.nonempty(agent.name) == nil
-    }
-
     var body: some View {
+        let presentation = item.presentation
+        let subtitle = presentation.subtitle(connectionHost: appModel.connectionIdentity?.host)
         HStack(alignment: .listTitleCenter, spacing: QuietListMetrics.columnSpacing) {
             StatusDot(status: item.status)
                 .accessibilityLabel(item.status.label)
             VStack(alignment: .leading, spacing: QuietListMetrics.lineSpacing) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(item.title)
+                    Text(presentation.title)
                         .font(.appHeadlineSm)
                         .lineLimit(1)
                     if agent.focused {
@@ -597,9 +577,9 @@ struct AgentListRow: View {
                     AgentKindIcon(kind: agent.agent, size: 13)
                         .accessibilityElement()
                         .accessibilityLabel(AgentKindVisual.displayName(for: agent.agent))
-                    if let subtitleText {
-                        Text(subtitleText)
-                            .font(usesTerminalFallbackSubtitle ? .caption.monospaced() : .caption)
+                    if let subtitle {
+                        Text(subtitle.text)
+                            .font(subtitle.isPath ? .caption.monospaced() : .caption)
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }

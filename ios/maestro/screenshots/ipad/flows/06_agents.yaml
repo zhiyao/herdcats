@@ -2,10 +2,10 @@ appId: com.enchantinglabs.herdrcat
 ---
 # Agents overview with active agent pane selected
 - extendedWaitUntil:
-    visible: "Review the onboarding flow"
+    visible: "Herdcats"
     timeout: 10000
 
-- tapOn: "Review the onboarding flow"
+- tapOn: "Herdcats"
 
 - waitForAnimationToEnd:
     timeout: 2000
