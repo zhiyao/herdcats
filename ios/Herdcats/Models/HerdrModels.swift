@@ -111,7 +111,7 @@ struct AgentEntry: Decodable, Hashable, Identifiable {
         case tabLabel = "tab_label"
     }
 
-    /// Human-readable row title — the stripped terminal title when present.
+    /// Stripped terminal title, with the pane ID as a fallback.
     var displayTitle: String {
         if let stripped = terminalTitleStripped, !stripped.isEmpty {
             return stripped
