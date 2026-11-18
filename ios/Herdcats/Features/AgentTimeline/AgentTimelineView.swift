@@ -57,6 +57,7 @@ struct AgentTimelineView: View {
     @State var pageError: String?
     @State var following = true
     @State var atBottom = true
+    @State private var piScrollPosition = PiTimelineScrollPosition()
     @State private var latestScrollRequest = 0
     @State private var tailVisible = false
     @State private var tailLayoutEpoch = 0
@@ -189,106 +190,127 @@ struct AgentTimelineView: View {
         }
     }
 
+    private var usesPiMessageList: Bool { agent == "pi" }
+
+    @ViewBuilder private var messageRows: some View {
+        if timeline.hasSnapshot(for: connectionState, paneId: paneId, agent: agent) {
+            if timeline.hasMore {
+                Text(isPaging ? "Loading earlier messages…" : (pageError ?? "Pull down to load earlier messages"))
+                    .font(.jost(.caption))
+                    .foregroundStyle(Theme.textMuted)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("timeline-history-hint")
+                    .accessibilityAction(named: "Load earlier messages") {
+                        Task { await refreshHistory() }
+                    }
+            }
+            if conversationItems.isEmpty {
+                ContentUnavailableView("No messages yet", systemImage: "bubble.left")
+            }
+            ForEach(conversationItems) { item in
+                let scope = contentScope
+                Group {
+                    if item.isActivity {
+                        TimelineActivityView(entries: item.entries,
+                            loadContent: { reference in try await loadContent(reference, scope: scope) })
+                    } else if let entry = item.entries.first {
+                        AgentTimelineEntryView(entry: entry, files: contentFiles, scope: scope,
+                            loadContent: { reference in try await loadContent(reference, scope: scope) })
+                    }
+                }
+                .background {
+                    GeometryReader { row in
+                        Color.clear.preference(
+                            key: TimelineEntryFramesPreferenceKey.self,
+                            value: [item.id: row.frame(in: .named("timeline-viewport"))])
+                    }
+                }
+            }
+            if timeline.delayed {
+                Text("Source update delayed; showing verified history.")
+                    .font(.jost(.caption)).foregroundStyle(Theme.textMuted)
+            }
+            if let dialog = timeline.pendingPiDialog {
+                PiDialogCard(dialog: dialog, isSending: timeline.isPiActionPending,
+                    onSubmit: { answer in Task { await timeline.respondPiDialog(dialog, value: answer) } },
+                    onUseTerminal: onUseTerminal)
+                    .id("\(contentScope):pi-dialog:\(dialog.requestId)")
+            }
+            if let message = timeline.piActionError {
+                Text(message).font(.jost(.caption)).foregroundStyle(Theme.textMuted)
+            }
+            if showsApproval, let pending = timeline.pendingApproval {
+                ApprovalCard(pending: pending, response: approvalResponse) { option in
+                    respondToApproval(pending, option: option)
+                }
+                .id("\(contentScope):approval:\(pending.requestId)")
+                .disabled(approvalResponse.isDisabled)
+            }
+            if showsQuestion, let pending = timeline.pendingQuestion {
+                let questionScope = contentScope
+                QuestionCard(pending: pending, response: questionResponse,
+                    onSubmit: { respondToQuestion(pending) },
+                    onSkip: { respondToQuestion(pending, skip: true) },
+                    scope: questionScope,
+                    onFieldFocus: { target in
+                        if let target {
+                            guard target.scope == contentScope,
+                                  target.requestId == timeline.pendingQuestion?.requestId else { return }
+                            focusedQuestionField = target
+                        } else if focusedQuestionField?.scope == questionScope,
+                                  focusedQuestionField?.requestId == pending.requestId {
+                            focusedQuestionField = nil
+                        }
+                    })
+                    .id("\(contentScope):question:\(pending.requestId)")
+            }
+        } else {
+            availability
+        }
+        Color.clear.frame(height: 0).id("timeline-bottom")
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             GeometryReader { viewport in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 16) {
-                        if timeline.hasSnapshot(for: connectionState, paneId: paneId, agent: agent) {
-                            if timeline.hasMore {
-                                Text(isPaging ? "Loading earlier messages…" : (pageError ?? "Pull down to load earlier messages"))
-                                    .font(.jost(.caption))
-                                    .foregroundStyle(Theme.textMuted)
-                                    .frame(maxWidth: .infinity)
-                                    .accessibilityIdentifier("timeline-history-hint")
-                                    .accessibilityAction(named: "Load earlier messages") {
-                                        Task { await refreshHistory() }
-                                    }
-                            }
-                            if conversationItems.isEmpty {
-                                ContentUnavailableView("No messages yet", systemImage: "bubble.left")
-                            }
-                            ForEach(conversationItems) { item in
-                                let scope = contentScope
-                                Group {
-                                    if item.isActivity {
-                                        TimelineActivityView(entries: item.entries,
-                                            loadContent: { reference in try await loadContent(reference, scope: scope) })
-                                    } else if let entry = item.entries.first {
-                                        AgentTimelineEntryView(entry: entry, files: contentFiles, scope: scope,
-                                            loadContent: { reference in try await loadContent(reference, scope: scope) })
-                                    }
-                                }
-                                .background {
-                                    GeometryReader { row in
-                                        Color.clear.preference(
-                                            key: TimelineEntryFramesPreferenceKey.self,
-                                            value: [item.id: row.frame(in: .named("timeline-viewport"))])
-                                    }
+                let firstID = conversationItems.first?.id
+                let lastID = conversationItems.last?.id
+                Group {
+                    if usesPiMessageList {
+                        PiTimelineMessageList(
+                            position: piScrollPosition,
+                            following: following,
+                            bottomInset: bottomScrollMargin,
+                            onViewport: { frames, bottom in
+                                entryFrames.frames = frames
+                                let visible = lastID.flatMap { frames[$0] }.map(tailIntersectsViewport) ?? false
+                                if tailVisible != visible { tailVisible = visible }
+                                if atBottom != bottom { atBottom = bottom }
+                                if bottom && !following { following = true }
+                            },
+                            onDrag: {
+                                following = false
+                                onOutputInteraction()
+                            },
+                            onPull: {
+                                let firstFrame = firstID.flatMap { entryFrames.frames[$0] }
+                                if firstFrame.map({ $0.minY >= topOverlayInset - 8 }) ?? (firstID == nil),
+                                   timeline.hasMore {
+                                    Task { await refreshHistory() }
                                 }
                             }
-                            if timeline.delayed {
-                                Text("Source update delayed; showing verified history.")
-                                    .font(.jost(.caption)).foregroundStyle(Theme.textMuted)
-                            }
-                            if let dialog = timeline.pendingPiDialog {
-                                PiDialogCard(dialog: dialog, isSending: timeline.isPiActionPending,
-                                    onSubmit: { answer in Task { await timeline.respondPiDialog(dialog, value: answer) } },
-                                    onUseTerminal: onUseTerminal)
-                                    .id("\(contentScope):pi-dialog:\(dialog.requestId)")
-                            }
-                            if let message = timeline.piActionError {
-                                Text(message).font(.jost(.caption)).foregroundStyle(Theme.textMuted)
-                            }
-                            if showsApproval, let pending = timeline.pendingApproval {
-                                ApprovalCard(pending: pending, response: approvalResponse) { option in
-                                    respondToApproval(pending, option: option)
-                                }
-                                .id("\(contentScope):approval:\(pending.requestId)")
-                                .disabled(approvalResponse.isDisabled)
-                            }
-                            if showsQuestion, let pending = timeline.pendingQuestion {
-                                let questionScope = contentScope
-                                QuestionCard(pending: pending, response: questionResponse,
-                                    onSubmit: { respondToQuestion(pending) },
-                                    onSkip: { respondToQuestion(pending, skip: true) },
-                                    scope: questionScope,
-                                    onFieldFocus: { target in
-                                        if let target {
-                                            guard target.scope == contentScope,
-                                                  target.requestId == timeline.pendingQuestion?.requestId else { return }
-                                            focusedQuestionField = target
-                                        } else if focusedQuestionField?.scope == questionScope,
-                                                  focusedQuestionField?.requestId == pending.requestId {
-                                            focusedQuestionField = nil
-                                        }
-                                    })
-                                    .id("\(contentScope):question:\(pending.requestId)")
-                            }
-                        } else {
-                            availability
+                        ) {
+                            VStack(alignment: .leading, spacing: 16) { messageRows }
+                                .padding([.horizontal, .top], DesignSystem.Spacing.base)
+                                .padding(.top, topOverlayInset)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .coordinateSpace(name: "timeline-viewport")
+                                .environment(appModel)
                         }
-                        Color.clear.frame(height: 0).id("timeline-bottom")
-                    }
-                    .scrollTargetLayout()
-                    .padding([.horizontal, .top], DesignSystem.Spacing.base)
-                    .padding(.top, topOverlayInset)
-                    .frame(minHeight: max(0, viewport.size.height - bottomScrollMargin + 1), alignment: .top)
-                    .background {
-                        GeometryReader { content in
-                            Color.clear.preference(key: TimelineAtBottomPreferenceKey.self,
-                                value: content.frame(in: .named("timeline-viewport")).maxY <= viewport.size.height - bottomScrollMargin + 8)
-                        }
+                    } else {
+                        swiftUIMessageList(viewport: viewport, proxy: proxy)
                     }
                 }
-                // Keep overlay clearance outside the lazy targets: Latest names
-                // a message row, rather than an estimated empty spacer below it.
-                .contentMargins(.bottom, bottomScrollMargin, for: .scrollContent)
-                .timelineInitialScrollAnchor(initialScrollAnchor)
-                .task(id: "\(contentScope):\(latestScrollRequest):\(following):\(atBottom):\(tailVisible)") {
-                    await ensureVisibleTail()
-                }
-                .coordinateSpace(name: "timeline-viewport")
                 .onChange(of: viewport.size.height, initial: true) { _, height in
                     viewportHeight = height
                     if focusedQuestionField != nil {
@@ -344,50 +366,19 @@ struct AgentTimelineView: View {
                     questionFieldFrames = frames
                     revealQuestionField(using: proxy, viewport: viewport)
                 }
-                .onPreferenceChange(TimelineEntryFramesPreferenceKey.self) { frames in
-                    entryFrames.frames = frames
-                    tailVisible = conversationItems.last.flatMap { frames[$0.id] }.map(tailIntersectsViewport) ?? false
-                }
                 .onChange(of: historyScrollAnchor) { _, anchor in
                     guard let anchor else { return }
                     following = false
+                    if usesPiMessageList {
+                        piScrollPosition.prependAnchor = anchor
+                        return
+                    }
                     var transaction = Transaction(animation: nil)
                     transaction.disablesAnimations = true
                     withTransaction(transaction) {
                         proxy.scrollTo(anchor.id, anchor: UnitPoint(x: 0, y: anchor.unitY))
                     }
                 }
-                .onPreferenceChange(TimelineAtBottomPreferenceKey.self) { bottom in
-                    atBottom = bottom
-                    if bottom { following = true }
-                    if let scope = tailReplayScope {
-                        tailReplayScope = nil
-                        if scope == contentScope, following, recoveredTailRequest == latestScrollRequest,
-                           let target = latestTargetID {
-                            // Replay the existing request after the rebuilt list lays out.
-                            proxy.scrollTo(target, anchor: .bottom)
-                        }
-                    }
-                }
-                .accessibilityIdentifier("agent-timeline-scroll")
-                .scrollDismissesKeyboard(.interactively)
-                .simultaneousGesture(
-                    DragGesture()
-                        .onChanged { value in
-                            guard abs(value.translation.height) > abs(value.translation.width) else { return }
-                            following = false
-                            onOutputInteraction()
-                        }
-                        .onEnded { value in
-                            guard abs(value.translation.height) > abs(value.translation.width) else { return }
-                            let firstFrame = conversationItems.first.flatMap { entryFrames.frames[$0.id] }
-                            let atHistoryTop = conversationItems.isEmpty || (firstFrame.map { $0.minY >= topOverlayInset - 8 } ?? false)
-                            let loadHistory = atHistoryTop && value.translation.height > 60
-                            if loadHistory && timeline.hasMore {
-                                Task { await refreshHistory() }
-                            } else if atBottom { following = true }
-                        }
-                )
                 .onChange(of: timeline.revision) { _, _ in
                     guard following, timeline.pendingQuestion == nil, timeline.pendingPiDialog == nil, (!conversationItems.isEmpty || showsApproval) else { return }
                     scrollToLatest(using: proxy)
@@ -555,6 +546,7 @@ struct AgentTimelineView: View {
             historyLoader.cancel()
             entryFrames.frames = [:]
             historyScrollAnchor = nil
+            piScrollPosition.prependAnchor = nil
             contentFiles.reset()
         }
         .onChange(of: taskKey) { _, _ in historyLoader.cancel(); updateTimelineSheet() }
@@ -567,6 +559,65 @@ struct AgentTimelineView: View {
         }
         .sheet(item: timelineSheetBinding, onDismiss: timelineSheetDismissed) { sheet in timelineSheet(sheet) }
     }
+    private func swiftUIMessageList(viewport: GeometryProxy, proxy: ScrollViewProxy) -> some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 16) { messageRows }
+                .scrollTargetLayout()
+                .padding([.horizontal, .top], DesignSystem.Spacing.base)
+                .padding(.top, topOverlayInset)
+                .frame(minHeight: max(0, viewport.size.height - bottomScrollMargin + 1), alignment: .top)
+                .background {
+                    GeometryReader { content in
+                        Color.clear.preference(key: TimelineAtBottomPreferenceKey.self,
+                            value: content.frame(in: .named("timeline-viewport")).maxY <= viewport.size.height - bottomScrollMargin + 8)
+                    }
+                }
+        }
+        // Keep overlay clearance outside the lazy targets: Latest names
+        // a message row, rather than an estimated empty spacer below it.
+        .contentMargins(.bottom, bottomScrollMargin, for: .scrollContent)
+        .timelineInitialScrollAnchor(initialScrollAnchor)
+        .task(id: "\(contentScope):\(latestScrollRequest):\(following):\(atBottom):\(tailVisible)") {
+            await ensureVisibleTail()
+        }
+        .coordinateSpace(name: "timeline-viewport")
+        .onPreferenceChange(TimelineEntryFramesPreferenceKey.self) { frames in
+            entryFrames.frames = frames
+            tailVisible = conversationItems.last.flatMap { frames[$0.id] }.map(tailIntersectsViewport) ?? false
+        }
+        .onPreferenceChange(TimelineAtBottomPreferenceKey.self) { bottom in
+            atBottom = bottom
+            if bottom { following = true }
+            if let scope = tailReplayScope {
+                tailReplayScope = nil
+                if scope == contentScope, following, recoveredTailRequest == latestScrollRequest,
+                   let target = latestTargetID {
+                    // Replay the existing request after the rebuilt list lays out.
+                    proxy.scrollTo(target, anchor: .bottom)
+                }
+            }
+        }
+        .accessibilityIdentifier("agent-timeline-scroll")
+        .scrollDismissesKeyboard(.interactively)
+        .simultaneousGesture(
+            DragGesture()
+                .onChanged { value in
+                    guard abs(value.translation.height) > abs(value.translation.width) else { return }
+                    following = false
+                    onOutputInteraction()
+                }
+                .onEnded { value in
+                    guard abs(value.translation.height) > abs(value.translation.width) else { return }
+                    let firstFrame = conversationItems.first.flatMap { entryFrames.frames[$0.id] }
+                    let atHistoryTop = conversationItems.isEmpty || (firstFrame.map { $0.minY >= topOverlayInset - 8 } ?? false)
+                    let loadHistory = atHistoryTop && value.translation.height > 60
+                    if loadHistory && timeline.hasMore {
+                        Task { await refreshHistory() }
+                    } else if atBottom { following = true }
+                }
+        )
+    }
+
     private var timelineSheetBinding: Binding<TimelineSheetState.Sheet?> {
         Binding(get: { sheetState.presented }, set: { value in
             guard value == nil else { return }
@@ -632,6 +683,10 @@ struct AgentTimelineView: View {
         return conversationItems.last?.id
     }
     private func scrollToLatest(using proxy: ScrollViewProxy) {
+        if usesPiMessageList {
+            piScrollPosition.revealLatest()
+            return
+        }
         // A bound scrollPosition can corrupt lazy height estimates when a tall
         // unmeasured row precedes the target. Scroll directly to the actual row.
         if let target = latestTargetID { proxy.scrollTo(target, anchor: .bottom) }
@@ -696,6 +751,165 @@ struct AgentTimelineView: View {
         }
     }
 
+}
+
+@MainActor private final class PiTimelineScrollPosition {
+    var prependAnchor: TimelineHistoryScrollAnchor? {
+        didSet { if prependAnchor != nil { scheduleLayout?() } }
+    }
+    var scheduleLayout: (() -> Void)?
+
+    func revealLatest() {
+        prependAnchor = nil
+        scheduleLayout?()
+    }
+}
+
+/// UIKit scrolls the measured Pi message content, including replies taller
+/// than the viewport. The surrounding pane and message views are SwiftUI.
+private struct PiTimelineMessageList<Rows: View>: UIViewControllerRepresentable {
+    let position: PiTimelineScrollPosition
+    let following: Bool
+    let bottomInset: CGFloat
+    let onViewport: ([String: CGRect], Bool) -> Void
+    let onDrag: () -> Void
+    let onPull: () -> Void
+    @ViewBuilder let rows: () -> Rows
+
+    func makeUIViewController(context: Context) -> Controller {
+        let controller = Controller(position: position)
+        controller.loadViewIfNeeded()
+        return controller
+    }
+
+    func updateUIViewController(_ controller: Controller, context: Context) {
+        controller.update(self)
+    }
+
+    @MainActor final class Controller: UIViewController, UIScrollViewDelegate {
+        private let position: PiTimelineScrollPosition
+        private let scroll = UIScrollView()
+        private let host = UIHostingController(rootView: AnyView(EmptyView()))
+        private var options: PiTimelineMessageList?
+        private var frames: [String: CGRect] = [:]
+        private var layoutScheduled = false
+        private var dragging = false
+
+        init(position: PiTimelineScrollPosition) {
+            self.position = position
+            super.init(nibName: nil, bundle: nil)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            scroll.delegate = self
+            scroll.contentInsetAdjustmentBehavior = .never
+            scroll.keyboardDismissMode = .interactive
+            scroll.alwaysBounceVertical = true
+            scroll.accessibilityIdentifier = "agent-timeline-scroll"
+            scroll.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(scroll)
+            addChild(host)
+            host.safeAreaRegions = []
+            host.sizingOptions = [.intrinsicContentSize]
+            host.view.backgroundColor = .clear
+            host.view.translatesAutoresizingMaskIntoConstraints = false
+            scroll.addSubview(host.view)
+            host.didMove(toParent: self)
+            NSLayoutConstraint.activate([
+                scroll.topAnchor.constraint(equalTo: view.topAnchor),
+                scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                host.view.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+                host.view.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+                host.view.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
+                host.view.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
+                host.view.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor),
+            ])
+            position.scheduleLayout = { [weak self] in self?.scheduleLayout() }
+        }
+
+        func update(_ options: PiTimelineMessageList) {
+            self.options = options
+            if scroll.contentInset.bottom != options.bottomInset {
+                scroll.contentInset.bottom = options.bottomInset
+                scroll.verticalScrollIndicatorInsets.bottom = options.bottomInset
+            }
+            host.rootView = AnyView(options.rows()
+                .onPreferenceChange(TimelineEntryFramesPreferenceKey.self) { [weak self] frames in
+                    self?.frames = frames
+                    self?.scheduleLayout()
+                })
+            scheduleLayout()
+        }
+
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            scheduleLayout()
+        }
+
+        private var maxOffset: CGFloat {
+            max(0, scroll.contentSize.height + scroll.contentInset.bottom - scroll.bounds.height)
+        }
+
+        private func scheduleLayout() {
+            guard !layoutScheduled else { return }
+            layoutScheduled = true
+            DispatchQueue.main.async { [weak self] in self?.applyPosition() }
+        }
+
+        private func applyPosition() {
+            view.layoutIfNeeded()
+            layoutScheduled = false
+            guard let options, scroll.bounds.height > 0 else { return }
+            if !dragging, !scroll.isDecelerating {
+                if let anchor = position.prependAnchor, let frame = frames[anchor.id] {
+                    let visibleHeight = scroll.bounds.height - scroll.contentInset.bottom
+                    let destination = frame.minY - (visibleHeight - frame.height) * anchor.unitY
+                    position.prependAnchor = nil
+                    scroll.contentOffset.y = min(max(0, destination), maxOffset)
+                } else if options.following, abs(scroll.contentOffset.y - maxOffset) > 0.1 {
+                    scroll.contentOffset.y = maxOffset
+                }
+            }
+            publishViewport()
+        }
+
+        private func publishViewport() {
+            guard let options, scroll.bounds.height > 0 else { return }
+            let offset = scroll.contentOffset.y
+            let viewport = CGRect(x: 0, y: offset, width: scroll.bounds.width, height: scroll.bounds.height)
+            let visible = frames.filter { viewport.intersects($0.value) }
+                .mapValues { $0.offsetBy(dx: 0, dy: -offset) }
+            options.onViewport(visible, !dragging && offset >= maxOffset - 1)
+        }
+
+        func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            scheduleLayout()
+        }
+
+        func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+            dragging = true
+            options?.onDrag()
+        }
+
+        func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+            let translation = scrollView.panGestureRecognizer.translation(in: scrollView)
+            dragging = false
+            if translation.y > 60, translation.y > abs(translation.x), scrollView.contentOffset.y <= 8 {
+                options?.onPull()
+            }
+            scheduleLayout()
+        }
+
+        func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+            scheduleLayout()
+        }
+    }
 }
 
 
