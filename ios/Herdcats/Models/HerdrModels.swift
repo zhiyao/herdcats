@@ -102,6 +102,7 @@ struct AgentEntry: Decodable, Hashable, Identifiable {
         case focused
         case revision
         case name
+        case tabLabel = "tab_label"
     }
 
     /// Human-readable row title — the stripped terminal title when present.
@@ -110,13 +111,6 @@ struct AgentEntry: Decodable, Hashable, Identifiable {
             return stripped
         }
         return paneId
-    }
-
-    func withTUIListNames(workspace: Workspace?, tabs: [TabEntry]) -> Self {
-        var entry = self
-        entry.workspaceLabel = workspace?.label
-        entry.tabLabel = tabs.first { $0.tabId == tabId && $0.workspaceId == workspaceId }?.label
-        return entry
     }
 
     /// Compact `~/last/two/components` form of the working directory.
@@ -131,36 +125,36 @@ struct AgentListPresentation {
     let title: String
     private let machine: String?
     private let secondary: (text: String, isPath: Bool)?
-    let dragTitle: String
 
     init(agent: AgentEntry, peers: [AgentEntry] = []) {
         let title = Self.title(for: agent)
         self.title = title
         machine = Self.nonempty(agent.originMachine)
         let peersWithSameTitle = peers.filter { $0.id != agent.id && Self.title(for: $0) == title }
-        let otherValues = Set(peersWithSameTitle.flatMap { Self.context(for: $0, title: title).map(\.text) })
+        let otherFields = peersWithSameTitle.flatMap { Self.context(for: $0, title: title) }
+        let otherValues = Set(otherFields.map(\.text))
         let values = Self.context(for: agent, title: title)
         let secondary: (text: String, isPath: Bool)?
         if let distinct = values.first(where: { !otherValues.contains($0.text) }) {
-            secondary = distinct
-        } else if values.count > 1 {
-            secondary = (values.map(\.text).joined(separator: " · "), false)
+            secondary = (distinct.text, distinct.isPath)
+        } else if let distinct = values.first(where: { field in
+            !otherFields.contains { $0.role == field.role && $0.text == field.text }
+        }) {
+            secondary = ("\(distinct.role): \(distinct.text)", false)
+        } else if !values.isEmpty {
+            let fields = values.filter { !$0.isPath } + values.suffix(1).filter { $0.isPath }
+            secondary = (fields.map { "\($0.role): \($0.text)" }.joined(separator: " · "), false)
         } else {
-            secondary = values.first
+            secondary = nil
         }
         self.secondary = secondary
-        if let secondary, title != agent.displayTitle || !peersWithSameTitle.isEmpty {
-            dragTitle = "\(title) · \(secondary.text)"
-        } else {
-            dragTitle = title
-        }
     }
 
-    static func title(for agent: AgentEntry) -> String {
+    private static func title(for agent: AgentEntry) -> String {
         nonempty(agent.workspaceLabel) ?? tabLabel(for: agent) ?? nonempty(agent.name) ?? agent.displayTitle
     }
 
-    static func nonempty(_ value: String?) -> String? {
+    private static func nonempty(_ value: String?) -> String? {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
@@ -170,13 +164,25 @@ struct AgentListPresentation {
         nonempty(agent.tabLabel) == nil ? nil : agent.tabLabel
     }
 
-    private static func context(for agent: AgentEntry, title: String) -> [(text: String, isPath: Bool)] {
-        var seen: Set<String> = [title]
-        let labels = [nonempty(agent.terminalTitleStripped), tabLabel(for: agent), nonempty(agent.name)]
-            .compactMap { $0 }.filter { seen.insert($0).inserted }
-        let paths = [nonempty(agent.shortCwd), nonempty(agent.cwd)]
-            .compactMap { $0 }.filter { seen.insert($0).inserted }
-        return labels.map { ($0, false) } + paths.map { ($0, true) }
+    private typealias Context = (role: String, text: String, isPath: Bool)
+
+    private static func context(for agent: AgentEntry, title: String) -> [Context] {
+        let labels = [
+            ("Terminal", nonempty(agent.terminalTitleStripped)),
+            ("Tab", tabLabel(for: agent)),
+            ("Agent", nonempty(agent.name))
+        ]
+        let fields = labels.compactMap { role, value -> Context? in
+            guard let value, value != title else { return nil }
+            return (role, value, false)
+        }
+        let short = nonempty(agent.shortCwd)
+        let full = nonempty(agent.cwd)
+        let paths = [short, full == short ? nil : full].compactMap { value -> Context? in
+            guard let value, value != title else { return nil }
+            return ("Directory", value, true)
+        }
+        return fields + paths
     }
 
     func subtitle(connectionHost: String?) -> (text: String, isPath: Bool)? {

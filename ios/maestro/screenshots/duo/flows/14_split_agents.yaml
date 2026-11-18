@@ -10,7 +10,7 @@ appId: com.enchantinglabs.herdrcat
 - extendedWaitUntil:
     visible: "Open on the Right"
     timeout: 10000
-- tapOn: "Checkout redesign"
+- tapOn: "Build the checkout screens"
 - extendedWaitUntil:
     visible:
       id: "pane-divider"

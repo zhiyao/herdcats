@@ -33,7 +33,8 @@ final class HerdcatsUITests: XCTestCase {
         for (index, title) in titles.enumerated() {
             let row = app.descendants(matching: .any)["agent-row-p\(index)"].firstMatch
             XCTAssertTrue(row.waitForExistence(timeout: 10), "Missing agent row for \(title)")
-            XCTAssertTrue(row.label.contains(title))
+            let fields = row.label.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            XCTAssertTrue(fields.contains(title), "Expected headline \(title) in \(row.label)")
             XCTAssertTrue(row.label.contains("studio-mac"))
         }
 

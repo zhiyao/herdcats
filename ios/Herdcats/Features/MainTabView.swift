@@ -273,15 +273,16 @@ struct AgentsScreen: View {
                         LazyVStack(spacing: 0) {
                             switch sort {
                             case .priority:
+                                let peers = currentItems.map(\.agent)
                                 ForEach(currentItems) { item in
-                                    agentRow(item)
+                                    agentRow(item, peers: peers)
                                 }
                             case .spaces:
                                 let currentSections = sections
                                 ForEach(currentSections, id: \.space.id) { section in
                                     spaceHeader(section.space)
                                     ForEach(section.items) { item in
-                                        agentRow(item)
+                                        agentRow(item, peers: section.space.agents)
                                     }
                                 }
                             }
@@ -432,12 +433,13 @@ struct AgentsScreen: View {
     }
 
     @ViewBuilder
-    private func agentRow(_ item: AgentListItem) -> some View {
+    private func agentRow(_ item: AgentListItem, peers: [AgentEntry]) -> some View {
         let isRegular = horizontalSizeClass == .regular
         let row = AgentListRow(
             item: item,
             isSelected: isRegular && isOpen(item),
-            lastUpdated: model.lastUpdatedByPaneID[item.agent.paneId]
+            lastUpdated: model.lastUpdatedByPaneID[item.agent.paneId],
+            presentation: AgentListPresentation(agent: item.agent, peers: peers)
         )
         Group {
             if isRegular {
@@ -449,7 +451,7 @@ struct AgentsScreen: View {
                         Button(action: action.perform) { Label(action.title, systemImage: action.systemImage) }
                     }
                 }
-                .paneDraggable(ref(for: item), title: item.presentation.dragTitle, enabled: true)
+                .paneDraggable(ref(for: item), title: item.agent.displayTitle, enabled: true)
             } else {
                 NavigationLink(value: ref(for: item)) { row }
             }
@@ -505,9 +507,6 @@ struct AgentListItem: Identifiable, Hashable {
         AgentStatus(rawValue: agent.agentStatus) ?? .unknown
     }
 
-    var presentation: AgentListPresentation { AgentListPresentation(agent: agent, peers: space.agents) }
-    var title: String { AgentListPresentation.title(for: agent) }
-
     /// Herdr's attention queue: `AgentStatus.attentionPriority` descending,
     /// then the most recent state change first — the same order herdr's
     /// priority-sorted agent panel uses.
@@ -548,20 +547,22 @@ struct AgentListRow: View {
     /// The row open in the split view's detail column.
     var isSelected = false
     var lastUpdated: Date?
+    var presentation: AgentListPresentation?
 
     private var agent: AgentEntry { item.agent }
 
     var body: some View {
-        let presentation = item.presentation
-        let subtitle = presentation.subtitle(
-            connectionHost: appModel.connectionIdentity?.host ?? appModel.connectedOrOfflineHost
-        )
+        let subtitle: (text: String, isPath: Bool)? = if let presentation {
+            presentation.subtitle(connectionHost: appModel.connectionIdentity?.host ?? appModel.connectedOrOfflineHost)
+        } else {
+            agent.shortCwd.isEmpty ? nil : (text: agent.shortCwd, isPath: true)
+        }
         HStack(alignment: .listTitleCenter, spacing: QuietListMetrics.columnSpacing) {
             StatusDot(status: item.status)
                 .accessibilityLabel(item.status.label)
             VStack(alignment: .leading, spacing: QuietListMetrics.lineSpacing) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(presentation.title)
+                    Text(presentation?.title ?? agent.displayTitle)
                         .font(.appHeadlineSm)
                         .lineLimit(1)
                     if agent.focused {
