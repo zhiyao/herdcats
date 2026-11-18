@@ -86,6 +86,7 @@ struct AgentEntry: Decodable, Hashable, Identifiable {
     var workspaceLabel: String? = nil
     var tabLabel: String? = nil
     var originMachine: String? = nil
+    var foregroundCwd: String? = nil
 
     var id: String { paneId }
 
@@ -94,6 +95,7 @@ struct AgentEntry: Decodable, Hashable, Identifiable {
         case agentStatus = "agent_status"
         case stateChangeSeq = "state_change_seq"
         case cwd
+        case foregroundCwd = "foreground_cwd"
         case paneId = "pane_id"
         case tabId = "tab_id"
         case workspaceId = "workspace_id"
@@ -115,7 +117,10 @@ struct AgentEntry: Decodable, Hashable, Identifiable {
 
     /// Compact `~/last/two/components` form of the working directory.
     var shortCwd: String {
-        guard let cwd else { return "" }
+        cwd.map(Self.compactCwd) ?? ""
+    }
+
+    static func compactCwd(_ cwd: String) -> String {
         let suffix = cwd.split(separator: "/").suffix(2).joined(separator: "/")
         return suffix.isEmpty ? cwd : "~/\(suffix)"
     }
@@ -142,7 +147,7 @@ struct AgentListPresentation {
         }) {
             secondary = ("\(distinct.role): \(distinct.text)", false)
         } else if !values.isEmpty {
-            let fields = values.filter { !$0.isPath } + values.suffix(1).filter { $0.isPath }
+            let fields = values.filter { !$0.isPath } + values.filter { $0.isPath }.suffix(1)
             secondary = (fields.map { "\($0.role): \($0.text)" }.joined(separator: " · "), false)
         } else {
             secondary = nil
@@ -176,13 +181,13 @@ struct AgentListPresentation {
             guard let value, value != title else { return nil }
             return (role, value, false)
         }
-        let short = nonempty(agent.shortCwd)
-        let full = nonempty(agent.cwd)
-        let paths = [short, full == short ? nil : full].compactMap { value -> Context? in
-            guard let value, value != title else { return nil }
-            return ("Directory", value, true)
+        guard let directory = nonempty(agent.foregroundCwd) ?? nonempty(agent.cwd) else {
+            return fields
         }
-        return fields + paths
+        let compact = AgentEntry.compactCwd(directory)
+        let compactField: [Context] = compact == title ? [] : [("Directory", compact, true)]
+        let fullField: [Context] = directory == compact || directory == title ? [] : [("Directory", directory, true)]
+        return compactField + fields + fullField
     }
 
     func subtitle(connectionHost: String?) -> (text: String, isPath: Bool)? {

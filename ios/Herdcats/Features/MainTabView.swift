@@ -457,6 +457,7 @@ struct AgentsScreen: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("agent-row-\(item.id)")
         .zIndex(raisedCardID == item.id ? 1 : 0)
         .transition(.opacity)
     }
@@ -596,7 +597,6 @@ struct AgentListRow: View {
         .background { RowHighlight(isActive: false, isSelected: isSelected) }
         .overlay(alignment: .bottom) { QuietListDivider() }
         .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("agent-row-\(item.id)")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

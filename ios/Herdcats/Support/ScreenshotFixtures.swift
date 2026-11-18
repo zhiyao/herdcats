@@ -42,6 +42,7 @@ enum ScreenshotFixtures {
     static let projects = collision
         ? ["firstmate", "2ndmate-tingxiemao", "2ndmate-herdrcat"]
         : ["Herdcats", "Checkout redesign", "API performance"]
+    private static let workspaceIDs = collision ? ["wB5", "wA6", "wAK"] : projects.indices.map { "w\($0)" }
     static let providers = collision ? ["pi", "pi", "pi"] : ["claude", "codex", "cursor"]
     static let statuses = collision ? ["working", "working", "blocked"] : ["blocked", "working", "done"]
     static let titles = collision
@@ -50,7 +51,7 @@ enum ScreenshotFixtures {
 
     static var workspaces: [[String: Any]] {
         projects.enumerated().map { index, label in
-            ["workspace_id": "w\(index)", "label": label, "number": index + 1,
+            ["workspace_id": workspaceIDs[index], "label": label, "number": index + 1,
              "tab_count": 1, "pane_count": 1, "active_tab_id": "t\(index)",
              "agent_status": statuses[index], "focused": index == 0,
              "worktree": ["checkout_path": "/Users/demo/Projects/\(label.lowercased().replacingOccurrences(of: " ", with: "-"))",
@@ -71,7 +72,7 @@ enum ScreenshotFixtures {
     }
     static var panes: [[String: Any]] {
         projects.indices.map { index in
-            ["pane_id": "p\(index)", "tab_id": "t\(index)", "workspace_id": "w\(index)",
+            ["pane_id": "p\(index)", "tab_id": "t\(index)", "workspace_id": workspaceIDs[index],
              "agent": index == 0 ? paneAgent : providers[index], "agent_status": statuses[index],
              "cwd": "/Users/demo/Projects/\(projects[index].lowercased().replacingOccurrences(of: " ", with: "-"))",
              "terminal_title_stripped": titles[index], "terminal_title": titles[index],
@@ -100,9 +101,9 @@ enum ScreenshotFixtures {
             }]
         } else if args.hasPrefix("tab list") {
             result = ["tabs": projects.indices.filter {
-                args.contains(HerdrConnection.shellSafeArgument("w\($0)"))
+                args.contains(HerdrConnection.shellSafeArgument(workspaceIDs[$0]))
             }.map { index in
-                ["tab_id": "t\(index)", "workspace_id": "w\(index)", "label": "Agent", "number": 1,
+                ["tab_id": "t\(index)", "workspace_id": workspaceIDs[index], "label": "Agent", "number": 1,
                  "pane_count": 1, "agent_status": statuses[index], "focused": true] as [String: Any]
             }]
         } else { throw HerdrError.invalidConfiguration("Screenshot fixtures are read-only: \(args)") }

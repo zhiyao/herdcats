@@ -35,7 +35,7 @@ final class HerdcatsUITests: XCTestCase {
             XCTAssertTrue(row.waitForExistence(timeout: 10), "Missing agent row for \(title)")
             let fields = row.label.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
             XCTAssertTrue(fields.contains(title), "Expected headline \(title) in \(row.label)")
-            XCTAssertTrue(row.label.contains("studio-mac"))
+            XCTAssertTrue(row.label.contains("studio-mac · ~/Projects/\(title)"))
         }
 
         let screenshot = XCTAttachment(screenshot: app.screenshot())

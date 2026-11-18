@@ -31,7 +31,7 @@ struct AgentListPresentationTests {
         entry.workspaceLabel = "firstmate"
         let presentation = AgentListPresentation(agent: entry)
         #expect(presentation.title == "firstmate")
-        #expect(presentation.subtitle(connectionHost: "studio-mac")?.text == "studio-mac · π · firstmate")
+        #expect(presentation.subtitle(connectionHost: "studio-mac")?.text == "studio-mac · ~/1/firstmate")
         #expect(entry.displayTitle == "π · firstmate")
         #expect(entry.stateChangeSeq == 10)
         #expect(entry.agentStatus == "working")
@@ -48,6 +48,30 @@ struct AgentListPresentationTests {
         #expect(presentation.subtitle(connectionHost: "studio-mac")?.text == "studio-mac · ~/1/firstmate")
         #expect(presentation.subtitle(connectionHost: nil)?.text == "~/1/firstmate")
         #expect(presentation.subtitle(connectionHost: nil)?.isPath == true)
+    }
+
+    @Test
+    func overviewUsesForegroundDirectoryAndFallsBackToLaunchDirectory() throws {
+        let rows = """
+        {"result":{"agents":[
+          {"agent":"pi","agent_status":"working","cwd":"/work/launch","foreground_cwd":"/work/review","pane_id":"a","tab_id":"t1","workspace_id":"w1","focused":false,"terminal_title_stripped":"Build"},
+          {"agent":"pi","agent_status":"working","cwd":"/work/launch","foreground_cwd":"/work/checkout","pane_id":"b","tab_id":"t2","workspace_id":"w1","focused":false,"terminal_title_stripped":"Build"},
+          {"agent":"pi","agent_status":"working","cwd":"/work/launch","foreground_cwd":" ","pane_id":"c","tab_id":"t3","workspace_id":"w1","focused":false,"terminal_title_stripped":"Build"}
+        ]}}
+        """
+        let entries = try HerdrConnection.decode(rows, as: AgentListResult.self).agents.map { entry in
+            var entry = entry
+            entry.workspaceLabel = "ExampleApp"
+            return entry
+        }
+        let presentations = entries.map { AgentListPresentation(agent: $0, peers: entries) }
+        #expect(presentations.map(\.title) == ["ExampleApp", "ExampleApp", "ExampleApp"])
+        #expect(presentations.compactMap { $0.subtitle(connectionHost: "studio")?.text } == [
+            "studio · ~/work/review",
+            "studio · ~/work/checkout",
+            "studio · ~/work/launch"
+        ])
+        #expect(entries.map(\.shortCwd) == Array(repeating: "~/work/launch", count: 3))
     }
 
     @Test
