@@ -89,6 +89,7 @@ struct AgentEntry: Decodable, Hashable, Identifiable {
     struct CoreContext: Hashable {
         let machine: String?
         let directory: String?
+        let usesSyntheticTerminalTitle: Bool
     }
 
     var coreContext: CoreContext? = nil
@@ -143,8 +144,12 @@ struct AgentListPresentation {
         let launchPath = Self.nonempty(agent.cwd) == nil ? nil : agent.cwd
         let path = if let core = agent.coreContext { core.directory } else { launchPath ?? agent.workspaceFolder }
         directory = path.flatMap { Self.nonempty($0) == nil ? nil : AgentEntry.compactCwd($0) }
-        let terminal = Self.nonempty(agent.terminalTitleStripped) ?? Self.nonempty(agent.terminalTitle)
-        terminalTitle = terminal == Self.nonempty(title) || terminal == agent.paneId || terminal == directory ? nil : terminal
+        let terminal: String? = if agent.coreContext?.usesSyntheticTerminalTitle == true {
+            nil
+        } else {
+            Self.nonempty(agent.terminalTitleStripped) ?? Self.nonempty(agent.terminalTitle)
+        }
+        terminalTitle = terminal == Self.nonempty(title) || terminal == directory ? nil : terminal
     }
 
     private static func nonempty(_ value: String?) -> String? {

@@ -128,7 +128,8 @@ private struct CoreHierarchyBuilder {
         let launchCwd = nonempty(terminal["cwd"])
         let cwd = nonempty(terminal["foreground"]["cwd"]) ?? launchCwd
         let name = nonempty(terminal["name"])
-        let title = nonempty(terminal["title"]) ?? name ?? address
+        let suppliedTitle = nonempty(terminal["title"]) ?? name
+        let title = suppliedTitle ?? address
         result.panes.append(PaneEntry(
             paneId: address, tabId: tabID, workspaceId: workspaceID,
             label: nil, agent: agent, agentStatus: status, cwd: cwd,
@@ -145,7 +146,8 @@ private struct CoreHierarchyBuilder {
                 name: name, workspaceLabel: workspaceName, tabLabel: tabName,
                 coreContext: AgentEntry.CoreContext(
                     machine: address.split(separator: "/").dropLast().last.map(String.init),
-                    directory: launchCwd ?? workspaceFolder
+                    directory: launchCwd ?? workspaceFolder,
+                    usesSyntheticTerminalTitle: suppliedTitle == nil
                 )
             ))
         }

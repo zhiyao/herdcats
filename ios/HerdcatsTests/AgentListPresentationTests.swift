@@ -78,6 +78,20 @@ struct AgentListPresentationTests {
         #expect(agent.displayTitle == "p1")
     }
 
+    @Test(arguments: [#""p1""#, "null"])
+    func tuiSubtitleKeepsSuppliedTitleMatchingPaneID(strippedTitle: String) throws {
+        let rows = """
+        {"result":{"agents":[
+          {"agent":"pi","agent_status":"working","cwd":"/work/launch","pane_id":"p1","tab_id":"t1","workspace_id":"w1","focused":false,"terminal_title":"p1","terminal_title_stripped":\(strippedTitle)}
+        ]}}
+        """
+        var agent = try #require(HerdrConnection.decode(rows, as: AgentListResult.self).agents.first)
+        agent.workspaceLabel = "ExampleApp"
+        let presentation = AgentListPresentation(agent: agent)
+        #expect(presentation.title == "ExampleApp")
+        #expect(presentation.subtitle(connectionHost: "studio")?.text == "studio · ~/work/launch · p1")
+    }
+
     @Test
     func matchingHeadlinesAndDirectoriesUseCompactDirectoryContext() throws {
         let rows = """
@@ -130,6 +144,7 @@ struct AgentListPresentationTests {
           {"address":"studio/peer/t3","title":"First terminal","state":"live","status":{"app":"pi","state":"working"}},
           {"address":"t4","title":"Second terminal","state":"live","status":{"app":"pi","state":"working"}},
           {"address":"t5","name":"iap-impl","title":"Third terminal","state":"live","status":{"app":"pi","state":"working"}},
+          {"address":"studio/t9","title":"studio/t9","state":"live","status":{"app":"pi","state":"working"}},
           {"address":"studio/t6","state":"live","status":{"app":"pi","state":"working"}},
           {"address":"studio/t7","state":"live","status":{"app":"pi","state":"working"}},
           {"address":"studio/peer/t8","title":"π · firstmate","state":"live","status":{"app":"pi","state":"working"}}
@@ -139,7 +154,8 @@ struct AgentListPresentationTests {
         {"spaces":[
           {"id":"w1","name":"firstmate","tabs":[
             {"id":"t1","name":"Main","root":{"content":{"terminal":"t1"}}},
-            {"id":"t6","root":{"content":{"terminal":"t6"}}}
+            {"id":"t6","root":{"content":{"terminal":"t6"}}},
+            {"id":"t9","root":{"content":{"terminal":"t9"}}}
           ]},
           {"id":"w2","name":" ","folder":"/work/firstmate","tabs":[
             {"id":"t2","name":"2ndmate-tingxiemao","root":{"content":{"terminal":"peer/t2"}}}
@@ -167,6 +183,7 @@ struct AgentListPresentationTests {
         #expect(namedWithoutTerminalTitle.agent.displayTitle == "studio/t6")
         #expect(AgentListPresentation(agent: standaloneWithoutTerminalTitle.agent).title == "studio/t7")
         #expect(subtitles["studio/t6"] == "studio")
+        #expect(subtitles["studio/t9"] == "studio · studio/t9")
         #expect(subtitles["studio/t7"] == "studio")
         #expect(subtitles["studio/t1"] == "studio · ~/work/firstmate  · π · firstmate")
         #expect(items.first { $0.id == "studio/t1" }?.agent.shortCwd == "~/work/scratch")
