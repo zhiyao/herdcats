@@ -61,6 +61,7 @@ struct AgentTimelineView: View {
     @State private var tailVisible = false
     @State private var tailLayoutEpoch = 0
     @State private var recoveredTailRequest = -1
+    @State private var tailReplayScope: String?
     @State var entryFrames = TimelineEntryFrameStore()
     @State var viewportHeight: CGFloat = 0
     @State private var focusedQuestionField: QuestionFieldTarget?
@@ -359,6 +360,14 @@ struct AgentTimelineView: View {
                 .onPreferenceChange(TimelineAtBottomPreferenceKey.self) { bottom in
                     atBottom = bottom
                     if bottom { following = true }
+                    if let scope = tailReplayScope {
+                        tailReplayScope = nil
+                        if scope == contentScope, following, recoveredTailRequest == latestScrollRequest,
+                           let target = latestTargetID {
+                            // Replay the existing request after the rebuilt list lays out.
+                            proxy.scrollTo(target, anchor: .bottom)
+                        }
+                    }
                 }
                 .accessibilityIdentifier("agent-timeline-scroll")
                 .scrollDismissesKeyboard(.interactively)
@@ -644,6 +653,7 @@ struct AgentTimelineView: View {
         // mounted after a large insert. Discard that layout cache once per
         // Latest request, without replacing the timeline or its held history.
         recoveredTailRequest = request
+        tailReplayScope = contentScope
         entryFrames.frames = [:]
         tailLayoutEpoch += 1
     }
