@@ -29,11 +29,12 @@ final class HerdcatsUITests: XCTestCase {
         app.launchArguments = ["-hc.screenshots", "-hc.screen", "agents-collision", "-hc.tab", "agents"]
         app.launch()
 
-        for title in ["firstmate", "2ndmate-tingxiemao", "2ndmate-herdrcat"] {
-            let row = app.descendants(matching: .any).matching(
-                NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", title, "studio-mac")
-            ).firstMatch
+        let titles = ["firstmate", "2ndmate-tingxiemao", "2ndmate-herdrcat"]
+        for (index, title) in titles.enumerated() {
+            let row = app.descendants(matching: .any)["agent-row-p\(index)"].firstMatch
             XCTAssertTrue(row.waitForExistence(timeout: 10), "Missing agent row for \(title)")
+            XCTAssertTrue(row.label.contains(title))
+            XCTAssertTrue(row.label.contains("studio-mac"))
         }
 
         let screenshot = XCTAttachment(screenshot: app.screenshot())

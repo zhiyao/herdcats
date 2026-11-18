@@ -141,7 +141,7 @@ private struct CoreHierarchyBuilder {
                 terminalTitle: title, terminalTitleStripped: title,
                 focused: false, revision: snapshot.revisions[address],
                 name: name, workspaceLabel: workspaceName, tabLabel: tabName,
-                originMachine: machineFor(address)
+                originMachine: address.split(separator: "/").dropLast().last.map(String.init)
             ))
         }
     }

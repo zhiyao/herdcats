@@ -129,15 +129,12 @@ struct AgentEntry: Decodable, Hashable, Identifiable {
 
 struct AgentListPresentation {
     let title: String
-    private let namedTitle: String?
     private let agent: AgentEntry
 
     init(agent: AgentEntry) {
         self.agent = agent
-        namedTitle = Self.nonempty(agent.workspaceLabel)
-            ?? Self.nonempty(agent.tabLabel)
-            ?? Self.nonempty(agent.name)
-        title = namedTitle ?? agent.displayTitle
+        let tabLabel = Self.nonempty(agent.tabLabel) == nil ? nil : agent.tabLabel
+        title = Self.nonempty(agent.workspaceLabel) ?? tabLabel ?? Self.nonempty(agent.name) ?? agent.displayTitle
     }
 
     static func nonempty(_ value: String?) -> String? {
@@ -146,15 +143,24 @@ struct AgentListPresentation {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    private var paneTitle: String? {
+        let terminalTitle = agent.displayTitle
+        return terminalTitle == title ? nil : terminalTitle
+    }
+
+    var dragTitle: String {
+        guard let paneTitle else { return title }
+        return "\(title) · \(paneTitle)"
+    }
+
     func subtitle(connectionHost: String?) -> (text: String, isPath: Bool)? {
-        let machine = Self.nonempty(agent.originMachine ?? connectionHost)
-        let path = namedTitle == nil ? Self.nonempty(agent.shortCwd) : nil
-        switch (machine, path) {
-        case let (.some(machine), .some(path)): return ("\(machine) · \(path)", false)
-        case let (.some(machine), nil): return (machine, false)
-        case let (nil, .some(path)): return (path, true)
-        case (nil, nil): return nil
+        let machine = Self.nonempty(agent.originMachine) ?? Self.nonempty(connectionHost)
+        let paneTitle = paneTitle
+        let context = paneTitle ?? Self.nonempty(agent.shortCwd)
+        if let machine {
+            return (context.map { "\(machine) · \($0)" } ?? machine, false)
         }
+        return context.map { ($0, paneTitle == nil) }
     }
 }
 

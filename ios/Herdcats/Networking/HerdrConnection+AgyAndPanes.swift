@@ -23,12 +23,15 @@ extension HerdrConnection {
         let workspaceByID = Dictionary(workspaces.map { ($0.workspaceId, $0) }, uniquingKeysWith: { first, _ in first })
         let occupiedWorkspaces = Set(agents.map(\.workspaceId))
         var tabsByWorkspace: [String: [TabEntry]] = [:]
+        let tabDeadline = ProcessInfo.processInfo.systemUptime + 10
         for workspace in workspaces where occupiedWorkspaces.contains(workspace.workspaceId)
             && AgentListPresentation.nonempty(workspace.label) == nil {
             try Task.checkCancellation()
+            let remaining = tabDeadline - ProcessInfo.processInfo.systemUptime
+            guard remaining > 0 else { break }
             let output = try? await executeHerdr(
                 Self.tabListArguments(workspaceId: workspace.workspaceId),
-                timeout: 20, allowEmptyOutput: false, timeoutPolicy: .preserveConnection,
+                timeout: remaining, allowEmptyOutput: false, timeoutPolicy: .preserveConnection,
                 expectedGeneration: owned
             )
             if let output {

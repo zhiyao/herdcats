@@ -449,7 +449,7 @@ struct AgentsScreen: View {
                         Button(action: action.perform) { Label(action.title, systemImage: action.systemImage) }
                     }
                 }
-                .paneDraggable(ref(for: item), title: item.title, enabled: true)
+                .paneDraggable(ref(for: item), title: item.presentation.dragTitle, enabled: true)
             } else {
                 NavigationLink(value: ref(for: item)) { row }
             }
@@ -553,7 +553,9 @@ struct AgentListRow: View {
 
     var body: some View {
         let presentation = item.presentation
-        let subtitle = presentation.subtitle(connectionHost: appModel.connectionIdentity?.host)
+        let subtitle = presentation.subtitle(
+            connectionHost: appModel.connectionIdentity?.host ?? appModel.connectedOrOfflineHost
+        )
         HStack(alignment: .listTitleCenter, spacing: QuietListMetrics.columnSpacing) {
             StatusDot(status: item.status)
                 .accessibilityLabel(item.status.label)
@@ -593,6 +595,7 @@ struct AgentListRow: View {
         .background { RowHighlight(isActive: false, isSelected: isSelected) }
         .overlay(alignment: .bottom) { QuietListDivider() }
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("agent-row-\(item.id)")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
@@ -609,10 +612,7 @@ struct HerdrcatBrandMark: View {
 
     private var host: String? {
         guard showsHost else { return nil }
-        switch appModel.phase {
-        case let .connected(host, _), let .offline(host, _): return host
-        default: return nil
-        }
+        return appModel.connectedOrOfflineHost
     }
 
     private func identity(_ connection: RecentConnection) -> ConnectionIdentity {
