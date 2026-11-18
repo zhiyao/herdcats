@@ -360,6 +360,26 @@ impl Follower {
             .map(str::to_owned);
         let reset = !self.pi_window_continues(entries, before, session);
         if !reset {
+            if has_more {
+                let held = self.older.iter().chain(&self.transcript.entries);
+                let mut incoming = transcript.entries.iter().filter(|entry| {
+                    !entry.id.starts_with("pi:herdcats-live:")
+                });
+                // A sliding tail can advertise more history even after we've
+                // loaded it all. Only move the cursor when the new window
+                // proves it reaches beyond the oldest retained native entry.
+                if let (Some(earliest), Some(first)) = (
+                    held.clone().find(|entry| !entry.id.starts_with("pi:herdcats-live:")),
+                    incoming.next(),
+                ) {
+                    if !held.clone().any(|entry| entry.id == first.id)
+                        && incoming.any(|entry| entry.id == earliest.id)
+                    {
+                        self.pi_has_older = true;
+                        self.pi_older_cursor = before.map(str::to_owned);
+                    }
+                }
+            }
             for entry in &mut transcript.entries {
                 if let Some(previous) = self.transcript.entries.iter().chain(&self.older).find(|e| e.id == entry.id) {
                     reconcile_pi_entry(entry, previous);
@@ -816,6 +836,48 @@ mod window_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn pi_message(id: &str) -> serde_json::Value {
+        serde_json::json!({
+            "type": "message",
+            "id": id,
+            "message": {"role": "user", "content": id}
+        })
+    }
+
+    #[test]
+    fn pi_exhausted_history_stays_exhausted_after_append() {
+        let mut follower = Follower::for_agent(AgentType::Pi);
+        follower.refresh_pi_window(&[pi_message("middle"), pi_message("tail")], true, Some("middle"), "session").unwrap();
+        follower.prepend_pi_older(&[pi_message("root")], false, None, "session").unwrap();
+        let generation = follower.generation;
+
+        follower.refresh_pi_window(&[pi_message("tail"), pi_message("append")], true, Some("tail"), "session").unwrap();
+
+        assert_eq!(follower.generation, generation);
+        assert!(!follower.has_unread_older());
+        assert_eq!(follower.pi_older_cursor(), None);
+    }
+
+    #[test]
+    fn pi_exhausted_history_reopens_after_earlier_ancestry_recovery() {
+        let mut follower = Follower::for_agent(AgentType::Pi);
+        follower.refresh_pi_window(&[pi_message("tail")], true, Some("tail"), "session").unwrap();
+        follower.prepend_pi_older(&[pi_message("root")], false, None, "session").unwrap();
+        assert!(!follower.has_unread_older());
+        let generation = follower.generation;
+
+        follower.refresh_pi_window(
+            &[pi_message("recovered"), pi_message("root"), pi_message("tail")],
+            true,
+            Some("recovered"),
+            "session",
+        ).unwrap();
+
+        assert_eq!(follower.generation, generation);
+        assert!(follower.has_unread_older());
+        assert_eq!(follower.pi_older_cursor(), Some("recovered"));
+    }
 
     #[test]
     fn same_length_rewrite_is_detected_when_metadata_stamps_collide() {
