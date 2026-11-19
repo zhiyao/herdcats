@@ -401,7 +401,7 @@ fn pi_progressive_history_pages_back_and_preserves_state_too_large() {
     let listener = UnixListener::bind(&socket).unwrap();
     let pane = json!({"pane_id":"pane","terminal_id":"terminal","agent":"pi","agent_status":"idle","agent_session":{"agent":"pi","source":"herdr:pi","kind":"path","value":path}});
     let host = thread::spawn(move || {
-        for _ in 0..5 {
+        for _ in 0..8 {
             let (mut stream, _) = listener.accept().unwrap();
             let mut line = String::new();
             BufReader::new(stream.try_clone().unwrap()).read_line(&mut line).unwrap();
@@ -409,7 +409,8 @@ fn pi_progressive_history_pages_back_and_preserves_state_too_large() {
             writeln!(stream,"{}",json!({"id":request["id"],"result":{"type":"session_snapshot","snapshot":{"protocol":22,"panes":[pane]}}})).unwrap();
         }
     });
-    let listener = UnixListener::bind(root.join(format!("herdcats/{session}.sock"))).unwrap();
+    let extension_socket = root.join(format!("herdcats/{session}.sock"));
+    let listener = UnixListener::bind(&extension_socket).unwrap();
     let state_path = path.clone();
     let extension = thread::spawn(move || {
         let msg = |id: &str| json!({"type":"message","id":id,"message":{"role":"user","content":id}});
@@ -418,21 +419,24 @@ fn pi_progressive_history_pages_back_and_preserves_state_too_large() {
         // 2: poll slide [m3, m4]
         // 3: history poll_with_refresh -> state [m3, m4]
         // 4: history RPC -> returns [m0, m1]
-        // 5: next poll -> oversized state error pi_state_too_large
-        for step in 0..5 {
+        // The missing socket is handled by connect(), before the server accepts.
+        // 5–6: recovery and history refresh -> state [m3, m4, m5]
+        // 7: next poll -> oversized state error pi_state_too_large
+        for step in 0..7 {
             let (mut stream, _) = listener.accept().unwrap();
             let mut line = String::new();
             BufReader::new(stream.try_clone().unwrap()).read_line(&mut line).unwrap();
             let req: Value = serde_json::from_str(&line).unwrap();
             let frame = match (step, req["method"].as_str()) {
                 (0, Some("state")) => json!({"result":{"protocol":1,"version":"1.5.0","session_id":session,"session_file":state_path,"instance_id":"rt","revision":1,"entries":[msg("m2"),msg("m3"),live],"has_more":true,"before":"m2","status":"working","capabilities":{"history":true}}}),
-                (1 | 2, Some("state")) => json!({"result":{"protocol":1,"version":"1.5.0","session_id":session,"session_file":state_path,"instance_id":"rt","revision":2,"entries":[msg("m3"),msg("m4")],"has_more":true,"before":"m3","status":"idle","capabilities":{"history":true}}}),
+                (1 | 2, Some("state")) => json!({"result":{"protocol":1,"version":"1.5.0","session_id":session,"session_file":state_path,"instance_id":"rt","revision":2,"entries":[msg("m3"),msg("m4")],"has_more":true,"before":"m3","status":"working","capabilities":{"history":true}}}),
                 (3, Some("history")) => {
                     assert_eq!(req["params"]["before"], "m2");
                     assert_eq!(req["params"]["expect"]["instance_id"], "rt");
                     json!({"result":{"protocol":1,"session_id":session,"instance_id":"rt","entries":[msg("m0"),msg("m1")],"has_more":false,"before":null}})
                 }
-                (4, Some("state")) => json!({"error":{"code":"pi_state_too_large"}}),
+                (4 | 5, Some("state")) => json!({"result":{"protocol":1,"version":"1.5.0","session_id":session,"session_file":state_path,"instance_id":"rt","revision":3,"entries":[msg("m3"),msg("m4"),msg("m5")],"has_more":true,"before":"m3","status":"idle","capabilities":{"history":true}}}),
+                (6, Some("state")) => json!({"error":{"code":"pi_state_too_large"}}),
                 _ => panic!("unexpected extension step {step} req={req}"),
             };
             writeln!(stream, "{frame}").unwrap();
@@ -468,6 +472,37 @@ fn pi_progressive_history_pages_back_and_preserves_state_too_large() {
     let ids: Vec<_> = hist["result"]["entries"].as_array().unwrap().iter().map(|e| e["id"].as_str().unwrap()).collect();
     assert_eq!(ids, vec!["pi:m0", "pi:m1"]);
     assert_eq!(hist["result"]["has_more"], false);
+
+    let parked_socket = root.join("offline.sock");
+    fs::rename(&extension_socket, &parked_socket).unwrap();
+    let mut outage = Vec::new();
+    let poll = service.poll(&mut outage);
+    fs::rename(&parked_socket, &extension_socket).unwrap();
+    poll.unwrap();
+    let outage: Value = serde_json::from_slice(&outage).unwrap();
+    assert_eq!(outage["event"], "timeline.updated");
+    assert_eq!(outage["data"]["generation"], generation);
+    assert_eq!(outage["data"]["identity"], snap["data"]["identity"]);
+    assert_eq!(outage["data"]["delayed"], true);
+    assert_eq!(outage["data"]["agent_status"], "working");
+    assert_eq!(outage["data"]["entries"], json!([]));
+
+    let mut recovery = Vec::new();
+    service.poll(&mut recovery).unwrap();
+    let recovery: Value = serde_json::from_slice(&recovery).unwrap();
+    assert_eq!(recovery["event"], "timeline.updated");
+    assert_eq!(recovery["data"]["generation"], generation);
+    assert_eq!(recovery["data"]["delayed"], false);
+    assert_eq!(recovery["data"]["agent_status"], "idle");
+    assert_eq!(recovery["data"]["entries"][0]["id"], "pi:m5");
+    assert_eq!(recovery["data"]["has_more"], true, "the wire still advertises cached history");
+
+    let mut retained = Vec::new();
+    let req = json!({"id":"h","method":"history","params":{"generation":generation,"before":"pi:m1"}});
+    service.request(&serde_json::to_vec(&req).unwrap(), &mut retained).unwrap();
+    let retained: Value = serde_json::from_slice(&retained).unwrap();
+    assert_eq!(retained["result"]["entries"][0]["id"], "pi:m0");
+    assert_eq!(retained["result"]["has_more"], false);
 
     let mut err_out = Vec::new();
     service.poll(&mut err_out).unwrap();

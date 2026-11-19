@@ -49,6 +49,8 @@ impl InteractionError {
 }
 type InteractionResult<T> = std::result::Result<T, InteractionError>;
 
+const PI_TRANSPORT_DELAYED: &str = "pi_transport_delayed";
+
 /// One successful poll: the verified identity, whether the timeline reset, the
 /// agent status, and descriptor clones for interaction/model tail reads.
 struct PollOutcome {
@@ -616,7 +618,18 @@ impl Service {
         let adapter = self.adapter_for(agent).ok_or("unsupported_agent")?;
         let (session, file, pi_state) = if adapter.name() == "pi" {
             let (session, file, path) = adapter.resolve_pi_live(pane)?;
-            let state = self.pi_request(&session, "state", json!({}))?;
+            let same_source = watch.identity.as_ref().is_some_and(|identity| {
+                identity.agent == "pi"
+                    && identity.terminal_id == pane.terminal_id
+                    && identity.native_session_id == session
+            }) && watch.pi_state.as_ref().and_then(|state| state["session_file"].as_str()) == path.to_str();
+            let state = self.pi_request(&session, "state", json!({})).map_err(|code| {
+                if code == "pi_extension_unavailable" && same_source {
+                    PI_TRANSPORT_DELAYED
+                } else {
+                    code
+                }
+            })?;
             if state["protocol"].as_u64() != Some(1) || state["session_id"].as_str() != Some(session.as_str())
                 || state["instance_id"].as_str().is_none_or(|v| v.is_empty() || v.len() > 128)
                 || !state["entries"].is_array()
@@ -708,7 +721,11 @@ impl Service {
                     let (page, more, next) = Self::pi_history_page(
                         &self.pi_agent_dir, &session,
                         identity.native_instance_id.as_deref().ok_or("pi_extension_unavailable")?, cursor,
-                    ).map_err(|code| if code == "stale_cursor" { "source_changing" } else { code })?;
+                    ).map_err(|code| match code {
+                        "stale_cursor" => "source_changing",
+                        "pi_extension_unavailable" => PI_TRANSPORT_DELAYED,
+                        _ => code,
+                    })?;
                     if entries.len() + page.len() > 100_000 {
                         return Err("transcript_identity_limit");
                     }
@@ -759,10 +776,15 @@ impl Service {
         let mut pending = None;
         let mut preserve_pending = false;
         match self.poll_inner(&mut watch, &mut refresh) {
-            Err("source_changing") if watch.identity.is_some() && watch.unavailable.is_none() => {
+            Err(code @ ("source_changing" | PI_TRANSPORT_DELAYED))
+                if watch.identity.is_some() && watch.unavailable.is_none() =>
+            {
                 preserve_pending = true;
                 watch.source_changing_count += 1;
-                if watch.source_changing_count >= 10 && !watch.delayed {
+                // Keep the verified generation while a Pi request fails to
+                // reach the same source. Recovery still checks runtime identity
+                // and branch continuity before publishing updates.
+                if !watch.delayed && (code == PI_TRANSPORT_DELAYED || watch.source_changing_count >= 10) {
                     watch.delayed = true;
                     let identity = watch.identity.clone().unwrap();
                     let status = watch.status.clone();
@@ -1948,6 +1970,7 @@ impl Service {
             || params["expect"]["identity"] != serde_json::to_value(identity).map_err(|_|"stale")?
             || params["expect"]["generation"].as_u64() != Some(self.generation)
         { return Err("stale"); }
+        if watch.delayed { return Err("pi_extension_unavailable"); }
         let state = watch.pi_state.as_ref().ok_or("pi_extension_unavailable")?;
         if !matches!(method,"prompt"|"cancel"|"dialog.respond"|"model.set") { return Err("unsupported_capability"); }
         if method == "model.set"
@@ -2978,7 +3001,7 @@ impl Service {
                 *self.codex_catalog_error.borrow_mut() = None;
                 self.poll_with_refresh(out, refresh)?;
                 let result = if self.watch.as_ref().and_then(|w|w.identity.as_ref()).is_some_and(|i|i.agent=="pi") {
-                    self.watch.as_ref().and_then(|w|w.pi_state.as_ref()).map(|s| {
+                    self.watch.as_ref().filter(|w| !w.delayed).and_then(|w|w.pi_state.as_ref()).map(|s| {
                         let current=s["model"]["id"].as_str();
                         let efforts=s["models"].as_array().and_then(|models|models.iter()
                             .find(|model|model["id"].as_str()==current))

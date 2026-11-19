@@ -78,7 +78,8 @@ struct AgentBridgeFramingTests {
     let owner = UUID()
     func frame(
         _ event: String, seq: Int = 1, generation: Int = 1, session: String = "session-a",
-        entries: [String] = ["a"], hasMore: Bool = false, entryOrder: [String] = []
+        entries: [String] = ["a"], hasMore: Bool = false, entryOrder: [String] = [],
+        agent: String = "claude"
     ) throws -> AgentBridgeFrame {
         let rows = entries.map {
             ["id": "message:\($0)", "kind": "message", "text": $0, "role": "assistant", "truncated": false]
@@ -89,7 +90,7 @@ struct AgentBridgeFramingTests {
                 "event": event, "epoch": "epoch-a", "seq": seq,
                 "data": [
                     "identity": [
-                        "pane_id": "w1:p1", "terminal_id": "t1", "agent": "claude",
+                        "pane_id": "w1:p1", "terminal_id": "t1", "agent": agent,
                         "native_session_id": session,
                     ], "pane_id": "w1:p1", "generation": generation, "entries": rows, "has_more": hasMore,
                     "entry_order": entryOrder.map { "message:\($0)" },
@@ -350,6 +351,38 @@ struct AgentBridgeFramingTests {
         try s.consume(recoveredUpdate, owner: owner)
         #expect(!s.delayed)
         #expect(s.entries.map(\.text) == ["msg1", "msg2"])
+    }
+    @Test func exhaustedPiHistorySurvivesTransportDelayAndRecovery() throws {
+        let s = store()
+        try s.consume(frame("timeline.snapshot", entries: ["tail"], hasMore: true, agent: "pi"), owner: owner)
+        let page = try #require(frame("timeline.snapshot", entries: ["root"], agent: "pi").data)
+        try s.mergeHistory(page, owner: owner, generation: 1)
+        let identity = try #require(s.identity)
+
+        var outage = try frame("timeline.updated", seq: 2, entries: [], agent: "pi")
+        outage.data?.delayed = true
+        try s.consume(outage, owner: owner)
+        #expect(s.delayed)
+        #expect(s.phase == .ready)
+        #expect(!s.hasMore)
+        #expect(s.before == "message:root")
+        #expect(s.visibleEntries.map(\.text) == ["root", "tail"])
+
+        var recovery = try frame("timeline.updated", seq: 3, entries: ["reply"], hasMore: true,
+                                 entryOrder: ["tail", "reply"], agent: "pi")
+        recovery.data?.delayed = false
+        try s.consume(recovery, owner: owner)
+        #expect(!s.delayed)
+        #expect(s.generation == 1)
+        #expect(s.identity == identity)
+        #expect(!s.hasMore)
+        #expect(s.before == "message:root")
+        #expect(s.visibleEntries.map(\.text) == ["root", "tail", "reply"])
+
+        try s.consume(frame("timeline.updated", seq: 4, entries: ["earlier"], hasMore: true,
+                            entryOrder: ["earlier", "root"], agent: "pi"), owner: owner)
+        #expect(s.hasMore)
+        #expect(s.before == "message:earlier")
     }
 }
 
