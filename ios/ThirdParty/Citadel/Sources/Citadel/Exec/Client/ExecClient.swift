@@ -107,7 +107,6 @@ extension SSHClient {
     ///   - `SSHClient.CommandFailed` if the command returns a non-zero exit status
     ///   - `TTYSTDError` if there was output to stderr
     public func executeCommand(_ command: String, maxResponseSize: Int = .max) async throws -> ByteBuffer {
-        try Task.checkCancellation()
         let promise = eventLoop.makePromise(of: ByteBuffer.self)
         
         let channel: Channel
@@ -141,16 +140,64 @@ extension SSHClient {
             wantReply: true
         )
         
-        return try await withTaskCancellationHandler {
-            try Task.checkCancellation()
-            return try await eventLoop.flatSubmit {
-                channel.triggerUserOutboundEvent(execRequest).whenFailure { [channel] error in
-                    channel.close(promise: nil)
-                    promise.fail(error)
-                }
+        return try await eventLoop.flatSubmit {
+            channel.triggerUserOutboundEvent(execRequest).whenFailure { [channel] error in
+                channel.close(promise: nil)
+                promise.fail(error)
+            }
+            
+            return promise.futureResult
+        }.get()
+    }
 
-                return promise.futureResult
+    public func executeOptionalTabList(_ command: String) async throws -> ByteBuffer {
+        try Task.checkCancellation()
+        let inFlight = optionalTabListInFlight
+        guard inFlight.withLockedValue({ occupied in
+            guard !occupied else { return false }
+            occupied = true
+            return true
+        }) else { throw CitadelError.channelCreationFailed }
+
+        let response = eventLoop.makePromise(of: ByteBuffer.self)
+        let channel: Channel
+        do {
+            channel = try await eventLoop.flatSubmit { [eventLoop, sshHandler = session.sshHandler] in
+                let activation = eventLoop.makePromise(of: Channel.self)
+                sshHandler.value.createChannel(activation) { channel, _ in
+                    channel.pipeline.addHandler(TTYHandler(maxResponseSize: 8 * 1024 * 1024, done: response))
+                }
+                return activation.futureResult
             }.get()
+        } catch {
+            response.fail(error)
+            inFlight.withLockedValue { $0 = false }
+            throw error
+        }
+        let released = channel.closeFuture.recover { _ in () }.map {
+            inFlight.withLockedValue { $0 = false }
+        }
+        if Task.isCancelled {
+            channel.close(promise: nil)
+            throw CancellationError()
+        }
+
+        let sent = channel.eventLoop.makePromise(of: Void.self)
+        channel.triggerUserOutboundEvent(
+            SSHChannelRequestEvent.ExecRequest(command: command, wantReply: true), promise: sent
+        )
+        return try await withTaskCancellationHandler {
+            do {
+                try await sent.futureResult.get()
+                let output = try await response.futureResult.get()
+                try await released.get()
+                try Task.checkCancellation()
+                return output
+            } catch {
+                channel.close(promise: nil)
+                _ = try? await released.get()
+                throw error
+            }
         } onCancel: {
             channel.close(promise: nil)
         }

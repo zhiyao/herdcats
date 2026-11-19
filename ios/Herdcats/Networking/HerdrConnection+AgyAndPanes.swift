@@ -10,16 +10,26 @@ extension HerdrConnection {
         return try await fetch(AgentListResult.self, args: "agent list").agents
     }
 
-    func spaceOverview(tabDeadline: ContinuousClock.Instant) async throws -> ([Workspace], [AgentEntry]) {
+    func spaceOverview() async throws -> ([Workspace], [AgentEntry], ConnectionGeneration) {
+        let owned = generation
         if backend == .core {
             let hierarchy = try await corePresentation()
-            return (hierarchy.workspaces, hierarchy.agents)
+            return (hierarchy.workspaces, hierarchy.agents, owned)
         }
 
-        let owned = generation
         async let fetchedWorkspaces = workspaceList()
         async let fetchedAgents = agentList()
         let (workspaces, agents) = try await (fetchedWorkspaces, fetchedAgents)
+        try Task.checkCancellation()
+        guard generation == owned else { throw HerdrError.notConnected }
+        return (workspaces, agents, owned)
+    }
+
+    func enrichAgentTabLabels(
+        workspaces: [Workspace], agents: [AgentEntry], generation owned: ConnectionGeneration,
+        deadline: ContinuousClock.Instant
+    ) async throws -> [AgentEntry]? {
+        guard backend == .tui else { return nil }
         let occupied = Set(agents.map(\.workspaceId))
         let unnamed = workspaces.filter {
             occupied.contains($0.workspaceId) && $0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -28,17 +38,14 @@ extension HerdrConnection {
         for workspace in unnamed.sorted(by: { $0.workspaceId < $1.workspaceId }) {
             try Task.checkCancellation()
             guard generation == owned else { throw HerdrError.notConnected }
-            let remaining = ContinuousClock.now.duration(to: tabDeadline)
+            let remaining = ContinuousClock.now.duration(to: deadline)
             guard remaining > .zero else { break }
             let (seconds, attoseconds) = remaining.components
             let timeout = min(20, Double(seconds) + Double(attoseconds) / 1e18)
             let workspaceId = workspace.workspaceId
             do {
-                let output = try await executeHerdr(
-                    Self.tabListArguments(workspaceId: workspaceId), timeout: timeout, allowEmptyOutput: false,
-                    timeoutPolicy: .preserveConnection, expectedGeneration: owned
-                )
-                let tabs = try Self.decode(output, as: TabListResult.self).tabs
+                let tabs = try await optionalTabList(workspaceId: workspaceId, timeout: timeout, generation: owned)
+                guard ContinuousClock.now < deadline else { break }
                 for tab in tabs where tab.workspaceId == workspaceId {
                     let label = tab.label.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !label.isEmpty { labels[workspaceId, default: [:]][tab.tabId] = label }
@@ -53,11 +60,35 @@ extension HerdrConnection {
         }
         try Task.checkCancellation()
         guard generation == owned else { throw HerdrError.notConnected }
-        return (workspaces, agents.map { agent in
+        guard !labels.isEmpty else { return nil }
+        return agents.map { agent in
             var agent = agent
             agent.tabLabel = labels[agent.workspaceId]?[agent.tabId]
             return agent
-        })
+        }
+    }
+
+    private func optionalTabList(
+        workspaceId: String, timeout: TimeInterval, generation owned: ConnectionGeneration
+    ) async throws -> [TabEntry] {
+        let args = Self.tabListArguments(workspaceId: workspaceId)
+#if DEBUG
+        if let herdrCommandResponse {
+            return try await Self.decode(herdrCommandResponse(args), as: TabListResult.self).tabs
+        }
+#endif
+#if DEBUG && targetEnvironment(simulator)
+        if ScreenshotFixtures.enabled {
+            return try Self.decode(ScreenshotFixtures.response(args), as: TabListResult.self).tabs
+        }
+#endif
+        let client = try slot.ownedClient(owned)
+        let command = Self.remoteCommand(args, session: session)
+        let buffer = try await withTimeout(seconds: timeout, label: Self.herdrDiagnosticLabel) {
+            try await client.executeOptionalTabList(command)
+        }
+        let output = try Self.interpret(String(buffer: buffer))
+        return try Self.decode(output, as: TabListResult.self).tabs
     }
 
     /// Reads local provider quotas via `quota-axi` on the Herdr machine.
