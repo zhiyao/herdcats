@@ -107,6 +107,7 @@ extension SSHClient {
     ///   - `SSHClient.CommandFailed` if the command returns a non-zero exit status
     ///   - `TTYSTDError` if there was output to stderr
     public func executeCommand(_ command: String, maxResponseSize: Int = .max) async throws -> ByteBuffer {
+        try Task.checkCancellation()
         let promise = eventLoop.makePromise(of: ByteBuffer.self)
         
         let channel: Channel
@@ -140,13 +141,18 @@ extension SSHClient {
             wantReply: true
         )
         
-        return try await eventLoop.flatSubmit {
-            channel.triggerUserOutboundEvent(execRequest).whenFailure { [channel] error in
-                channel.close(promise: nil)
-                promise.fail(error)
-            }
-            
-            return promise.futureResult
-        }.get()
+        return try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            return try await eventLoop.flatSubmit {
+                channel.triggerUserOutboundEvent(execRequest).whenFailure { [channel] error in
+                    channel.close(promise: nil)
+                    promise.fail(error)
+                }
+
+                return promise.futureResult
+            }.get()
+        } onCancel: {
+            channel.close(promise: nil)
+        }
     }
 }

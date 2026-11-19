@@ -108,7 +108,6 @@ struct AgentEntry: Decodable, Hashable, Identifiable {
         case focused
         case revision
         case name
-        case tabLabel = "tab_label"
     }
 
     /// Stripped terminal title, with the pane ID as a fallback.
@@ -117,24 +116,6 @@ struct AgentEntry: Decodable, Hashable, Identifiable {
             return stripped
         }
         return paneId
-    }
-
-    /// Copies nonempty `TabEntry.label` values onto matching agents by `tab_id`.
-    /// Supported TUI `agent list` responses omit `tab_label`; join tab list metadata instead.
-    static func enrichingTabLabels(_ agents: [AgentEntry], from tabs: [TabEntry]) -> [AgentEntry] {
-        let labels = Dictionary(uniqueKeysWithValues: tabs.compactMap { tab -> (String, String)? in
-            let trimmed = tab.label.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return nil }
-            return (tab.tabId, trimmed)
-        })
-        guard !labels.isEmpty else { return agents }
-        return agents.map { agent in
-            let existing = agent.tabLabel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            guard existing.isEmpty, let label = labels[agent.tabId] else { return agent }
-            var enriched = agent
-            enriched.tabLabel = label
-            return enriched
-        }
     }
 
     /// Compact `~/last/two/components` form of the working directory.

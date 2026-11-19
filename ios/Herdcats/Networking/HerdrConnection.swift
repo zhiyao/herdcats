@@ -206,6 +206,12 @@ actor HerdrConnection {
     var coreLayoutsRevision: UInt64 = 0
     var corePresentationMemo: (seq: UInt64, layoutsRevision: UInt64, value: CoreHierarchy)?
     #if DEBUG
+    let herdrCommandResponse: (@Sendable (String) async throws -> String)?
+
+    init(herdrCommandResponse: (@Sendable (String) async throws -> String)? = nil) {
+        self.herdrCommandResponse = herdrCommandResponse
+    }
+
     /// How many times the hierarchy was actually built (memo misses). Test seam.
     var corePresentationBuilds = 0
     #endif
