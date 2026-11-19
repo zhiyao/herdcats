@@ -177,8 +177,13 @@ pub fn extension_request_at(path: &Path, method: &str, params: Value) -> Result<
     if frame.get("error").is_some() {
         return Err(match frame["error"]["code"].as_str() {
             Some("stale") => "stale",
+            Some("stale_cursor") => "stale_cursor",
+            Some("invalid_cursor") => "invalid_cursor",
             Some("agent_busy") => "agent_busy",
-            Some("unsupported") => "unsupported_capability",
+            Some("pi_state_too_large") => "pi_state_too_large",
+            Some("unsupported" | "unsupported_method" | "unsupported_capability") => {
+                "unsupported_capability"
+            }
             _ => "pi_extension_unavailable",
         });
     }

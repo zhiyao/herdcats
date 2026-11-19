@@ -49,6 +49,8 @@ impl InteractionError {
 }
 type InteractionResult<T> = std::result::Result<T, InteractionError>;
 
+const PI_TRANSPORT_DELAYED: &str = "pi_transport_delayed";
+
 /// One successful poll: the verified identity, whether the timeline reset, the
 /// agent status, and descriptor clones for interaction/model tail reads.
 struct PollOutcome {
@@ -483,10 +485,88 @@ impl Service {
         self.pi_agent_dir=Some(root);
         self
     }
-    fn pi_request(&self,session:&str,method:&str,params:Value)->Result<Value>{
-        let dir=self.pi_agent_dir.as_deref().ok_or("pi_extension_unavailable")?;
-        let socket=crate::pi::extension_socket_at(dir,session)?;
-        crate::pi::extension_request_at(&socket,method,params)
+    fn pi_request_in(
+        pi_agent_dir: &Option<PathBuf>,
+        session: &str,
+        method: &str,
+        params: Value,
+    ) -> Result<Value> {
+        let dir = pi_agent_dir.as_deref().ok_or("pi_extension_unavailable")?;
+        let socket = crate::pi::extension_socket_at(dir, session)?;
+        crate::pi::extension_request_at(&socket, method, params)
+    }
+    fn pi_request(&self, session: &str, method: &str, params: Value) -> Result<Value> {
+        Self::pi_request_in(&self.pi_agent_dir, session, method, params)
+    }
+    fn pi_history_page(
+        pi_agent_dir: &Option<PathBuf>,
+        session: &str,
+        instance_id: &str,
+        ext_cursor: &str,
+    ) -> Result<(Vec<Value>, bool, Option<String>)> {
+        let reply = Self::pi_request_in(
+            pi_agent_dir,
+            session,
+            "history",
+            json!({
+                "expect": { "session_id": session, "instance_id": instance_id },
+                "before": ext_cursor,
+            }),
+        )
+        .map_err(|code| if code == "stale" { "stale_cursor" } else { code })?;
+        if reply["protocol"].as_u64() != Some(1)
+            || reply["session_id"].as_str() != Some(session)
+            || reply["instance_id"].as_str() != Some(instance_id)
+        {
+            return Err("invalid_pi_response");
+        }
+        let raw_entries = reply["entries"].as_array().ok_or("invalid_pi_response")?;
+        let has_more = reply["has_more"].as_bool().ok_or("invalid_pi_response")?;
+        let next_before = match reply.get("before") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(s)) if !s.is_empty() && s.len() <= 512 => Some(s.as_str()),
+            _ => return Err("invalid_pi_response"),
+        };
+        if has_more
+            && (raw_entries.is_empty()
+                || next_before.is_none()
+                || next_before == Some(ext_cursor))
+        {
+            return Err("invalid_pi_response");
+        }
+        Ok((raw_entries.clone(), has_more, next_before.map(str::to_owned)))
+    }
+    fn load_pi_older(
+        pi_agent_dir: &Option<PathBuf>,
+        watch: &mut Watch,
+        want: usize,
+    ) -> Result<usize> {
+        let mut added = 0;
+        let Some(identity) = watch.identity.as_ref() else {
+            return Err("timeline_unavailable");
+        };
+        let session = identity.native_session_id.clone();
+        let instance_id = identity
+            .native_instance_id
+            .as_deref()
+            .ok_or("pi_extension_unavailable")?;
+        while watch.follower.has_unread_older() && watch.follower.older().len() < want {
+            if added > 0 {
+                break;
+            }
+            let ext_cursor = watch
+                .follower
+                .pi_older_cursor()
+                .ok_or("stale_cursor")?
+                .to_owned();
+            let (raw_entries, has_more, next_before) = Self::pi_history_page(
+                pi_agent_dir, &session, instance_id, &ext_cursor,
+            )?;
+            added += watch
+                .follower
+                .prepend_pi_older(&raw_entries, has_more, next_before.as_deref(), &session)?;
+        }
+        Ok(added)
     }
     pub fn with_cursor_catalog_file(mut self, file: PathBuf) -> Self {
         self.cursor_catalog_file = Some(file);
@@ -538,11 +618,36 @@ impl Service {
         let adapter = self.adapter_for(agent).ok_or("unsupported_agent")?;
         let (session, file, pi_state) = if adapter.name() == "pi" {
             let (session, file, path) = adapter.resolve_pi_live(pane)?;
-            let state = self.pi_request(&session, "state", json!({}))?;
+            let same_source = watch.identity.as_ref().is_some_and(|identity| {
+                identity.agent == "pi"
+                    && identity.terminal_id == pane.terminal_id
+                    && identity.native_session_id == session
+            }) && watch.pi_state.as_ref().and_then(|state| state["session_file"].as_str()) == path.to_str();
+            let state = self.pi_request(&session, "state", json!({})).map_err(|code| {
+                if code == "pi_extension_unavailable" && same_source {
+                    PI_TRANSPORT_DELAYED
+                } else {
+                    code
+                }
+            })?;
             if state["protocol"].as_u64() != Some(1) || state["session_id"].as_str() != Some(session.as_str())
                 || state["instance_id"].as_str().is_none_or(|v| v.is_empty() || v.len() > 128)
                 || !state["entries"].is_array()
             { return Err("invalid_pi_response"); }
+            if state["capabilities"]["history"] == true {
+                let has_more = state["has_more"].as_bool().ok_or("invalid_pi_response")?;
+                let before = match state.get("before") {
+                    None | Some(Value::Null) => None,
+                    Some(Value::String(s)) if !s.is_empty() && s.len() <= 512 => Some(s.as_str()),
+                    _ => return Err("invalid_pi_response"),
+                };
+                if has_more
+                    && (before.is_none()
+                        || state["entries"].as_array().is_none_or(|a| a.is_empty()))
+                {
+                    return Err("invalid_pi_response");
+                }
+            }
             if state["session_file"].as_str() != path.to_str() { return Err("session_mismatch"); }
             // Rewalk after the extension response: reject parent substitutions,
             // invalid newly persisted files, and any source/session swap.
@@ -598,7 +703,45 @@ impl Service {
         };
         let model_file = if self.include_model_control { file.as_ref().and_then(|f| f.try_clone().ok()) } else { None };
         if let Some(state) = &pi_state {
-            watch.follower.refresh_pi_entries(state["entries"].as_array().ok_or("invalid_pi_response")?, &session)?;
+            let (has_more, before) = if state["capabilities"]["history"] == true {
+                (
+                    state["has_more"].as_bool().unwrap_or(false),
+                    state["before"].as_str(),
+                )
+            } else {
+                (false, None)
+            };
+            let mut entries = state["entries"].as_array().ok_or("invalid_pi_response")?.clone();
+            let mut joined_more = has_more;
+            let mut joined_before = before.map(str::to_owned);
+            if watch.identity.as_ref() == Some(&identity) && watch.follower.pi_anchor().is_some() {
+                let original = entries.clone();
+                while joined_more && !watch.follower.pi_window_continues(&entries, joined_before.as_deref(), &session) {
+                    let cursor = joined_before.as_deref().ok_or("invalid_pi_response")?;
+                    let (page, more, next) = Self::pi_history_page(
+                        &self.pi_agent_dir, &session,
+                        identity.native_instance_id.as_deref().ok_or("pi_extension_unavailable")?, cursor,
+                    ).map_err(|code| match code {
+                        "stale_cursor" => "source_changing",
+                        "pi_extension_unavailable" => PI_TRANSPORT_DELAYED,
+                        _ => code,
+                    })?;
+                    if entries.len() + page.len() > 100_000 {
+                        return Err("transcript_identity_limit");
+                    }
+                    entries.splice(0..0, page);
+                    joined_more = more;
+                    joined_before = next;
+                }
+                if !watch.follower.pi_window_continues(&entries, joined_before.as_deref(), &session) {
+                    entries = original;
+                    joined_more = has_more;
+                    joined_before = before.map(str::to_owned);
+                }
+            }
+            watch.follower.refresh_pi_window(
+                &entries, joined_more, joined_before.as_deref(), &session,
+            )?;
             watch.pi_state = Some(state.clone());
         } else {
             watch.pi_state = None;
@@ -633,10 +776,15 @@ impl Service {
         let mut pending = None;
         let mut preserve_pending = false;
         match self.poll_inner(&mut watch, &mut refresh) {
-            Err("source_changing") if watch.identity.is_some() && watch.unavailable.is_none() => {
+            Err(code @ ("source_changing" | PI_TRANSPORT_DELAYED))
+                if watch.identity.is_some() && watch.unavailable.is_none() =>
+            {
                 preserve_pending = true;
                 watch.source_changing_count += 1;
-                if watch.source_changing_count >= 10 && !watch.delayed {
+                // Keep the verified generation while a Pi request fails to
+                // reach the same source. Recovery still checks runtime identity
+                // and branch continuity before publishing updates.
+                if !watch.delayed && (code == PI_TRANSPORT_DELAYED || watch.source_changing_count >= 10) {
                     watch.delayed = true;
                     let identity = watch.identity.clone().unwrap();
                     let status = watch.status.clone();
@@ -784,18 +932,28 @@ impl Service {
                     }
                     status
                 };
-                let follower = &mut watch.follower;
+                let is_pi_window = watch.follower.agent_type == crate::follower::AgentType::Pi;
                 if reset
-                    && follower.transcript.entries.len() < crate::follower::PAGE
-                    && follower.has_unread_older()
+                    && watch.follower.has_unread_older()
+                    && (if is_pi_window {
+                        watch.follower.transcript.entries.is_empty()
+                    } else {
+                        watch.follower.transcript.entries.len() < crate::follower::PAGE
+                    })
                 {
-                    // A tail of mostly skipped records, such as screenshots,
-                    // would open nearly empty: fill the first page from older
-                    // batches. If that read fails the page stays short and
-                    // still reports has_more; the history request that pages
-                    // back returns the error.
-                    let want = crate::follower::PAGE - follower.transcript.entries.len();
-                    let _ = follower.load_older(want);
+                    // A tail of mostly skipped/metadata records would open nearly
+                    // empty: fill the first page from older batches. If that read
+                    // fails the page stays short and still reports has_more; the
+                    // history request that pages back returns the error.
+                    let want = crate::follower::PAGE - watch.follower.transcript.entries.len();
+                    if is_pi_window {
+                        // Snapshot needs identity set transiently while pulling older Pi records.
+                        let saved = watch.identity.replace(identity.clone());
+                        let _ = Self::load_pi_older(&self.pi_agent_dir, &mut watch, want);
+                        watch.identity = saved;
+                    } else {
+                        let _ = watch.follower.load_older(want);
+                    }
                 }
                 // Older entries that later records updated (a result for a
                 // call past the live list). They go out as update-only
@@ -808,16 +966,27 @@ impl Service {
                 } else {
                     watch.follower.older().iter().filter(|e| revised.binary_search(&e.id).is_ok()).cloned().collect()
                 };
+                let inserted = if is_pi_window {
+                    std::mem::take(&mut watch.follower.transcript.spilled)
+                } else {
+                    Vec::new()
+                };
                 let data = &watch.follower.transcript;
                 // Tail-first followers keep entries past retention as older
                 // batches the phone can page back to, so they are not deletions.
+                // Pi live streaming temporary rows still evict normally once replaced.
+                let older_ids: std::collections::HashSet<&str> =
+                    watch.follower.older().iter().map(|e| e.id.as_str()).collect();
                 let evicted: Vec<_> = if watch.follower.windowed() {
                     Vec::new()
                 } else {
                     watch
                         .previous
                         .iter()
-                        .filter(|old| !data.entries.iter().any(|new| new.id == old.id))
+                        .filter(|old| {
+                            !data.entries.iter().any(|new| new.id == old.id)
+                                && !older_ids.contains(old.id.as_str())
+                        })
                         .map(|old| old.id.clone())
                         .collect()
                 };
@@ -854,6 +1023,14 @@ impl Service {
                     }
                     self.event(out, "timeline.snapshot", body)?;
                 } else {
+                    let entry_order: Vec<&str> = if is_pi_window {
+                        data.entries.iter().map(|entry| entry.id.as_str()).collect()
+                    } else {
+                        Vec::new()
+                    };
+                    let update_budget = (MAX_RECORD / 2).min(
+                        MAX_RECORD.saturating_sub(serde_json::to_vec(&entry_order)?.len() + 4096),
+                    );
                     // (is a `revised` row, entry)
                     let changed: Vec<(bool, Entry)> = revised
                         .into_iter()
@@ -894,6 +1071,10 @@ impl Service {
                             if !revisions.is_empty() {
                                 body["revised"] = json!(revisions);
                             }
+                            if !entry_order.is_empty() {
+                                body["entry_order"] = json!(entry_order);
+                                body["has_more"] = json!(!watch.follower.older().is_empty() || watch.follower.has_unread_older());
+                            }
                             body
                         };
                         let mut batch = Vec::new();
@@ -902,7 +1083,7 @@ impl Service {
                             let encoded = serde_json::to_vec(&entry)?.len() + 1;
                             let rows = batch.len() + revisions.len() + evictions.len();
                             // The phone rejects more than 1000 rows per update.
-                            if rows > 0 && (size + encoded > MAX_RECORD / 2 || rows >= 1000) {
+                            if rows > 0 && (size + encoded > update_budget || rows >= 1000) {
                                 let body = update(&batch, &revisions, &evictions);
                                 self.event(out, "timeline.updated", body)?;
                                 batch.clear();
@@ -915,6 +1096,21 @@ impl Service {
                         }
                         let body = update(&batch, &revisions, &evictions);
                         self.event(out, "timeline.updated", body)?;
+                    }
+                    let mut end = inserted.len();
+                    while end > 0 {
+                        let mut body = page(&inserted, end);
+                        let start = end - body["entries"].as_array().map_or(0, Vec::len);
+                        let following = inserted.get(end).or_else(|| data.entries.first());
+                        let order: Vec<&str> = inserted[start..end].iter()
+                            .chain(following)
+                            .map(|entry| entry.id.as_str()).collect();
+                        body["entry_order"] = json!(order);
+                        body["identity"] = json!(identity);
+                        body["generation"] = json!(self.generation);
+                        body["agent_status"] = json!(status);
+                        self.event(out, "timeline.updated", body)?;
+                        end = start;
                     }
                 }
                 watch.unknown_records = data.unknown_records;
@@ -1774,6 +1970,7 @@ impl Service {
             || params["expect"]["identity"] != serde_json::to_value(identity).map_err(|_|"stale")?
             || params["expect"]["generation"].as_u64() != Some(self.generation)
         { return Err("stale"); }
+        if watch.delayed { return Err("pi_extension_unavailable"); }
         let state = watch.pi_state.as_ref().ok_or("pi_extension_unavailable")?;
         if !matches!(method,"prompt"|"cancel"|"dialog.respond"|"model.set") { return Err("unsupported_capability"); }
         if method == "model.set"
@@ -2804,7 +3001,7 @@ impl Service {
                 *self.codex_catalog_error.borrow_mut() = None;
                 self.poll_with_refresh(out, refresh)?;
                 let result = if self.watch.as_ref().and_then(|w|w.identity.as_ref()).is_some_and(|i|i.agent=="pi") {
-                    self.watch.as_ref().and_then(|w|w.pi_state.as_ref()).map(|s| {
+                    self.watch.as_ref().filter(|w| !w.delayed).and_then(|w|w.pi_state.as_ref()).map(|s| {
                         let current=s["model"]["id"].as_str();
                         let efforts=s["models"].as_array().and_then(|models|models.iter()
                             .find(|model|model["id"].as_str()==current))
@@ -2954,27 +3151,33 @@ impl Service {
                 let live = cursor.and_then(|id| follower.transcript.entries.iter().position(|e| e.id == id));
                 let mut result = match live {
                     Some(before) if before > 0 => {
-                        let more = !follower.older().is_empty() || follower.has_unread_older();
-                        page_with_more(&follower.transcript.entries, before, more)
+                        let more = !watch.follower.older().is_empty() || watch.follower.has_unread_older();
+                        page_with_more(&watch.follower.transcript.entries, before, more)
                     }
                     _ => {
                         // Before the live list: page through older batches,
-                        // loading the next one from disk when this runs short.
+                        // loading the next one from disk or the Pi extension when this runs short.
                         let mut before = match live {
-                            Some(_) => follower.older().len(),
-                            None => match cursor.and_then(|id| follower.older().iter().position(|e| e.id == id)) {
+                            Some(_) => watch.follower.older().len(),
+                            None => match cursor.and_then(|id| watch.follower.older().iter().position(|e| e.id == id)) {
                                 Some(index) => index,
                                 None => return Self::error(out, id, "stale_cursor"),
                             },
                         };
-                        if before < crate::follower::PAGE && follower.has_unread_older() {
-                            let loaded = follower.older().len();
-                            if let Err(code) = follower.load_older(loaded + crate::follower::PAGE - before) {
+                        if before < crate::follower::PAGE && watch.follower.has_unread_older() {
+                            let loaded = watch.follower.older().len();
+                            let want = loaded + crate::follower::PAGE - before;
+                            let load_result = if watch.follower.agent_type == crate::follower::AgentType::Pi {
+                                Self::load_pi_older(&self.pi_agent_dir, watch, want)
+                            } else {
+                                watch.follower.load_older(want)
+                            };
+                            if let Err(code) = load_result {
                                 return Self::error(out, id, code);
                             }
-                            before += follower.older().len() - loaded;
+                            before += watch.follower.older().len() - loaded;
                         }
-                        page_with_more(follower.older(), before, follower.has_unread_older())
+                        page_with_more(watch.follower.older(), before, watch.follower.has_unread_older())
                     }
                 };
                 result["identity"] = json!(watch.identity);

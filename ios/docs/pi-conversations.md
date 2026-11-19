@@ -4,14 +4,14 @@ Pi conversations use the existing Pi TUI through an opt-in Herdcats extension. H
 
 ## Setup from this source checkout
 
-The published bridge installer remains pinned to 0.3.0 and supports Claude/Codex. It cannot install Pi support. Build the bridge on the SSH computer:
+The app’s [pinned bridge installer](../Herdcats/Networking/AgentBridgeClient.swift) supports Pi. To use the progressive Timeline history from this checkout, build the bridge on the SSH computer and load its bundled Pi extension:
 
 ```sh
 cargo build --release --manifest-path bridge/Cargo.toml
 ./bridge/target/release/herdcats-bridge --version-json
 ```
 
-The development binary reports bridge version `0.5.0`; Pi capability is negotiated separately at runtime and does not require changing the published installer metadata. Manually install that binary in the bridge location used by Herdcats (normally `~/.local/bin/herdcats-bridge`). Building does not replace the running bridge. Do not change a published installer checksum to point to this development build.
+The development binary reports the version declared in [`bridge/Cargo.toml`](../../bridge/Cargo.toml); Pi capability is negotiated separately at runtime and does not require changing the published installer metadata. Manually install that binary in the bridge location used by Herdcats (normally `~/.local/bin/herdcats-bridge`). Building does not replace the running bridge. Do not change a published installer checksum to point to this development build.
 
 When a Pi pane is not running the extension and the bridge advertises `pi_extension_install`, the app checks `herdcats-bridge pi-extension status` over SSH and shows **Install Pi extension** or **Update Pi extension**. Nothing is written until you tap it. Edited extension files are never replaced; the app explains this instead. Pi loads the extension only on startup or `/reload`, so once the files are current the app offers **Type /reload** while Herdr reports the pane idle: it types `/reload` without Enter and opens Terminal, where you can see any draft and press Enter. Updating Herdcats Bridge from the app also updates an older Herdcats extension that is already installed, never one that is absent or edited.
 
@@ -29,8 +29,16 @@ Prompts, model changes and dialog responses carry the captured pane, terminal, n
 
 Standard confirm dialogs display Yes and No and return a boolean to the originating extension. Select dialogs preserve each exact option, including any approval scope supplied by that extension. Input dialogs return the submitted text. Pi editor dialogs, custom UI, built-in Pi dialogs that bypass extension `ctx.ui`, and unknown schemas stay in Terminal because Pi 1.4.0 exposes no safe dismissal handle for those surfaces. There is no built-in Pi permission policy added by Herdcats, no automatic approval, and no synthetic “always allow” scope. Extension setup does not use Claude/Codex phone-answer hooks.
 
+## Timeline history
+
+Timeline opens at the newest messages. Pull down at the top to load an earlier page and keep your place. Use the down-arrow button to return to the latest reply. Switching Pi branches opens the selected branch at its newest messages.
+
+The pull-down hint disappears when you reach the start. New replies, revisions, and changes within the loaded history leave it hidden. If Pi recovers earlier messages and can load more before the earliest one you still have, the hint can return. A temporary interruption to the same Pi session shows a delay notice and keeps your loaded messages and paging position.
+
+If an individual message or response exceeds the [extension transport limits](../../bridge/pi-extension/README.md#explicit-limitations), Timeline directs you to Terminal. This can happen when you first open Timeline or load an earlier page. An outdated extension can offer an update through the setup flow above.
+
 ## Limitations and validation
 
-Extension-defined dialogs can only be answered natively when they use the supported integration contract. Large or highly branched native sessions may exceed the 1 MiB bridge frame or 2000-record extension window; they then stay in Terminal. Pi image and thinking blocks are not currently presented as full native timeline content. Terminal and phone races must resolve the same pending request once; late responses are stale. Native cancellation stops the active turn through Pi's extension API and does not kill the pane.
+Extension-defined dialogs can only be answered natively when they use the supported integration contract. Pi image and thinking blocks are not currently presented as full native timeline content. Terminal and phone races must resolve the same pending request once; late responses are stale. Native cancellation stops the active turn through Pi's extension API and does not kill the pane.
 
-Tests use synthetic bridge frames and disposable extension/session fixtures. iOS checks cover explicit capability negotiation, exact dialog choices and boolean values, stale generation rejection, live instance identity round-trips, reconnect cleanup and guarded model expectations. The full iOS unit suite passed on an iPhone 17 Pro simulator (iOS 26.5): 602 passed, two live-SSH opt-in tests skipped, zero failed. The test command used serial execution and local ad-hoc signing so Keychain tests had app entitlements. The source integration is separate from a real phone-to-host smoke test, which must be performed against the rebuilt app and source bridge. Use Terminal whenever setup, protocol, identity, permission scope, or delivery cannot be verified.
+Tests use synthetic bridge frames and disposable extension/session fixtures. iOS checks cover explicit capability negotiation, exact dialog choices and boolean values, stale generation rejection, live instance identity round-trips, reconnect cleanup and guarded model expectations. Pagination regressions are covered in [AgentTimelineTests.swift](../HerdcatsTests/AgentTimelineTests.swift) and [AgentTimelineUITests.swift](../HerdcatsUITests/AgentTimelineUITests.swift). Run phone-to-host smoke checks against the rebuilt app and source bridge. Use Terminal whenever setup, protocol, identity, permission scope, or delivery cannot be verified.

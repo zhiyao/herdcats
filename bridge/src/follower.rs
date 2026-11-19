@@ -122,7 +122,9 @@ pub struct Follower {
     /// Leading file bytes, compared on every poll once `bytes_base` is past 0.
     head: Vec<u8>,
     session: String,
-    pi_branch_ids: Vec<String>,
+    pi_anchor: Option<String>,
+    pi_has_older: bool,
+    pi_older_cursor: Option<String>,
     buf: Vec<u8>,
     /// Absolute file offset of `buf[0]` during a pass.
     buf_base: u64,
@@ -142,6 +144,20 @@ pub struct Follower {
     /// IDs of `older` entries that later records updated since the last
     /// `take_revised`.
     revised: Vec<String>,
+}
+fn reconcile_pi_entry(entry: &mut Entry, previous: &Entry) {
+    if entry.kind != "tool" || previous.kind != "tool" {
+        return;
+    }
+    if entry.status.as_deref() == Some("running")
+        && matches!(previous.status.as_deref(), Some("completed" | "failed"))
+    {
+        let call = std::mem::replace(entry, previous.clone());
+        reconcile_pi_entry(entry, &call);
+    } else if entry.details.is_none() {
+        entry.details = previous.details.clone();
+        entry.truncated |= previous.truncated;
+    }
 }
 impl Follower {
     pub fn for_agent(agent_type: AgentType) -> Self {
@@ -185,9 +201,12 @@ impl Follower {
         revised.dedup();
         revised
     }
-    /// Whether file bytes before `older()` remain to be loaded.
+    /// Whether file or live-extension entries before `older()` remain to be loaded.
     pub fn has_unread_older(&self) -> bool {
-        self.floor > 0
+        self.floor > 0 || self.pi_has_older
+    }
+    pub fn pi_older_cursor(&self) -> Option<&str> {
+        self.pi_older_cursor.as_deref()
     }
     /// Loads older batches until `older()` holds `want` entries or the file
     /// start is reached. Returns how many entries were added.
@@ -308,29 +327,143 @@ impl Follower {
             .map_err(|_| "content_unavailable")?;
         Ok((chunk, length))
     }
+    pub fn pi_anchor(&self) -> Option<&str> {
+        self.pi_anchor.as_deref()
+    }
+    pub fn pi_window_continues(&self, entries: &[serde_json::Value], before: Option<&str>, session: &str) -> bool {
+        self.session == session && self.pi_anchor().is_none_or(|anchor| {
+            entries.iter().any(|row| row["id"].as_str() == Some(anchor))
+                || before.and_then(|cursor| cursor.strip_prefix("herdcats-through:")) == Some(anchor)
+        })
+    }
     pub fn refresh_pi_entries(&mut self, entries: &[serde_json::Value], session: &str) -> Result<bool> {
-        let mut transcript = Transcript::default();
+        self.refresh_pi_window(entries, false, None, session)
+    }
+    pub fn refresh_pi_window(
+        &mut self,
+        entries: &[serde_json::Value],
+        has_more: bool,
+        before: Option<&str>,
+        session: &str,
+    ) -> Result<bool> {
+        let mut transcript = Transcript { uncapped: true, ..Transcript::default() };
         let header = serde_json::json!({"type":"session","id":session});
         transcript.apply_pi(&header, session)?;
-        for row in entries { transcript.apply_pi(row, session)?; }
+        for row in entries {
+            transcript.apply_pi(row, session)?;
+        }
         // Streaming entries are temporary projections, not native branch nodes.
-        let branch_ids: Vec<String> = entries.iter()
+        let anchor = entries.iter().rev()
             .filter_map(|row| row["id"].as_str())
-            .filter(|id| !id.starts_with("herdcats-live:"))
-            .map(str::to_owned).collect();
-        let reset = self.session != session || !branch_ids.starts_with(&self.pi_branch_ids);
-        let changed = reset || self.transcript.entries != transcript.entries;
-        if reset {
+            .find(|id| !id.starts_with("herdcats-live:"))
+            .or_else(|| before.and_then(|cursor| cursor.strip_prefix("herdcats-through:")))
+            .map(str::to_owned);
+        let reset = !self.pi_window_continues(entries, before, session);
+        if !reset {
+            if has_more {
+                let held = self.older.iter().chain(&self.transcript.entries);
+                let mut incoming = transcript.entries.iter().filter(|entry| {
+                    !entry.id.starts_with("pi:herdcats-live:")
+                });
+                // A sliding tail can advertise more history even after we've
+                // loaded it all. Only move the cursor when the new window
+                // proves it reaches beyond the oldest retained native entry.
+                if let (Some(earliest), Some(first)) = (
+                    held.clone().find(|entry| !entry.id.starts_with("pi:herdcats-live:")),
+                    incoming.next(),
+                ) {
+                    if !held.clone().any(|entry| entry.id == first.id)
+                        && incoming.any(|entry| entry.id == earliest.id)
+                    {
+                        self.pi_has_older = true;
+                        self.pi_older_cursor = before.map(str::to_owned);
+                    }
+                }
+            }
+            for entry in &mut transcript.entries {
+                if let Some(previous) = self.transcript.entries.iter().chain(&self.older).find(|e| e.id == entry.id) {
+                    reconcile_pi_entry(entry, previous);
+                }
+            }
+            let live_ids: HashSet<&str> = transcript.entries.iter().map(|e| e.id.as_str()).collect();
+            self.older.retain(|entry| !live_ids.contains(entry.id.as_str()));
+            let mut older_ids: HashSet<String> = self.older.iter().map(|e| e.id.clone()).collect();
+            for old in &self.transcript.entries {
+                if !old.id.starts_with("pi:herdcats-live:")
+                    && !live_ids.contains(old.id.as_str())
+                    && older_ids.insert(old.id.clone())
+                {
+                    self.older.push(old.clone());
+                }
+            }
+        } else {
             self.generation += 1;
             self.offset = 0;
             self.bytes.clear();
             self.bytes_base = 0;
             self.stamp = None;
+            self.older.clear();
+            self.floor = 0;
+            self.deferred.clear();
+            self.revised.clear();
+            self.pi_has_older = has_more;
+            self.pi_older_cursor = before.map(str::to_owned);
         }
-        self.pi_branch_ids = branch_ids;
+        if transcript.entries.len() > crate::claude::MAX_ENTRIES {
+            let newest = transcript.entries.split_off(transcript.entries.len() - crate::claude::MAX_ENTRIES);
+            transcript.spilled = std::mem::replace(&mut transcript.entries, newest);
+            self.older.extend(transcript.spilled.iter().cloned());
+        }
+        if self.older.len() > 100_000 {
+            return Err("transcript_identity_limit");
+        }
+        let changed = reset || self.transcript.entries != transcript.entries;
+        self.pi_anchor = anchor;
         self.transcript = transcript;
         self.session = session.to_owned();
         Ok(changed)
+    }
+    pub fn prepend_pi_older(
+        &mut self,
+        entries: &[serde_json::Value],
+        has_more: bool,
+        before: Option<&str>,
+        session: &str,
+    ) -> Result<usize> {
+        if self.session != session {
+            return Err("stale_cursor");
+        }
+        let mut batch = Transcript {
+            uncapped: true,
+            ..Transcript::default()
+        };
+        let header = serde_json::json!({"type":"session","id":session});
+        batch.apply_pi(&header, session)?;
+        for row in entries {
+            batch.apply_pi(row, session)?;
+        }
+        let mut added_entries = Vec::new();
+        for entry in batch.entries {
+            if let Some(existing) = self.older.iter_mut().find(|e| e.id == entry.id) {
+                let previous = existing.clone();
+                reconcile_pi_entry(existing, &entry);
+                if *existing != previous {
+                    self.revised.push(existing.id.clone());
+                }
+            } else if let Some(existing) = self.transcript.entries.iter_mut().find(|e| e.id == entry.id) {
+                reconcile_pi_entry(existing, &entry);
+            } else {
+                added_entries.push(entry);
+            }
+        }
+        if self.older.len() + added_entries.len() > 100_000 {
+            return Err("transcript_identity_limit");
+        }
+        let count = added_entries.len();
+        self.older.splice(0..0, added_entries);
+        self.pi_has_older = has_more;
+        self.pi_older_cursor = before.map(str::to_owned);
+        Ok(count)
     }
     /// Action guard: accepts an append, but rejects rotation or any modification
     /// to the verified bytes that authorized the displayed request/generation.
@@ -703,6 +836,48 @@ mod window_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn pi_message(id: &str) -> serde_json::Value {
+        serde_json::json!({
+            "type": "message",
+            "id": id,
+            "message": {"role": "user", "content": id}
+        })
+    }
+
+    #[test]
+    fn pi_exhausted_history_stays_exhausted_after_append() {
+        let mut follower = Follower::for_agent(AgentType::Pi);
+        follower.refresh_pi_window(&[pi_message("middle"), pi_message("tail")], true, Some("middle"), "session").unwrap();
+        follower.prepend_pi_older(&[pi_message("root")], false, None, "session").unwrap();
+        let generation = follower.generation;
+
+        follower.refresh_pi_window(&[pi_message("tail"), pi_message("append")], true, Some("tail"), "session").unwrap();
+
+        assert_eq!(follower.generation, generation);
+        assert!(!follower.has_unread_older());
+        assert_eq!(follower.pi_older_cursor(), None);
+    }
+
+    #[test]
+    fn pi_exhausted_history_reopens_after_earlier_ancestry_recovery() {
+        let mut follower = Follower::for_agent(AgentType::Pi);
+        follower.refresh_pi_window(&[pi_message("tail")], true, Some("tail"), "session").unwrap();
+        follower.prepend_pi_older(&[pi_message("root")], false, None, "session").unwrap();
+        assert!(!follower.has_unread_older());
+        let generation = follower.generation;
+
+        follower.refresh_pi_window(
+            &[pi_message("recovered"), pi_message("root"), pi_message("tail")],
+            true,
+            Some("recovered"),
+            "session",
+        ).unwrap();
+
+        assert_eq!(follower.generation, generation);
+        assert!(follower.has_unread_older());
+        assert_eq!(follower.pi_older_cursor(), Some("recovered"));
+    }
 
     #[test]
     fn same_length_rewrite_is_detected_when_metadata_stamps_collide() {

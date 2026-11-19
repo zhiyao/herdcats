@@ -293,6 +293,14 @@ extension AgentTimelineView {
                         paneId: paneId,
                         helperInstalled: fixtureHelperInstalled || (retry > 0 && ProcessInfo.processInfo.arguments.contains("-hc.timeline-helper-installed"))
                     ), owner: owner)
+                    if ScreenshotFixtures.screen == "timeline-pi-overflow" {
+                        try await Task.sleep(for: .seconds(12))
+                        for (batch, start) in stride(from: 2, through: 1050, by: 1000).enumerated() {
+                            try timeline.consume(AgentTimelineScreenshotFixture.overflowFrame(
+                                paneId: paneId, start: start, end: min(start + 999, 1050), seq: batch + 2), owner: owner)
+                            try await Task.sleep(for: .milliseconds(30))
+                        }
+                    }
                     if AgentTimelineScreenshotFixture.showsApproval {
                         try timeline.consume(AgentTimelineScreenshotFixture.approvalFrame(paneId: paneId, agent: ScreenshotFixtures.paneAgent), owner: owner)
                         AgentTimelineScreenshotFixture.prepareApprovalResponse(approvalResponse, pending: timeline.pendingApproval)
@@ -324,7 +332,8 @@ extension AgentTimelineView {
               let item = conversationItems.first(where: { $0.entries.contains { $0.id == visible.key } })
         else { return }
         historyScrollAnchor = TimelineHistoryScrollAnchor(
-            id: item.id, top: visible.value.minY, height: visible.value.height, viewportHeight: viewportHeight)
+            id: item.id, top: visible.value.minY, height: visible.value.height,
+            viewportHeight: viewportHeight - bottomScrollMargin)
     }
 
     @MainActor func refreshHistory() async {
@@ -358,6 +367,11 @@ extension AgentTimelineView {
                     let page = try AgentTimelineScreenshotFixture.historyPage(paneId: paneId, generation: generation)
                     try mergeHistoryPreservingPosition(page, owner: owner, generation: generation)
                     TimelineHistoryDiagnostics.record("history.fixture_merged attempt=\(attempt) loaded_entries=\(timeline.entries.count)")
+                    if ProcessInfo.processInfo.arguments.contains("-hc.timeline-replace-after-history") {
+                        try await Task.sleep(for: .seconds(3))
+                        try timeline.consume(AgentTimelineScreenshotFixture.replacementFrame(
+                            paneId: paneId, generation: generation + 1), owner: owner)
+                    }
                     return
                 }
             #endif
@@ -374,9 +388,17 @@ extension AgentTimelineView {
         } catch {
             TimelineHistoryDiagnostics.record("history.failed attempt=\(attempt) stage=\(stage) reason=\(TimelineHistoryDiagnostics.reason(error)) elapsed=\(started.duration(to: .now)) task_cancelled=\(Task.isCancelled) owner_current=\(activeOwner == owner) generation_current=\(timeline.generation == generation) connection_current=\(ownedConnection == connectionState)", failure: true)
             if !Task.isCancelled, activeOwner == owner, timeline.generation == generation {
-                pageError = "Earlier messages could not load. Pull down to try again."
+                pageError = Self.historyPageErrorMessage(for: error)
             }
         }
+    }
+
+    static func historyPageErrorMessage(for error: Error) -> String {
+        if let bridgeError = error as? AgentBridgeError,
+           ["pi_state_too_large", "record_too_large"].contains(bridgeError.code) {
+            return "An earlier message exceeds the 1 MiB Timeline limit. Continue in Terminal."
+        }
+        return "Earlier messages could not load. Pull down to try again."
     }
 }
 

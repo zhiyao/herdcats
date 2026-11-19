@@ -222,6 +222,10 @@ import Observation
             // the newest end.
             let revised = data.revised ?? []
             try validate(rows + revised)
+            let order = data.entryOrder ?? []
+            guard order.count <= 1000, Set(order).count == order.count,
+                order.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 264 })
+            else { throw AgentBridgeError.invalidFrame }
             let removed = data.evictedIds ?? []
             guard removed.count <= 1000, removed.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 264 }) else {
                 throw AgentBridgeError.invalidFrame
@@ -229,6 +233,7 @@ import Observation
             let removedSet = Set(removed)
             guard evictedIds.union(removedSet).count <= 100_000 else { throw AgentBridgeError.invalidFrame }
             evictedIds.formUnion(removedSet)
+            let survivingFirstId = entries.first { !removedSet.contains($0.id) }?.id
             entries.removeAll { removedSet.contains($0.id) }
             if let cursor = before, removedSet.contains(cursor) {
                 before = entries.first?.id
@@ -242,17 +247,30 @@ import Observation
                 if let index = entryIndex[row.id] {
                     entries[index] = row
                 } else {
-                    entryIndex[row.id] = entries.count
-                    entries.append(row)
+                    let following = order.firstIndex(of: row.id).flatMap { position in
+                        order.dropFirst(position + 1).compactMap { entryIndex[$0] }.first
+                    }
+                    entries.insert(row, at: following ?? entries.count)
+                    entryIndex = Dictionary(uniqueKeysWithValues: entries.enumerated().map { ($0.element.id, $0.offset) })
                 }
             }
             for row in revised where !evictedIds.contains(row.id) {
                 if let index = entryIndex[row.id] { entries[index] = row }
             }
+            let insertedBeforeFirst = survivingFirstId.map { id in
+                (entries.firstIndex { $0.id == id } ?? 0) > 0
+            } ?? !entries.isEmpty
             if entries.count > Self.maxEntries {
                 entries.removeFirst(entries.count - Self.maxEntries)
                 // Older local entries were discarded; history can still be
                 // requested relative to the first retained entity.
+                hasMore = true
+                before = entries.first?.id
+            }
+            // Bridge live updates report `has_more` whenever its older cache is
+            // nonempty, even if the client already paged to the start. Preserve
+            // an exhausted boundary unless this update inserts earlier entries.
+            if !cutReached, data.hasMore == true, hasMore || insertedBeforeFirst {
                 hasMore = true
                 before = entries.first?.id
             }

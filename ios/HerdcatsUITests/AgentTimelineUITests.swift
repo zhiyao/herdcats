@@ -1035,6 +1035,53 @@ final class AgentTimelineUITests: XCTestCase {
         app.terminate()
     }
 
+    func testLargeSameGenerationInsertBurstRevealsNonblankTail() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-pi-overflow",
+            "-hc.light", "-paneShowComposeByDefault", "NO"]
+        launch(app)
+        defer { app.terminate() }
+        let scroll = app.scrollViews["agent-timeline-scroll"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Overflow message 1."].waitForExistence(timeout: 5))
+        scroll.swipeDown()
+        // The fixture delivers the two same-generation batches after 12 seconds.
+        // Stay on the large root until delivery, then exercise explicit Latest.
+        sleep(13)
+        let latest = app.buttons["timeline-latest"]
+        if latest.waitForExistence(timeout: 3) && latest.isHittable { latest.tap() }
+        let tail = app.staticTexts["Overflow message 1050."]
+        XCTAssertTrue(tail.waitForExistence(timeout: 20))
+        XCTAssertTrue(tail.isHittable, "Following a large insert burst must show the last message, not blank scroll space")
+        XCTAssertGreaterThan(tail.frame.maxY, scroll.frame.minY)
+        XCTAssertLessThan(tail.frame.minY, scroll.frame.maxY)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "Same-generation overflow tail"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    func testSameIdentitySnapshotReplacementRevealsNewGeneration() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-history-position",
+            "-hc.timeline-replace-after-history", "-hc.light", "-paneShowComposeByDefault", "NO"]
+        launch(app)
+        defer { app.terminate() }
+        let scroll = app.scrollViews["agent-timeline-scroll"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: 5))
+        let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+        let end = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95))
+        for _ in 0..<4 {
+            start.press(forDuration: 0.05, thenDragTo: end)
+            if app.staticTexts["Loading earlier messages…"].exists { break }
+        }
+        let leaf = app.staticTexts["Replacement generation is visible."]
+        XCTAssertTrue(leaf.waitForExistence(timeout: 20))
+        XCTAssertTrue(leaf.isHittable, "A replacement snapshot must reveal its newest row without reopening Terminal")
+        XCTAssertGreaterThan(leaf.frame.maxY, scroll.frame.minY)
+        XCTAssertLessThan(leaf.frame.minY, scroll.frame.maxY)
+    }
+
     func testLoadingEarlierMessagesPreservesVisibleMessageOffset() {
         let app = XCUIApplication()
         app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-history-position", "-hc.light", "-paneShowComposeByDefault", "NO"]
