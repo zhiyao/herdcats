@@ -2,9 +2,7 @@ import Foundation
 
 /// Bounded timeout that returns as soon as the deadline fires.
 ///
-/// Citadel 0.12.1 `SSHClient.executeCommand` awaits `EventLoopFuture.get()` with
-/// no Swift concurrency cancellation handler (`ExecClient.swift`). Cancelling the
-/// operation task therefore does not unblock a wedged exec. This helper:
+/// Cancellation can take time to unwind transport work. This helper:
 /// 1. races a timer against the operation without a task-group wait-on-exit,
 /// 2. **claims** the race atomically before any `onTimeout` teardown,
 /// 3. resumes the caller immediately — it does not await the orphaned exec.

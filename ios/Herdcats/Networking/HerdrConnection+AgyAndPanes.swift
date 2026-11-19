@@ -10,7 +10,7 @@ extension HerdrConnection {
         return try await fetch(AgentListResult.self, args: "agent list").agents
     }
 
-    func spaceOverview() async throws -> ([Workspace], [AgentEntry]) {
+    func spaceOverview(tabDeadline: ContinuousClock.Instant) async throws -> ([Workspace], [AgentEntry]) {
         if backend == .core {
             let hierarchy = try await corePresentation()
             return (hierarchy.workspaces, hierarchy.agents)
@@ -20,35 +20,44 @@ extension HerdrConnection {
         async let fetchedWorkspaces = workspaceList()
         async let fetchedAgents = agentList()
         let (workspaces, agents) = try await (fetchedWorkspaces, fetchedAgents)
-        guard generation == owned else { throw HerdrError.notConnected }
-        let enriched = try await enrichingMissingTabLabels(agents: agents, workspaces: workspaces, generation: owned)
-        return (workspaces, enriched)
-    }
-
-    /// Narrowly fetches `tab list` only for unnamed workspaces whose agents still lack tab labels.
-    private func enrichingMissingTabLabels(
-        agents: [AgentEntry], workspaces: [Workspace], generation expected: ConnectionGeneration
-    ) async throws -> [AgentEntry] {
-        let unnamed = Set(
-            workspaces
-                .filter { $0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                .map(\.workspaceId)
-        )
-        let workspaceIDs = Set(
-            agents.compactMap { agent -> String? in
-                guard unnamed.contains(agent.workspaceId) else { return nil }
-                let existing = agent.tabLabel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                return existing.isEmpty ? agent.workspaceId : nil
-            }
-        )
-        guard !workspaceIDs.isEmpty else { return agents }
-        var tabs: [TabEntry] = []
-        for workspaceId in workspaceIDs.sorted() {
-            guard generation == expected else { throw HerdrError.notConnected }
-            tabs.append(contentsOf: try await tabList(workspaceId: workspaceId))
+        let occupied = Set(agents.map(\.workspaceId))
+        let unnamed = workspaces.filter {
+            occupied.contains($0.workspaceId) && $0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
-        guard generation == expected else { throw HerdrError.notConnected }
-        return AgentEntry.enrichingTabLabels(agents, from: tabs)
+        var labels: [String: [String: String]] = [:]
+        for workspace in unnamed.sorted(by: { $0.workspaceId < $1.workspaceId }) {
+            try Task.checkCancellation()
+            guard generation == owned else { throw HerdrError.notConnected }
+            let remaining = ContinuousClock.now.duration(to: tabDeadline)
+            guard remaining > .zero else { break }
+            let (seconds, attoseconds) = remaining.components
+            let timeout = min(20, Double(seconds) + Double(attoseconds) / 1e18)
+            let workspaceId = workspace.workspaceId
+            do {
+                let output = try await executeHerdr(
+                    Self.tabListArguments(workspaceId: workspaceId), timeout: timeout, allowEmptyOutput: false,
+                    timeoutPolicy: .preserveConnection, expectedGeneration: owned
+                )
+                let tabs = try Self.decode(output, as: TabListResult.self).tabs
+                for tab in tabs where tab.workspaceId == workspaceId {
+                    let label = tab.label.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !label.isEmpty { labels[workspaceId, default: [:]][tab.tabId] = label }
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch HerdrError.notConnected {
+                throw HerdrError.notConnected
+            } catch {
+                continue
+            }
+        }
+        try Task.checkCancellation()
+        guard generation == owned else { throw HerdrError.notConnected }
+        return (workspaces, agents.map { agent in
+            var agent = agent
+            agent.tabLabel = labels[agent.workspaceId]?[agent.tabId]
+            return agent
+        })
     }
 
     /// Reads local provider quotas via `quota-axi` on the Herdr machine.

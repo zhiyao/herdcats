@@ -132,11 +132,13 @@ final class SpacesModel {
         let generation = refreshGate.begin()
         refreshEpoch &+= 1
         isLoading = true
+        let deadline = ContinuousClock.now + .seconds(45)
 
         // Watchdog: invalidate this generation so a late completion cannot
         // overwrite a newer refresh, then unlock the UI.
         let watchdog = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(45))
+            do { try await ContinuousClock().sleep(until: deadline) }
+            catch { return }
             guard let self else { return }
             guard self.refreshGate.watchdogTimeout(for: generation) else { return }
             self.isLoading = false
@@ -155,7 +157,7 @@ final class SpacesModel {
             if let agentListFetch {
                 (workspaceList, agentList) = try await agentListFetch()
             } else {
-                (workspaceList, agentList) = try await connection.spaceOverview()
+                (workspaceList, agentList) = try await connection.spaceOverview(tabDeadline: deadline - .seconds(1))
             }
             guard refreshGate.isCurrent(generation) else { return }
             spaces = Space.join(workspaces: workspaceList, agents: agentList)

@@ -12,12 +12,12 @@ struct AgentListPresentationTests {
     }
 
     private func decodeAgent(
-        name: String, paneID: String = "p1", terminal: String = "π · firstmate", tab: String? = nil
+        name: String, paneID: String = "p1", terminal: String = "π · firstmate"
     ) throws -> AgentEntry {
         let json = """
         {"result":{"agents":[
         {"agent":"pi","agent_status":"working","cwd":"/Users/demo/1/firstmate","focused":true,
-        "name":\(name),"tab_label":\(tab.map { "\"\($0)\"" } ?? "null"),"pane_id":"\(paneID)","revision":1,"state_change_seq":10,"tab_id":"t1",
+        "name":\(name),"pane_id":"\(paneID)","revision":1,"state_change_seq":10,"tab_id":"t1",
         "terminal_title":"\(terminal)","terminal_title_stripped":"\(terminal)","workspace_id":"w1"}
         ]}}
         """
@@ -26,7 +26,8 @@ struct AgentListPresentationTests {
 
     @Test(arguments: [" fm-tingxiemao ", "1"])
     func tuiWorkspaceAndMatchingTabTakePriorityOverAgentName(tabLabel: String) throws {
-        let entry = try decodeAgent(name: #""iap-impl""#, tab: tabLabel)
+        var entry = try decodeAgent(name: #""iap-impl""#)
+        entry.tabLabel = tabLabel
         #expect(AgentListPresentation(agent: entry, workspace: workspace("")).title == tabLabel)
         let presentation = AgentListPresentation(agent: entry, workspace: workspace("firstmate"))
         #expect(presentation.title == "firstmate")
@@ -41,7 +42,8 @@ struct AgentListPresentationTests {
 
     @Test(arguments: ["null", #""   ""#])
     func tuiMissingNamesUseTerminalTitleAndKeepMachineContext(name: String) throws {
-        let entry = try decodeAgent(name: name, tab: " ")
+        var entry = try decodeAgent(name: name)
+        entry.tabLabel = " "
         let presentation = AgentListPresentation(agent: entry, workspace: workspace(""))
         #expect(presentation.title == "π · firstmate")
         #expect(presentation.subtitle(connectionHost: "studio-mac")?.text == "studio-mac · ~/1/firstmate")
@@ -216,12 +218,39 @@ struct AgentListPresentationTests {
         #expect(subtitles["studio/peer/t1"] != subtitles["lab/peer/t1"])
     }
 
-    @Test
-    func tuiResolvesTabNameFromSupportedTabListNotInjectedAgentField() throws {
+    #if DEBUG
+    private actor OverviewReplies {
+        let replies: [String: String]
+        private(set) var requests: Set<String> = []
+
+        init(_ replies: [String: String]) {
+            self.replies = replies
+        }
+
+        func response(to command: String) throws -> String {
+            requests.insert(command)
+            guard let reply = replies[command] else {
+                throw HerdrError.api(code: "not_found", message: "Workspace closed")
+            }
+            return reply
+        }
+    }
+
+    @Test(arguments: [false, true])
+    func tuiOverviewUsesScopedTabListWithinBudget(expired: Bool) async throws {
+        let workspacesJSON = """
+        {"result":{"workspaces":[
+          {"workspace_id":"w0","label":"","number":1,"tab_count":1,"pane_count":1,"active_tab_id":"t-review","agent_status":"working","focused":false},
+          {"workspace_id":"w1","label":" ","number":2,"tab_count":2,"pane_count":2,"active_tab_id":"t-review","agent_status":"working","focused":true},
+          {"workspace_id":"w2","label":"Named","number":3,"tab_count":1,"pane_count":1,"active_tab_id":"t-review","agent_status":"working","focused":false}
+        ]}}
+        """
         let agentsJSON = """
         {"result":{"agents":[
-          {"agent":"pi","agent_status":"working","cwd":"/work/a","pane_id":"p1","tab_id":"t-review","workspace_id":"w1","focused":false,"terminal_title_stripped":"Build"},
-          {"agent":"pi","agent_status":"working","cwd":"/work/b","pane_id":"p2","tab_id":"t-implement","workspace_id":"w1","focused":false,"terminal_title_stripped":"Build"}
+          {"agent":"pi","agent_status":"working","pane_id":"p0","tab_id":"t-review","workspace_id":"w0","focused":false,"terminal_title_stripped":"Closed"},
+          {"agent":"pi","agent_status":"working","cwd":"/work/a","pane_id":"p1","tab_id":"t-review","workspace_id":"w1","focused":false,"terminal_title_stripped":"Build","tab_label":"Ignored"},
+          {"agent":"pi","agent_status":"working","cwd":"/work/b","pane_id":"p2","tab_id":"t-implement","workspace_id":"w1","focused":false,"terminal_title_stripped":"Build","tab_label":"Ignored"},
+          {"agent":"pi","agent_status":"working","pane_id":"p3","tab_id":"t-review","workspace_id":"w2","focused":false,"terminal_title_stripped":"Build"}
         ]}}
         """
         let tabsJSON = """
@@ -230,13 +259,27 @@ struct AgentListPresentationTests {
           {"tab_id":"t-implement","workspace_id":"w1","label":"Implement","number":2,"pane_count":1,"agent_status":"working","focused":false}
         ]}}
         """
-        let decodedAgents = try HerdrConnection.decode(agentsJSON, as: AgentListResult.self).agents
-        #expect(decodedAgents.allSatisfy { ($0.tabLabel ?? "").isEmpty })
-        let tabs = try HerdrConnection.decode(tabsJSON, as: TabListResult.self).tabs
-        let agents = AgentEntry.enrichingTabLabels(decodedAgents, from: tabs)
-        let blank = workspace("")
-        let titles = agents.map { AgentListPresentation(agent: $0, workspace: blank).title }
-        #expect(titles == ["Review", "Implement"])
-        #expect(Set(titles).count == 2)
+        let closedTabs = HerdrConnection.tabListArguments(workspaceId: "w0")
+        let unnamedTabs = HerdrConnection.tabListArguments(workspaceId: "w1")
+        let replies = OverviewReplies([
+            "workspace list": workspacesJSON,
+            "agent list": agentsJSON,
+            unnamedTabs: tabsJSON
+        ])
+        let connection = HerdrConnection(herdrCommandResponse: { try await replies.response(to: $0) })
+        let deadline = ContinuousClock.now + (expired ? .zero : .seconds(10))
+        let (workspaces, agents) = try await connection.spaceOverview(tabDeadline: deadline)
+        let spaces = Space.join(workspaces: workspaces, agents: agents)
+        let titles = spaces.flatMap { space in
+            space.agents.map { AgentListPresentation(agent: $0, workspace: space.workspace).title }
+        }
+        #expect(workspaces.map(\.workspaceId) == ["w0", "w1", "w2"])
+        #expect(titles == (expired ? ["Closed", "Build", "Build", "Named"] : ["Closed", "Review", "Implement", "Named"]))
+        #expect(agents.last?.tabLabel == nil)
+        let requests: Set<String> = expired
+            ? ["workspace list", "agent list"]
+            : ["workspace list", "agent list", closedTabs, unnamedTabs]
+        #expect(await replies.requests == requests)
     }
+    #endif
 }
