@@ -41,6 +41,8 @@ Each mutation requires the current `session_id`, `instance_id`, and `revision`. 
 
 Frames are newline-delimited JSON capped at 1 MiB (`1,048,576` UTF-8 bytes including the JSON envelope and trailing newline). `state` packs the newest conversation window (up to 100 native branch records plus any active live streaming entry) that fits within the 1 MiB UTF-8 frame limit and reports `has_more` and `before`; when only the live entry fits, the native tail remains reachable through `before`; `history` loads earlier branch pages on demand up to 100 native records bounded by the same 1 MiB UTF-8 budget. If the response envelope or a single required record exceeds 1 MiB, it returns `pi_state_too_large` explicitly without dropping entries or corrupting state, and uses Terminal fallback. It does not spill private transcript copies into another file. The socket is a same-user local transport; it is not a network service or a sandbox against the local account owner.
 
+When there is no live entry in the response, the window ends at the newest message in range. Trailing branch metadata is skipped so it cannot hide that message or its size error.
+
 ## Local protocol
 
 Request: `{ "method": "state", "params": {} }` or `{ "method": "history", "params": { "expect": { "session_id": "<native session UUID>", "instance_id": "<live instance ID>" }, "before": "<opaque history cursor>" } }`. Response: `{ "result": ... }` or `{ "error": { "code": "stale" } }`.
