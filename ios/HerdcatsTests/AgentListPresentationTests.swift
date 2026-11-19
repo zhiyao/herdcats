@@ -1,4 +1,10 @@
+import Citadel
+import Crypto
 import Foundation
+import NIOConcurrencyHelpers
+import NIOCore
+import NIOPosix
+import NIOSSH
 import Testing
 @testable import Herdcats
 
@@ -221,14 +227,22 @@ struct AgentListPresentationTests {
     #if DEBUG
     private actor OverviewReplies {
         let replies: [String: String]
+        let heldCommand: String
+        nonisolated let entered = ExternallyReleasedWait<Void>()
+        nonisolated let release = ExternallyReleasedWait<Void>()
         private(set) var requests: Set<String> = []
 
-        init(_ replies: [String: String]) {
+        init(_ replies: [String: String], heldCommand: String) {
             self.replies = replies
+            self.heldCommand = heldCommand
         }
 
-        func response(to command: String) throws -> String {
+        func response(to command: String) async throws -> String {
             requests.insert(command)
+            if command == heldCommand {
+                entered.release(())
+                try await release.wait()
+            }
             guard let reply = replies[command] else {
                 throw HerdrError.api(code: "not_found", message: "Workspace closed")
             }
@@ -236,8 +250,9 @@ struct AgentListPresentationTests {
         }
     }
 
+    @MainActor
     @Test(arguments: [false, true])
-    func tuiOverviewUsesScopedTabListWithinBudget(expired: Bool) async throws {
+    func tuiRefreshPublishesBaseBeforeScopedTabLookup(expiresWhileWaiting: Bool) async throws {
         let workspacesJSON = """
         {"result":{"workspaces":[
           {"workspace_id":"w0","label":"","number":1,"tab_count":1,"pane_count":1,"active_tab_id":"t-review","agent_status":"working","focused":false},
@@ -265,21 +280,165 @@ struct AgentListPresentationTests {
             "workspace list": workspacesJSON,
             "agent list": agentsJSON,
             unnamedTabs: tabsJSON
-        ])
+        ], heldCommand: unnamedTabs)
         let connection = HerdrConnection(herdrCommandResponse: { try await replies.response(to: $0) })
-        let deadline = ContinuousClock.now + (expired ? .zero : .seconds(10))
-        let (workspaces, agents) = try await connection.spaceOverview(tabDeadline: deadline)
-        let spaces = Space.join(workspaces: workspaces, agents: agents)
-        let titles = spaces.flatMap { space in
-            space.agents.map { AgentListPresentation(agent: $0, workspace: space.workspace).title }
+        let model = SpacesModel()
+        let deadline = ContinuousClock.now + (expiresWhileWaiting ? .seconds(1) : .seconds(10))
+        let refresh = Task { await model.refresh(connection, deadline: deadline) }
+        defer { replies.release.release(()) }
+        try await withTimeout(seconds: 3, label: "tab lookup fixture") { try await replies.entered.wait() }
+
+        func titles() -> [String] {
+            model.spaces.flatMap { space in
+                space.agents.map { AgentListPresentation(agent: $0, workspace: space.workspace).title }
+            }
         }
-        #expect(workspaces.map(\.workspaceId) == ["w0", "w1", "w2"])
-        #expect(titles == (expired ? ["Closed", "Build", "Build", "Named"] : ["Closed", "Review", "Implement", "Named"]))
-        #expect(agents.last?.tabLabel == nil)
-        let requests: Set<String> = expired
-            ? ["workspace list", "agent list"]
-            : ["workspace list", "agent list", closedTabs, unnamedTabs]
+        let baseTitles = ["Closed", "Build", "Build", "Named"]
+        #expect(model.spaces.map(\.id) == ["w0", "w1", "w2"])
+        #expect(titles() == baseTitles)
+        #expect(model.hasLoadedAgentList)
+        #expect(!model.isLoading)
+        if expiresWhileWaiting {
+            model.isSceneActive = false
+            try await ContinuousClock().sleep(until: deadline + .milliseconds(20))
+            model.isSceneActive = true
+            #expect(titles() == baseTitles)
+            #expect(model.errorMessage == nil)
+        }
+        replies.release.release(())
+        await refresh.value
+
+        #expect(titles() == (expiresWhileWaiting ? baseTitles : ["Closed", "Review", "Implement", "Named"]))
+        #expect(model.errorMessage == nil)
+        #expect(model.spaces.last?.agents.first?.tabLabel == nil)
+        let requests: Set<String> = ["workspace list", "agent list", closedTabs, unnamedTabs]
         #expect(await replies.requests == requests)
     }
     #endif
+
+    @Test(arguments: [false, true])
+    func optionalTabLookupClosesLateSSHChild(timedOut: Bool) async throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        let fixture = DelayedTabChannel()
+        let server = try await fixture.listen(on: group)
+        var client: SSHClient?
+        do {
+            let port = try #require(server.localAddress?.port)
+            let ssh = try await SSHClient.connect(to: SSHClientSettings(
+                host: "127.0.0.1", port: port,
+                authenticationMethod: { .passwordBased(username: "fixture", password: "fixture") },
+                hostKeyValidator: .acceptAnything()
+            ))
+            client = ssh
+            let lookup = Task {
+                try await withTimeout(seconds: timedOut ? 1 : 4, label: "optional tab list") {
+                    try await ssh.executeOptionalTabList("late")
+                }
+            }
+            let confirmOpen = try await withTimeout(seconds: 3, label: "pending SSH open") {
+                try await fixture.pendingOpen.wait()
+            }
+            if !timedOut { lookup.cancel() }
+            do {
+                _ = try await lookup.value
+                Issue.record("The lookup returned before the server confirmed the open")
+            } catch {
+                if timedOut {
+                    #expect(error as? HerdrError == .timeout("optional tab list"))
+                } else {
+                    #expect(error is CancellationError)
+                }
+            }
+            do {
+                _ = try await withTimeout(seconds: 0.25, label: "another optional lookup") {
+                    try await ssh.executeOptionalTabList("while pending")
+                }
+                Issue.record("A second optional lookup opened while the first was pending")
+            } catch {
+                #expect(error is CitadelError)
+            }
+            confirmOpen.succeed(())
+            try await withTimeout(seconds: 3, label: "late child close") { try await fixture.closed.wait() }
+
+            let output = try await withTimeout(seconds: 3, label: "next optional lookup") {
+                while true {
+                    do { return try await ssh.executeOptionalTabList("next") }
+                    catch CitadelError.channelCreationFailed { try await Task.sleep(for: .milliseconds(10)) }
+                }
+            }
+            #expect(String(buffer: output) == "next")
+            #expect(fixture.commands.withLockedValue { $0 } == ["next"])
+        } catch {
+            try? await client?.close()
+            try? await server.close()
+            try? await group.shutdownGracefully()
+            throw error
+        }
+        try await client?.close()
+        try await server.close()
+        try await group.shutdownGracefully()
+    }
+}
+
+private final class DelayedTabChannel: Sendable {
+    let pendingOpen = ExternallyReleasedWait<EventLoopPromise<Void>>()
+    let closed = ExternallyReleasedWait<Void>()
+    let commands = NIOLockedValueBox<[String]>([])
+    private let childCount = NIOLockedValueBox(0)
+
+    func listen(on group: MultiThreadedEventLoopGroup) async throws -> Channel {
+        let key = NIOSSHPrivateKey(ed25519Key: Curve25519.Signing.PrivateKey())
+        return try await ServerBootstrap(group: group).childChannelInitializer { channel in
+            channel.pipeline.addHandler(NIOSSHHandler(
+                role: .server(SSHServerConfiguration(hostKeys: [key], userAuthDelegate: TabFixtureAuthentication())),
+                allocator: channel.allocator,
+                inboundChildChannelInitializer: { child, _ in
+                    let index = self.childCount.withLockedValue { count in
+                        count += 1
+                        return count
+                    }
+                    return child.pipeline.addHandler(TabFixtureExec(commands: self.commands)).flatMap {
+                        guard index == 1 else { return child.eventLoop.makeSucceededVoidFuture() }
+                        child.closeFuture.whenComplete { _ in self.closed.release(()) }
+                        let confirmOpen = child.eventLoop.makePromise(of: Void.self)
+                        self.pendingOpen.release(confirmOpen)
+                        return confirmOpen.futureResult
+                    }
+                }
+            ))
+        }.bind(host: "127.0.0.1", port: 0).get()
+    }
+}
+
+private struct TabFixtureAuthentication: NIOSSHServerUserAuthenticationDelegate {
+    let supportedAuthenticationMethods: NIOSSHAvailableUserAuthenticationMethods = [.password]
+
+    func requestReceived(
+        request: NIOSSHUserAuthenticationRequest,
+        responsePromise: EventLoopPromise<NIOSSHUserAuthenticationOutcome>
+    ) {
+        responsePromise.succeed(.success)
+    }
+}
+
+private final class TabFixtureExec: ChannelInboundHandler, Sendable {
+    typealias InboundIn = SSHChannelData
+    let commands: NIOLockedValueBox<[String]>
+
+    init(commands: NIOLockedValueBox<[String]>) {
+        self.commands = commands
+    }
+
+    func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
+        guard let request = event as? SSHChannelRequestEvent.ExecRequest else {
+            context.fireUserInboundEventTriggered(event)
+            return
+        }
+        commands.withLockedValue { $0.append(request.command) }
+        context.triggerUserOutboundEvent(ChannelSuccessEvent(), promise: nil)
+        let data = SSHChannelData(type: .channel, data: .byteBuffer(ByteBuffer(string: request.command)))
+        context.writeAndFlush(NIOAny(data), promise: nil)
+        context.triggerUserOutboundEvent(SSHChannelRequestEvent.ExitStatus(exitStatus: 0), promise: nil)
+        context.close(promise: nil)
+    }
 }

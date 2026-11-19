@@ -1,4 +1,5 @@
 import NIO
+import NIOConcurrencyHelpers
 import Crypto
 import Logging
 import NIOSSH
@@ -111,6 +112,7 @@ public struct SSHAlgorithms: Sendable {
 /// Represents an SSH connection.
 public final class SSHClient {
     private(set) var session: SSHClientSession
+    let optionalTabListInFlight = NIOLockedValueBox(false)
     private var userInitiatedClose = false
     let authenticationMethod: () -> SSHAuthenticationMethod
     let hostKeyValidator: SSHHostKeyValidator

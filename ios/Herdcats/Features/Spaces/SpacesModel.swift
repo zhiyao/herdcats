@@ -128,11 +128,11 @@ final class SpacesModel {
         }
     }
 
-    func refresh(_ connection: HerdrConnection) async {
+    func refresh(_ connection: HerdrConnection, deadline: ContinuousClock.Instant = .now + .seconds(45)) async {
         let generation = refreshGate.begin()
+        let initialScope = connectionScope
         refreshEpoch &+= 1
         isLoading = true
-        let deadline = ContinuousClock.now + .seconds(45)
 
         // Watchdog: invalidate this generation so a late completion cannot
         // overwrite a newer refresh, then unlock the UI.
@@ -154,12 +154,16 @@ final class SpacesModel {
         do {
             let workspaceList: [Workspace]
             let agentList: [AgentEntry]
+            let source: ConnectionGeneration?
             if let agentListFetch {
                 (workspaceList, agentList) = try await agentListFetch()
+                source = nil
             } else {
-                (workspaceList, agentList) = try await connection.spaceOverview(tabDeadline: deadline - .seconds(1))
+                (workspaceList, agentList, source) = try await connection.spaceOverview()
             }
-            guard refreshGate.isCurrent(generation) else { return }
+            let scope: ConnectionIdentity? = if let initialScope { initialScope } else { await connection.identity }
+            if let source, await connection.generation != source { return }
+            guard refreshGate.isCurrent(generation), connectionScope == initialScope, !Task.isCancelled else { return }
             spaces = Space.join(workspaces: workspaceList, agents: agentList)
             unconfirmedSpaces = SpacePresentationOverlay.unconfirmed(
                 unconfirmedSpaces,
@@ -169,18 +173,24 @@ final class SpacesModel {
                 playAlert(event)
             }
             alertBaseline = AgentStatusAlerts.snapshot(agentList)
-            let fallbackScope: ConnectionIdentity?
-            if let connectionScope {
-                fallbackScope = connectionScope
-            } else {
-                fallbackScope = await connection.identity
-            }
-            if let scope = fallbackScope {
+            if let scope {
                 connectionScope = scope
                 lastUpdatedByPaneID = PaneLastUpdatedStore.observe(agentList, scope: scope)
             }
             lastUpdated = Date()
             errorMessage = nil
+            watchdog.cancel()
+            _ = refreshGate.finishIfCurrent(generation)
+            isLoading = false
+
+            guard let source,
+                  let enriched = try? await connection.enrichAgentTabLabels(
+                      workspaces: workspaceList, agents: agentList, generation: source, deadline: deadline
+                  ),
+                  await connection.generation == source,
+                  refreshGate.isCurrent(generation), connectionScope == scope,
+                  !Task.isCancelled else { return }
+            spaces = Space.join(workspaces: workspaceList, agents: enriched)
         } catch {
             guard refreshGate.isCurrent(generation) else { return }
             reportError(error)
