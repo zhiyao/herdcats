@@ -78,7 +78,8 @@ struct AgentBridgeFramingTests {
     let owner = UUID()
     func frame(
         _ event: String, seq: Int = 1, generation: Int = 1, session: String = "session-a",
-        entries: [String] = ["a"], hasMore: Bool = false
+        entries: [String] = ["a"], hasMore: Bool = false, entryOrder: [String] = [],
+        agent: String = "claude"
     ) throws -> AgentBridgeFrame {
         let rows = entries.map {
             ["id": "message:\($0)", "kind": "message", "text": $0, "role": "assistant", "truncated": false]
@@ -89,9 +90,10 @@ struct AgentBridgeFramingTests {
                 "event": event, "epoch": "epoch-a", "seq": seq,
                 "data": [
                     "identity": [
-                        "pane_id": "w1:p1", "terminal_id": "t1", "agent": "claude",
+                        "pane_id": "w1:p1", "terminal_id": "t1", "agent": agent,
                         "native_session_id": session,
                     ], "pane_id": "w1:p1", "generation": generation, "entries": rows, "has_more": hasMore,
+                    "entry_order": entryOrder.map { "message:\($0)" },
                     "before": rows.first?["id"] as Any, "code": "source_changing",
                 ],
             ]))
@@ -114,6 +116,34 @@ struct AgentBridgeFramingTests {
         let update = try AgentBridgeFrame.decode(Data(#"{"event":"timeline.updated","epoch":"epoch-a","seq":2,"data":{"identity":{"pane_id":"w1:p1","terminal_id":"t1","agent":"claude","native_session_id":"session-a"},"generation":1,"entries":[],"revised":[{"id":"message:a","kind":"message","text":"A","role":"assistant","truncated":false},{"id":"message:trimmed","kind":"message","text":"gone","role":"assistant","truncated":false}]}}"#.utf8))
         try s.consume(update, owner: owner)
         #expect(s.entries.map(\.text) == ["A", "b"])
+    }
+    @Test func backwardExpansionInBatchesPreservesLoadedHistoryOrder() throws {
+        let s = store()
+        try s.consume(frame("timeline.snapshot", entries: ["old", "m92", "m95", "m96", "live"]), owner: owner)
+        let order = ["m90", "m91", "m92", "m93", "m94", "m95", "m96", "new"]
+        var first = try frame("timeline.updated", seq: 2, entries: ["m90", "m91"], entryOrder: order)
+        first.data?.evictedIds = ["message:live"]
+        try s.consume(first, owner: owner)
+        try s.consume(frame("timeline.updated", seq: 3, entries: ["m92", "m93", "m94", "new"], entryOrder: order), owner: owner)
+        #expect(s.entries.map(\.text) == ["old"] + order)
+        #expect(s.generation == 1)
+        #expect(s.phase == .ready)
+    }
+    @Test func recoveredOverflowInsertsFillInteriorHistoryGaps() throws {
+        let s = store()
+        try s.consume(frame("timeline.snapshot", entries: ["m0"]), owner: owner)
+        let retained = (201...1200).map { "m\($0)" }
+        try s.consume(frame("timeline.updated", seq: 2, entries: retained, entryOrder: retained), owner: owner)
+        var seq = 3
+        for end in stride(from: 201, through: 1, by: -100) {
+            let start = max(0, end - 100)
+            let rows = (start..<end).map { "m\($0)" }
+            try s.consume(frame("timeline.updated", seq: seq, entries: rows, entryOrder: rows + ["m\(end)"]), owner: owner)
+            seq += 1
+        }
+        #expect(s.entries.map(\.text) == (0...1200).map { "m\($0)" })
+        #expect(s.generation == 1)
+        #expect(s.phase == .ready)
     }
     @Test func switchingPanesDoesNotShowPreviousPaneEntries() throws {
         // Pane 1 receives a snapshot and shows its entries
@@ -201,6 +231,92 @@ struct AgentBridgeFramingTests {
         #expect(s.entries.first?.text == "m0")
         #expect(!s.hasMore)
     }
+    @Test func exhaustedHistoryStaysFalseAcrossLiveUpdatesEvenWhenBridgeHasMore() throws {
+        let s = store()
+        let tail = (100..<200).map { "m\($0)" }
+        try s.consume(frame("timeline.snapshot", entries: tail, hasMore: true), owner: owner)
+        let firstPage = try frame("timeline.snapshot", entries: (0..<100).map { "m\($0)" }, hasMore: false).data!
+        try s.mergeHistory(firstPage, owner: owner, generation: 1)
+        #expect(!s.hasMore)
+        #expect(s.before == "message:m0")
+
+        // Bridge older cache still holds m0..m99 so live updates carry has_more: true
+        // alongside the recent window's entry_order.
+        try s.consume(
+            frame("timeline.updated", seq: 2, entries: ["m200"], hasMore: true, entryOrder: tail + ["m200"]),
+            owner: owner)
+        #expect(!s.hasMore)
+        #expect(s.before == "message:m0")
+        #expect(s.entries.count == 201)
+        #expect(s.entries.last?.text == "m200")
+
+        // A follow-up empty/streaming revision update must also preserve exhausted state.
+        try s.consume(
+            frame("timeline.updated", seq: 3, entries: ["m201"], hasMore: true, entryOrder: tail + ["m200", "m201"]),
+            owner: owner)
+        #expect(!s.hasMore)
+        #expect(s.before == "message:m0")
+        #expect(s.entries.count == 202)
+    }
+    @Test func liveUpdateInsertingGenuineEarlierEntriesEnablesHistoryAndUpdatesCursor() throws {
+        let s = store()
+        let tail = (100..<200).map { "m\($0)" }
+        try s.consume(frame("timeline.snapshot", entries: tail, hasMore: true), owner: owner)
+        let initialPage = try frame("timeline.snapshot", entries: (50..<100).map { "m\($0)" }, hasMore: false).data!
+        try s.mergeHistory(initialPage, owner: owner, generation: 1)
+        #expect(!s.hasMore)
+        #expect(s.before == "message:m50")
+
+        let recovered = (25..<50).map { "m\($0)" }
+        try s.consume(
+            frame("timeline.updated", seq: 2, entries: recovered, hasMore: true, entryOrder: recovered + ["m50"]),
+            owner: owner)
+        #expect(s.hasMore)
+        #expect(s.before == "message:m25")
+        #expect(s.entries.first?.text == "m25")
+        #expect(s.entries.count == 175)
+    }
+    @Test func exhaustedHistorySurvivesRevisionInteriorInsertionAndEarliestEviction() throws {
+        let s = store()
+        try s.consume(frame("timeline.snapshot", entries: ["a", "c", "d"]), owner: owner)
+        var revision = try frame("timeline.updated", seq: 2, entries: [], hasMore: true)
+        revision.data?.revised = [AgentTimelineEntry(
+            id: "message:a", kind: "message", text: "revised a", role: "assistant",
+            toolName: nil, status: nil, details: nil, truncated: false)]
+        try s.consume(revision, owner: owner)
+        #expect(!s.hasMore)
+        #expect(s.entries.first?.text == "revised a")
+        #expect(s.before == "message:a")
+
+        try s.consume(
+            frame("timeline.updated", seq: 3, entries: ["b"], hasMore: true, entryOrder: ["a", "b", "c", "d"]),
+            owner: owner)
+        #expect(!s.hasMore)
+        #expect(s.entries.map(\.id) == ["message:a", "message:b", "message:c", "message:d"])
+        #expect(s.before == "message:a")
+
+        var eviction = try frame("timeline.updated", seq: 4, entries: ["e"], hasMore: true, entryOrder: ["c", "d", "e"])
+        eviction.data?.evictedIds = ["message:a", "message:b"]
+        try s.consume(eviction, owner: owner)
+        #expect(!s.hasMore)
+        #expect(s.entries.map(\.text) == ["c", "d", "e"])
+        #expect(s.before == "message:c")
+
+        try s.consume(
+            frame("timeline.updated", seq: 5, entries: ["earlier"], hasMore: true, entryOrder: ["earlier", "c", "d", "e"]),
+            owner: owner)
+        #expect(s.hasMore)
+        #expect(s.before == "message:earlier")
+        #expect(s.entries.map(\.text) == ["earlier", "c", "d", "e"])
+    }
+    @Test func emptySnapshotThenLiveUpdateWithHistoryEnablesPagination() throws {
+        let s = store()
+        try s.consume(frame("timeline.snapshot", entries: [], hasMore: false), owner: owner)
+        #expect(!s.hasMore)
+        try s.consume(frame("timeline.updated", seq: 2, entries: ["m50"], hasMore: true, entryOrder: ["m50"]), owner: owner)
+        #expect(s.hasMore)
+        #expect(s.before == "message:m50")
+    }
     @Test func delayedEventsAndFailuresCannotReplaceNewOwner() throws {
         let s = store()
         let next = UUID()
@@ -235,6 +351,38 @@ struct AgentBridgeFramingTests {
         try s.consume(recoveredUpdate, owner: owner)
         #expect(!s.delayed)
         #expect(s.entries.map(\.text) == ["msg1", "msg2"])
+    }
+    @Test func exhaustedPiHistorySurvivesTransportDelayAndRecovery() throws {
+        let s = store()
+        try s.consume(frame("timeline.snapshot", entries: ["tail"], hasMore: true, agent: "pi"), owner: owner)
+        let page = try #require(frame("timeline.snapshot", entries: ["root"], agent: "pi").data)
+        try s.mergeHistory(page, owner: owner, generation: 1)
+        let identity = try #require(s.identity)
+
+        var outage = try frame("timeline.updated", seq: 2, entries: [], agent: "pi")
+        outage.data?.delayed = true
+        try s.consume(outage, owner: owner)
+        #expect(s.delayed)
+        #expect(s.phase == .ready)
+        #expect(!s.hasMore)
+        #expect(s.before == "message:root")
+        #expect(s.visibleEntries.map(\.text) == ["root", "tail"])
+
+        var recovery = try frame("timeline.updated", seq: 3, entries: ["reply"], hasMore: true,
+                                 entryOrder: ["tail", "reply"], agent: "pi")
+        recovery.data?.delayed = false
+        try s.consume(recovery, owner: owner)
+        #expect(!s.delayed)
+        #expect(s.generation == 1)
+        #expect(s.identity == identity)
+        #expect(!s.hasMore)
+        #expect(s.before == "message:root")
+        #expect(s.visibleEntries.map(\.text) == ["root", "tail", "reply"])
+
+        try s.consume(frame("timeline.updated", seq: 4, entries: ["earlier"], hasMore: true,
+                            entryOrder: ["earlier", "root"], agent: "pi"), owner: owner)
+        #expect(s.hasMore)
+        #expect(s.before == "message:earlier")
     }
 }
 
@@ -1205,5 +1353,94 @@ struct ModelCatalogProvenanceTests {
         #expect(!TimelineAgentAvailability.sameSession(agent: "pi", live: "2026_other", native: id))
         #expect(!TimelineAgentAvailability.sameSession(agent: "codex", live: "x_\(id)", native: id))
         #expect(!TimelineAgentAvailability.sameSession(agent: "pi", live: nil, native: id))
+    }
+}
+
+@Suite("Pi progressive history and oversized handling")
+@MainActor struct PiProgressiveHistoryTests {
+    @Test func piStateTooLargeShowsActionableNonLoopingGuidanceUnlessExtensionOutdated() {
+        let view = AgentTimelineView(
+            paneId: "p-pi",
+            agent: "pi",
+            connection: HerdrConnection(),
+            timeline: AgentTimelineState(),
+            topOverlayInset: 0,
+            bottomOverlayInset: 0,
+            onOutputInteraction: {},
+            setupTarget: ConnectionIdentity(host: "localhost", port: 22, username: "test"),
+            onUseTerminal: {},
+            onSetupComplete: {}
+        )
+        #expect(view.title("pi_state_too_large") == "Pi message exceeds Timeline limit")
+        let explanation = view.explanation("pi_state_too_large")
+        #expect(explanation.contains("1 MiB"))
+        #expect(explanation.contains("Terminal"))
+        #expect(!explanation.contains("/reload"))
+        #expect(!explanation.contains("Install"))
+        #expect(!explanation.contains("check again"))
+        #expect(!AgentTimelineView.showsPaneCheckAgain(code: "pi_state_too_large", agent: "pi", bridgeVersion: "0.6.1"))
+        #expect(!AgentTimelineView.showsInstallOrUpgrade(code: "pi_state_too_large", agent: "pi", bridgeVersion: "0.6.1"))
+
+        var caps = AgentBridgeCapabilities(claudeTimeline: true, pi: true)
+        caps.piExtensionInstall = true
+        let current = PiExtensionResult(status: .current, dir: "/u/.pi/agent/extensions/herdcats", error: nil)
+        let outdated = PiExtensionResult(status: .outdated, dir: "/u/.pi/agent/extensions/herdcats", error: nil)
+        #expect(!AgentTimelineView.showsOutdatedPiExtensionUpdate(code: "pi_state_too_large", agent: "pi", capabilities: caps, result: nil, feedback: nil))
+        #expect(!AgentTimelineView.showsOutdatedPiExtensionUpdate(code: "pi_state_too_large", agent: "pi", capabilities: caps, result: current, feedback: nil))
+        #expect(AgentTimelineView.showsOutdatedPiExtensionUpdate(code: "pi_state_too_large", agent: "pi", capabilities: caps, result: outdated, feedback: nil))
+        #expect(AgentTimelineView.showsOutdatedPiExtensionUpdate(code: "pi_state_too_large", agent: "pi", capabilities: caps, result: current, feedback: "Extension updated."))
+    }
+
+    @Test func piProgressiveHistoryMergesInOrderWithoutDuplicates() throws {
+        let state = AgentTimelineState()
+        let owner = UUID()
+        state.begin(owner: owner, paneId: "p-pi", agent: "pi")
+        let identity: [String: Any] = [
+            "pane_id": "p-pi",
+            "terminal_id": "t1",
+            "agent": "pi",
+            "native_session_id": "s1",
+            "native_instance_id": "i1",
+        ]
+        func makeEntry(_ id: String, _ text: String) -> [String: Any] {
+            ["id": id, "kind": "message", "text": text, "role": "user", "truncated": false]
+        }
+        let snapData: [String: Any] = [
+            "identity": identity,
+            "generation": 1,
+            "entries": [makeEntry("pi:m3", "third"), makeEntry("pi:m4", "fourth")],
+            "has_more": true,
+            "before": "pi:m3",
+            "agent_status": "idle",
+        ]
+        let snapFrame = try AgentBridgeFrame.decode(JSONSerialization.data(withJSONObject: [
+            "event": "timeline.snapshot", "epoch": "e", "seq": 1, "data": snapData,
+        ]))
+        try state.consume(snapFrame, owner: owner)
+        #expect(state.hasMore)
+        #expect(state.before == "pi:m3")
+        #expect(state.entries.map(\.id) == ["pi:m3", "pi:m4"])
+
+        // Prepend page with an overlapping ID to confirm deduplication and order.
+        let histPayload = try #require(AgentBridgeFrame.decode(JSONSerialization.data(withJSONObject: [
+            "id": "h1",
+            "result": [
+                "identity": identity,
+                "generation": 1,
+                "entries": [makeEntry("pi:m1", "first"), makeEntry("pi:m2", "second"), makeEntry("pi:m3", "dup")],
+                "has_more": false,
+                "dropped_entries": 0,
+            ],
+        ])).result)
+        try state.mergeHistory(histPayload, owner: owner, generation: 1)
+        #expect(state.entries.map(\.id) == ["pi:m1", "pi:m2", "pi:m3", "pi:m4"])
+        #expect(!state.hasMore)
+        #expect(state.before == "pi:m1")
+
+        let oversizedMsg = AgentTimelineView.historyPageErrorMessage(for: AgentBridgeError.unavailable("pi_state_too_large"))
+        #expect(oversizedMsg.contains("1 MiB"))
+        #expect(oversizedMsg.contains("Terminal"))
+        #expect(!oversizedMsg.contains("try again"))
+        #expect(AgentTimelineView.historyPageErrorMessage(for: AgentBridgeError.closed).contains("try again"))
     }
 }

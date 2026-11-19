@@ -1,9 +1,10 @@
-Herdcats Bridge __BRIDGE_VERSION__ — Cursor slash commands
+Herdcats Bridge __BRIDGE_VERSION__ — Cursor slash commands and Pi history
 
 Herdcats Bridge (`herdcats-bridge`) is the optional companion on your SSH computer that powers Claude, Codex, Agy, Pi and Cursor Agent Timelines in Herdcats.
 
 Changes since 0.6.0:
-- Cursor Agent slash commands such as /clear, /new and /model now reach the composer and run, instead of being refused with slash_command_refused. Older bridges still refuse them, and the app tells you to update the Bridge or use Terminal. Other agents are unchanged.
+- Cursor Agent slash commands such as /clear, /new and /model now reach the composer and run, instead of being refused with slash_command_refused. Older bridges still refuse them, and the app tells you to update the Bridge or use Terminal.
+- Pi Timeline can load earlier history in pages. See the Pi conversations guide for how to browse history and when to switch to Terminal.
 
 Install or update on the SSH computer running Herdr and your agents:
 
@@ -13,7 +14,7 @@ Requires macOS 13+ or Linux with glibc 2.35+ (Ubuntu 22.04+), curl and SHA-256 t
 
 The iOS one-click installer remains pinned to 0.5.0 until this release is published, its assets are verified, and a separate app pin update ships. Herdcats builds that check for bridge updates on launch offer this release once it is published. Sending Cursor slash commands needs both this bridge and a Herdcats app build that no longer blocks them.
 
-Pi extension: the extension files are unchanged since 0.6.0, so an extension already updated needs nothing. To update an older one without the app:
+Progressive Pi history requires a compatible Herdcats app and the updated Pi extension bundled with this release. To update the extension without the app:
 1. Download herdcats-pi-extension.tar.gz and SHA256SUMS from this release and verify the archive with sha256sum or shasum -a 256.
 2. Extract it and replace the installed Herdcats extension files, keeping herdcats/index.ts and herdcats/runtime.mjs together. For a new session, enable it with pi -e /absolute/path/to/herdcats/index.ts.
 3. In an existing Pi TUI, run /reload after replacing the files.

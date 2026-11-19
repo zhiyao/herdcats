@@ -47,6 +47,36 @@
             decoder.keyDecodingStrategy = .convertFromSnakeCase
             return try decoder.decode(AgentBridgePayload.self, from: data)
         }
+        static func replacementFrame(paneId: String, generation: UInt64) throws -> AgentBridgeFrame {
+            try AgentBridgeFrame.decode(JSONSerialization.data(withJSONObject: [
+                "event": "timeline.snapshot", "epoch": "fixture", "seq": 2,
+                "data": [
+                    "identity": ["pane_id": paneId, "terminal_id": "fixture-terminal", "agent": ScreenshotFixtures.paneAgent,
+                                 "native_session_id": "fixture-session"],
+                    "generation": generation,
+                    "entries": [
+                        ["id": "message:replacement-root", "kind": "message", "role": "user",
+                         "text": "Replacement root " + String(repeating: "r", count: 8000), "truncated": true],
+                        ["id": "message:replacement-leaf", "kind": "message", "role": "assistant",
+                         "text": "Replacement generation is visible.", "truncated": false]
+                    ], "has_more": false
+                ]
+            ]))
+        }
+        static func overflowFrame(paneId: String, start: Int, end: Int, seq: Int) throws -> AgentBridgeFrame {
+            try AgentBridgeFrame.decode(JSONSerialization.data(withJSONObject: [
+                "event": "timeline.updated", "epoch": "fixture", "seq": seq,
+                "data": [
+                    "identity": ["pane_id": paneId, "terminal_id": "fixture-terminal", "agent": ScreenshotFixtures.paneAgent,
+                                 "native_session_id": "fixture-session"],
+                    "generation": 1,
+                    "entries": (start...end).map { index in
+                        ["id": "message:overflow-\(index)", "kind": "message", "role": index.isMultiple(of: 2) && index != 1050 ? "user" : "assistant",
+                         "text": "Overflow message \(index).", "truncated": false] as [String: Any]
+                    }, "has_more": false
+                ]
+            ]))
+        }
         static var showsApproval: Bool {
             ["timeline-approval-codex", "timeline-approval-claude", "timeline-approval-agy"].contains(ScreenshotFixtures.screen)
         }
@@ -159,6 +189,7 @@
             if ScreenshotFixtures.screen == "timeline-disconnected" { throw AgentBridgeError.closed }
             let unavailableCode: String? = switch ScreenshotFixtures.screen {
             case "timeline-pi-reload": "pi_extension_unavailable"
+            case "timeline-pi-oversized", "timeline-pi-outdated": "pi_state_too_large"
             case "timeline-unavailable": "unsupported_agent"
             case "timeline-codex-no-session", "timeline-session-unresolved": "session_reference_unavailable"
             case "timeline-codex-helper-old" where !helperInstalled: "helper_update_required"
@@ -267,6 +298,14 @@
                      "truncated": false] as [String: Any]
                 }
             }
+            if ScreenshotFixtures.screen == "timeline-pi-overflow" {
+                entries = [
+                    ["id": "message:root", "kind": "message", "role": "user",
+                     "text": "Large root " + String(repeating: "r", count: 8000), "truncated": true],
+                    ["id": "message:overflow-1", "kind": "message", "role": "assistant",
+                     "text": "Overflow message 1.", "truncated": false]
+                ]
+            }
             if ProcessInfo.processInfo.arguments.contains("-hc.timeline-long") {
                 entries += (0..<12).map { index in
                     ["id": "message:history-\(index)", "kind": "message", "role": "assistant",
@@ -297,7 +336,7 @@
                         "identity": [
                             "pane_id": paneId, "terminal_id": "fixture-terminal", "agent": splitCheckout ? "codex" : ScreenshotFixtures.paneAgent,
                             "native_session_id": "fixture-session",
-                        ], "generation": 1, "entries": entries, "has_more": ScreenshotFixtures.screen.hasPrefix("timeline-history"), "before": "message:user", "agent_status": (showsApproval || showsQuestion) ? "blocked" : "idle",
+                        ], "generation": 1, "entries": entries, "has_more": ScreenshotFixtures.screen.hasPrefix("timeline-history") || ScreenshotFixtures.screen == "timeline-pi-progressive", "before": "message:user", "agent_status": (showsApproval || showsQuestion) ? "blocked" : "idle",
                         "unknown_records": ProcessInfo.processInfo.arguments.contains("-hc.timeline-long") ? 2 : 0, "dropped_entries": 0,
                     ],
                 ]))

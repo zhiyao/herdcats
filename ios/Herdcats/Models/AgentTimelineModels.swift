@@ -303,6 +303,7 @@ struct AgentBridgePayload: Codable, Sendable {
     var entries: [AgentTimelineEntry]?
     /// Update-only rows in `timeline.updated`: replace held rows, never insert.
     var revised: [AgentTimelineEntry]?
+    var entryOrder: [String]?
     var evictedIds: [String]?
     var hasMore: Bool?
     var before: String?

@@ -300,13 +300,15 @@
         "generation",
         "entries",
         "revised",
+        "entry_order",
+        "has_more",
         "agent_status",
         "evicted_ids",
         "unknown_records",
         "dropped_entries",
         "delayed"
       ],
-      "effect": "Remove evicted_ids before stable-ID upserts; retention does not reset generation. Do not resurrect evicted IDs from delayed history. Claude and Codex never evict for retention: entries past the live list move to older history pages. Optional revised rows are update-only: they replace rows the client holds (older entries a later tool result, output or turn abort changed) and are never inserted; history pages serve them current. Clients that ignore revised see the change after a reload. entries plus revised stay within 1000 rows per update. Counters may update with no entries; frames remain bounded."
+      "effect": "Optional entry_order gives the placement of new IDs relative to held rows. Insert each new row before the next held ID in that order, preserving loaded history across batches. Optional has_more:true means the bridge can serve earlier rows. Preserve an exhausted client cursor unless the update also inserts a row before the earliest surviving held row or supplies rows when none survive. When pagination is available, use the first held entry ID as the before cursor. Remove evicted_ids before stable-ID upserts; retention does not reset generation. Do not resurrect evicted IDs from delayed history. Claude, Codex and live Pi never evict for retention: entries past the live list move to older history pages. Optional revised rows are update-only: they replace rows the client holds (older entries a later tool result, output or turn abort changed) and are never inserted; history pages serve them current. Clients that ignore revised see the change after a reload. entries plus revised stay within 1000 rows per update. Counters may update with no entries; frames remain bounded."
     },
     "timeline.unavailable": {
       "fields": [
@@ -427,7 +429,7 @@
     "record_refs": "optional references to complete original record bytes; up to4 per entry"
   },
   "reconnect": "No persistent replay cursor. Start a new helper, initialize and watch. Epoch change or sequence gap requires fresh snapshot. Notifications can interleave all replies.",
-  "cursor": "Generation-bound before entry ID. Identity/source replacement or genuine outage recovery resets generation. Normal retention keeps generation; a retained cursor remains valid and an evicted cursor returns stale_cursor. Claude and Codex history continues past the live list: a cursor at its first entry, or on an older page, returns the next older page, read from the transcript one batch at a time, until has_more is false at the session start.",
+  "cursor": "Generation-bound before entry ID. Identity or source replacement and recovery from timeline.unavailable reset generation. If the Pi extension socket temporarily becomes unavailable while the verified pane and source still match, timeline.updated reports delayed:true and keeps the generation and cursors. Recovery keeps them if the runtime and branch still match. Normal retention keeps generation; a retained cursor remains valid and an evicted cursor returns stale_cursor. Claude, Codex and live Pi history continues past the live list: a cursor at its first entry, or on an older page, returns the next older page until has_more is false at the session start. Claude and Codex read transcript batches; live Pi uses the extension history method.",
   "limits": {
     "source_bytes": 67108864,
     "wire_frame_bytes": 1048576,
@@ -439,13 +441,13 @@
     "entry_identities": 100000,
     "project_directories": 10000,
     "request_queue": 16,
-    "oversized_source_record_behavior": "Complete source lines exceeding the parsed record limit use bounded typed deserialization for text/tools. Negotiated rich mode additionally emits image descriptors and unfamiliar-record bubbles with complete source references, without embedding bulky image bytes in live frames. Incomplete lines wait for newline. The 64MiB source bound remains hard for Agy, Cursor and Pi; Claude and Codex transcripts are read tail-first with no source bound.",
+    "oversized_source_record_behavior": "Complete source lines exceeding the parsed record limit use bounded typed deserialization for text/tools. Negotiated rich mode additionally emits image descriptors and unfamiliar-record bubbles with complete source references, without embedding bulky image bytes in live frames. Incomplete lines wait for newline. The 64MiB source bound remains hard for Agy and Cursor; Claude and Codex transcripts are read tail-first with no source bound. Live Pi reads branch windows through the extension rather than loading the transcript file; the entry identity bound still applies.",
     "evicted_ids_per_update": 1000
   },
   "source_policy": "Herdr22 references use herdr:claude or herdr:codex. Claude native UUID filenames/paths stay beneath the pinned transcript root; Codex rollouts stay beneath the pinned sessions root and verify session metadata and pane cwd. A Codex reference is rejected with session_inactive when <CODEX_HOME>/thread-writer-locks exists without that thread's lock: Codex deletes the lock about a minute after /resume or /new leaves a thread, while Herdr keeps the old reference until the next prompt's SessionStart hook. The lock directory is taken as the parent of the configured sessions root, so a --codex-root outside <CODEX_HOME>/sessions finds no lock directory and skips this check. Ambiguous references, symlinks below pinned roots, missing references or foreign main-session records fail closed.",
   "implementation_limits": [
     "Polling-only fallback; no subscriptions.",
-    "Agy, Cursor and Pi: bounded source prefix reread on change, new complete records parsed incrementally. Claude and Codex: a fresh timeline parses the newest 8 MiB from a line start, then each poll rereads the first 64 KiB and the newest consumed 8-16 MiB (a change to either resets the generation) and parses only appended records; older history pages are parsed from 4 MiB batches, and newer records that updated a batch's entries before it was loaded (tool results, later outputs, turn aborts) are replayed into it in file order.",
+    "Agy and Cursor: bounded source prefix reread on change, new complete records parsed incrementally. Live Pi: newest branch window from the extension, with older pages fetched on demand; same-branch gaps are joined through history before publishing ordered updates, while branch replacement resets generation. Claude and Codex: a fresh timeline parses the newest 8 MiB from a line start, then each poll rereads the first 64 KiB and the newest consumed 8-16 MiB (a change to either resets the generation) and parses only appended records; older history pages are parsed from 4 MiB batches, and newer records that updated a batch's entries before it was loaded (tool results, later outputs, turn aborts) are replayed into it in file order.",
     "Negotiated content retrieval covers complete original records and blocks within the verified source; only references on retained entries or loaded older pages are readable.",
     "Claude captured2.1.296 schema coverage; no general version promise.",
     "Optional four-platform installer and native iOS client. Bridge approval and question events and guarded responses are available from 0.3.0 for Claude and Codex. Clients must gate on the approvals / questions capabilities and corresponding initialize opt-ins, not on bridge_version. Claude cards require the recording hook (herdcats-bridge hooks install --agent claude); Codex approval cards require the Codex recording hook (herdcats-bridge hooks install --agent codex), while Codex question cards require no recording hook. prompts and routed_hosts (saved-machine routing) remain unavailable."
@@ -474,6 +476,8 @@
     "not_watching",
     "output_frame_too_large",
     "pane_unavailable",
+    "pi_extension_unavailable",
+    "pi_state_too_large",
     "protocol_mismatch",
     "record_too_large",
     "session_cwd_mismatch",
@@ -534,9 +538,10 @@
     "compatibility": "Herdcats extension protocol 1 is required; Pi CLI version is diagnostic only. The extension validates required public APIs before opening its control socket.",
     "source": "existing Pi TUI with the opt-in Herdcats extension; native branch entries and streaming updates over a same-user Unix socket",
     "model_control": "model.status and model.set use provider/model IDs and thinking levels from the extension catalog; expect.identity, generation, model and effort are required. Confirmed or validated legacy applied replies are projected into the standard model result envelope.",
-    "actions": "pi.prompt (text), pi.cancel, pi.dialog.respond (request_id and value) require pane_id and expect.identity/generation; the bridge binds them to the live instance and revision. Confirmation returns confirmed:true; actions are never automatically resent.",
+    "actions": "pi.prompt (text), pi.cancel, pi.dialog.respond (request_id and value) require pane_id and expect.identity/generation; the bridge binds them to the live instance and revision. While the watch is delayed, the bridge rejects Pi actions with pi_extension_unavailable. Confirmation returns confirmed:true; actions are never automatically resent.",
     "dialogs": "pi.dialog carries identity, generation, request_id, kind, title, message and dialog_options. confirm returns boolean, select returns the exact option, input returns text; custom/editor dialogs remain terminal-only. pi.dialog.cleared retires the matching request_id.",
-    "limits": "1 MiB extension frames; last 2000 native branch records; 1000 projected entries; 8192-byte previews. Oversized state remains terminal-only.",
+    "limits": "Bridge retention, preview and entry identity bounds are defined in limits. Extension frame and page bounds and oversized-state errors are defined in bridge/pi-extension/README.md#explicit-limitations.",
+    "history": "The extension history request, identity guards and cursor semantics are defined in bridge/pi-extension/README.md#local-protocol. The bridge history request uses the generation-bound entry IDs described in cursor.",
     "distribution": "The bridge binary bundles the extension. The app runs herdcats-bridge pi-extension install only after an explicit Install or Update tap on a Pi pane, and after a user-started bridge update only when a known older Herdcats extension is already installed. It then offers to type /reload (no Enter) when Herdr reports the pane idle. See ios/docs/pi-conversations.md and bridge/pi-extension/README.md."
   },
   "cursor_cli": {
