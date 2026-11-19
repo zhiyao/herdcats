@@ -146,7 +146,7 @@ private struct CoreHierarchyBuilder {
                 name: name, tabLabel: tabName,
                 coreContext: AgentEntry.CoreContext(
                     workspaceName: workspaceName,
-                    machine: address.split(separator: "/").dropLast().last.map(String.init),
+                    machine: machineRoute(beforeTerminal: address),
                     directory: launchCwd ?? workspaceFolder,
                     usesSyntheticTerminalTitle: suppliedTitle == nil
                 )
@@ -203,6 +203,13 @@ private struct CoreHierarchyBuilder {
     private func machineFor(_ address: String) -> String? {
         guard let slash = address.firstIndex(of: "/") else { return nil }
         return String(address[..<slash])
+    }
+
+    /// Full Core route enclosing the terminal (`studio/peer/t1` → `studio/peer`).
+    private func machineRoute(beforeTerminal address: String) -> String? {
+        let parts = address.split(separator: "/")
+        guard parts.count > 1 else { return nil }
+        return parts.dropLast().joined(separator: "/")
     }
 
     private func identity(_ kind: String, machine: String?, raw: String) -> String {

@@ -179,9 +179,64 @@ struct AgentListPresentationTests {
         #expect(subtitles["studio/t7"] == "studio")
         #expect(subtitles["studio/t1"] == "studio · ~/work/firstmate  · π · firstmate")
         #expect(items.first { $0.id == "studio/t1" }?.agent.shortCwd == "~/work/scratch")
-        #expect(subtitles["studio/peer/t2"] == "peer · ~/work/firstmate · π · firstmate")
-        #expect(subtitles["studio/peer/t8"] == "peer · ~/work/secondmate  · π · firstmate")
-        #expect(subtitles["studio/peer/t3"] == "peer")
+        #expect(subtitles["studio/peer/t2"] == "studio/peer · ~/work/firstmate · π · firstmate")
+        #expect(subtitles["studio/peer/t8"] == "studio/peer · ~/work/secondmate  · π · firstmate")
+        #expect(subtitles["studio/peer/t3"] == "studio/peer")
         #expect(subtitles["t4"] == "gateway")
+    }
+
+    @Test
+    func nestedCoreMachineRoutesStayDistinctBeforeTerminal() throws {
+        let snapshot = try CoreSnapshot(subscription: JSONDecoder().decode(CoreJSON.self, from: Data("""
+        {"seq":1,"terminals":[
+          {"address":"studio/peer/t1","title":"Shared","state":"live","status":{"app":"pi","state":"working"}},
+          {"address":"lab/peer/t1","title":"Shared","state":"live","status":{"app":"pi","state":"working"}}
+        ]}
+        """.utf8)))
+        let studio = try JSONDecoder().decode(CoreJSON.self, from: Data("""
+        {"spaces":[{"id":"w","name":"ExampleApp","tabs":[
+          {"id":"t","name":"Main","root":{"content":{"terminal":"peer/t1"}}}
+        ]}]}
+        """.utf8))
+        let lab = try JSONDecoder().decode(CoreJSON.self, from: Data("""
+        {"spaces":[{"id":"w","name":"ExampleApp","tabs":[
+          {"id":"t","name":"Main","root":{"content":{"terminal":"peer/t1"}}}
+        ]}]}
+        """.utf8))
+        let hierarchy = snapshot.presentation(layout: nil, remoteLayouts: ["studio": studio, "lab": lab])
+        let spaces = Space.join(workspaces: hierarchy.workspaces, agents: hierarchy.agents)
+        let items = AgentListItem.grouped(in: spaces).flatMap(\.items)
+        let subtitles = Dictionary(uniqueKeysWithValues: items.compactMap { item in
+            AgentListPresentation(agent: item.agent, workspace: item.space.workspace)
+                .subtitle(connectionHost: "gateway")
+                .map { (item.id, $0.text) }
+        })
+        #expect(subtitles["studio/peer/t1"] == "studio/peer · Shared")
+        #expect(subtitles["lab/peer/t1"] == "lab/peer · Shared")
+        #expect(subtitles["studio/peer/t1"] != subtitles["lab/peer/t1"])
+    }
+
+    @Test
+    func tuiResolvesTabNameFromSupportedTabListNotInjectedAgentField() throws {
+        let agentsJSON = """
+        {"result":{"agents":[
+          {"agent":"pi","agent_status":"working","cwd":"/work/a","pane_id":"p1","tab_id":"t-review","workspace_id":"w1","focused":false,"terminal_title_stripped":"Build"},
+          {"agent":"pi","agent_status":"working","cwd":"/work/b","pane_id":"p2","tab_id":"t-implement","workspace_id":"w1","focused":false,"terminal_title_stripped":"Build"}
+        ]}}
+        """
+        let tabsJSON = """
+        {"result":{"tabs":[
+          {"tab_id":"t-review","workspace_id":"w1","label":"Review","number":1,"pane_count":1,"agent_status":"working","focused":true},
+          {"tab_id":"t-implement","workspace_id":"w1","label":"Implement","number":2,"pane_count":1,"agent_status":"working","focused":false}
+        ]}}
+        """
+        let decodedAgents = try HerdrConnection.decode(agentsJSON, as: AgentListResult.self).agents
+        #expect(decodedAgents.allSatisfy { ($0.tabLabel ?? "").isEmpty })
+        let tabs = try HerdrConnection.decode(tabsJSON, as: TabListResult.self).tabs
+        let agents = AgentEntry.enrichingTabLabels(decodedAgents, from: tabs)
+        let blank = workspace("")
+        let titles = agents.map { AgentListPresentation(agent: $0, workspace: blank).title }
+        #expect(titles == ["Review", "Implement"])
+        #expect(Set(titles).count == 2)
     }
 }

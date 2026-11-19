@@ -21,7 +21,34 @@ extension HerdrConnection {
         async let fetchedAgents = agentList()
         let (workspaces, agents) = try await (fetchedWorkspaces, fetchedAgents)
         guard generation == owned else { throw HerdrError.notConnected }
-        return (workspaces, agents)
+        let enriched = try await enrichingMissingTabLabels(agents: agents, workspaces: workspaces, generation: owned)
+        return (workspaces, enriched)
+    }
+
+    /// Narrowly fetches `tab list` only for unnamed workspaces whose agents still lack tab labels.
+    private func enrichingMissingTabLabels(
+        agents: [AgentEntry], workspaces: [Workspace], generation expected: ConnectionGeneration
+    ) async throws -> [AgentEntry] {
+        let unnamed = Set(
+            workspaces
+                .filter { $0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                .map(\.workspaceId)
+        )
+        let workspaceIDs = Set(
+            agents.compactMap { agent -> String? in
+                guard unnamed.contains(agent.workspaceId) else { return nil }
+                let existing = agent.tabLabel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                return existing.isEmpty ? agent.workspaceId : nil
+            }
+        )
+        guard !workspaceIDs.isEmpty else { return agents }
+        var tabs: [TabEntry] = []
+        for workspaceId in workspaceIDs.sorted() {
+            guard generation == expected else { throw HerdrError.notConnected }
+            tabs.append(contentsOf: try await tabList(workspaceId: workspaceId))
+        }
+        guard generation == expected else { throw HerdrError.notConnected }
+        return AgentEntry.enrichingTabLabels(agents, from: tabs)
     }
 
     /// Reads local provider quotas via `quota-axi` on the Herdr machine.
