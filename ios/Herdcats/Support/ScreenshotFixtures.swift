@@ -38,10 +38,16 @@ enum ScreenshotFixtures {
         return args[index + 1]
     }
 
-    static let projects = ["Herdcats", "Checkout redesign", "API performance"]
+    private static let collision = screen == "agents-collision"
+    static let projects = collision
+        ? ["firstmate", "2ndmate-tingxiemao", "2ndmate-herdrcat"]
+        : ["Herdcats", "Checkout redesign", "API performance"]
     static let providers = ["claude", "codex", "cursor"]
     static let statuses = ["blocked", "working", "done"]
-    static let titles = ["Review the onboarding flow", "Build the checkout screens", "Optimize database queries"]
+    static let titles = collision
+        ? Array(repeating: "π · firstmate", count: 3)
+        : ["Review the onboarding flow", "Build the checkout screens", "Optimize database queries"]
+
     static var workspaces: [[String: Any]] {
         projects.enumerated().map { index, label in
             ["workspace_id": "w\(index)", "label": label, "number": index + 1,
@@ -54,7 +60,7 @@ enum ScreenshotFixtures {
         }
     }
     static var paneAgent: String {
-        if screen.hasPrefix("timeline-pi-") { return "pi" }
+        if collision || screen.hasPrefix("timeline-pi-") { return "pi" }
         if screen == "timeline-question-codex-plan" || screen == "timeline-question-codex-async" { return "codex" }
         if screen == "timeline-question-claude" { return "claude" }
         if screen == "timeline-approval-codex" { return "codex" }
@@ -66,8 +72,9 @@ enum ScreenshotFixtures {
     static var panes: [[String: Any]] {
         projects.indices.map { index in
             ["pane_id": "p\(index)", "tab_id": "t\(index)", "workspace_id": "w\(index)",
-             "agent": index == 0 ? paneAgent : providers[index], "agent_status": statuses[index],
-             "cwd": "/Users/demo/Projects/\(projects[index].lowercased().replacingOccurrences(of: " ", with: "-"))",
+             "agent": collision || index == 0 ? paneAgent : providers[index], "agent_status": statuses[index],
+             "cwd": collision && index == 2 ? NSNull() as Any
+                : "/Users/demo/Projects/\(projects[index].lowercased().replacingOccurrences(of: " ", with: "-"))",
              "terminal_title_stripped": titles[index], "terminal_title": titles[index],
              "focused": index == 0, "revision": 1, "state_change_seq": 10 - index]
         }

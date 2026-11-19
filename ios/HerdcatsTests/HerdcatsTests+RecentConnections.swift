@@ -148,7 +148,7 @@ struct AgentAttentionOrderingTests {
             agent: "codex", agentStatus: status, stateChangeSeq: sequence,
             cwd: nil, paneId: id, tabId: "tab", workspaceId: workspace.workspaceId,
             terminalTitle: nil, terminalTitleStripped: "Same title", focused: false,
-            revision: nil
+            revision: nil, name: nil
         )
         return AgentListItem(space: Space(workspace: workspace, agents: [agent]), agent: agent)
     }

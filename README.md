@@ -16,6 +16,12 @@ On iPad and on the unfolded iPhone Duo, Spaces and Agents show the list and the
 selected pane side by side. Folding or narrowing the window keeps the same pane
 open. iPhone stays portrait-only; iPad supports all orientations.
 
+In **Agents**, each row prefers the Herdr workspace name, followed by the tab
+name and then the agent name. If none is available, the row uses the terminal
+title or pane ID. The subtitle shows available machine and directory context
+and can include a distinct terminal title. Each row shows the agent status and
+includes a timestamp when available.
+
 Herdcats uses SwiftUI and Observation on iOS 17 or later. Each SSH connection
 uses **TUI** (the `herdr` CLI) or **Herdr Core** (the `hc connect` API). **Auto**,
 the default for new machines, detects both and saves each one it finds. A

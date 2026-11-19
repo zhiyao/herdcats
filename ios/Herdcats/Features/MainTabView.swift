@@ -437,7 +437,8 @@ struct AgentsScreen: View {
         let row = AgentListRow(
             item: item,
             isSelected: isRegular && isOpen(item),
-            lastUpdated: model.lastUpdatedByPaneID[item.agent.paneId]
+            lastUpdated: model.lastUpdatedByPaneID[item.agent.paneId],
+            presentation: AgentListPresentation(agent: item.agent, workspace: item.space.workspace)
         )
         Group {
             if isRegular {
@@ -449,12 +450,13 @@ struct AgentsScreen: View {
                         Button(action: action.perform) { Label(action.title, systemImage: action.systemImage) }
                     }
                 }
-                .paneDraggable(ref(for: item), title: item.title, enabled: true)
+                .paneDraggable(ref(for: item), title: item.agent.displayTitle, enabled: true)
             } else {
                 NavigationLink(value: ref(for: item)) { row }
             }
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("agent-row-\(item.id)")
         .zIndex(raisedCardID == item.id ? 1 : 0)
         .transition(.opacity)
     }
@@ -505,10 +507,6 @@ struct AgentListItem: Identifiable, Hashable {
         AgentStatus(rawValue: agent.agentStatus) ?? .unknown
     }
 
-    var title: String {
-        agent.displayTitle
-    }
-
     /// Herdr's attention queue: `AgentStatus.attentionPriority` descending,
     /// then the most recent state change first — the same order herdr's
     /// priority-sorted agent panel uses.
@@ -524,8 +522,8 @@ struct AgentListItem: Identifiable, Hashable {
         case (nil, _?): return false
         default: break
         }
-        return (lhs.space.workspace.number, lhs.title, lhs.id)
-            < (rhs.space.workspace.number, rhs.title, rhs.id)
+        return (lhs.space.workspace.number, lhs.agent.displayTitle, lhs.id)
+            < (rhs.space.workspace.number, rhs.agent.displayTitle, rhs.id)
     }
 
     /// One section per space that actually hosts agents — spaces in workspace
@@ -544,20 +542,27 @@ struct AgentListItem: Identifiable, Hashable {
 
 struct AgentListRow: View {
     @Environment(\.paneRowBadges) private var paneBadges
+    @Environment(AppModel.self) private var appModel
     let item: AgentListItem
     /// The row open in the split view's detail column.
     var isSelected = false
     var lastUpdated: Date?
+    var presentation: AgentListPresentation?
 
     private var agent: AgentEntry { item.agent }
 
     var body: some View {
+        let subtitle: (text: String, isPath: Bool)? = if let presentation {
+            presentation.subtitle(connectionHost: appModel.connectionIdentity?.host ?? appModel.connectedOrOfflineHost)
+        } else {
+            agent.shortCwd.isEmpty ? nil : (text: agent.shortCwd, isPath: true)
+        }
         HStack(alignment: .listTitleCenter, spacing: QuietListMetrics.columnSpacing) {
             StatusDot(status: item.status)
                 .accessibilityLabel(item.status.label)
             VStack(alignment: .leading, spacing: QuietListMetrics.lineSpacing) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(item.title)
+                    Text(presentation?.title ?? agent.displayTitle)
                         .font(.appHeadlineSm)
                         .lineLimit(1)
                     if agent.focused {
@@ -575,9 +580,9 @@ struct AgentListRow: View {
                     AgentKindIcon(kind: agent.agent, size: 13)
                         .accessibilityElement()
                         .accessibilityLabel(AgentKindVisual.displayName(for: agent.agent))
-                    if !agent.shortCwd.isEmpty {
-                        Text(agent.shortCwd)
-                            .font(.caption.monospaced())
+                    if let subtitle {
+                        Text(subtitle.text)
+                            .font(subtitle.isPath ? .caption.monospaced() : .caption)
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
@@ -607,10 +612,7 @@ struct HerdrcatBrandMark: View {
 
     private var host: String? {
         guard showsHost else { return nil }
-        switch appModel.phase {
-        case let .connected(host, _), let .offline(host, _): return host
-        default: return nil
-        }
+        return appModel.connectedOrOfflineHost
     }
 
     private func identity(_ connection: RecentConnection) -> ConnectionIdentity {

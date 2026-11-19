@@ -81,6 +81,17 @@ struct AgentEntry: Decodable, Hashable, Identifiable {
     let focused: Bool
     /// Monotonic Herdr pane revision; bumps when pane state changes.
     let revision: UInt64?
+    /// Optional Herdr agent display name (for example `iap-impl`).
+    let name: String?
+    var tabLabel: String? = nil
+    struct CoreContext: Hashable {
+        let workspaceName: String?
+        let machine: String?
+        let directory: String?
+        let usesSyntheticTerminalTitle: Bool
+    }
+
+    var coreContext: CoreContext? = nil
 
     var id: String { paneId }
 
@@ -96,9 +107,11 @@ struct AgentEntry: Decodable, Hashable, Identifiable {
         case terminalTitleStripped = "terminal_title_stripped"
         case focused
         case revision
+        case name
+        case tabLabel = "tab_label"
     }
 
-    /// Human-readable row title — the stripped terminal title when present.
+    /// Stripped terminal title, with the pane ID as a fallback.
     var displayTitle: String {
         if let stripped = terminalTitleStripped, !stripped.isEmpty {
             return stripped
@@ -108,9 +121,49 @@ struct AgentEntry: Decodable, Hashable, Identifiable {
 
     /// Compact `~/last/two/components` form of the working directory.
     var shortCwd: String {
-        guard let cwd else { return "" }
+        cwd.map(Self.compactCwd) ?? ""
+    }
+
+    static func compactCwd(_ cwd: String) -> String {
         let suffix = cwd.split(separator: "/").suffix(2).joined(separator: "/")
         return suffix.isEmpty ? cwd : "~/\(suffix)"
+    }
+}
+
+struct AgentListPresentation {
+    let title: String
+    private let machine: String?
+    private let directory: String?
+    private let terminalTitle: String?
+
+    init(agent: AgentEntry, workspace: Workspace) {
+        let workspaceName = if let core = agent.coreContext { core.workspaceName } else { workspace.label }
+        let tab = Self.nonempty(agent.tabLabel) == nil ? nil : agent.tabLabel
+        title = Self.nonempty(workspaceName) ?? tab ?? Self.nonempty(agent.name) ?? agent.displayTitle
+        machine = Self.nonempty(agent.coreContext?.machine)
+        let launchPath = Self.nonempty(agent.cwd) == nil ? nil : agent.cwd
+        let path = if let core = agent.coreContext { core.directory } else { launchPath ?? workspace.worktree?.checkoutPath }
+        directory = path.flatMap { Self.nonempty($0) == nil ? nil : AgentEntry.compactCwd($0) }
+        let terminal: String? = if agent.coreContext?.usesSyntheticTerminalTitle == true {
+            nil
+        } else {
+            Self.nonempty(agent.terminalTitleStripped) ?? Self.nonempty(agent.terminalTitle)
+        }
+        terminalTitle = terminal == Self.nonempty(title) || terminal == directory ? nil : terminal
+    }
+
+    private static func nonempty(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    func subtitle(connectionHost: String?) -> (text: String, isPath: Bool)? {
+        let machine = machine ?? Self.nonempty(connectionHost)
+        let terminal = terminalTitle == machine ? nil : terminalTitle
+        let parts = [machine, directory, terminal].compactMap { $0 }
+        guard !parts.isEmpty else { return nil }
+        return (parts.joined(separator: " · "), machine == nil && terminal == nil)
     }
 }
 

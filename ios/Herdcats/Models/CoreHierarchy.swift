@@ -50,6 +50,8 @@ private struct CoreHierarchyBuilder {
                   let tabs = space["tabs"].arrayValue else { continue }
             let spaceID = identity("space", machine: machine, raw: rawSpaceID)
             guard spaceIDs.insert(spaceID).inserted else { continue }
+            let workspaceName = nonempty(space["name"])
+            let workspaceFolder = nonempty(space["folder"])
             let firstPane = result.panes.count
             let firstTab = result.tabs.count
             for (index, tab) in tabs.enumerated() {
@@ -66,21 +68,25 @@ private struct CoreHierarchyBuilder {
                         && terminal["labels"]["herdr.tab"].stringValue == rawTabID
                 }
                 addresses.append(contentsOf: labeled)
+                let tabName = nonempty(tab["name"])
                 let before = result.panes.count
                 for address in addresses {
-                    addTerminal(address, workspaceID: spaceID, tabID: tabID)
+                    addTerminal(
+                        address, workspaceID: spaceID, tabID: tabID,
+                        workspaceName: workspaceName, tabName: tabName, workspaceFolder: workspaceFolder
+                    )
                 }
                 let panes = Array(result.panes[before...])
                 result.tabs.append(TabEntry(
                     tabId: tabID, workspaceId: spaceID,
-                    label: nonempty(tab["name"]) ?? String(index + 1), number: index + 1,
+                    label: tabName ?? String(index + 1), number: index + 1,
                     paneCount: panes.count, agentStatus: aggregate(panes), focused: false
                 ))
             }
             let panes = Array(result.panes[firstPane...])
             let mappedTabs = Array(result.tabs[firstTab...])
-            let localName = nonempty(space["name"])
-                ?? nonempty(space["folder"]).map { ($0 as NSString).lastPathComponent }
+            let localName = workspaceName
+                ?? workspaceFolder.map { ($0 as NSString).lastPathComponent }
                 ?? rawSpaceID
             let label = machine.map { "\($0) · \(localName)" } ?? localName
             result.workspaces.append(Workspace(
@@ -112,12 +118,18 @@ private struct CoreHierarchyBuilder {
         ))
     }
 
-    private mutating func addTerminal(_ address: String, workspaceID: String, tabID: String) {
+    private mutating func addTerminal(
+        _ address: String, workspaceID: String, tabID: String,
+        workspaceName: String? = nil, tabName: String? = nil, workspaceFolder: String? = nil
+    ) {
         guard let terminal = live[address], assigned.insert(address).inserted else { return }
         let status = nonempty(terminal["status"]["state"]) ?? "unknown"
         let agent = agentName(terminal)
-        let cwd = nonempty(terminal["foreground"]["cwd"]) ?? nonempty(terminal["cwd"])
-        let title = nonempty(terminal["title"]) ?? nonempty(terminal["name"]) ?? address
+        let launchCwd = nonempty(terminal["cwd"])
+        let cwd = nonempty(terminal["foreground"]["cwd"]) ?? launchCwd
+        let name = nonempty(terminal["name"])
+        let suppliedTitle = nonempty(terminal["title"]) ?? name
+        let title = suppliedTitle ?? address
         result.panes.append(PaneEntry(
             paneId: address, tabId: tabID, workspaceId: workspaceID,
             label: nil, agent: agent, agentStatus: status, cwd: cwd,
@@ -130,7 +142,14 @@ private struct CoreHierarchyBuilder {
                 stateChangeSeq: snapshot.statusSequences[address], cwd: cwd,
                 paneId: address, tabId: tabID, workspaceId: workspaceID,
                 terminalTitle: title, terminalTitleStripped: title,
-                focused: false, revision: snapshot.revisions[address]
+                focused: false, revision: snapshot.revisions[address],
+                name: name, tabLabel: tabName,
+                coreContext: AgentEntry.CoreContext(
+                    workspaceName: workspaceName,
+                    machine: address.split(separator: "/").dropLast().last.map(String.init),
+                    directory: launchCwd ?? workspaceFolder,
+                    usesSyntheticTerminalTitle: suppliedTitle == nil
+                )
             ))
         }
     }

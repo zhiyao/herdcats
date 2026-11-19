@@ -121,10 +121,15 @@ final class AppModel {
     )?
     @ObservationIgnored var customCheckHerdr: ((ConnectionConfig, ConnectionGeneration) async throws -> String)?
 
+    var connectedOrOfflineHost: String? {
+        switch phase {
+        case let .connected(host, _), let .offline(host, _): return host
+        case .disconnected, .connecting: return nil
+        }
+    }
+
     var machineDisplayName: String {
-        if case let .connected(host, _) = phase { return host }
-        if case let .offline(host, _) = phase { return host }
-        return "Remote Machine"
+        connectedOrOfflineHost ?? "Remote Machine"
     }
 
     init(

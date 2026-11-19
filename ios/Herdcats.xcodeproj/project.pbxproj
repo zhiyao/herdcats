@@ -153,6 +153,7 @@
 		DA7B25BE2115655CF67F2D04 /* CoreRPCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 691B7C7DD3FA9BD5F5661DEA /* CoreRPCClient.swift */; };
 		DB245951720AF5ACA9209508 /* PaneHeaderBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = F468DA0CB58A8497CF538FB4 /* PaneHeaderBar.swift */; };
 		DC0A40BA4F3F046A4AEAA18A /* AgentStatusAlerts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 276245D2931453A0D298BEA4 /* AgentStatusAlerts.swift */; };
+		DC4BDD55D98C57AF27D0B767 /* AgentListPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58A59F6DAE0B6E13BB27AA7A /* AgentListPresentationTests.swift */; };
 		DD031217170E5A6F5E67FCCD /* ScreenshotFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F54450F78CCB68F3776BF68 /* ScreenshotFixtures.swift */; };
 		DE737B5F385D5A11A2522BF2 /* AgentTimelineState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A3BFF904815E2BD66B154D9 /* AgentTimelineState.swift */; };
 		E09AD38403575BEA82C7E9DB /* TimelineActivityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E975FAE29F163919BD723995 /* TimelineActivityViews.swift */; };
@@ -254,6 +255,7 @@
 		53A869CC09EA1C9876BF7A3D /* AgentBridgeSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentBridgeSetupView.swift; sourceTree = "<group>"; };
 		565E52FF93633CC2CB6D65E5 /* HerdcatsTests+PaneLiveInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdcatsTests+PaneLiveInput.swift"; sourceTree = "<group>"; };
 		568BEE7592258AE6D1351685 /* PhoneAnswersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneAnswersTests.swift; sourceTree = "<group>"; };
+		58A59F6DAE0B6E13BB27AA7A /* AgentListPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentListPresentationTests.swift; sourceTree = "<group>"; };
 		58D221D9158228E5593662D7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		59460EB647F68FC33C825D67 /* HerdrConnection+Queries.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdrConnection+Queries.swift"; sourceTree = "<group>"; };
 		5E030A59A32EEE2D37BBF028 /* Herdcats.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Herdcats.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -613,6 +615,7 @@
 			children = (
 				92640BC7EDFFEEFCA4FB2AB6 /* AgentBridgeClientTests.swift */,
 				4B56912BC83A7EAE644E879C /* AgentBridgeLiveSSHTests.swift */,
+				58A59F6DAE0B6E13BB27AA7A /* AgentListPresentationTests.swift */,
 				D7E08942D9153ADBB0BA2D65 /* AgentTimelineConnectionTests.swift */,
 				FA18C20C79CD1BC62B36405C /* AgentTimelineTests.swift */,
 				B880E90055367DB1DD0810BD /* AgySignInTests.swift */,
@@ -958,6 +961,7 @@
 			files = (
 				1875AA3FC9948777DD351BB0 /* AgentBridgeClientTests.swift in Sources */,
 				4F60BAF0321042EAE770DE08 /* AgentBridgeLiveSSHTests.swift in Sources */,
+				DC4BDD55D98C57AF27D0B767 /* AgentListPresentationTests.swift in Sources */,
 				201B6E732A356623057BE685 /* AgentTimelineConnectionTests.swift in Sources */,
 				ADFC18A5AA7610891CA0ABC7 /* AgentTimelineTests.swift in Sources */,
 				84B6D5646FFDB3E086EA785A /* AgySignInTests.swift in Sources */,
