@@ -95,7 +95,7 @@ final class SpacesModel {
     @ObservationIgnored var agentListFetch: (() async throws -> ([Workspace], [AgentEntry]))?
     private var refreshGate = RefreshGenerationGate()
     @ObservationIgnored private var tabEnrichment: (
-        id: UInt64, connection: HerdrConnection, source: ConnectionGeneration,
+        id: UInt64, connection: HerdrConnection, source: ConnectionGeneration, workspaceIDs: Set<String>,
         retained: [String: ContinuousClock.Instant], settled: [String: [String: String]],
         task: Task<Void, Never>
     )?
@@ -184,14 +184,15 @@ final class SpacesModel {
             if let source, await connection.generation != source { return }
             guard refreshGate.isCurrent(generation), connectionScope == initialScope, !Task.isCancelled else { return }
             if backend == .tui, let source, !canPublishTabLabels(from: source) { return }
-            if let pending = tabEnrichment,
-               !isPoll || pending.connection !== connection || pending.source != source {
-                pending.task.cancel()
-            }
             let occupied = Set(agentList.map(\.workspaceId))
             let tabWorkspaceIDs = Set(backend == .tui ? workspaceList.filter {
                 occupied.contains($0.workspaceId) && $0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }.map(\.workspaceId) : [])
+            if let pending = tabEnrichment,
+               !isPoll || pending.connection !== connection || pending.source != source
+                   || !tabWorkspaceIDs.isSubset(of: pending.workspaceIDs) {
+                pending.task.cancel()
+            }
             let reusesEnrichment = isPoll && tabEnrichment?.task.isCancelled == false
             let settled = reusesEnrichment ? tabEnrichment?.settled : nil
             var retained: [String: ContinuousClock.Instant] = [:]
@@ -278,7 +279,7 @@ final class SpacesModel {
                     self.clearVerifiedTabLabels()
                 }
             }
-            tabEnrichment = (generation, connection, source, retained, [:], task)
+            tabEnrichment = (generation, connection, source, tabWorkspaceIDs, retained, [:], task)
         } catch {
             guard refreshGate.isCurrent(generation), connectionScope == initialScope else { return }
             reportError(error)

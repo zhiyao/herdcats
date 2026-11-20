@@ -299,6 +299,42 @@ struct AgentListPresentationTests {
     }
 
     @MainActor
+    @Test
+    func tuiPollEnrichesNewWorkspaceWithoutAnotherPoll() async throws {
+        let workspaces = """
+        {"result":{"workspaces":[
+          {"workspace_id":"w0","label":"","number":1,"tab_count":1,"pane_count":1,"active_tab_id":"t","agent_status":"working","focused":true},
+          {"workspace_id":"w1","label":"","number":2,"tab_count":1,"pane_count":1,"active_tab_id":"t","agent_status":"working","focused":false}
+        ]}}
+        """
+        let firstAgent = #"{"agent":"pi","agent_status":"working","pane_id":"p0","tab_id":"t","workspace_id":"w0","focused":true}"#
+        let secondAgent = #"{"agent":"pi","agent_status":"working","pane_id":"p1","tab_id":"t","workspace_id":"w1","focused":false}"#
+        let firstTabs = HerdrConnection.OverviewRead.tabs(workspaceId: "w0")
+        let secondTabs = HerdrConnection.OverviewRead.tabs(workspaceId: "w1")
+        let replies = OverviewReplies([
+            .workspaces: workspaces,
+            .agents: #"{"result":{"agents":[\#(firstAgent)]}}"#,
+            firstTabs: #"{"result":{"tabs":[{"tab_id":"t","workspace_id":"w0","label":"First tab","number":1,"pane_count":1,"agent_status":"working","focused":true}]}}"#,
+            secondTabs: #"{"result":{"tabs":[{"tab_id":"t","workspace_id":"w1","label":"Second tab","number":1,"pane_count":1,"agent_status":"working","focused":false}]}}"#
+        ], heldRead: firstTabs)
+        let connection = HerdrConnection(overviewResponse: { try await replies.response(to: $0) })
+        let model = SpacesModel()
+        defer { replies.release.release(()) }
+
+        await model.refresh(connection)
+        try await withTimeout(seconds: 3, label: "first workspace lookup") { try await replies.entered.wait() }
+        await replies.update(.agents, reply: #"{"result":{"agents":[\#(firstAgent),\#(secondAgent)]}}"#)
+        let poll = Task { await model.refresh(connection, isPoll: true) }
+        try await withTimeout(seconds: 3, label: "poll base refresh") { await poll.value }
+        #expect(model.spaces.flatMap(\.agents).map(\.paneId) == ["p0", "p1"])
+        #expect(!(await replies.requests).contains(secondTabs))
+
+        replies.release.release(())
+        await model.waitForTabEnrichment()
+        #expect(model.spaces.flatMap(\.agents).compactMap(\.tabLabel) == ["First tab", "Second tab"])
+    }
+
+    @MainActor
     @Test(arguments: [false, true])
     func tuiRefreshPublishesBaseBeforeScopedTabLookup(expiresWhileWaiting: Bool) async throws {
         let workspacesJSON = """
