@@ -13,14 +13,14 @@ import Testing
 struct AgentListPresentationTests {
     @MainActor
     @Test
-    func mountedTabsRefreshWhenReconnectBecomesReady() {
+    func mountedTabsRefreshOverviewWhenReadyAndForceQuotaOnlyWhenReturningFromOffline() {
         let online = AppModel.Phase.connected(host: "studio", username: "demo")
         let offline = AppModel.Phase.offline(host: "studio", username: "demo")
-        #expect(ConnectedTabsView.shouldRefreshAfterReconnect(from: .connecting, to: online))
-        #expect(ConnectedTabsView.shouldRefreshAfterReconnect(from: offline, to: online))
-        #expect(!ConnectedTabsView.shouldRefreshAfterReconnect(from: offline, to: .connecting))
-        #expect(!ConnectedTabsView.shouldRefreshAfterReconnect(from: .disconnected, to: online))
-        #expect(!ConnectedTabsView.shouldRefreshAfterReconnect(from: online, to: online))
+        #expect(ConnectedTabsView.refreshAfterReconnect(from: .connecting, to: online) == .overview)
+        #expect(ConnectedTabsView.refreshAfterReconnect(from: offline, to: online) == .overviewAndQuota)
+        #expect(ConnectedTabsView.refreshAfterReconnect(from: offline, to: .connecting) == nil)
+        #expect(ConnectedTabsView.refreshAfterReconnect(from: .disconnected, to: online) == nil)
+        #expect(ConnectedTabsView.refreshAfterReconnect(from: online, to: online) == nil)
     }
 
     private func workspace(_ label: String, worktree: Worktree? = nil) -> Workspace {

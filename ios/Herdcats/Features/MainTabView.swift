@@ -39,11 +39,17 @@ struct MainTabView: View {
 
 /// Owns the selected machine's shared data and lifecycle-aware refresh loop.
 struct ConnectedTabsView: View {
-    static func shouldRefreshAfterReconnect(from oldPhase: AppModel.Phase, to newPhase: AppModel.Phase) -> Bool {
-        guard case .connected = newPhase else { return false }
+    enum ReconnectRefresh: Equatable {
+        case overview
+        case overviewAndQuota
+    }
+
+    static func refreshAfterReconnect(from oldPhase: AppModel.Phase, to newPhase: AppModel.Phase) -> ReconnectRefresh? {
+        guard case .connected = newPhase else { return nil }
         switch oldPhase {
-        case .offline, .connecting: return true
-        case .connected, .disconnected: return false
+        case .offline: return .overviewAndQuota
+        case .connecting: return .overview
+        case .connected, .disconnected: return nil
         }
     }
 
@@ -172,9 +178,10 @@ struct ConnectedTabsView: View {
             if pruned != current { paneLayout.wrappedValue = pruned }
         }
         .onChange(of: appModel.phase) { oldPhase, newPhase in
-            if Self.shouldRefreshAfterReconnect(from: oldPhase, to: newPhase) {
-                Task {
-                    await model.refresh(appModel.connection)
+            guard let refresh = Self.refreshAfterReconnect(from: oldPhase, to: newPhase) else { return }
+            Task {
+                await model.refresh(appModel.connection)
+                if refresh == .overviewAndQuota {
                     await model.refreshUsage(appModel.connection, force: true)
                 }
             }
