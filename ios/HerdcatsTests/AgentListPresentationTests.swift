@@ -37,7 +37,7 @@ struct AgentListPresentationTests {
         #expect(AgentListPresentation(agent: entry, workspace: workspace("")).title == tabLabel)
         let presentation = AgentListPresentation(agent: entry, workspace: workspace(" firstmate "))
         #expect(presentation.title == " firstmate ")
-        #expect(presentation.subtitle(connectionHost: "studio-mac")?.text == "studio-mac · ~/1/firstmate · π · firstmate")
+        #expect(presentation.subtitle(connectionHost: "studio-mac")?.text == "studio-mac · π · firstmate")
         #expect(entry.displayTitle == "π · firstmate")
         #expect(entry.stateChangeSeq == 10)
         #expect(entry.agentStatus == "working")
@@ -52,27 +52,31 @@ struct AgentListPresentationTests {
         entry.tabLabel = " "
         let presentation = AgentListPresentation(agent: entry, workspace: workspace(""))
         #expect(presentation.title == "π · firstmate")
-        #expect(presentation.subtitle(connectionHost: "studio-mac")?.text == "studio-mac · ~/1/firstmate")
-        #expect(presentation.subtitle(connectionHost: nil)?.text == "~/1/firstmate")
-        #expect(presentation.subtitle(connectionHost: nil)?.isPath == true)
+        #expect(presentation.subtitle(connectionHost: "studio-mac")?.text == "studio-mac")
+        #expect(presentation.subtitle(connectionHost: nil) == nil)
     }
 
     @Test
-    func tuiOverviewUsesLaunchDirectory() throws {
+    func tuiSubtitleOmitsDirectoryWithoutConfiguredFolder() throws {
         let rows = """
         {"result":{"agents":[
-          {"agent":"pi","agent_status":"working","cwd":"/work/launch","foreground_cwd":"/work/scratch","pane_id":"a","tab_id":"t1","workspace_id":"w1","focused":false,"terminal_title_stripped":"Build"}
+          {"agent":"pi","agent_status":"working","cwd":"/tmp/scratch","foreground_cwd":"/tmp/agent-job","pane_id":"a","tab_id":"t1","workspace_id":"w1","focused":false,"terminal_title_stripped":"Build"}
         ]}}
         """
         let agent = try #require(HerdrConnection.decode(rows, as: AgentListResult.self).agents.first)
-        #expect(AgentListPresentation(agent: agent, workspace: workspace("")).subtitle(connectionHost: "studio")?.text == "studio · ~/work/launch")
+        let blankFolder = Worktree(checkoutPath: " ", repoName: "app", repoRoot: "/repos/app", isLinkedWorktree: true)
+        for worktree in [nil, blankFolder] {
+            let presentation = AgentListPresentation(agent: agent, workspace: workspace("", worktree: worktree))
+            #expect(presentation.subtitle(connectionHost: "studio")?.text == "studio")
+        }
+        #expect(agent.shortCwd == "~/tmp/scratch")
     }
 
-    @Test(arguments: ["null", #""  ""#, #""/work/launch ""#])
-    func tuiSubtitleUsesAvailableDirectoryAndRawTerminalTitle(cwd: String) throws {
+    @Test(arguments: ["null", #""/old/launch""#, #""/tmp/scratch""#])
+    func tuiSubtitleUsesConfiguredFolderAndRawTerminalTitle(cwd: String) throws {
         let rows = """
         {"result":{"agents":[
-          {"agent":"pi","agent_status":"working","cwd":\(cwd),"pane_id":"p1","tab_id":"t1","workspace_id":"w1","focused":false,"terminal_title":" Review ","terminal_title_stripped":null}
+          {"agent":"pi","agent_status":"working","cwd":\(cwd),"foreground_cwd":"/tmp/agent-job","pane_id":"p1","tab_id":"t1","workspace_id":"w1","focused":false,"terminal_title":" Review ","terminal_title_stripped":null}
         ]}}
         """
         let agent = try #require(HerdrConnection.decode(rows, as: AgentListResult.self).agents.first)
@@ -80,7 +84,7 @@ struct AgentListPresentationTests {
             checkoutPath: "/repos/example ", repoName: "app", repoRoot: "/repos/app", isLinkedWorktree: true
         ))
         let presentation = AgentListPresentation(agent: agent, workspace: example)
-        let directory = cwd == #""/work/launch ""# ? "~/work/launch " : "~/repos/example "
+        let directory = "~/repos/example "
         #expect(presentation.title == "ExampleApp")
         #expect(presentation.subtitle(connectionHost: "studio")?.text == "studio · \(directory) ·  Review ")
         #expect(agent.displayTitle == "p1")
@@ -105,7 +109,7 @@ struct AgentListPresentationTests {
         let agent = try #require(HerdrConnection.decode(rows, as: AgentListResult.self).agents.first)
         let presentation = AgentListPresentation(agent: agent, workspace: workspace("ExampleApp"))
         #expect(presentation.title == "ExampleApp")
-        #expect(presentation.subtitle(connectionHost: "studio")?.text == "studio · ~/work/launch · p1")
+        #expect(presentation.subtitle(connectionHost: "studio")?.text == "studio · p1")
     }
 
     @Test
@@ -117,7 +121,9 @@ struct AgentListPresentationTests {
         ]}}
         """
         let entries = try HerdrConnection.decode(rows, as: AgentListResult.self).agents
-        let example = workspace("ExampleApp")
+        let example = workspace("ExampleApp", worktree: Worktree(
+            checkoutPath: "/repos/project/app", repoName: "app", repoRoot: "/repos/app", isLinkedWorktree: true
+        ))
         let presentations = entries.map { AgentListPresentation(agent: $0, workspace: example) }
         #expect(presentations.map(\.title) == ["ExampleApp", "ExampleApp"])
         #expect(presentations.compactMap { $0.subtitle(connectionHost: "studio")?.text } == [
@@ -139,8 +145,8 @@ struct AgentListPresentationTests {
         let presentations = items.map { AgentListPresentation(agent: $0.agent, workspace: $0.space.workspace) }
         #expect(presentations.map(\.title) == ["ExampleApp", "ExampleApp"])
         #expect(presentations.compactMap { $0.subtitle(connectionHost: "studio")?.text } == [
-            "studio · ~/1/firstmate · Zulu",
-            "studio · ~/1/firstmate · Alpha"
+            "studio · Zulu",
+            "studio · Alpha"
         ])
     }
 

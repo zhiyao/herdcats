@@ -139,8 +139,7 @@ struct AgentListPresentation {
         let workspaceName = if let core = agent.coreContext { core.workspaceName } else { workspace.label }
         title = [workspaceName, agent.tabLabel, agent.name].compactMap(Self.suppliedText).first ?? agent.displayTitle
         machine = Self.nonempty(agent.coreContext?.machine)
-        let launchPath = Self.nonempty(agent.cwd) == nil ? nil : agent.cwd
-        let path = if let core = agent.coreContext { core.directory } else { launchPath ?? workspace.worktree?.checkoutPath }
+        let path = if let core = agent.coreContext { core.directory } else { workspace.worktree?.checkoutPath }
         directory = path.flatMap { Self.nonempty($0) == nil ? nil : AgentEntry.compactCwd($0) }
         let terminal: String? = if agent.coreContext?.usesSyntheticTerminalTitle == true {
             nil
