@@ -137,9 +137,7 @@ struct AgentListPresentation {
 
     init(agent: AgentEntry, workspace: Workspace) {
         let workspaceName = if let core = agent.coreContext { core.workspaceName } else { workspace.label }
-        title = [workspaceName, agent.tabLabel, agent.name].compactMap {
-            Self.nonempty($0) == nil ? nil : $0
-        }.first ?? agent.displayTitle
+        title = [workspaceName, agent.tabLabel, agent.name].compactMap(Self.suppliedText).first ?? agent.displayTitle
         machine = Self.nonempty(agent.coreContext?.machine)
         let launchPath = Self.nonempty(agent.cwd) == nil ? nil : agent.cwd
         let path = if let core = agent.coreContext { core.directory } else { launchPath ?? workspace.worktree?.checkoutPath }
@@ -147,9 +145,15 @@ struct AgentListPresentation {
         let terminal: String? = if agent.coreContext?.usesSyntheticTerminalTitle == true {
             nil
         } else {
-            Self.nonempty(agent.terminalTitleStripped) ?? Self.nonempty(agent.terminalTitle)
+            Self.suppliedText(agent.terminalTitleStripped) ?? Self.suppliedText(agent.terminalTitle)
         }
-        terminalTitle = terminal == Self.nonempty(title) || terminal == directory ? nil : terminal
+        let normalizedTerminal = Self.nonempty(terminal)
+        terminalTitle = normalizedTerminal == Self.nonempty(title) || normalizedTerminal == Self.nonempty(directory)
+            ? nil : terminal
+    }
+
+    private static func suppliedText(_ value: String?) -> String? {
+        nonempty(value) == nil ? nil : value
     }
 
     private static func nonempty(_ value: String?) -> String? {
@@ -160,7 +164,7 @@ struct AgentListPresentation {
 
     func subtitle(connectionHost: String?) -> (text: String, isPath: Bool)? {
         let machine = machine ?? Self.nonempty(connectionHost)
-        let terminal = terminalTitle == machine ? nil : terminalTitle
+        let terminal = Self.nonempty(terminalTitle) == machine ? nil : terminalTitle
         let parts = [machine, directory, terminal].compactMap { $0 }
         guard !parts.isEmpty else { return nil }
         return (parts.joined(separator: " · "), machine == nil && terminal == nil)

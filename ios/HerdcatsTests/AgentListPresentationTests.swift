@@ -72,7 +72,7 @@ struct AgentListPresentationTests {
     func tuiSubtitleUsesAvailableDirectoryAndRawTerminalTitle(cwd: String) throws {
         let rows = """
         {"result":{"agents":[
-          {"agent":"pi","agent_status":"working","cwd":\(cwd),"pane_id":"p1","tab_id":"t1","workspace_id":"w1","focused":false,"terminal_title":"Review","terminal_title_stripped":null}
+          {"agent":"pi","agent_status":"working","cwd":\(cwd),"pane_id":"p1","tab_id":"t1","workspace_id":"w1","focused":false,"terminal_title":" Review ","terminal_title_stripped":null}
         ]}}
         """
         let agent = try #require(HerdrConnection.decode(rows, as: AgentListResult.self).agents.first)
@@ -82,8 +82,17 @@ struct AgentListPresentationTests {
         let presentation = AgentListPresentation(agent: agent, workspace: example)
         let directory = cwd == #""/work/launch ""# ? "~/work/launch " : "~/repos/example "
         #expect(presentation.title == "ExampleApp")
-        #expect(presentation.subtitle(connectionHost: "studio")?.text == "studio · \(directory) · Review")
+        #expect(presentation.subtitle(connectionHost: "studio")?.text == "studio · \(directory) ·  Review ")
         #expect(agent.displayTitle == "p1")
+
+        let repeatedDirectory = rows.replacingOccurrences(of: " Review ", with: directory)
+        let repeatedAgent = try #require(
+            HerdrConnection.decode(repeatedDirectory, as: AgentListResult.self).agents.first
+        )
+        let deduplicated = AgentListPresentation(agent: repeatedAgent, workspace: example)
+        #expect(deduplicated.subtitle(connectionHost: "studio")?.text == "studio · \(directory)")
+        #expect(deduplicated.subtitle(connectionHost: nil)?.text == directory)
+        #expect(deduplicated.subtitle(connectionHost: nil)?.isPath == true)
     }
 
     @Test(arguments: [#""p1""#, "null"])
@@ -336,6 +345,21 @@ struct AgentListPresentationTests {
         let verifiedTitles = ["Closed", " Review ", "Implement", "Named"]
         #expect(titles() == (expiresWhileWaiting ? baseTitles : verifiedTitles))
         if !expiresWhileWaiting {
+            let (revalidating, finishRevalidation) = await replies.holdReply(
+                tabsJSON.replacingOccurrences(of: " Review ", with: "Updated")
+            )
+            defer { finishRevalidation.release(()) }
+            await model.refresh(connection)
+            try await withTimeout(seconds: 3, label: "revalidation before failed refresh") { try await revalidating.wait() }
+            await replies.updateAgents("{}")
+            await model.refresh(connection)
+            #expect(titles() == verifiedTitles)
+            finishRevalidation.release(())
+            await model.waitForTabEnrichment()
+            let updatedTitles = ["Closed", "Updated", "Implement", "Named"]
+            #expect(titles() == updatedTitles)
+            await replies.updateAgents(agentsJSON)
+
             let renamedTabs = """
             {"result":{"tabs":[
               {"tab_id":"t-review","workspace_id":"w1","label":"Renamed","number":1,"pane_count":1,"agent_status":"working","focused":true}
@@ -343,7 +367,7 @@ struct AgentListPresentationTests {
             """
             let renamedTitles = ["Closed", "Renamed", "Build", "Named"]
             for (reply, before, after, replaceSource) in [
-                (renamedTabs as String?, verifiedTitles, renamedTitles, false),
+                (renamedTabs as String?, updatedTitles, renamedTitles, false),
                 (nil, renamedTitles, baseTitles, false),
                 (tabsJSON, baseTitles, verifiedTitles, false),
                 (nil, baseTitles, baseTitles, true)
@@ -374,6 +398,27 @@ struct AgentListPresentationTests {
         await #expect(throws: HerdrError.notConnected) { try await connection.workspaceCreate() }
         let requests: Set<HerdrConnection.OverviewRead> = [.workspaces, .agents, closedTabs, unnamedTabs]
         #expect(await replies.requests == requests)
+    }
+
+    @Test
+    func tabLabelLookupDistinguishesEmptyFailureAndSkippedWorkspaces() async throws {
+        let held = HerdrConnection.OverviewRead.tabs(workspaceId: "c")
+        let replies = OverviewReplies([
+            .tabs(workspaceId: "a"): #"{"result":{"tabs":[]}}"#,
+            held: #"{"result":{"tabs":[]}}"#
+        ], heldRead: held)
+        let connection = HerdrConnection(overviewResponse: { try await replies.response(to: $0) })
+        let generation = await connection.generation
+        let deadline = ContinuousClock.now + .seconds(1)
+        let lookup = Task {
+            try await connection.agentTabLabels(workspaceIDs: ["a", "b", "c", "d"], generation: generation, deadline: deadline)
+        }
+        defer { replies.release.release(()) }
+        try await withTimeout(seconds: 3, label: "lookup before budget expiry") { try await replies.entered.wait() }
+        try await ContinuousClock().sleep(until: deadline)
+        replies.release.release(())
+        #expect(try await lookup.value == ["a": .completed([:]), "b": .failed, "c": .failed])
+        #expect(!(await replies.requests).contains(.tabs(workspaceId: "d")))
     }
     #endif
 
