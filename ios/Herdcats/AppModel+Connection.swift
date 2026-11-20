@@ -124,8 +124,12 @@ extension AppModel {
                 connection.forceClose(generation: generation)
                 return
             }
+            if config.backend == .tui {
+                guard tabQueryClient?.allowOptionalTabList() ?? (customDialTransport != nil) else {
+                    throw HerdrError.notConnected
+                }
+            }
             readyTabQueryClient = tabQueryClient
-            tabQueryClient?.allowOptionalTabList()
             herdrVersion = version.trimmingCharacters(in: .whitespacesAndNewlines)
             phase = .connected(host: config.host, username: config.username)
             hasActiveSession = true

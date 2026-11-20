@@ -448,9 +448,11 @@ public final class SSHClient {
         }
     }
 
-    public func allowOptionalTabList() {
+    public func allowOptionalTabList() -> Bool {
         optionalTabList.withLockedValue { state in
-            if state.admission == .pending { state.admission = .allowed }
+            guard state.admission != .revoked, isConnected else { return false }
+            state.admission = .allowed
+            return true
         }
     }
 

@@ -96,7 +96,8 @@ final class SpacesModel {
     private var refreshGate = RefreshGenerationGate()
     @ObservationIgnored private var tabEnrichment: (
         id: UInt64, connection: HerdrConnection, source: ConnectionGeneration,
-        retained: [String: ContinuousClock.Instant], task: Task<Void, Never>
+        retained: [String: ContinuousClock.Instant], settled: [String: [String: String]],
+        task: Task<Void, Never>
     )?
     @ObservationIgnored private var verifiedTabSource: (HerdrConnection, ConnectionGeneration)?
     private enum ObservedTabSource {
@@ -192,30 +193,35 @@ final class SpacesModel {
                 occupied.contains($0.workspaceId) && $0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }.map(\.workspaceId) : [])
             let reusesEnrichment = isPoll && tabEnrichment?.task.isCancelled == false
+            let settled = reusesEnrichment ? tabEnrichment?.settled : nil
             var retained: [String: ContinuousClock.Instant] = [:]
             var baseAgents = agentList
-            if let source, verifiedTabSource?.0 === connection, verifiedTabSource?.1 == source,
-               !tabWorkspaceIDs.isEmpty {
-                var labels: [String: [String: String]] = [:]
-                let now = ContinuousClock.now
+            var carried: [String: [String: String]] = [:]
+            let now = ContinuousClock.now
+            if let source, verifiedTabSource?.0 === connection, verifiedTabSource?.1 == source {
                 for space in spaces where tabWorkspaceIDs.contains(space.id) {
                     if let cutoff = tabEnrichment?.retained[space.id], cutoff <= now { continue }
                     for agent in space.agents {
-                        labels[space.id, default: [:]][agent.tabId] = agent.tabLabel
+                        carried[space.id, default: [:]][agent.tabId] = agent.tabLabel
                     }
                 }
-                for index in baseAgents.indices {
-                    let agent = baseAgents[index]
-                    guard let label = labels[agent.workspaceId]?[agent.tabId] else { continue }
-                    if !reusesEnrichment {
-                        let cutoff = min(deadline, tabEnrichment?.retained[agent.workspaceId] ?? deadline)
-                        guard cutoff > now else { continue }
-                        retained[agent.workspaceId] = cutoff
-                    }
-                    baseAgents[index].tabLabel = label
+            }
+            for index in baseAgents.indices {
+                let agent = baseAgents[index]
+                guard tabWorkspaceIDs.contains(agent.workspaceId),
+                      let labels = settled?[agent.workspaceId] ?? carried[agent.workspaceId],
+                      let label = labels[agent.tabId] else { continue }
+                if !reusesEnrichment {
+                    let cutoff = min(deadline, tabEnrichment?.retained[agent.workspaceId] ?? deadline)
+                    guard cutoff > now else { continue }
+                    retained[agent.workspaceId] = cutoff
                 }
+                baseAgents[index].tabLabel = label
+            }
+            verifiedTabSource = if let source, backend == .tui, baseAgents.contains(where: { $0.tabLabel != nil }) {
+                (connection, source)
             } else {
-                verifiedTabSource = nil
+                nil
             }
             spaces = Space.join(workspaces: workspaceList, agents: baseAgents)
             unconfirmedSpaces = SpacePresentationOverlay.unconfirmed(
@@ -263,6 +269,7 @@ final class SpacesModel {
                     guard await connection.generation == source else { return }
                     await MainActor.run { [weak self] in
                         guard let self, self.ownsTabEnrichment(generation, scope: scope) else { return }
+                        self.tabEnrichment?.settled[workspace] = labels
                         self.settleTabLabels(labels, in: [workspace], connection: connection, source: source)
                     }
                 }
@@ -271,7 +278,7 @@ final class SpacesModel {
                     self.clearVerifiedTabLabels()
                 }
             }
-            tabEnrichment = (generation, connection, source, retained, task)
+            tabEnrichment = (generation, connection, source, retained, [:], task)
         } catch {
             guard refreshGate.isCurrent(generation), connectionScope == initialScope else { return }
             reportError(error)

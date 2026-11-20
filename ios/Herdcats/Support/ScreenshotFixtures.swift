@@ -73,8 +73,7 @@ enum ScreenshotFixtures {
         projects.indices.map { index in
             ["pane_id": "p\(index)", "tab_id": "t\(index)", "workspace_id": "w\(index)",
              "agent": collision || index == 0 ? paneAgent : providers[index], "agent_status": statuses[index],
-             "cwd": collision && index == 2 ? NSNull() as Any
-                : "/Users/demo/Projects/\(projects[index].lowercased().replacingOccurrences(of: " ", with: "-"))",
+             "cwd": "/Users/demo/Projects/\(projects[index].lowercased().replacingOccurrences(of: " ", with: "-"))",
              "terminal_title_stripped": titles[index], "terminal_title": titles[index],
              "focused": index == 0, "revision": 1, "state_change_seq": 10 - index]
         }

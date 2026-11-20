@@ -5,11 +5,24 @@ import NIOConcurrencyHelpers
 import NIOCore
 import NIOPosix
 import NIOSSH
+import Observation
 import Testing
 @testable import Herdcats
 
 @Suite("Agent list presentation")
 struct AgentListPresentationTests {
+    @MainActor
+    @Test
+    func mountedTabsRefreshWhenReconnectBecomesReady() {
+        let online = AppModel.Phase.connected(host: "studio", username: "demo")
+        let offline = AppModel.Phase.offline(host: "studio", username: "demo")
+        #expect(ConnectedTabsView.shouldRefreshAfterReconnect(from: .connecting, to: online))
+        #expect(ConnectedTabsView.shouldRefreshAfterReconnect(from: offline, to: online))
+        #expect(!ConnectedTabsView.shouldRefreshAfterReconnect(from: offline, to: .connecting))
+        #expect(!ConnectedTabsView.shouldRefreshAfterReconnect(from: .disconnected, to: online))
+        #expect(!ConnectedTabsView.shouldRefreshAfterReconnect(from: online, to: online))
+    }
+
     private func workspace(_ label: String, worktree: Worktree? = nil) -> Workspace {
         Workspace(
             workspaceId: "w1", label: label, number: 1, tabCount: 1, paneCount: 1,
@@ -368,13 +381,27 @@ struct AgentListPresentationTests {
 
             let firstTab = """
             {"result":{"tabs":[
-              {"tab_id":"t-review","workspace_id":"w0","label":"Verified first","number":1,"pane_count":1,"agent_status":"working","focused":true}
+              {"tab_id":"t-review","workspace_id":"w0","label":"Verified first","number":1,"pane_count":1,"agent_status":"working","focused":true},
+              {"tab_id":"t-late","workspace_id":"w0","label":"Late agent tab","number":2,"pane_count":1,"agent_status":"working","focused":false}
             ]}}
             """
             await replies.update(closedTabs, reply: firstTab)
+            let (otherWorkspaceEntered, finishOtherWorkspace) = await replies.holdReply(tabsJSON)
+            defer { finishOtherWorkspace.release(()) }
             await model.refresh(connection)
-            await model.waitForTabEnrichment()
+            try await withTimeout(seconds: 3, label: "workspace settling before sibling") { try await otherWorkspaceEntered.wait() }
             #expect(titles() == ["Verified first", "Updated", "Implement", "Named"])
+            let lateAgent = """
+            ,{"agent":"pi","agent_status":"working","pane_id":"p-late","tab_id":"t-late","workspace_id":"w0","focused":false,"terminal_title_stripped":"Late agent"}
+            ]}}
+            """
+            await replies.update(.agents, reply: agentsJSON.replacingOccurrences(of: "]}}", with: lateAgent))
+            await model.refresh(connection, isPoll: true)
+            #expect(model.spaces.first?.agents.first { $0.paneId == "p-late" }?.tabLabel == "Late agent tab")
+            finishOtherWorkspace.release(())
+            await model.waitForTabEnrichment()
+            #expect(model.spaces.first?.agents.first { $0.paneId == "p-late" }?.tabLabel == "Late agent tab")
+            await replies.update(.agents, reply: agentsJSON)
 
             await replies.update(closedTabs, reply: #"{"result":{"tabs":[]}}"#)
             let (firstEntered, firstRelease) = await replies.holdReply(tabsJSON)
@@ -382,14 +409,14 @@ struct AgentListPresentationTests {
             let originalCutoff = ContinuousClock.now + .seconds(2)
             await model.refresh(connection, deadline: originalCutoff)
             try await withTimeout(seconds: 3, label: "second workspace pending") { try await firstEntered.wait() }
-            #expect(titles() == updatedTitles)
+            #expect(titles() == verifiedTitles)
 
             let (successorEntered, successorRelease) = await replies.holdReply(tabsJSON)
             defer { successorRelease.release(()) }
             await model.refresh(connection)
             firstRelease.release(())
             try await withTimeout(seconds: 3, label: "successor workspace pending") { try await successorEntered.wait() }
-            #expect(titles() == updatedTitles)
+            #expect(titles() == verifiedTitles)
             try await ContinuousClock().sleep(until: originalCutoff + .milliseconds(100))
             #expect(titles() == baseTitles)
             successorRelease.release(())
@@ -483,7 +510,7 @@ struct AgentListPresentationTests {
                 hostKeyValidator: .acceptAnything()
             ))
             client = ssh
-            ssh.allowOptionalTabList()
+            try #require(ssh.allowOptionalTabList())
             await #expect(throws: CitadelError.channelCreationFailed) {
                 try await ssh.executeOptionalTabList("expired", deadline: ContinuousClock.now)
             }
@@ -527,7 +554,7 @@ struct AgentListPresentationTests {
             #expect(String(buffer: primary) == "primary")
             let nextDeadline = ContinuousClock.now + .seconds(3)
             if stop == .ownerRevocation {
-                ssh.allowOptionalTabList()
+                #expect(!ssh.allowOptionalTabList())
                 await #expect(throws: CitadelError.channelCreationFailed) {
                     try await ssh.executeOptionalTabList("next", deadline: nextDeadline)
                 }
@@ -593,8 +620,8 @@ struct AgentListPresentationTests {
     }
 
     @MainActor
-    @Test
-    func disconnectClosesOptionalLookupWhileAuthenticating() async throws {
+    @Test(arguments: [false, true])
+    func optionalAdmissionGuardsConnectionTransitions(revokedDuringReadiness: Bool) async throws {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         let fixture = DelayedTabChannel(delayAuthentication: true)
         let server = try await fixture.listen(on: group)
@@ -616,26 +643,42 @@ struct AgentListPresentationTests {
                     try await ssh.executeOptionalTabList("unready", deadline: ContinuousClock.now + .seconds(1))
                 }
                 #expect(fixture.acceptedConnections == 1)
+                if revokedDuringReadiness { ssh.invalidateOptionalTabList() }
                 return "herdr fixture"
             }
             await app.connect(config: ConnectionConfig(
                 host: "127.0.0.1", port: port, username: "fixture", auth: .password("fixture")
             ))
-            #expect(app.phase == .connected(host: "127.0.0.1", username: "fixture"))
-            let lookup = Task {
-                try await ssh.executeOptionalTabList("late", deadline: ContinuousClock.now + .seconds(10))
-            }
-            let authenticate = try await withTimeout(seconds: 3, label: "pending SSH authentication") {
-                try await fixture.pendingAuthentication.wait()
-            }
-            defer { authenticate.succeed(.success) }
-            await app.disconnect()
-            #expect(app.phase == .disconnected)
-            try await withTimeout(seconds: 3, label: "lookup socket close") { try await fixture.closed.wait() }
-            await #expect(throws: CitadelError.channelCreationFailed) {
-                try await withTimeout(seconds: 3, label: "lookup completion") { try await lookup.value }
+            if revokedDuringReadiness {
+                #expect(app.phase == .disconnected)
+                #expect(!app.hasActiveSession)
+            } else {
+                #expect(app.phase == .connected(host: "127.0.0.1", username: "fixture"))
+                let lookup = Task {
+                    try await ssh.executeOptionalTabList("late", deadline: ContinuousClock.now + .seconds(10))
+                }
+                let authenticate = try await withTimeout(seconds: 3, label: "pending SSH authentication") {
+                    try await fixture.pendingAuthentication.wait()
+                }
+                defer { authenticate.succeed(.success) }
+                let admissionAtDisconnect = NIOLockedValueBox<(primaryConnected: Bool, allowed: Bool)?>(nil)
+                withObservationTracking {
+                    _ = app.hasActiveSession
+                } onChange: {
+                    admissionAtDisconnect.withLockedValue { $0 = (ssh.isConnected, ssh.allowOptionalTabList()) }
+                }
+                await app.disconnect()
+                let admission = try #require(admissionAtDisconnect.withLockedValue { $0 })
+                #expect(admission.primaryConnected)
+                #expect(!admission.allowed)
+                #expect(app.phase == .disconnected)
+                try await withTimeout(seconds: 3, label: "lookup socket close") { try await fixture.closed.wait() }
+                await #expect(throws: CitadelError.channelCreationFailed) {
+                    try await withTimeout(seconds: 3, label: "lookup completion") { try await lookup.value }
+                }
             }
             #expect(fixture.commands.withLockedValue { $0 }.isEmpty)
+            await connection.close()
         } catch {
             await connection.close()
             try? await server.close()

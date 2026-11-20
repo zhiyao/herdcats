@@ -39,6 +39,14 @@ struct MainTabView: View {
 
 /// Owns the selected machine's shared data and lifecycle-aware refresh loop.
 struct ConnectedTabsView: View {
+    static func shouldRefreshAfterReconnect(from oldPhase: AppModel.Phase, to newPhase: AppModel.Phase) -> Bool {
+        guard case .connected = newPhase else { return false }
+        switch oldPhase {
+        case .offline, .connecting: return true
+        case .connected, .disconnected: return false
+        }
+    }
+
     @Environment(AppModel.self) private var appModel
     @Environment(\.scenePhase) private var scenePhase
     @State private var model = SpacesModel()
@@ -164,7 +172,7 @@ struct ConnectedTabsView: View {
             if pruned != current { paneLayout.wrappedValue = pruned }
         }
         .onChange(of: appModel.phase) { oldPhase, newPhase in
-            if case .connected = newPhase, case .offline = oldPhase {
+            if Self.shouldRefreshAfterReconnect(from: oldPhase, to: newPhase) {
                 Task {
                     await model.refresh(appModel.connection)
                     await model.refreshUsage(appModel.connection, force: true)
