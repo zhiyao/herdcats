@@ -367,6 +367,70 @@ public final class SSHClient {
         onNewSession(session)
     }
     
+    /// Runs optional tab metadata on its own socket. Closing this socket also
+    /// releases a session-channel open that the server never acknowledges.
+    public func executeOptionalTabList(
+        _ command: String, host: String, port: Int, deadline: ContinuousClock.Instant
+    ) async throws -> ByteBuffer {
+        try Task.checkCancellation()
+        let remaining = ContinuousClock.now.duration(to: deadline)
+        guard remaining > .zero, let auth = authenticationMethod().freshBuiltInMethod() else {
+            throw CitadelError.channelCreationFailed
+        }
+        let inFlight = optionalTabListInFlight
+        guard inFlight.withLockedValue({ occupied in
+            guard !occupied else { return false }
+            occupied = true
+            return true
+        }) else { throw CitadelError.channelCreationFailed }
+        defer { inFlight.withLockedValue { $0 = false } }
+
+        var settings = SSHClientSettings(
+            host: host, port: port, authenticationMethod: { auth }, hostKeyValidator: hostKeyValidator
+        )
+        settings.algorithms = algorithms
+        settings.protocolOptions = protocolOptions
+        let (seconds, attoseconds) = remaining.components
+        let timeout = TimeAmount.nanoseconds(seconds * 1_000_000_000 + attoseconds / 1_000_000_000)
+        try Task.checkCancellation()
+        guard ContinuousClock.now < deadline else { throw CitadelError.channelCreationFailed }
+        let inbound = SSHClientInboundChannelHandler()
+        let querySettings = settings
+        let socket = try await ClientBootstrap(group: settings.group)
+            .channelInitializer {
+                SSHClientSession.addHandlers(on: $0, inboundChannelHandler: inbound, settings: querySettings)
+            }
+            .connectTimeout(timeout)
+            .connect(host: host, port: port).get()
+        let expiry = Task {
+            try await ContinuousClock().sleep(until: deadline)
+            socket.close(promise: nil)
+        }
+        defer { expiry.cancel() }
+        let result: Result<ByteBuffer, Error>
+        do {
+            result = .success(try await withTaskCancellationHandler {
+                try Task.checkCancellation()
+                guard ContinuousClock.now < deadline else { throw CitadelError.channelCreationFailed }
+                try await socket.pipeline.handler(type: ClientHandshakeHandler.self)
+                    .flatMap { $0.authenticated }.get()
+                let query = try await socket.pipeline.handler(type: NIOSSHHandler.self).map { handler in
+                    SSHClientSession(channel: socket, inboundChannelHandler: inbound, sshHandler: handler)
+                }.get()
+                return try await query.readOptionalTabList(command, deadline: deadline)
+            } onCancel: {
+                socket.close(promise: nil)
+            })
+        } catch {
+            result = .failure(error)
+        }
+        socket.close(promise: nil)
+        _ = try? await socket.closeFuture.get()
+        try Task.checkCancellation()
+        guard ContinuousClock.now < deadline else { throw CitadelError.channelCreationFailed }
+        return try result.get()
+    }
+
     public func close() async throws {
         self.userInitiatedClose = true
         try await self.session.channel.close()

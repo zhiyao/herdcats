@@ -38,13 +38,10 @@ extension HerdrConnection {
         for workspace in unnamed.sorted(by: { $0.workspaceId < $1.workspaceId }) {
             try Task.checkCancellation()
             guard generation == owned else { throw HerdrError.notConnected }
-            let remaining = ContinuousClock.now.duration(to: deadline)
-            guard remaining > .zero else { break }
-            let (seconds, attoseconds) = remaining.components
-            let timeout = min(20, Double(seconds) + Double(attoseconds) / 1e18)
+            guard ContinuousClock.now < deadline else { break }
             let workspaceId = workspace.workspaceId
             do {
-                let tabs = try await optionalTabList(workspaceId: workspaceId, timeout: timeout, generation: owned)
+                let tabs = try await optionalTabList(workspaceId: workspaceId, deadline: deadline, generation: owned)
                 guard ContinuousClock.now < deadline else { break }
                 for tab in tabs where tab.workspaceId == workspaceId {
                     let label = tab.label.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -69,7 +66,7 @@ extension HerdrConnection {
     }
 
     private func optionalTabList(
-        workspaceId: String, timeout: TimeInterval, generation owned: ConnectionGeneration
+        workspaceId: String, deadline: ContinuousClock.Instant, generation owned: ConnectionGeneration
     ) async throws -> [TabEntry] {
         let args = Self.tabListArguments(workspaceId: workspaceId)
 #if DEBUG
@@ -84,9 +81,7 @@ extension HerdrConnection {
 #endif
         let client = try slot.ownedClient(owned)
         let command = Self.remoteCommand(args, session: session)
-        let buffer = try await withTimeout(seconds: timeout, label: Self.herdrDiagnosticLabel) {
-            try await client.executeOptionalTabList(command)
-        }
+        let buffer = try await client.executeOptionalTabList(command, host: host, port: port, deadline: deadline)
         let output = try Self.interpret(String(buffer: buffer))
         return try Self.decode(output, as: TabListResult.self).tabs
     }
