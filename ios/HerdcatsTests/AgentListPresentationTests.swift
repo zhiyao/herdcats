@@ -432,7 +432,7 @@ struct AgentListPresentationTests {
     }
 
     @Test
-    func tabLabelLookupDistinguishesEmptyFailureAndSkippedWorkspaces() async throws {
+    func tabLabelLookupReportsSettledWorkspacesAndOmitsSkippedOnes() async throws {
         let held = HerdrConnection.OverviewRead.tabs(workspaceId: "c")
         let replies = OverviewReplies([
             .tabs(workspaceId: "a"): #"{"result":{"tabs":[]}}"#,
@@ -441,12 +441,12 @@ struct AgentListPresentationTests {
         let connection = HerdrConnection(overviewResponse: { try await replies.response(to: $0) })
         let generation = await connection.generation
         let deadline = ContinuousClock.now + .seconds(1)
-        let results = NIOLockedValueBox<[String: HerdrConnection.TabLabelLookup]>([:])
+        let results = NIOLockedValueBox<[String: [String: String]]>([:])
         let lookup = Task {
             try await connection.agentTabLabels(
                 workspaceIDs: ["a", "b", "c", "d"], generation: generation, deadline: deadline
-            ) { workspace, result in
-                results.withLockedValue { $0[workspace] = result }
+            ) { workspace, labels in
+                results.withLockedValue { $0[workspace] = labels }
             }
         }
         defer { replies.release.release(()) }
@@ -454,7 +454,7 @@ struct AgentListPresentationTests {
         try await ContinuousClock().sleep(until: deadline)
         replies.release.release(())
         try await lookup.value
-        #expect(results.withLockedValue { $0 } == ["a": .completed([:]), "b": .failed, "c": .failed])
+        #expect(results.withLockedValue { $0 } == ["a": [:], "b": [:], "c": [:]])
         #expect(!(await replies.requests).contains(.tabs(workspaceId: "d")))
     }
     #endif

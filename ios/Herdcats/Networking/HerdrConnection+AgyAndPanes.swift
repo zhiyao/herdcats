@@ -36,40 +36,32 @@ extension HerdrConnection {
         return try await (workspaces, agents)
     }
 
-    enum TabLabelLookup: Equatable, Sendable {
-        case completed([String: String])
-        case failed
-    }
-
     func agentTabLabels(
         workspaceIDs: Set<String>, generation owned: ConnectionGeneration,
         deadline: ContinuousClock.Instant,
-        onResult: @Sendable (String, TabLabelLookup) async -> Void
+        onResult: @Sendable (String, [String: String]) async -> Void
     ) async throws {
         for workspaceId in workspaceIDs.sorted() {
             try Task.checkCancellation()
             guard generation == owned else { throw HerdrError.notConnected }
             guard ContinuousClock.now < deadline else { break }
-            let result: TabLabelLookup
+            var labels: [String: String] = [:]
             do {
                 let tabs = try await optionalTabList(workspaceId: workspaceId, deadline: deadline, generation: owned)
-                var labels: [String: String] = [:]
                 for tab in tabs where tab.workspaceId == workspaceId {
                     if !tab.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         labels[tab.tabId] = tab.label
                     }
                 }
-                result = ContinuousClock.now < deadline ? .completed(labels) : .failed
             } catch is CancellationError {
                 throw CancellationError()
             } catch HerdrError.notConnected {
                 throw HerdrError.notConnected
-            } catch {
-                result = .failed
-            }
+            } catch {}
+            let settledLabels = ContinuousClock.now < deadline ? labels : [:]
             try Task.checkCancellation()
             guard generation == owned else { throw HerdrError.notConnected }
-            await onResult(workspaceId, result)
+            await onResult(workspaceId, settledLabels)
         }
         try Task.checkCancellation()
         guard generation == owned else { throw HerdrError.notConnected }

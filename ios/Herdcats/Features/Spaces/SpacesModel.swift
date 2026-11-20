@@ -259,13 +259,8 @@ final class SpacesModel {
                 guard !Task.isCancelled else { return }
                 try? await connection.agentTabLabels(
                     workspaceIDs: tabWorkspaceIDs, generation: source, deadline: deadline
-                ) { [weak self] workspace, result in
+                ) { [weak self] workspace, labels in
                     guard await connection.generation == source else { return }
-                    let labels: [String: String]
-                    switch result {
-                    case let .completed(result): labels = result
-                    case .failed: labels = [:]
-                    }
                     await MainActor.run { [weak self] in
                         guard let self, self.ownsTabEnrichment(generation, scope: scope) else { return }
                         self.settleTabLabels(labels, in: [workspace], connection: connection, source: source)
@@ -308,9 +303,11 @@ final class SpacesModel {
         if updated != spaces { spaces = updated }
     }
 
+#if DEBUG
     func waitForTabEnrichment() async {
         await tabEnrichment?.task.value
     }
+#endif
 
     func discardTabLabels(fromOtherGeneration generation: ConnectionGeneration?) {
         observedTabSource = .generation(generation)
