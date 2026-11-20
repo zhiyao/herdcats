@@ -300,38 +300,49 @@ struct AgentListPresentationTests {
 
     @MainActor
     @Test
-    func tuiPollEnrichesNewWorkspaceWithoutAnotherPoll() async throws {
+    func tuiPollEnrichesNewWorkspaceWithoutReplayingSettledReads() async throws {
         let workspaces = """
         {"result":{"workspaces":[
           {"workspace_id":"w0","label":"","number":1,"tab_count":1,"pane_count":1,"active_tab_id":"t","agent_status":"working","focused":true},
-          {"workspace_id":"w1","label":"","number":2,"tab_count":1,"pane_count":1,"active_tab_id":"t","agent_status":"working","focused":false}
+          {"workspace_id":"w1","label":"","number":2,"tab_count":1,"pane_count":1,"active_tab_id":"t","agent_status":"working","focused":false},
+          {"workspace_id":"w2","label":"","number":3,"tab_count":1,"pane_count":1,"active_tab_id":"t","agent_status":"working","focused":false}
         ]}}
         """
         let firstAgent = #"{"agent":"pi","agent_status":"working","pane_id":"p0","tab_id":"t","workspace_id":"w0","focused":true}"#
         let secondAgent = #"{"agent":"pi","agent_status":"working","pane_id":"p1","tab_id":"t","workspace_id":"w1","focused":false}"#
+        let thirdAgent = #"{"agent":"pi","agent_status":"working","pane_id":"p2","tab_id":"t","workspace_id":"w2","focused":false}"#
         let firstTabs = HerdrConnection.OverviewRead.tabs(workspaceId: "w0")
         let secondTabs = HerdrConnection.OverviewRead.tabs(workspaceId: "w1")
+        let thirdTabs = HerdrConnection.OverviewRead.tabs(workspaceId: "w2")
         let replies = OverviewReplies([
             .workspaces: workspaces,
-            .agents: #"{"result":{"agents":[\#(firstAgent)]}}"#,
+            .agents: #"{"result":{"agents":[\#(firstAgent),\#(secondAgent)]}}"#,
             firstTabs: #"{"result":{"tabs":[{"tab_id":"t","workspace_id":"w0","label":"First tab","number":1,"pane_count":1,"agent_status":"working","focused":true}]}}"#,
-            secondTabs: #"{"result":{"tabs":[{"tab_id":"t","workspace_id":"w1","label":"Second tab","number":1,"pane_count":1,"agent_status":"working","focused":false}]}}"#
-        ], heldRead: firstTabs)
-        let connection = HerdrConnection(overviewResponse: { try await replies.response(to: $0) })
+            secondTabs: #"{"result":{"tabs":[{"tab_id":"t","workspace_id":"w1","label":"Second tab","number":1,"pane_count":1,"agent_status":"working","focused":false}]}}"#,
+            thirdTabs: #"{"result":{"tabs":[{"tab_id":"t","workspace_id":"w2","label":"Third tab","number":1,"pane_count":1,"agent_status":"working","focused":false}]}}"#
+        ], heldRead: secondTabs)
+        let reads = NIOLockedValueBox<[HerdrConnection.OverviewRead]>([])
+        let connection = HerdrConnection(overviewResponse: { read in
+            if case .tabs = read { reads.withLockedValue { $0.append(read) } }
+            return try await replies.response(to: read)
+        })
         let model = SpacesModel()
         defer { replies.release.release(()) }
 
         await model.refresh(connection)
-        try await withTimeout(seconds: 3, label: "first workspace lookup") { try await replies.entered.wait() }
-        await replies.update(.agents, reply: #"{"result":{"agents":[\#(firstAgent),\#(secondAgent)]}}"#)
+        try await withTimeout(seconds: 3, label: "second workspace lookup") { try await replies.entered.wait() }
+        #expect(model.spaces.flatMap(\.agents).compactMap(\.tabLabel) == ["First tab"])
+        await replies.update(.agents, reply: #"{"result":{"agents":[\#(firstAgent),\#(secondAgent),\#(thirdAgent)]}}"#)
         let poll = Task { await model.refresh(connection, isPoll: true) }
         try await withTimeout(seconds: 3, label: "poll base refresh") { await poll.value }
-        #expect(model.spaces.flatMap(\.agents).map(\.paneId) == ["p0", "p1"])
-        #expect(!(await replies.requests).contains(secondTabs))
+        #expect(model.spaces.flatMap(\.agents).map(\.paneId) == ["p0", "p1", "p2"])
+        #expect(model.spaces.flatMap(\.agents).compactMap(\.tabLabel) == ["First tab"])
+        #expect(reads.withLockedValue { $0 } == [firstTabs, secondTabs])
 
         replies.release.release(())
         await model.waitForTabEnrichment()
-        #expect(model.spaces.flatMap(\.agents).compactMap(\.tabLabel) == ["First tab", "Second tab"])
+        #expect(model.spaces.flatMap(\.agents).compactMap(\.tabLabel) == ["First tab", "Second tab", "Third tab"])
+        #expect(reads.withLockedValue { $0 } == [firstTabs, secondTabs, secondTabs, thirdTabs])
     }
 
     @MainActor

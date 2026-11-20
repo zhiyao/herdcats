@@ -96,6 +96,7 @@ final class SpacesModel {
     private var refreshGate = RefreshGenerationGate()
     @ObservationIgnored private var tabEnrichment: (
         id: UInt64, connection: HerdrConnection, source: ConnectionGeneration, workspaceIDs: Set<String>,
+        deadline: ContinuousClock.Instant,
         retained: [String: ContinuousClock.Instant], settled: [String: [String: String]],
         task: Task<Void, Never>
     )?
@@ -188,13 +189,14 @@ final class SpacesModel {
             let tabWorkspaceIDs = Set(backend == .tui ? workspaceList.filter {
                 occupied.contains($0.workspaceId) && $0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }.map(\.workspaceId) : [])
-            if let pending = tabEnrichment,
-               !isPoll || pending.connection !== connection || pending.source != source
-                   || !tabWorkspaceIDs.isSubset(of: pending.workspaceIDs) {
-                pending.task.cancel()
-            }
-            let reusesEnrichment = isPoll && tabEnrichment?.task.isCancelled == false
-            let settled = reusesEnrichment ? tabEnrichment?.settled : nil
+            let pending = tabEnrichment
+            let continuesPoll = isPoll && pending?.task.isCancelled == false
+                && pending?.connection === connection && pending?.source == source
+            let pollBatch = continuesPoll ? pending : nil
+            let reusesEnrichment = pollBatch.map { tabWorkspaceIDs.isSubset(of: $0.workspaceIDs) } ?? false
+            if !reusesEnrichment { tabEnrichment?.task.cancel() }
+            let settled = pollBatch?.settled.filter { tabWorkspaceIDs.contains($0.key) } ?? [:]
+            let enrichmentDeadline = min(deadline, pollBatch?.deadline ?? deadline)
             var retained: [String: ContinuousClock.Instant] = [:]
             var baseAgents = agentList
             var carried: [String: [String: String]] = [:]
@@ -210,10 +212,10 @@ final class SpacesModel {
             for index in baseAgents.indices {
                 let agent = baseAgents[index]
                 guard tabWorkspaceIDs.contains(agent.workspaceId),
-                      let labels = settled?[agent.workspaceId] ?? carried[agent.workspaceId],
+                      let labels = settled[agent.workspaceId] ?? carried[agent.workspaceId],
                       let label = labels[agent.tabId] else { continue }
-                if !reusesEnrichment {
-                    let cutoff = min(deadline, tabEnrichment?.retained[agent.workspaceId] ?? deadline)
+                if !reusesEnrichment, settled[agent.workspaceId] == nil {
+                    let cutoff = min(enrichmentDeadline, tabEnrichment?.retained[agent.workspaceId] ?? enrichmentDeadline)
                     guard cutoff > now else { continue }
                     retained[agent.workspaceId] = cutoff
                 }
@@ -242,6 +244,7 @@ final class SpacesModel {
             guard let source, !tabWorkspaceIDs.isEmpty else { return }
             if reusesEnrichment { return }
             let predecessor = tabEnrichment?.task
+            let unsettledWorkspaceIDs = tabWorkspaceIDs.subtracting(settled.keys)
             let cutoffs = Set(retained.values).sorted()
             let task = Task { [weak self] in
                 let expiry = Task { [weak self] in
@@ -265,7 +268,7 @@ final class SpacesModel {
                 await predecessor?.value
                 guard !Task.isCancelled else { return }
                 try? await connection.agentTabLabels(
-                    workspaceIDs: tabWorkspaceIDs, generation: source, deadline: deadline
+                    workspaceIDs: unsettledWorkspaceIDs, generation: source, deadline: enrichmentDeadline
                 ) { [weak self] workspace, labels in
                     guard await connection.generation == source else { return }
                     await MainActor.run { [weak self] in
@@ -279,7 +282,7 @@ final class SpacesModel {
                     self.clearVerifiedTabLabels()
                 }
             }
-            tabEnrichment = (generation, connection, source, tabWorkspaceIDs, retained, [:], task)
+            tabEnrichment = (generation, connection, source, tabWorkspaceIDs, enrichmentDeadline, retained, settled, task)
         } catch {
             guard refreshGate.isCurrent(generation), connectionScope == initialScope else { return }
             reportError(error)
