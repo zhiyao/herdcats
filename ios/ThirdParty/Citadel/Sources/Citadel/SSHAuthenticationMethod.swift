@@ -27,6 +27,13 @@ public final class SSHAuthenticationMethod: NIOSSHClientUserAuthenticationDelega
         self.implementations = allImplementations
     }
     
+    // Built-in credentials can produce a fresh delegate without sharing the
+    // primary handshake's mutable authentication state.
+    internal func freshBuiltInMethod() -> SSHAuthenticationMethod? {
+        guard case let .user(username, offer)? = allImplementations.first else { return nil }
+        return SSHAuthenticationMethod(username: username, offer: offer)
+    }
+
     /// Creates a password based authentication method.
     /// - Parameters:
     ///  - username: The username to authenticate with.

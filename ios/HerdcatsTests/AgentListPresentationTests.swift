@@ -317,7 +317,7 @@ struct AgentListPresentationTests {
     #endif
 
     @Test(arguments: [false, true])
-    func optionalTabLookupClosesLateSSHChild(timedOut: Bool) async throws {
+    func optionalTabLookupClosesOnlyDisposableConnection(timedOut: Bool) async throws {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         let fixture = DelayedTabChannel()
         let server = try await fixture.listen(on: group)
@@ -331,43 +331,35 @@ struct AgentListPresentationTests {
             ))
             client = ssh
             let lookup = Task {
-                try await withTimeout(seconds: timedOut ? 1 : 4, label: "optional tab list") {
-                    try await ssh.executeOptionalTabList("late")
-                }
+                try await ssh.executeOptionalTabList(
+                    "late", host: "127.0.0.1", port: port,
+                    deadline: ContinuousClock.now.advanced(by: timedOut ? .seconds(2) : .seconds(10))
+                )
             }
             let confirmOpen = try await withTimeout(seconds: 3, label: "pending SSH open") {
                 try await fixture.pendingOpen.wait()
             }
             if !timedOut { lookup.cancel() }
             do {
-                _ = try await lookup.value
-                Issue.record("The lookup returned before the server confirmed the open")
-            } catch {
-                if timedOut {
-                    #expect(error as? HerdrError == .timeout("optional tab list"))
-                } else {
-                    #expect(error is CancellationError)
+                _ = try await withTimeout(seconds: 4, label: "lookup socket teardown") {
+                    try await lookup.value
                 }
-            }
-            do {
-                _ = try await withTimeout(seconds: 0.25, label: "another optional lookup") {
-                    try await ssh.executeOptionalTabList("while pending")
-                }
-                Issue.record("A second optional lookup opened while the first was pending")
+                Issue.record("The unanswered lookup returned output")
             } catch {
-                #expect(error is CitadelError)
+                #expect(error as? HerdrError != .timeout("lookup socket teardown"))
+                if !timedOut { #expect(error is CancellationError) }
             }
+            try await withTimeout(seconds: 3, label: "lookup socket close") { try await fixture.closed.wait() }
             confirmOpen.succeed(())
-            try await withTimeout(seconds: 3, label: "late child close") { try await fixture.closed.wait() }
 
-            let output = try await withTimeout(seconds: 3, label: "next optional lookup") {
-                while true {
-                    do { return try await ssh.executeOptionalTabList("next") }
-                    catch CitadelError.channelCreationFailed { try await Task.sleep(for: .milliseconds(10)) }
-                }
-            }
+            let primary = try await ssh.executeCommand("primary")
+            #expect(String(buffer: primary) == "primary")
+            let output = try await ssh.executeOptionalTabList(
+                "next", host: "127.0.0.1", port: port,
+                deadline: ContinuousClock.now.advanced(by: .seconds(3))
+            )
             #expect(String(buffer: output) == "next")
-            #expect(fixture.commands.withLockedValue { $0 } == ["next"])
+            #expect(fixture.commands.withLockedValue { $0 } == ["primary", "next"])
         } catch {
             try? await client?.close()
             try? await server.close()
@@ -389,7 +381,8 @@ private final class DelayedTabChannel: Sendable {
     func listen(on group: MultiThreadedEventLoopGroup) async throws -> Channel {
         let key = NIOSSHPrivateKey(ed25519Key: Curve25519.Signing.PrivateKey())
         return try await ServerBootstrap(group: group).childChannelInitializer { channel in
-            channel.pipeline.addHandler(NIOSSHHandler(
+            let socket = channel
+            return channel.pipeline.addHandler(NIOSSHHandler(
                 role: .server(SSHServerConfiguration(hostKeys: [key], userAuthDelegate: TabFixtureAuthentication())),
                 allocator: channel.allocator,
                 inboundChildChannelInitializer: { child, _ in
@@ -399,7 +392,7 @@ private final class DelayedTabChannel: Sendable {
                     }
                     return child.pipeline.addHandler(TabFixtureExec(commands: self.commands)).flatMap {
                         guard index == 1 else { return child.eventLoop.makeSucceededVoidFuture() }
-                        child.closeFuture.whenComplete { _ in self.closed.release(()) }
+                        socket.closeFuture.whenComplete { _ in self.closed.release(()) }
                         let confirmOpen = child.eventLoop.makePromise(of: Void.self)
                         self.pendingOpen.release(confirmOpen)
                         return confirmOpen.futureResult
