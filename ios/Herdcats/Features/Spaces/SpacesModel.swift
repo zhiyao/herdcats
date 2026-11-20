@@ -94,6 +94,7 @@ final class SpacesModel {
     @ObservationIgnored var quotaReportFetch: (() async throws -> QuotaReport)?
     @ObservationIgnored var agentListFetch: (() async throws -> ([Workspace], [AgentEntry]))?
     private var refreshGate = RefreshGenerationGate()
+    @ObservationIgnored private var tabEnrichment: Task<Void, Never>?
     var usageGate = RefreshGenerationGate()
     private var connectionScope: ConnectionIdentity?
     private var spaceCreationGeneration = 0
@@ -129,6 +130,8 @@ final class SpacesModel {
     }
 
     func refresh(_ connection: HerdrConnection, deadline: ContinuousClock.Instant = .now + .seconds(45)) async {
+        let previousEnrichment = tabEnrichment
+        previousEnrichment?.cancel()
         let generation = refreshGate.begin()
         let initialScope = connectionScope
         refreshEpoch &+= 1
@@ -183,14 +186,27 @@ final class SpacesModel {
             _ = refreshGate.finishIfCurrent(generation)
             isLoading = false
 
-            guard let source,
-                  let enriched = try? await connection.enrichAgentTabLabels(
-                      workspaces: workspaceList, agents: agentList, generation: source, deadline: deadline
-                  ),
-                  await connection.generation == source,
-                  refreshGate.isCurrent(generation), connectionScope == scope,
-                  !Task.isCancelled else { return }
-            spaces = Space.join(workspaces: workspaceList, agents: enriched)
+            guard let source else { return }
+            let enrichment = Task {
+                // The previous lookup releases its disposable connection before
+                // this refresh tries to reserve the single optional lookup slot.
+                await previousEnrichment?.value
+                guard !Task.isCancelled, ContinuousClock.now < deadline,
+                      let enriched = try? await connection.enrichAgentTabLabels(
+                          workspaces: workspaceList, agents: agentList, generation: source, deadline: deadline
+                      ),
+                      await connection.generation == source,
+                      refreshGate.isCurrent(generation), connectionScope == scope,
+                      !Task.isCancelled else { return }
+                spaces = Space.join(workspaces: workspaceList, agents: enriched)
+            }
+            tabEnrichment = enrichment
+            await withTaskCancellationHandler {
+                await enrichment.value
+            } onCancel: {
+                enrichment.cancel()
+            }
+            if refreshGate.isCurrent(generation) { tabEnrichment = nil }
         } catch {
             guard refreshGate.isCurrent(generation) else { return }
             reportError(error)

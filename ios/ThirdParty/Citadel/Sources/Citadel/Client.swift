@@ -323,7 +323,7 @@ public final class SSHClient {
     
     private func onNewSession(_ session: SSHClientSession) {
         session.channel.closeFuture.whenComplete { [weak self] _ in
-            self?.optionalTabList.withLockedValue { $0.query }?.cancel()
+            self?.invalidateOptionalTabList()
             self?.onClose()
         }
     }

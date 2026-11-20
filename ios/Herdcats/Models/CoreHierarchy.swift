@@ -143,7 +143,7 @@ private struct CoreHierarchyBuilder {
                 paneId: address, tabId: tabID, workspaceId: workspaceID,
                 terminalTitle: title, terminalTitleStripped: title,
                 focused: false, revision: snapshot.revisions[address],
-                name: name, tabLabel: tabName,
+                name: nil, tabLabel: tabName,
                 coreContext: AgentEntry.CoreContext(
                     workspaceName: workspaceName,
                     machine: machineRoute(beforeTerminal: address),

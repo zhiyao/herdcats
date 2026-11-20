@@ -173,7 +173,7 @@ struct AgentListPresentationTests {
         #expect(items.first { $0.id == "studio/peer/t2" }.map { AgentListPresentation(agent: $0.agent, workspace: $0.space.workspace).title } == "2ndmate-tingxiemao")
         #expect(items.first { $0.id == "studio/peer/t3" }.map { AgentListPresentation(agent: $0.agent, workspace: $0.space.workspace).title } == "First terminal")
         #expect(items.first { $0.id == "t4" }.map { AgentListPresentation(agent: $0.agent, workspace: $0.space.workspace).title } == "Second terminal")
-        #expect(items.first { $0.id == "t5" }.map { AgentListPresentation(agent: $0.agent, workspace: $0.space.workspace).title } == "iap-impl")
+        #expect(items.first { $0.id == "t5" }.map { AgentListPresentation(agent: $0.agent, workspace: $0.space.workspace).title } == "Third terminal")
         let subtitles = Dictionary(uniqueKeysWithValues: items.compactMap { item in
             AgentListPresentation(agent: item.agent, workspace: item.space.workspace).subtitle(connectionHost: "gateway").map { (item.id, $0.text) }
         })
