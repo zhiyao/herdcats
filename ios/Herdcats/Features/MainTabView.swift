@@ -125,7 +125,7 @@ struct ConnectedTabsView: View {
                 ? SidebarTabs(selection: $selectedTab, blockedCount: model.blockedAgentCount)
                 : nil
         )
-        .task(id: ObjectIdentifier(appModel.connection)) {
+        .task {
             #if DEBUG && targetEnvironment(simulator)
             if ScreenshotFixtures.enabled && ProcessInfo.processInfo.arguments.contains("-hc.split-capture") {
                 paneLayout.wrappedValue = PaneLayout()

@@ -137,8 +137,9 @@ struct AgentListPresentation {
 
     init(agent: AgentEntry, workspace: Workspace) {
         let workspaceName = if let core = agent.coreContext { core.workspaceName } else { workspace.label }
-        let tab = Self.nonempty(agent.tabLabel) == nil ? nil : agent.tabLabel
-        title = Self.nonempty(workspaceName) ?? tab ?? Self.nonempty(agent.name) ?? agent.displayTitle
+        title = [workspaceName, agent.tabLabel, agent.name].compactMap {
+            Self.nonempty($0) == nil ? nil : $0
+        }.first ?? agent.displayTitle
         machine = Self.nonempty(agent.coreContext?.machine)
         let launchPath = Self.nonempty(agent.cwd) == nil ? nil : agent.cwd
         let path = if let core = agent.coreContext { core.directory } else { launchPath ?? workspace.worktree?.checkoutPath }

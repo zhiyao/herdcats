@@ -108,7 +108,7 @@ extension SpacesModel {
                 )
                 guard clock.isDue(interval: interval) else { continue }
                 clock.didRefresh(epoch: self.refreshEpoch)
-                await self.refresh(connection)
+                await self.refresh(connection, isPoll: true)
                 clock.seenEpoch = self.refreshEpoch
             }
         }

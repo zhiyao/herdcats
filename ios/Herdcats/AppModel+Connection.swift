@@ -115,10 +115,17 @@ extension AppModel {
                 }
                 try await checkSessionReadiness()
             }
+            let tabQueryClient = if config.backend == .tui {
+                await connection.optionalTabAdmissionOwner(generation: generation)
+            } else {
+                nil as SSHClient?
+            }
             guard ownership.isCurrent(state.attempt) else {
                 connection.forceClose(generation: generation)
                 return
             }
+            readyTabQueryClient = tabQueryClient
+            tabQueryClient?.allowOptionalTabList()
             herdrVersion = version.trimmingCharacters(in: .whitespacesAndNewlines)
             phase = .connected(host: config.host, username: config.username)
             hasActiveSession = true
@@ -140,18 +147,7 @@ extension AppModel {
     func prepareConnectAttempt(
         config: ConnectionConfig
     ) async -> ConnectAttemptState? {
-        let owned = ownership
-        await connection.setRuntimeChangeHandler { [weak self] generation in
-            Task { @MainActor in
-                self?.noteRuntimeChange(generation: generation)
-            }
-        }
-        guard ownership == owned else { return nil }
-        if let generation = owned.transportGeneration {
-            let client = await connection.optionalTabAdmissionOwner(generation: generation)
-            guard ownership == owned else { return nil }
-            client?.invalidateOptionalTabList()
-        }
+        revokeOptionalTabAdmission()
         lastConnectPassphraseRejected = false
         lastConnectNeedsSignIn = false
         hostKeyChallenge = nil
@@ -168,7 +164,11 @@ extension AppModel {
 
         // Reserve a transport generation before dialing so every close path
         // has an identity — never unscoped forceClose().
-        let reserved = await connection.reserveConnectGeneration()
+        let reserved = await connection.reserveConnectGeneration(runtimeChangeHandler: { [weak self] generation in
+            Task { @MainActor in
+                self?.noteRuntimeChange(generation: generation)
+            }
+        })
         guard ownership.associateReserved(reserved, for: attempt) else {
             // Stale attempt — close only this reservation; do not touch newer UI state.
             connection.forceClose(generation: reserved)

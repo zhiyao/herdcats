@@ -35,15 +35,15 @@ struct AgentListPresentationTests {
         var entry = try decodeAgent(name: #""iap-impl""#)
         entry.tabLabel = tabLabel
         #expect(AgentListPresentation(agent: entry, workspace: workspace("")).title == tabLabel)
-        let presentation = AgentListPresentation(agent: entry, workspace: workspace("firstmate"))
-        #expect(presentation.title == "firstmate")
+        let presentation = AgentListPresentation(agent: entry, workspace: workspace(" firstmate "))
+        #expect(presentation.title == " firstmate ")
         #expect(presentation.subtitle(connectionHost: "studio-mac")?.text == "studio-mac · ~/1/firstmate · π · firstmate")
         #expect(entry.displayTitle == "π · firstmate")
         #expect(entry.stateChangeSeq == 10)
         #expect(entry.agentStatus == "working")
 
-        let agent = try decodeAgent(name: #""iap-impl""#)
-        #expect(AgentListPresentation(agent: agent, workspace: workspace("")).title == "iap-impl")
+        let agent = try decodeAgent(name: #"" iap-impl ""#)
+        #expect(AgentListPresentation(agent: agent, workspace: workspace(" ")).title == " iap-impl ")
     }
 
     @Test(arguments: ["null", #""   ""#])
@@ -152,7 +152,7 @@ struct AgentListPresentationTests {
         """.utf8)))
         let layout = try JSONDecoder().decode(CoreJSON.self, from: Data("""
         {"spaces":[
-          {"id":"w1","name":"firstmate","tabs":[
+          {"id":"w1","name":" firstmate ","tabs":[
             {"id":"t1","name":"Main","root":{"content":{"terminal":"t1"}}},
             {"id":"t6","root":{"content":{"terminal":"t6"}}},
             {"id":"t9","root":{"content":{"terminal":"t9"}}}
@@ -169,7 +169,7 @@ struct AgentListPresentationTests {
         let spaces = Space.join(workspaces: hierarchy.workspaces, agents: hierarchy.agents)
         let items = AgentListItem.grouped(in: spaces).flatMap(\.items)
 
-        #expect(items.first { $0.id == "studio/t1" }.map { AgentListPresentation(agent: $0.agent, workspace: $0.space.workspace).title } == "firstmate")
+        #expect(items.first { $0.id == "studio/t1" }.map { AgentListPresentation(agent: $0.agent, workspace: $0.space.workspace).title } == " firstmate ")
         #expect(items.first { $0.id == "studio/peer/t2" }.map { AgentListPresentation(agent: $0.agent, workspace: $0.space.workspace).title } == "2ndmate-tingxiemao")
         #expect(items.first { $0.id == "studio/peer/t3" }.map { AgentListPresentation(agent: $0.agent, workspace: $0.space.workspace).title } == "First terminal")
         #expect(items.first { $0.id == "t4" }.map { AgentListPresentation(agent: $0.agent, workspace: $0.space.workspace).title } == "Second terminal")
@@ -179,7 +179,7 @@ struct AgentListPresentationTests {
         })
         let namedWithoutTerminalTitle = try #require(items.first { $0.id == "studio/t6" })
         let standaloneWithoutTerminalTitle = try #require(items.first { $0.id == "studio/t7" })
-        #expect(AgentListPresentation(agent: namedWithoutTerminalTitle.agent, workspace: namedWithoutTerminalTitle.space.workspace).title == "firstmate")
+        #expect(AgentListPresentation(agent: namedWithoutTerminalTitle.agent, workspace: namedWithoutTerminalTitle.space.workspace).title == " firstmate ")
         #expect(namedWithoutTerminalTitle.agent.displayTitle == "studio/t6")
         #expect(AgentListPresentation(agent: standaloneWithoutTerminalTitle.agent, workspace: standaloneWithoutTerminalTitle.space.workspace).title == "studio/t7")
         #expect(subtitles["studio/t6"] == "studio")
@@ -226,7 +226,7 @@ struct AgentListPresentationTests {
 
     #if DEBUG
     private actor OverviewReplies {
-        let replies: [HerdrConnection.OverviewRead: String]
+        var replies: [HerdrConnection.OverviewRead: String]
         let heldRead: HerdrConnection.OverviewRead
         nonisolated let entered = ExternallyReleasedWait<Void>()
         nonisolated let release = ExternallyReleasedWait<Void>()
@@ -263,6 +263,10 @@ struct AgentListPresentationTests {
             let release = ExternallyReleasedWait<Void>()
             nextReply = (reply, entered, release)
             return (entered, release)
+        }
+
+        func updateAgents(_ reply: String) {
+            replies[.agents] = reply
         }
     }
 
@@ -315,6 +319,9 @@ struct AgentListPresentationTests {
         #expect(model.hasLoadedAgentList)
         #expect(!model.isLoading)
         try await withTimeout(seconds: 3, label: "base refresh completion") { await refresh.value }
+        await replies.updateAgents(agentsJSON.replacingOccurrences(of: "\"working\"", with: "\"blocked\""))
+        await model.refresh(connection, isPoll: true)
+        #expect(model.spaces.flatMap(\.agents).allSatisfy { $0.agentStatus == "blocked" })
         if expiresWhileWaiting {
             model.isSceneActive = false
             try await ContinuousClock().sleep(until: deadline + .milliseconds(20))
@@ -324,6 +331,7 @@ struct AgentListPresentationTests {
         }
         replies.release.release(())
         await model.waitForTabEnrichment()
+        #expect(model.spaces.flatMap(\.agents).allSatisfy { $0.agentStatus == "blocked" })
 
         let verifiedTitles = ["Closed", " Review ", "Implement", "Named"]
         #expect(titles() == (expiresWhileWaiting ? baseTitles : verifiedTitles))
@@ -350,6 +358,14 @@ struct AgentListPresentationTests {
                 await model.waitForTabEnrichment()
                 #expect(titles() == after)
             }
+            let (entered, release) = await replies.holdReply(tabsJSON)
+            defer { release.release(()) }
+            await model.refresh(connection)
+            try await withTimeout(seconds: 3, label: "tab revalidation before invalidation") { try await entered.wait() }
+            model.discardTabLabels(fromOtherGeneration: nil)
+            release.release(())
+            await model.waitForTabEnrichment()
+            #expect(titles() == baseTitles)
         }
         #expect(model.errorMessage == nil)
         #expect(model.spaces.last?.agents.first?.tabLabel == nil)
@@ -379,6 +395,7 @@ struct AgentListPresentationTests {
                 hostKeyValidator: .acceptAnything()
             ))
             client = ssh
+            ssh.allowOptionalTabList()
             await #expect(throws: CitadelError.channelCreationFailed) {
                 try await ssh.executeOptionalTabList("expired", deadline: ContinuousClock.now)
             }
@@ -422,6 +439,7 @@ struct AgentListPresentationTests {
             #expect(String(buffer: primary) == "primary")
             let nextDeadline = ContinuousClock.now + .seconds(3)
             if stop == .ownerRevocation {
+                ssh.allowOptionalTabList()
                 await #expect(throws: CitadelError.channelCreationFailed) {
                     try await ssh.executeOptionalTabList("next", deadline: nextDeadline)
                 }
@@ -486,6 +504,7 @@ struct AgentListPresentationTests {
         try await group.shutdownGracefully()
     }
 
+    @MainActor
     @Test
     func disconnectClosesOptionalLookupWhileAuthenticating() async throws {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
@@ -499,7 +518,22 @@ struct AgentListPresentationTests {
                 authenticationMethod: { .passwordBased(username: "fixture", password: "fixture") },
                 hostKeyValidator: .acceptAnything()
             ))
-            await connection.installFixtureClient(ssh)
+            let app = AppModel(connection: connection, autoConnectOnLaunch: false)
+            app.customDialTransport = { _, reserved, _ in
+                await connection.installFixtureClient(ssh)
+                return reserved
+            }
+            app.customCheckHerdr = { _, _ in
+                await #expect(throws: CitadelError.channelCreationFailed) {
+                    try await ssh.executeOptionalTabList("unready", deadline: ContinuousClock.now + .seconds(1))
+                }
+                #expect(fixture.acceptedConnections == 1)
+                return "herdr fixture"
+            }
+            await app.connect(config: ConnectionConfig(
+                host: "127.0.0.1", port: port, username: "fixture", auth: .password("fixture")
+            ))
+            #expect(app.phase == .connected(host: "127.0.0.1", username: "fixture"))
             let lookup = Task {
                 try await ssh.executeOptionalTabList("late", deadline: ContinuousClock.now + .seconds(10))
             }
@@ -507,7 +541,8 @@ struct AgentListPresentationTests {
                 try await fixture.pendingAuthentication.wait()
             }
             defer { authenticate.succeed(.success) }
-            await connection.close()
+            await app.disconnect()
+            #expect(app.phase == .disconnected)
             try await withTimeout(seconds: 3, label: "lookup socket close") { try await fixture.closed.wait() }
             await #expect(throws: CitadelError.channelCreationFailed) {
                 try await withTimeout(seconds: 3, label: "lookup completion") { try await lookup.value }
@@ -536,6 +571,7 @@ private final class DelayedTabChannel: Sendable {
     let closed = ExternallyReleasedWait<Void>()
     let commands = NIOLockedValueBox<[String]>([])
     private let socketCount = NIOLockedValueBox(0)
+    var acceptedConnections: Int { socketCount.withLockedValue { $0 } }
     private let childCount = NIOLockedValueBox(0)
     private let delayAuthentication: Bool
 

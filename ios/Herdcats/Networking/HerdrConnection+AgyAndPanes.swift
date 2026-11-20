@@ -36,10 +36,10 @@ extension HerdrConnection {
         return try await (workspaces, agents)
     }
 
-    func enrichAgentTabLabels(
-        workspaceIDs: Set<String>, agents: [AgentEntry], generation owned: ConnectionGeneration,
+    func agentTabLabels(
+        workspaceIDs: Set<String>, generation owned: ConnectionGeneration,
         deadline: ContinuousClock.Instant
-    ) async throws -> [AgentEntry] {
+    ) async throws -> [String: [String: String]] {
         var labels: [String: [String: String]] = [:]
         for workspaceId in workspaceIDs.sorted() {
             try Task.checkCancellation()
@@ -63,11 +63,7 @@ extension HerdrConnection {
         }
         try Task.checkCancellation()
         guard generation == owned else { throw HerdrError.notConnected }
-        return agents.map { agent in
-            var agent = agent
-            agent.tabLabel = labels[agent.workspaceId]?[agent.tabId]
-            return agent
-        }
+        return labels
     }
 
     private func optionalTabList(

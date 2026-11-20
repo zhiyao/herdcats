@@ -1,4 +1,3 @@
-import Citadel
 import Observation
 import SwiftUI
 
@@ -133,13 +132,8 @@ extension AppModel {
     }
 
     func disconnect() async {
+        revokeOptionalTabAdmission()
         cancelReconnect()
-        let owned = ownership
-        if let generation = owned.transportGeneration {
-            let client = await connection.optionalTabAdmissionOwner(generation: generation)
-            guard ownership == owned else { return }
-            client?.invalidateOptionalTabList()
-        }
         reconnectBackoff.reset()
         lastScheduledAutoReconnectDelay = nil
         dismissBannerTask?.cancel()
@@ -189,7 +183,9 @@ extension AppModel {
 
     func handleConnectionLost(generation: ConnectionGeneration) {
         // Invalidates the app attempt so delayed serverVersion cannot promote.
-        guard ownership.handleLoss(generation: generation) else { return }
+        guard ownership.transportGeneration == generation else { return }
+        revokeOptionalTabAdmission()
+        _ = ownership.handleLoss(generation: generation)
         switch phase {
         case let .connected(host, username):
             reconnectBackoff.noteDisconnectedFromConnected(at: nowUptime())

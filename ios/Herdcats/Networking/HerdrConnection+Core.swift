@@ -68,10 +68,6 @@ extension HerdrConnection {
         return HerdrError.runtimeNotInstalled(saved: saved, available: ConnectionBackend.allCases.first(where: found.contains))
     }
 
-    func setRuntimeChangeHandler(_ handler: @escaping @Sendable (ConnectionGeneration) -> Void) {
-        runtimeChangeHandler = handler
-    }
-
     func requireTUIFeature() throws {
         guard backend == .tui else {
             throw HerdrError.invalidConfiguration("This action is unavailable in Herdr Core mode. Manage the desktop layout in Herdr.")

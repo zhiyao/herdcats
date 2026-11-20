@@ -284,12 +284,15 @@ actor HerdrConnection {
 
     /// Reserves a transport generation before dialing so every teardown path
     /// has an identity. Closes any previous client in the background.
-    func reserveConnectGeneration() async -> ConnectionGeneration {
+    func reserveConnectGeneration(
+        runtimeChangeHandler: (@Sendable (ConnectionGeneration) -> Void)? = nil
+    ) -> ConnectionGeneration {
         closeCore()
         closeAllLiveShells()
         closeAllAgentBridges()
         client?.invalidateOptionalTabList()
         let (attempt, previous) = slot.beginReplace()
+        if let runtimeChangeHandler { self.runtimeChangeHandler = runtimeChangeHandler }
         disconnectHandler = nil
         identity = nil
         if let previous {

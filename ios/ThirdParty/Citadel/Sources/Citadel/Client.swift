@@ -112,7 +112,10 @@ public struct SSHAlgorithms: Sendable {
 /// Represents an SSH connection.
 public final class SSHClient {
     private(set) var session: SSHClientSession
-    private let optionalTabList = NIOLockedValueBox((invalidated: false, query: OptionalTabListQuery?.none))
+    private enum OptionalTabAdmission {
+        case pending, allowed, revoked
+    }
+    private let optionalTabList = NIOLockedValueBox((admission: OptionalTabAdmission.pending, query: OptionalTabListQuery?.none))
     private var userInitiatedClose = false
     let authenticationMethod: () -> SSHAuthenticationMethod
     let hostKeyValidator: SSHHostKeyValidator
@@ -376,7 +379,7 @@ public final class SSHClient {
         try Task.checkCancellation()
         let query = OptionalTabListQuery(owner: session.channel, deadline: deadline)
         guard optionalTabList.withLockedValue({ state in
-            guard !state.invalidated, state.query == nil else { return false }
+            guard state.admission == .allowed, state.query == nil else { return false }
             state.query = query
             return true
         }) else { throw CitadelError.channelCreationFailed }
@@ -445,10 +448,16 @@ public final class SSHClient {
         }
     }
 
+    public func allowOptionalTabList() {
+        optionalTabList.withLockedValue { state in
+            if state.admission == .pending { state.admission = .allowed }
+        }
+    }
+
     public func invalidateOptionalTabList() {
         let socket = optionalTabList.withLockedValue { state in
             let socket = state.query?.revoke()
-            state.invalidated = true
+            state.admission = .revoked
             return socket
         }
         socket?.close(promise: nil)

@@ -1,4 +1,3 @@
-import Citadel
 import Foundation
 import Observation
 
@@ -121,22 +120,7 @@ final class ActiveMachine {
 
         if case .connected = candidate.phase {
             let old = model
-            let oldOwnership = old.ownership
-            let candidateOwnership = candidate.ownership
-            if let generation = oldOwnership.transportGeneration {
-                let client = await old.connection.optionalTabAdmissionOwner(generation: generation)
-                guard revision == currentRevision, pending === candidate, model === old else {
-                    await candidate.disconnect()
-                    return .superseded
-                }
-                guard old.ownership == oldOwnership, candidate.ownership == candidateOwnership,
-                      case .connected = candidate.phase else {
-                    clearPending()
-                    await candidate.disconnect()
-                    return .superseded
-                }
-                client?.invalidateOptionalTabList()
-            }
+            old.revokeOptionalTabAdmission()
             model = candidate
             clearPending()
             do {
