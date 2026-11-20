@@ -189,18 +189,18 @@ final class SpacesModel {
             let tabWorkspaceIDs = Set(backend == .tui ? workspaceList.filter {
                 occupied.contains($0.workspaceId) && $0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }.map(\.workspaceId) : [])
-            let pending = tabEnrichment
-            let continuesPoll = isPoll && pending?.task.isCancelled == false
-                && pending?.connection === connection && pending?.source == source
-            let pollBatch = continuesPoll ? pending : nil
+            let now = ContinuousClock.now
+            let pollBatch = tabEnrichment.flatMap { pending in
+                isPoll && !pending.task.isCancelled && pending.connection === connection && pending.source == source
+                    && pending.deadline > now ? pending : nil
+            }
             let reusesEnrichment = pollBatch.map { tabWorkspaceIDs.isSubset(of: $0.workspaceIDs) } ?? false
             if !reusesEnrichment { tabEnrichment?.task.cancel() }
-            let settled = pollBatch?.settled.filter { tabWorkspaceIDs.contains($0.key) } ?? [:]
+            let settled = pollBatch?.settled ?? [:]
             let enrichmentDeadline = min(deadline, pollBatch?.deadline ?? deadline)
             var retained: [String: ContinuousClock.Instant] = [:]
             var baseAgents = agentList
             var carried: [String: [String: String]] = [:]
-            let now = ContinuousClock.now
             if let source, verifiedTabSource?.0 === connection, verifiedTabSource?.1 == source {
                 for space in spaces where tabWorkspaceIDs.contains(space.id) {
                     if let cutoff = tabEnrichment?.retained[space.id], cutoff <= now { continue }
@@ -245,6 +245,7 @@ final class SpacesModel {
             if reusesEnrichment { return }
             let predecessor = tabEnrichment?.task
             let unsettledWorkspaceIDs = tabWorkspaceIDs.subtracting(settled.keys)
+            let coveredWorkspaceIDs = tabWorkspaceIDs.union(settled.keys)
             let cutoffs = Set(retained.values).sorted()
             let task = Task { [weak self] in
                 let expiry = Task { [weak self] in
@@ -282,7 +283,7 @@ final class SpacesModel {
                     self.clearVerifiedTabLabels()
                 }
             }
-            tabEnrichment = (generation, connection, source, tabWorkspaceIDs, enrichmentDeadline, retained, settled, task)
+            tabEnrichment = (generation, connection, source, coveredWorkspaceIDs, enrichmentDeadline, retained, settled, task)
         } catch {
             guard refreshGate.isCurrent(generation), connectionScope == initialScope else { return }
             reportError(error)
