@@ -1,4 +1,4 @@
-import Citadel
+@testable import Citadel
 import Crypto
 import Foundation
 import NIOConcurrencyHelpers
@@ -366,6 +366,50 @@ struct AgentListPresentationTests {
             )
             #expect(String(buffer: output) == "next")
             #expect(fixture.commands.withLockedValue { $0 } == ["primary", "next"])
+        } catch {
+            try? await client?.close()
+            try? await server.close()
+            try? await group.shutdownGracefully()
+            throw error
+        }
+        try await client?.close()
+        try await server.close()
+        try await group.shutdownGracefully()
+    }
+
+    @Test
+    func optionalTabReaderRejectsExecAfterDeadlineOnOpenTransport() async throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        let fixture = DelayedTabChannel()
+        let server = try await fixture.listen(on: group)
+        var client: SSHClient?
+        do {
+            let port = try #require(server.localAddress?.port)
+            let ssh = try await SSHClient.connect(to: SSHClientSettings(
+                host: "127.0.0.1", port: port,
+                authenticationMethod: { .passwordBased(username: "fixture", password: "fixture") },
+                hostKeyValidator: .acceptAnything()
+            ))
+            client = ssh
+            let session = ssh.session
+            let deadline = ContinuousClock.now + .seconds(2)
+            let query = OptionalTabListQuery(owner: session.channel, deadline: deadline)
+            let lookup = Task { try await session.readOptionalTabList("late", query: query) }
+            let confirmOpen = try await withTimeout(seconds: 3, label: "pending SSH open") {
+                try await fixture.pendingOpen.wait()
+            }
+            try await ContinuousClock().sleep(until: deadline)
+            confirmOpen.succeed(())
+
+            await #expect(throws: CitadelError.channelCreationFailed) {
+                try await withTimeout(seconds: 3, label: "expired tab read") { try await lookup.value }
+            }
+            let nextQuery = OptionalTabListQuery(owner: session.channel, deadline: ContinuousClock.now + .seconds(3))
+            let output = try await withTimeout(seconds: 3, label: "healthy tab read") {
+                try await session.readOptionalTabList("next", query: nextQuery)
+            }
+            #expect(String(buffer: output) == "next")
+            #expect(fixture.commands.withLockedValue { $0 } == ["next"])
         } catch {
             try? await client?.close()
             try? await server.close()
