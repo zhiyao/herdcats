@@ -55,9 +55,6 @@ extension HerdrConnection {
         scopeToSession: Bool = true
     ) async throws -> String {
         try requireTUIFeature()
-#if DEBUG
-        if let herdrCommandResponse { return try await herdrCommandResponse(args) }
-#endif
 #if DEBUG && targetEnvironment(simulator)
         if ScreenshotFixtures.enabled { return try ScreenshotFixtures.response(args) }
 #endif

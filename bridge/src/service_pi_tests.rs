@@ -386,3 +386,303 @@ fn pi_branch_a_b_a_emits_fresh_snapshots_restoring_original_messages() {
     h.join().unwrap(); extension.join().unwrap();
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn pi_progressive_history_pages_back_and_preserves_state_too_large() {
+    let root = PathBuf::from("/tmp").join(format!("pi-prog-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(root.join("sessions/project")).unwrap();
+    fs::create_dir_all(root.join("herdcats")).unwrap();
+    let root = root.canonicalize().unwrap();
+    let session = "16246b9d-4c3d-54fc-b6d3-2a765d418491";
+    let path = root.join(format!("sessions/project/{session}.jsonl"));
+    fs::write(&path, format!("{{\"type\":\"session\",\"id\":\"{session}\"}}\n")).unwrap();
+    let socket = root.join("h.sock");
+    let listener = UnixListener::bind(&socket).unwrap();
+    let pane = json!({"pane_id":"pane","terminal_id":"terminal","agent":"pi","agent_status":"idle","agent_session":{"agent":"pi","source":"herdr:pi","kind":"path","value":path}});
+    let host = thread::spawn(move || {
+        for _ in 0..8 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut line = String::new();
+            BufReader::new(stream.try_clone().unwrap()).read_line(&mut line).unwrap();
+            let request: Value = serde_json::from_str(&line).unwrap();
+            writeln!(stream,"{}",json!({"id":request["id"],"result":{"type":"session_snapshot","snapshot":{"protocol":22,"panes":[pane]}}})).unwrap();
+        }
+    });
+    let extension_socket = root.join(format!("herdcats/{session}.sock"));
+    let listener = UnixListener::bind(&extension_socket).unwrap();
+    let state_path = path.clone();
+    let extension = thread::spawn(move || {
+        let msg = |id: &str| json!({"type":"message","id":id,"message":{"role":"user","content":id}});
+        let live = json!({"type":"message","id":"herdcats-live:tmp","message":{"role":"assistant","content":"live"}});
+        // 1: watch state [m2, m3] + live
+        // 2: poll slide [m3, m4]
+        // 3: history poll_with_refresh -> state [m3, m4]
+        // 4: history RPC -> returns [m0, m1]
+        // The missing socket is handled by connect(), before the server accepts.
+        // 5–6: recovery and history refresh -> state [m3, m4, m5]
+        // 7: next poll -> oversized state error pi_state_too_large
+        for step in 0..7 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut line = String::new();
+            BufReader::new(stream.try_clone().unwrap()).read_line(&mut line).unwrap();
+            let req: Value = serde_json::from_str(&line).unwrap();
+            let frame = match (step, req["method"].as_str()) {
+                (0, Some("state")) => json!({"result":{"protocol":1,"version":"1.5.0","session_id":session,"session_file":state_path,"instance_id":"rt","revision":1,"entries":[msg("m2"),msg("m3"),live],"has_more":true,"before":"m2","status":"working","capabilities":{"history":true}}}),
+                (1 | 2, Some("state")) => json!({"result":{"protocol":1,"version":"1.5.0","session_id":session,"session_file":state_path,"instance_id":"rt","revision":2,"entries":[msg("m3"),msg("m4")],"has_more":true,"before":"m3","status":"working","capabilities":{"history":true}}}),
+                (3, Some("history")) => {
+                    assert_eq!(req["params"]["before"], "m2");
+                    assert_eq!(req["params"]["expect"]["instance_id"], "rt");
+                    json!({"result":{"protocol":1,"session_id":session,"instance_id":"rt","entries":[msg("m0"),msg("m1")],"has_more":false,"before":null}})
+                }
+                (4 | 5, Some("state")) => json!({"result":{"protocol":1,"version":"1.5.0","session_id":session,"session_file":state_path,"instance_id":"rt","revision":3,"entries":[msg("m3"),msg("m4"),msg("m5")],"has_more":true,"before":"m3","status":"idle","capabilities":{"history":true}}}),
+                (6, Some("state")) => json!({"error":{"code":"pi_state_too_large"}}),
+                _ => panic!("unexpected extension step {step} req={req}"),
+            };
+            writeln!(stream, "{frame}").unwrap();
+        }
+    });
+    let mut service = Service::with_resolvers(socket, None, None).with_pi_agent_dir(root.clone());
+    let mut init_out = Vec::new();
+    service.request(br#"{"id":"init","method":"initialize","params":{"protocol":1,"record_content":true}}"#, &mut init_out).unwrap();
+    let init: Value = serde_json::from_slice(&init_out).unwrap();
+    assert_eq!(init["result"]["capabilities"]["pi"], true);
+
+    let mut out = Vec::new();
+    service.request(br#"{"id":"w","method":"watch","params":{"pane_id":"pane"}}"#, &mut out).unwrap();
+    let frames: Vec<Value> = String::from_utf8(out).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    let snap = frames.iter().find(|f| f["event"] == "timeline.snapshot").unwrap();
+    let generation = snap["data"]["generation"].as_u64().unwrap();
+    assert_eq!(snap["data"]["has_more"], true);
+    assert_eq!(snap["data"]["before"], "pi:m2");
+
+    let mut poll_out = Vec::new();
+    service.poll(&mut poll_out).unwrap();
+    let updates: Vec<Value> = String::from_utf8(poll_out).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    let upd = updates.iter().find(|f| f["event"] == "timeline.updated").expect("slide should update, not reset");
+    assert_eq!(upd["data"]["generation"], generation);
+    let evicted = upd["data"]["evicted_ids"].as_array().unwrap();
+    assert!(evicted.iter().any(|id| id == "pi:herdcats-live:tmp"));
+    assert!(!evicted.iter().any(|id| id == "pi:m2"), "slid branch entry m2 moved to older and must not be evicted");
+
+    let mut hist_out = Vec::new();
+    let hist_req = json!({"id":"h","method":"history","params":{"generation":generation,"before":"pi:m2"}});
+    service.request(&serde_json::to_vec(&hist_req).unwrap(), &mut hist_out).unwrap();
+    let hist: Value = serde_json::from_slice(&hist_out).unwrap();
+    let ids: Vec<_> = hist["result"]["entries"].as_array().unwrap().iter().map(|e| e["id"].as_str().unwrap()).collect();
+    assert_eq!(ids, vec!["pi:m0", "pi:m1"]);
+    assert_eq!(hist["result"]["has_more"], false);
+
+    let parked_socket = root.join("offline.sock");
+    fs::rename(&extension_socket, &parked_socket).unwrap();
+    let mut outage = Vec::new();
+    let poll = service.poll(&mut outage);
+    fs::rename(&parked_socket, &extension_socket).unwrap();
+    poll.unwrap();
+    let outage: Value = serde_json::from_slice(&outage).unwrap();
+    assert_eq!(outage["event"], "timeline.updated");
+    assert_eq!(outage["data"]["generation"], generation);
+    assert_eq!(outage["data"]["identity"], snap["data"]["identity"]);
+    assert_eq!(outage["data"]["delayed"], true);
+    assert_eq!(outage["data"]["agent_status"], "working");
+    assert_eq!(outage["data"]["entries"], json!([]));
+
+    let mut recovery = Vec::new();
+    service.poll(&mut recovery).unwrap();
+    let recovery: Value = serde_json::from_slice(&recovery).unwrap();
+    assert_eq!(recovery["event"], "timeline.updated");
+    assert_eq!(recovery["data"]["generation"], generation);
+    assert_eq!(recovery["data"]["delayed"], false);
+    assert_eq!(recovery["data"]["agent_status"], "idle");
+    assert_eq!(recovery["data"]["entries"][0]["id"], "pi:m5");
+    assert_eq!(recovery["data"]["has_more"], true, "the wire still advertises cached history");
+
+    let mut retained = Vec::new();
+    let req = json!({"id":"h","method":"history","params":{"generation":generation,"before":"pi:m1"}});
+    service.request(&serde_json::to_vec(&req).unwrap(), &mut retained).unwrap();
+    let retained: Value = serde_json::from_slice(&retained).unwrap();
+    assert_eq!(retained["result"]["entries"][0]["id"], "pi:m0");
+    assert_eq!(retained["result"]["has_more"], false);
+
+    let mut err_out = Vec::new();
+    service.poll(&mut err_out).unwrap();
+    let err_frame: Value = serde_json::from_slice(&err_out).unwrap();
+    assert_eq!(err_frame["event"], "timeline.unavailable");
+    assert_eq!(err_frame["data"]["code"], "pi_state_too_large");
+
+    host.join().unwrap();
+    extension.join().unwrap();
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn pi_disjoint_windows_join_history_and_live_only_branches_reset() {
+    for live_only in [false, true] {
+        for sibling in [false, true] {
+            let root = PathBuf::from("/tmp").join(format!("pi-j-{}-{}-{}", std::process::id(), live_only as u8, sibling as u8));
+            fs::create_dir_all(root.join("sessions/project")).unwrap();
+            fs::create_dir_all(root.join("herdcats")).unwrap();
+            let root = root.canonicalize().unwrap();
+            let session = "16246b9d-4c3d-54fc-b6d3-2a765d418491";
+            let path = root.join(format!("sessions/project/{session}.jsonl"));
+            fs::write(&path, format!("{{\"type\":\"session\",\"id\":\"{session}\"}}\n")).unwrap();
+            let socket = root.join("h.sock");
+            let listener = UnixListener::bind(&socket).unwrap();
+            let pane = json!({"pane_id":"pane","terminal_id":"terminal","agent":"pi","agent_status":"idle","agent_session":{"agent":"pi","source":"herdr:pi","kind":"path","value":path}});
+            let host = thread::spawn(move || {
+                for _ in 0..4 {
+                    let (mut stream, _) = listener.accept().unwrap();
+                    let mut line = String::new();
+                    BufReader::new(stream.try_clone().unwrap()).read_line(&mut line).unwrap();
+                    let request: Value = serde_json::from_str(&line).unwrap();
+                    writeln!(stream,"{}",json!({"id":request["id"],"result":{"type":"session_snapshot","snapshot":{"protocol":22,"panes":[pane]}}})).unwrap();
+                }
+            });
+            let listener = UnixListener::bind(root.join(format!("herdcats/{session}.sock"))).unwrap();
+            let extension = thread::spawn(move || {
+                let msg = |id: &str| json!({"type":"message","id":id,"message":{"role":"user","content":id}});
+                let live = msg("herdcats-live:stream");
+                for step in 0..5 {
+                    let (mut stream, _) = listener.accept().unwrap();
+                    let mut line = String::new();
+                    BufReader::new(stream.try_clone().unwrap()).read_line(&mut line).unwrap();
+                    let request: Value = serde_json::from_str(&line).unwrap();
+                    let response = match step {
+                        0 | 1 => {
+                            assert_eq!(request["method"], "state");
+                            json!({"protocol":1,"session_id":session,"session_file":path,"instance_id":"rt","revision":1,"entries":if live_only {vec![live.clone()]} else {vec![msg("a")]},"has_more":true,"before":if live_only {"herdcats-through:a"} else {"a"},"status":"working","capabilities":{"history":true}})
+                        }
+                        2 => {
+                            assert_eq!(request["method"], "history");
+                            assert_eq!(request["params"]["before"], if live_only {"herdcats-through:a"} else {"a"});
+                            json!({"protocol":1,"session_id":session,"instance_id":"rt","entries":if live_only {vec![msg("old"),msg("a")]} else {vec![msg("old")]},"has_more":false,"before":null})
+                        }
+                        3 => {
+                            assert_eq!(request["method"], "state");
+                            json!({"protocol":1,"session_id":session,"session_file":path,"instance_id":"rt","revision":2,"entries":[msg("b")],"has_more":true,"before":"b","status":"idle","capabilities":{"history":true}})
+                        }
+                        4 => {
+                            assert_eq!(request["method"], "history");
+                            assert_eq!(request["params"]["before"], "b");
+                            assert_eq!(request["params"]["expect"]["instance_id"], "rt");
+                            json!({"protocol":1,"session_id":session,"instance_id":"rt","entries":if sibling {vec![msg("old")]} else {vec![msg("a"),msg("gap")]},"has_more":!sibling,"before":if sibling {None} else {Some("a")}})
+                        }
+                        _ => unreachable!(),
+                    };
+                    writeln!(stream,"{}",json!({"result":response})).unwrap();
+                }
+            });
+            let mut service = Service::with_resolvers(socket, None, None).with_pi_agent_dir(root.clone());
+            service.request(br#"{"id":"i","method":"initialize","params":{"protocol":1}}"#, &mut Vec::new()).unwrap();
+            let mut output = Vec::new();
+            service.request(br#"{"id":"w","method":"watch","params":{"pane_id":"pane"}}"#, &mut output).unwrap();
+            let generation = service.generation;
+            let cursor = if live_only {"pi:herdcats-live:stream"} else {"pi:a"};
+            output.clear();
+            service.request(json!({"id":"h","method":"history","params":{"generation":generation,"before":cursor}}).to_string().as_bytes(), &mut output).unwrap();
+            let history: Value = serde_json::from_slice(&output).unwrap();
+            assert_eq!(history["result"]["entries"][0]["id"], "pi:old");
+            output.clear();
+            service.poll(&mut output).unwrap();
+            let frames: Vec<Value> = String::from_utf8(output).unwrap().lines().map(|line| serde_json::from_str(line).unwrap()).collect();
+            let follower = &service.watch.as_ref().unwrap().follower;
+            if sibling {
+                assert!(service.generation > generation);
+                assert!(frames.iter().any(|frame| frame["event"] == "timeline.snapshot"));
+                assert!(follower.older().is_empty());
+                assert!(follower.transcript.entries.iter().all(|entry| entry.id == "pi:b"));
+            } else {
+                assert_eq!(service.generation, generation);
+                assert!(!frames.iter().any(|frame| frame["event"] == "timeline.snapshot"));
+                let update = frames.iter().find(|frame| frame["event"] == "timeline.updated").unwrap();
+                assert_eq!(update["data"]["entry_order"], json!(["pi:a", "pi:gap", "pi:b"]));
+                let ids: Vec<_> = follower.older().iter().chain(&follower.transcript.entries).map(|entry| entry.id.as_str()).collect();
+                assert_eq!(ids, vec!["pi:old", "pi:a", "pi:gap", "pi:b"]);
+            }
+            host.join().unwrap();
+            extension.join().unwrap();
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+}
+
+#[test]
+fn pi_recovered_overflow_is_published_as_ordered_inserts() {
+    let root = PathBuf::from("/tmp").join(format!("pi-o-{}", std::process::id()));
+    fs::create_dir_all(root.join("sessions/project")).unwrap();
+    fs::create_dir_all(root.join("herdcats")).unwrap();
+    let root = root.canonicalize().unwrap();
+    let session = "16246b9d-4c3d-54fc-b6d3-2a765d418491";
+    let path = root.join(format!("sessions/project/{session}.jsonl"));
+    fs::write(&path, format!("{{\"type\":\"session\",\"id\":\"{session}\"}}\n")).unwrap();
+    let socket = root.join("h.sock");
+    let listener = UnixListener::bind(&socket).unwrap();
+    let pane = json!({"pane_id":"pane","terminal_id":"terminal","agent":"pi","agent_status":"idle","agent_session":{"agent":"pi","source":"herdr:pi","kind":"path","value":path}});
+    let host = thread::spawn(move || {
+        for _ in 0..4 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut line = String::new();
+            BufReader::new(stream.try_clone().unwrap()).read_line(&mut line).unwrap();
+            let request: Value = serde_json::from_str(&line).unwrap();
+            writeln!(stream,"{}",json!({"id":request["id"],"result":{"type":"session_snapshot","snapshot":{"protocol":22,"panes":[pane]}}})).unwrap();
+        }
+    });
+    let listener = UnixListener::bind(root.join(format!("herdcats/{session}.sock"))).unwrap();
+    let extension = thread::spawn(move || {
+        let msg = |index: usize| json!({"type":"message","id":format!("m{index}"),"message":{"role":"user","content":format!("m{index}")}});
+        for step in 0..15 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut line = String::new();
+            BufReader::new(stream.try_clone().unwrap()).read_line(&mut line).unwrap();
+            let request: Value = serde_json::from_str(&line).unwrap();
+            let response = if request["method"] == "state" {
+                let index = if step == 0 { 0 } else { 1200 };
+                json!({"protocol":1,"session_id":session,"session_file":path,"instance_id":"rt","revision":index+1,"entries":[msg(index)],"has_more":index>0,"before":if index==0 {None} else {Some("m1200")},"status":"idle","capabilities":{"history":true}})
+            } else {
+                assert_eq!(request["method"], "history");
+                let end: usize = request["params"]["before"].as_str().unwrap().strip_prefix('m').unwrap().parse().unwrap();
+                let start = end.saturating_sub(100);
+                json!({"protocol":1,"session_id":session,"instance_id":"rt","entries":(start..end).map(msg).collect::<Vec<_>>(),"has_more":start>0,"before":if start>0 {Some(format!("m{start}"))} else {None}})
+            };
+            writeln!(stream,"{}",json!({"result":response})).unwrap();
+        }
+    });
+    let mut service = Service::with_resolvers(socket, None, None).with_pi_agent_dir(root.clone());
+    service.request(br#"{"id":"i","method":"initialize","params":{"protocol":1}}"#, &mut Vec::new()).unwrap();
+    let mut output = Vec::new();
+    service.request(br#"{"id":"w","method":"watch","params":{"pane_id":"pane"}}"#, &mut output).unwrap();
+    let generation = service.generation;
+    output.clear();
+    service.poll(&mut output).unwrap();
+    let frames: Vec<Value> = String::from_utf8(output).unwrap().lines().map(|line| {
+        assert!(line.len() < MAX_RECORD);
+        serde_json::from_str(line).unwrap()
+    }).collect();
+    let mut held = vec!["pi:m0".to_owned()];
+    for frame in frames {
+        assert_eq!(frame["event"], "timeline.updated");
+        assert_eq!(frame["data"]["generation"], generation);
+        let rows = frame["data"]["entries"].as_array().unwrap();
+        let order = frame["data"]["entry_order"].as_array().unwrap();
+        assert!(rows.len() <= 1000 && order.len() <= 1000);
+        for row in rows {
+            let id = row["id"].as_str().unwrap();
+            if !held.iter().any(|entry| entry == id) {
+                let position = order.iter().position(|entry| entry == id).unwrap();
+                let next = order[position+1..].iter().find_map(|entry| held.iter().position(|id| id == entry.as_str().unwrap()));
+                held.insert(next.unwrap_or(held.len()), id.to_owned());
+            }
+        }
+    }
+    assert_eq!(held, (0..=1200).map(|index| format!("pi:m{index}")).collect::<Vec<_>>());
+    assert_eq!(service.generation, generation);
+    let follower = &service.watch.as_ref().unwrap().follower;
+    assert_eq!(follower.older().len(), 201);
+    assert_eq!(follower.transcript.entries.len(), 1000);
+    let mut repeated = Vec::new();
+    service.poll(&mut repeated).unwrap();
+    assert!(repeated.is_empty());
+    host.join().unwrap();
+    extension.join().unwrap();
+    fs::remove_dir_all(root).unwrap();
+}

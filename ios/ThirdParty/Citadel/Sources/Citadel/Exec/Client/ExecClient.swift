@@ -152,32 +152,28 @@ extension SSHClient {
 }
 
 extension SSHClientSession {
-    func readOptionalTabList(_ command: String, deadline: ContinuousClock.Instant) async throws -> ByteBuffer {
-        try Task.checkCancellation()
+    func readOptionalTabList(_ command: String, query: OptionalTabListQuery) async throws -> ByteBuffer {
         let eventLoop = channel.eventLoop
         let response = eventLoop.makePromise(of: ByteBuffer.self)
         defer { response.fail(CitadelError.channelCreationFailed) }
-        let child: Channel = try await eventLoop.flatSubmit { [sshHandler] in
-            guard ContinuousClock.now < deadline else {
-                return eventLoop.makeFailedFuture(CitadelError.channelCreationFailed)
+        let child: Channel = try await eventLoop.submit { [sshHandler] in
+            try query.whileActive {
+                let activation = eventLoop.makePromise(of: Channel.self)
+                sshHandler.value.createChannel(activation) { channel, _ in
+                    channel.pipeline.addHandler(TTYHandler(maxResponseSize: 8 * 1024 * 1024, done: response))
+                }
+                return activation.futureResult
             }
-            let activation = eventLoop.makePromise(of: Channel.self)
-            sshHandler.value.createChannel(activation) { channel, _ in
-                channel.pipeline.addHandler(TTYHandler(maxResponseSize: 8 * 1024 * 1024, done: response))
+        }.flatMap { $0 }.get()
+        try await eventLoop.submit {
+            try query.whileActive {
+                let sent = eventLoop.makePromise(of: Void.self)
+                child.triggerUserOutboundEvent(
+                    SSHChannelRequestEvent.ExecRequest(command: command, wantReply: true), promise: sent
+                )
+                return sent.futureResult
             }
-            return activation.futureResult
-        }.get()
-        try Task.checkCancellation()
-        try await eventLoop.flatSubmit { () -> EventLoopFuture<Void> in
-            guard ContinuousClock.now < deadline else {
-                return eventLoop.makeFailedFuture(CitadelError.channelCreationFailed)
-            }
-            let sent = eventLoop.makePromise(of: Void.self)
-            child.triggerUserOutboundEvent(
-                SSHChannelRequestEvent.ExecRequest(command: command, wantReply: true), promise: sent
-            )
-            return sent.futureResult
-        }.get()
+        }.flatMap { $0 }.get()
         return try await response.futureResult.get()
     }
 }

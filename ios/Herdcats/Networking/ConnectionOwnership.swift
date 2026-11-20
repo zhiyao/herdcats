@@ -127,11 +127,6 @@ struct ConnectionClientSlot<Client> {
         return .invalidated(client: old)
     }
 
-    /// Invalidate whatever is current (used when closing "the" session).
-    mutating func invalidateCurrent() -> ClientSlotInvalidateResult<Client> {
-        invalidate(generation)
-    }
-
     func matches(_ expected: ConnectionGeneration) -> Bool {
         generation == expected
     }

@@ -206,10 +206,16 @@ actor HerdrConnection {
     var coreLayoutsRevision: UInt64 = 0
     var corePresentationMemo: (seq: UInt64, layoutsRevision: UInt64, value: CoreHierarchy)?
     #if DEBUG
-    let herdrCommandResponse: (@Sendable (String) async throws -> String)?
+    enum OverviewRead: Hashable, Sendable {
+        case workspaces
+        case agents
+        case tabs(workspaceId: String)
+    }
 
-    init(herdrCommandResponse: (@Sendable (String) async throws -> String)? = nil) {
-        self.herdrCommandResponse = herdrCommandResponse
+    let overviewResponse: (@Sendable (OverviewRead) async throws -> String)?
+
+    init(overviewResponse: (@Sendable (OverviewRead) async throws -> String)? = nil) {
+        self.overviewResponse = overviewResponse
     }
 
     /// How many times the hierarchy was actually built (memo misses). Test seam.
@@ -282,6 +288,7 @@ actor HerdrConnection {
         closeCore()
         closeAllLiveShells()
         closeAllAgentBridges()
+        client?.invalidateOptionalTabList()
         let (attempt, previous) = slot.beginReplace()
         disconnectHandler = nil
         identity = nil
@@ -358,9 +365,15 @@ actor HerdrConnection {
         }
     }
 
+    private func invalidateTransport(expected: ConnectionGeneration) -> ClientSlotInvalidateResult<SSHClient> {
+        guard slot.matches(expected) else { return .stale }
+        client?.invalidateOptionalTabList()
+        return slot.invalidate(expected)
+    }
+
     /// Invalidates the current generation so in-flight installs fail, then closes.
     func close() async {
-        switch slot.invalidateCurrent() {
+        switch invalidateTransport(expected: generation) {
         case .stale:
             return
         case let .invalidated(oldClient):
@@ -388,7 +401,7 @@ actor HerdrConnection {
     /// Does **not** notify AppModel — used for explicit user close / stale attempt
     /// teardown where the app already owns the phase transition.
     func invalidateAndTeardown(expected: ConnectionGeneration) {
-        switch slot.invalidate(expected) {
+        switch invalidateTransport(expected: expected) {
         case .stale:
             return
         case let .invalidated(oldClient):
@@ -407,7 +420,7 @@ actor HerdrConnection {
     }
 
     func handleDisconnect(expected: ConnectionGeneration) {
-        switch slot.invalidate(expected) {
+        switch invalidateTransport(expected: expected) {
         case .stale:
             return
         case .invalidated:
@@ -427,7 +440,7 @@ actor HerdrConnection {
         expected: ConnectionGeneration,
         notifyDisconnect: Bool = true
     ) async {
-        switch slot.invalidate(expected) {
+        switch invalidateTransport(expected: expected) {
         case .stale:
             return
         case let .invalidated(oldClient):

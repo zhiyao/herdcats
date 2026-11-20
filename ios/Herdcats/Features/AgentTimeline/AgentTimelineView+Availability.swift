@@ -44,6 +44,13 @@ extension AgentTimelineView {
             EmptyView()
         case .unavailable("pi_extension_unavailable") where agent == "pi" && bridgeCapabilities?.piExtensionInstall == true:
             piExtensionSetup
+        case .unavailable("pi_state_too_large") where agent == "pi":
+            piOversizedNotice
+                .task(id: PiExtensionCheckKey(generation: connectionState.generation, retry: retry)) {
+                    if bridgeCapabilities?.piExtensionInstall == true {
+                        await checkPiExtension()
+                    }
+                }
         case .unavailable(let code):
             let isCodex = agent == "codex"
             let isSupportedAgent = canPinnedInstallerSupportAgent
@@ -255,7 +262,19 @@ extension AgentTimelineView {
         bridgeVersion: String? = nil,
         supportedAgents: Set<String> = Set(HostHelperSetupPlan.agents)
     ) -> Bool {
+        if agent == "pi" && code == "pi_state_too_large" { return false }
         return !showsInstallOrUpgrade(code: code, agent: agent, bridgeVersion: bridgeVersion, supportedAgents: supportedAgents)
+    }
+
+    static func showsOutdatedPiExtensionUpdate(
+        code: String,
+        agent: String?,
+        capabilities: AgentBridgeCapabilities?,
+        result: PiExtensionResult?,
+        feedback: String?
+    ) -> Bool {
+        guard agent == "pi", code == "pi_state_too_large", capabilities?.piExtensionInstall == true else { return false }
+        return result?.status == .outdated || (feedback != nil && result?.status == .current)
     }
 
     /// What the pane can do about a Codex pane with no identified session,
@@ -479,6 +498,7 @@ extension AgentTimelineView {
         let isMissing = code == "helper_missing"
         if isNeedsUpgrade { return "Upgrade Herdcats Bridge" }
         if agent == "pi" && code == "pi_extension_unavailable" { return "Herdcats Pi extension isn’t running" }
+        if agent == "pi" && code == "pi_state_too_large" { return "Pi message exceeds Timeline limit" }
         if agent == "pi" && code == "unsafe_transcript_path" { return "Session history could not be read safely" }
         if isCodex && isNoSession { return "Waiting for Codex session" }
         if agent == "cursor" && isNoSession { return "Cursor chat not identified" }
@@ -522,6 +542,9 @@ extension AgentTimelineView {
             }
             if code == "invalid_pi_response" {
                 return "The Herdcats extension returned an unrecognized response. Check that this Pi TUI has the extension version from the same source checkout, then run `/reload` and check again."
+            }
+            if code == "pi_state_too_large" {
+                return "A message or state in this Pi session is larger than the 1 MiB Timeline limit. Continue in Terminal."
             }
             if code.hasPrefix("pi_") {
                 return "Load the Herdcats extension in the existing Pi TUI, then check again. No second Pi process is started. Use Terminal to continue."
@@ -766,10 +789,35 @@ extension AgentTimelineView {
         }
     }
 
+    /// Surface oversized Pi state honestly without Reload/Check-again loops;
+    /// offer setup for an outdated on-disk extension or to finish a confirmed update.
+    @ViewBuilder var piOversizedNotice: some View {
+        if Self.showsOutdatedPiExtensionUpdate(
+            code: "pi_state_too_large",
+            agent: agent,
+            capabilities: bridgeCapabilities,
+            result: piExtension,
+            feedback: piExtensionFeedback
+        ) {
+            piExtensionSetup
+        } else {
+            RecoveryNotice(
+                title: title("pi_state_too_large"),
+                systemImage: "bubble.left",
+                identifier: "timeline-exception-notice"
+            ) {
+                Text(explanation("pi_state_too_large"))
+            } actions: {
+                EmptyView()
+            }
+        }
+    }
+
     @MainActor func checkPiExtension() async {
         #if DEBUG && targetEnvironment(simulator)
         if ScreenshotFixtures.enabled, ScreenshotFixtures.screen.hasPrefix("timeline-pi-") {
-            piExtension = PiExtensionResult(status: .current, dir: nil, error: nil)
+            let status: PiExtensionStatus = ScreenshotFixtures.screen == "timeline-pi-outdated" ? .outdated : .current
+            piExtension = PiExtensionResult(status: status, dir: "/Users/fixture/.pi/agent/extensions/herdcats", error: nil)
             return
         }
         #endif

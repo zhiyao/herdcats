@@ -1,4 +1,4 @@
-import Citadel
+@testable import Citadel
 import Crypto
 import Foundation
 import NIOConcurrencyHelpers
@@ -226,24 +226,24 @@ struct AgentListPresentationTests {
 
     #if DEBUG
     private actor OverviewReplies {
-        let replies: [String: String]
-        let heldCommand: String
+        let replies: [HerdrConnection.OverviewRead: String]
+        let heldRead: HerdrConnection.OverviewRead
         nonisolated let entered = ExternallyReleasedWait<Void>()
         nonisolated let release = ExternallyReleasedWait<Void>()
-        private(set) var requests: Set<String> = []
+        private(set) var requests: Set<HerdrConnection.OverviewRead> = []
 
-        init(_ replies: [String: String], heldCommand: String) {
+        init(_ replies: [HerdrConnection.OverviewRead: String], heldRead: HerdrConnection.OverviewRead) {
             self.replies = replies
-            self.heldCommand = heldCommand
+            self.heldRead = heldRead
         }
 
-        func response(to command: String) async throws -> String {
-            requests.insert(command)
-            if command == heldCommand {
+        func response(to read: HerdrConnection.OverviewRead) async throws -> String {
+            requests.insert(read)
+            if read == heldRead {
                 entered.release(())
                 try await release.wait()
             }
-            guard let reply = replies[command] else {
+            guard let reply = replies[read] else {
                 throw HerdrError.api(code: "not_found", message: "Workspace closed")
             }
             return reply
@@ -274,14 +274,14 @@ struct AgentListPresentationTests {
           {"tab_id":"t-implement","workspace_id":"w1","label":"Implement","number":2,"pane_count":1,"agent_status":"working","focused":false}
         ]}}
         """
-        let closedTabs = HerdrConnection.tabListArguments(workspaceId: "w0")
-        let unnamedTabs = HerdrConnection.tabListArguments(workspaceId: "w1")
+        let closedTabs = HerdrConnection.OverviewRead.tabs(workspaceId: "w0")
+        let unnamedTabs = HerdrConnection.OverviewRead.tabs(workspaceId: "w1")
         let replies = OverviewReplies([
-            "workspace list": workspacesJSON,
-            "agent list": agentsJSON,
+            .workspaces: workspacesJSON,
+            .agents: agentsJSON,
             unnamedTabs: tabsJSON
-        ], heldCommand: unnamedTabs)
-        let connection = HerdrConnection(herdrCommandResponse: { try await replies.response(to: $0) })
+        ], heldRead: unnamedTabs)
+        let connection = HerdrConnection(overviewResponse: { try await replies.response(to: $0) })
         let model = SpacesModel()
         let deadline = ContinuousClock.now + (expiresWhileWaiting ? .seconds(1) : .seconds(10))
         let refresh = Task { await model.refresh(connection, deadline: deadline) }
@@ -311,13 +311,20 @@ struct AgentListPresentationTests {
         #expect(titles() == (expiresWhileWaiting ? baseTitles : ["Closed", "Review", "Implement", "Named"]))
         #expect(model.errorMessage == nil)
         #expect(model.spaces.last?.agents.first?.tabLabel == nil)
-        let requests: Set<String> = ["workspace list", "agent list", closedTabs, unnamedTabs]
+        await #expect(throws: HerdrError.notConnected) { try await connection.workspaceList() }
+        await #expect(throws: HerdrError.notConnected) { try await connection.tabList(workspaceId: "w1") }
+        await #expect(throws: HerdrError.notConnected) { try await connection.workspaceCreate() }
+        let requests: Set<HerdrConnection.OverviewRead> = [.workspaces, .agents, closedTabs, unnamedTabs]
         #expect(await replies.requests == requests)
     }
     #endif
 
-    @Test(arguments: [false, true])
-    func optionalTabLookupClosesOnlyDisposableConnection(timedOut: Bool) async throws {
+    enum TabLookupStop: CaseIterable {
+        case cancellation, deadline, ownerRevocation
+    }
+
+    @Test(arguments: TabLookupStop.allCases)
+    func optionalTabLookupClosesOnlyDisposableConnection(stop: TabLookupStop) async throws {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         let fixture = DelayedTabChannel()
         let server = try await fixture.listen(on: group)
@@ -330,16 +337,33 @@ struct AgentListPresentationTests {
                 hostKeyValidator: .acceptAnything()
             ))
             client = ssh
+            await #expect(throws: CitadelError.channelCreationFailed) {
+                try await ssh.executeOptionalTabList("expired", deadline: ContinuousClock.now)
+            }
             let lookup = Task {
                 try await ssh.executeOptionalTabList(
-                    "late", host: "127.0.0.1", port: port,
-                    deadline: ContinuousClock.now.advanced(by: timedOut ? .seconds(2) : .seconds(10))
+                    "late",
+                    deadline: ContinuousClock.now.advanced(by: stop == .deadline ? .seconds(2) : .seconds(10))
                 )
             }
             let confirmOpen = try await withTimeout(seconds: 3, label: "pending SSH open") {
                 try await fixture.pendingOpen.wait()
             }
-            if !timedOut { lookup.cancel() }
+            switch stop {
+            case .cancellation:
+                lookup.cancel()
+            case .deadline:
+                break
+            case .ownerRevocation:
+                let connection = HerdrConnection()
+                await connection.installFixtureClient(ssh)
+                let owned = await connection.generation
+                await connection.handleDisconnect(expected: ConnectionGeneration(rawValue: owned.rawValue + 1))
+                #expect(await connection.generation == owned)
+                #expect(await connection.client === ssh)
+                await connection.handleDisconnect(expected: owned)
+                #expect(await connection.generation != owned)
+            }
             do {
                 _ = try await withTimeout(seconds: 4, label: "lookup socket teardown") {
                     try await lookup.value
@@ -347,19 +371,24 @@ struct AgentListPresentationTests {
                 Issue.record("The unanswered lookup returned output")
             } catch {
                 #expect(error as? HerdrError != .timeout("lookup socket teardown"))
-                if !timedOut { #expect(error is CancellationError) }
+                if stop == .cancellation { #expect(error is CancellationError) }
             }
             try await withTimeout(seconds: 3, label: "lookup socket close") { try await fixture.closed.wait() }
             confirmOpen.succeed(())
 
             let primary = try await ssh.executeCommand("primary")
             #expect(String(buffer: primary) == "primary")
-            let output = try await ssh.executeOptionalTabList(
-                "next", host: "127.0.0.1", port: port,
-                deadline: ContinuousClock.now.advanced(by: .seconds(3))
-            )
-            #expect(String(buffer: output) == "next")
-            #expect(fixture.commands.withLockedValue { $0 } == ["primary", "next"])
+            let nextDeadline = ContinuousClock.now + .seconds(3)
+            if stop == .ownerRevocation {
+                await #expect(throws: CitadelError.channelCreationFailed) {
+                    try await ssh.executeOptionalTabList("next", deadline: nextDeadline)
+                }
+                #expect(fixture.commands.withLockedValue { $0 } == ["primary"])
+            } else {
+                let output = try await ssh.executeOptionalTabList("next", deadline: nextDeadline)
+                #expect(String(buffer: output) == "next")
+                #expect(fixture.commands.withLockedValue { $0 } == ["primary", "next"])
+            }
         } catch {
             try? await client?.close()
             try? await server.close()
@@ -370,20 +399,122 @@ struct AgentListPresentationTests {
         try await server.close()
         try await group.shutdownGracefully()
     }
+
+    @Test
+    func optionalTabReaderRejectsExecAfterDeadlineOnOpenTransport() async throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        let fixture = DelayedTabChannel()
+        let server = try await fixture.listen(on: group)
+        var client: SSHClient?
+        do {
+            let port = try #require(server.localAddress?.port)
+            let ssh = try await SSHClient.connect(to: SSHClientSettings(
+                host: "127.0.0.1", port: port,
+                authenticationMethod: { .passwordBased(username: "fixture", password: "fixture") },
+                hostKeyValidator: .acceptAnything()
+            ))
+            client = ssh
+            let session = ssh.session
+            let deadline = ContinuousClock.now + .seconds(2)
+            let query = OptionalTabListQuery(owner: session.channel, deadline: deadline)
+            let lookup = Task { try await session.readOptionalTabList("late", query: query) }
+            let confirmOpen = try await withTimeout(seconds: 3, label: "pending SSH open") {
+                try await fixture.pendingOpen.wait()
+            }
+            try await ContinuousClock().sleep(until: deadline)
+            confirmOpen.succeed(())
+
+            await #expect(throws: CitadelError.channelCreationFailed) {
+                try await withTimeout(seconds: 3, label: "expired tab read") { try await lookup.value }
+            }
+            let nextQuery = OptionalTabListQuery(owner: session.channel, deadline: ContinuousClock.now + .seconds(3))
+            let output = try await withTimeout(seconds: 3, label: "healthy tab read") {
+                try await session.readOptionalTabList("next", query: nextQuery)
+            }
+            #expect(String(buffer: output) == "next")
+            #expect(fixture.commands.withLockedValue { $0 } == ["next"])
+        } catch {
+            try? await client?.close()
+            try? await server.close()
+            try? await group.shutdownGracefully()
+            throw error
+        }
+        try await client?.close()
+        try await server.close()
+        try await group.shutdownGracefully()
+    }
+
+    @Test
+    func disconnectClosesOptionalLookupWhileAuthenticating() async throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        let fixture = DelayedTabChannel(delayAuthentication: true)
+        let server = try await fixture.listen(on: group)
+        let connection = HerdrConnection()
+        do {
+            let port = try #require(server.localAddress?.port)
+            let ssh = try await SSHClient.connect(to: SSHClientSettings(
+                host: "127.0.0.1", port: port,
+                authenticationMethod: { .passwordBased(username: "fixture", password: "fixture") },
+                hostKeyValidator: .acceptAnything()
+            ))
+            await connection.installFixtureClient(ssh)
+            let lookup = Task {
+                try await ssh.executeOptionalTabList("late", deadline: ContinuousClock.now + .seconds(10))
+            }
+            let authenticate = try await withTimeout(seconds: 3, label: "pending SSH authentication") {
+                try await fixture.pendingAuthentication.wait()
+            }
+            defer { authenticate.succeed(.success) }
+            await connection.close()
+            try await withTimeout(seconds: 3, label: "lookup socket close") { try await fixture.closed.wait() }
+            await #expect(throws: CitadelError.channelCreationFailed) {
+                try await withTimeout(seconds: 3, label: "lookup completion") { try await lookup.value }
+            }
+            #expect(fixture.commands.withLockedValue { $0 }.isEmpty)
+        } catch {
+            await connection.close()
+            try? await server.close()
+            try? await group.shutdownGracefully()
+            throw error
+        }
+        try await server.close()
+        try await group.shutdownGracefully()
+    }
+}
+
+private extension HerdrConnection {
+    func installFixtureClient(_ client: SSHClient) {
+        _ = slot.install(client, expected: generation)
+    }
 }
 
 private final class DelayedTabChannel: Sendable {
+    let pendingAuthentication = ExternallyReleasedWait<EventLoopPromise<NIOSSHUserAuthenticationOutcome>>()
     let pendingOpen = ExternallyReleasedWait<EventLoopPromise<Void>>()
     let closed = ExternallyReleasedWait<Void>()
     let commands = NIOLockedValueBox<[String]>([])
+    private let socketCount = NIOLockedValueBox(0)
     private let childCount = NIOLockedValueBox(0)
+    private let delayAuthentication: Bool
+
+    init(delayAuthentication: Bool = false) {
+        self.delayAuthentication = delayAuthentication
+    }
 
     func listen(on group: MultiThreadedEventLoopGroup) async throws -> Channel {
         let key = NIOSSHPrivateKey(ed25519Key: Curve25519.Signing.PrivateKey())
         return try await ServerBootstrap(group: group).childChannelInitializer { channel in
             let socket = channel
+            let index = self.socketCount.withLockedValue { count in
+                count += 1
+                return count
+            }
+            let pendingAuthentication = self.delayAuthentication && index == 2 ? self.pendingAuthentication : nil
+            if pendingAuthentication != nil {
+                socket.closeFuture.whenComplete { _ in self.closed.release(()) }
+            }
             return channel.pipeline.addHandler(NIOSSHHandler(
-                role: .server(SSHServerConfiguration(hostKeys: [key], userAuthDelegate: TabFixtureAuthentication())),
+                role: .server(SSHServerConfiguration(hostKeys: [key], userAuthDelegate: TabFixtureAuthentication(pending: pendingAuthentication))),
                 allocator: channel.allocator,
                 inboundChildChannelInitializer: { child, _ in
                     let index = self.childCount.withLockedValue { count in
@@ -391,7 +522,7 @@ private final class DelayedTabChannel: Sendable {
                         return count
                     }
                     return child.pipeline.addHandler(TabFixtureExec(commands: self.commands)).flatMap {
-                        guard index == 1 else { return child.eventLoop.makeSucceededVoidFuture() }
+                        guard !self.delayAuthentication, index == 1 else { return child.eventLoop.makeSucceededVoidFuture() }
                         socket.closeFuture.whenComplete { _ in self.closed.release(()) }
                         let confirmOpen = child.eventLoop.makePromise(of: Void.self)
                         self.pendingOpen.release(confirmOpen)
@@ -404,13 +535,18 @@ private final class DelayedTabChannel: Sendable {
 }
 
 private struct TabFixtureAuthentication: NIOSSHServerUserAuthenticationDelegate {
+    let pending: ExternallyReleasedWait<EventLoopPromise<NIOSSHUserAuthenticationOutcome>>?
     let supportedAuthenticationMethods: NIOSSHAvailableUserAuthenticationMethods = [.password]
 
     func requestReceived(
         request: NIOSSHUserAuthenticationRequest,
         responsePromise: EventLoopPromise<NIOSSHUserAuthenticationOutcome>
     ) {
-        responsePromise.succeed(.success)
+        if let pending {
+            pending.release(responsePromise)
+        } else {
+            responsePromise.succeed(.success)
+        }
     }
 }
 
