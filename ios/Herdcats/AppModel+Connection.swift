@@ -1,3 +1,4 @@
+import Citadel
 import Observation
 import SwiftUI
 
@@ -13,8 +14,11 @@ extension AppModel {
         defer { isDialing = false }
         guard let state = await prepareConnectAttempt(config: config) else { return }
 
-        if isAutomatic,
-           !isSceneActive || !hasActiveSession || hostKeyVerificationBlocked || !ownership.isCurrent(state.attempt) {
+        guard ownership.isCurrent(state.attempt) else {
+            state.watchdog.cancel()
+            return
+        }
+        if isAutomatic, !isSceneActive || !hasActiveSession || hostKeyVerificationBlocked {
             state.watchdog.cancel()
             if case let .failed(generation) = ownership.fail(for: state.attempt) {
                 connection.forceClose(generation: generation)
@@ -73,6 +77,7 @@ extension AppModel {
                     config.backend = found.contains(.core) && !found.contains(.tui) ? .core : .tui
                     config.detectsBackend = false
                     await connection.adoptBackend(config.backend)
+                    guard ownership.isCurrent(state.attempt) else { return }
                     activeConfig = config
                     connectionIdentity = ConnectionIdentity(config)
                     detectedBackends = found
@@ -135,17 +140,24 @@ extension AppModel {
     func prepareConnectAttempt(
         config: ConnectionConfig
     ) async -> ConnectAttemptState? {
+        let owned = ownership
+        await connection.setRuntimeChangeHandler { [weak self] generation in
+            Task { @MainActor in
+                self?.noteRuntimeChange(generation: generation)
+            }
+        }
+        guard ownership == owned else { return nil }
+        if let generation = owned.transportGeneration {
+            let client = await connection.optionalTabAdmissionOwner(generation: generation)
+            guard ownership == owned else { return nil }
+            client?.invalidateOptionalTabList()
+        }
         lastConnectPassphraseRejected = false
         lastConnectNeedsSignIn = false
         hostKeyChallenge = nil
         hostKeyVerificationBlocked = false
         activeConfig = config
         detectedBackends = []
-        await connection.setRuntimeChangeHandler { [weak self] generation in
-            Task { @MainActor in
-                self?.noteRuntimeChange(generation: generation)
-            }
-        }
         let wasOffline = isOffline
         phase = .connecting
         if connectionBanner == nil || isOffline {

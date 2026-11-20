@@ -125,7 +125,7 @@ struct ConnectedTabsView: View {
                 ? SidebarTabs(selection: $selectedTab, blockedCount: model.blockedAgentCount)
                 : nil
         )
-        .task {
+        .task(id: ObjectIdentifier(appModel.connection)) {
             #if DEBUG && targetEnvironment(simulator)
             if ScreenshotFixtures.enabled && ProcessInfo.processInfo.arguments.contains("-hc.split-capture") {
                 paneLayout.wrappedValue = PaneLayout()
@@ -150,6 +150,9 @@ struct ConnectedTabsView: View {
                 paneMemory.forget()
             }
             paneLayoutMachine = key
+        }
+        .onChange(of: appModel.ownership.transportGeneration) { _, generation in
+            model.discardTabLabels(fromOtherGeneration: generation)
         }
         .onChange(of: model.spaces) { _, spaces in
             // Drop panes whose space is gone. An empty list is left alone: it

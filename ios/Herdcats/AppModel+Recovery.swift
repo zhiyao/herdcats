@@ -1,3 +1,4 @@
+import Citadel
 import Observation
 import SwiftUI
 
@@ -133,6 +134,12 @@ extension AppModel {
 
     func disconnect() async {
         cancelReconnect()
+        let owned = ownership
+        if let generation = owned.transportGeneration {
+            let client = await connection.optionalTabAdmissionOwner(generation: generation)
+            guard ownership == owned else { return }
+            client?.invalidateOptionalTabList()
+        }
         reconnectBackoff.reset()
         lastScheduledAutoReconnectDelay = nil
         dismissBannerTask?.cancel()

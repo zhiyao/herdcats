@@ -231,6 +231,7 @@ struct AgentListPresentationTests {
         nonisolated let entered = ExternallyReleasedWait<Void>()
         nonisolated let release = ExternallyReleasedWait<Void>()
         private(set) var requests: Set<HerdrConnection.OverviewRead> = []
+        private var nextReply: (String?, ExternallyReleasedWait<Void>, ExternallyReleasedWait<Void>)?
 
         init(_ replies: [HerdrConnection.OverviewRead: String], heldRead: HerdrConnection.OverviewRead) {
             self.replies = replies
@@ -240,6 +241,14 @@ struct AgentListPresentationTests {
         func response(to read: HerdrConnection.OverviewRead) async throws -> String {
             requests.insert(read)
             if read == heldRead {
+                if let (reply, entered, release) = nextReply {
+                    entered.release(())
+                    try await release.wait()
+                    guard let reply else {
+                        throw HerdrError.api(code: "not_found", message: "Workspace closed")
+                    }
+                    return reply
+                }
                 entered.release(())
                 try await release.wait()
             }
@@ -247,6 +256,13 @@ struct AgentListPresentationTests {
                 throw HerdrError.api(code: "not_found", message: "Workspace closed")
             }
             return reply
+        }
+
+        func holdReply(_ reply: String?) -> (ExternallyReleasedWait<Void>, ExternallyReleasedWait<Void>) {
+            let entered = ExternallyReleasedWait<Void>()
+            let release = ExternallyReleasedWait<Void>()
+            nextReply = (reply, entered, release)
+            return (entered, release)
         }
     }
 
@@ -270,7 +286,7 @@ struct AgentListPresentationTests {
         """
         let tabsJSON = """
         {"result":{"tabs":[
-          {"tab_id":"t-review","workspace_id":"w1","label":"Review","number":1,"pane_count":1,"agent_status":"working","focused":true},
+          {"tab_id":"t-review","workspace_id":"w1","label":" Review ","number":1,"pane_count":1,"agent_status":"working","focused":true},
           {"tab_id":"t-implement","workspace_id":"w1","label":"Implement","number":2,"pane_count":1,"agent_status":"working","focused":false}
         ]}}
         """
@@ -298,6 +314,7 @@ struct AgentListPresentationTests {
         #expect(titles() == baseTitles)
         #expect(model.hasLoadedAgentList)
         #expect(!model.isLoading)
+        try await withTimeout(seconds: 3, label: "base refresh completion") { await refresh.value }
         if expiresWhileWaiting {
             model.isSceneActive = false
             try await ContinuousClock().sleep(until: deadline + .milliseconds(20))
@@ -306,9 +323,34 @@ struct AgentListPresentationTests {
             #expect(model.errorMessage == nil)
         }
         replies.release.release(())
-        await refresh.value
+        await model.waitForTabEnrichment()
 
-        #expect(titles() == (expiresWhileWaiting ? baseTitles : ["Closed", "Review", "Implement", "Named"]))
+        let verifiedTitles = ["Closed", " Review ", "Implement", "Named"]
+        #expect(titles() == (expiresWhileWaiting ? baseTitles : verifiedTitles))
+        if !expiresWhileWaiting {
+            let renamedTabs = """
+            {"result":{"tabs":[
+              {"tab_id":"t-review","workspace_id":"w1","label":"Renamed","number":1,"pane_count":1,"agent_status":"working","focused":true}
+            ]}}
+            """
+            let renamedTitles = ["Closed", "Renamed", "Build", "Named"]
+            for (reply, before, after, replaceSource) in [
+                (renamedTabs as String?, verifiedTitles, renamedTitles, false),
+                (nil, renamedTitles, baseTitles, false),
+                (tabsJSON, baseTitles, verifiedTitles, false),
+                (nil, baseTitles, baseTitles, true)
+            ] {
+                if replaceSource { await connection.close() }
+                let (entered, release) = await replies.holdReply(reply)
+                defer { release.release(()) }
+                await model.refresh(connection)
+                try await withTimeout(seconds: 3, label: "tab revalidation") { try await entered.wait() }
+                #expect(titles() == before)
+                release.release(())
+                await model.waitForTabEnrichment()
+                #expect(titles() == after)
+            }
+        }
         #expect(model.errorMessage == nil)
         #expect(model.spaces.last?.agents.first?.tabLabel == nil)
         await #expect(throws: HerdrError.notConnected) { try await connection.workspaceList() }

@@ -365,6 +365,10 @@ actor HerdrConnection {
         }
     }
 
+    func optionalTabAdmissionOwner(generation expected: ConnectionGeneration) -> SSHClient? {
+        try? slot.ownedClient(expected)
+    }
+
     private func invalidateTransport(expected: ConnectionGeneration) -> ClientSlotInvalidateResult<SSHClient> {
         guard slot.matches(expected) else { return .stale }
         client?.invalidateOptionalTabList()

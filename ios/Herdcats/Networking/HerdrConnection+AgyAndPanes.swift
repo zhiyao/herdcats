@@ -10,17 +10,17 @@ extension HerdrConnection {
         return try await fetch(AgentListResult.self, args: "agent list").agents
     }
 
-    func spaceOverview() async throws -> ([Workspace], [AgentEntry], ConnectionGeneration) {
+    func spaceOverview() async throws -> ([Workspace], [AgentEntry], ConnectionGeneration, ConnectionBackend) {
         let owned = generation
         if backend == .core {
             let hierarchy = try await corePresentation()
-            return (hierarchy.workspaces, hierarchy.agents, owned)
+            return (hierarchy.workspaces, hierarchy.agents, owned, .core)
         }
 
         let (workspaces, agents) = try await tuiOverview()
         try Task.checkCancellation()
         guard generation == owned else { throw HerdrError.notConnected }
-        return (workspaces, agents, owned)
+        return (workspaces, agents, owned, .tui)
     }
 
     private func tuiOverview() async throws -> ([Workspace], [AgentEntry]) {
@@ -37,26 +37,21 @@ extension HerdrConnection {
     }
 
     func enrichAgentTabLabels(
-        workspaces: [Workspace], agents: [AgentEntry], generation owned: ConnectionGeneration,
+        workspaceIDs: Set<String>, agents: [AgentEntry], generation owned: ConnectionGeneration,
         deadline: ContinuousClock.Instant
-    ) async throws -> [AgentEntry]? {
-        guard backend == .tui else { return nil }
-        let occupied = Set(agents.map(\.workspaceId))
-        let unnamed = workspaces.filter {
-            occupied.contains($0.workspaceId) && $0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
+    ) async throws -> [AgentEntry] {
         var labels: [String: [String: String]] = [:]
-        for workspace in unnamed.sorted(by: { $0.workspaceId < $1.workspaceId }) {
+        for workspaceId in workspaceIDs.sorted() {
             try Task.checkCancellation()
             guard generation == owned else { throw HerdrError.notConnected }
             guard ContinuousClock.now < deadline else { break }
-            let workspaceId = workspace.workspaceId
             do {
                 let tabs = try await optionalTabList(workspaceId: workspaceId, deadline: deadline, generation: owned)
                 guard ContinuousClock.now < deadline else { break }
                 for tab in tabs where tab.workspaceId == workspaceId {
-                    let label = tab.label.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !label.isEmpty { labels[workspaceId, default: [:]][tab.tabId] = label }
+                    if !tab.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        labels[workspaceId, default: [:]][tab.tabId] = tab.label
+                    }
                 }
             } catch is CancellationError {
                 throw CancellationError()
@@ -68,7 +63,6 @@ extension HerdrConnection {
         }
         try Task.checkCancellation()
         guard generation == owned else { throw HerdrError.notConnected }
-        guard !labels.isEmpty else { return nil }
         return agents.map { agent in
             var agent = agent
             agent.tabLabel = labels[agent.workspaceId]?[agent.tabId]
@@ -79,19 +73,13 @@ extension HerdrConnection {
     private func optionalTabList(
         workspaceId: String, deadline: ContinuousClock.Instant, generation owned: ConnectionGeneration
     ) async throws -> [TabEntry] {
-        let args = Self.tabListArguments(workspaceId: workspaceId)
 #if DEBUG
         if let overviewResponse {
             return try await Self.decode(overviewResponse(.tabs(workspaceId: workspaceId)), as: TabListResult.self).tabs
         }
 #endif
-#if DEBUG && targetEnvironment(simulator)
-        if ScreenshotFixtures.enabled {
-            return try Self.decode(ScreenshotFixtures.response(args), as: TabListResult.self).tabs
-        }
-#endif
         let client = try slot.ownedClient(owned)
-        let command = Self.remoteCommand(args, session: session)
+        let command = Self.remoteCommand(Self.tabListArguments(workspaceId: workspaceId), session: session)
         let buffer = try await client.executeOptionalTabList(command, deadline: deadline)
         let output = try Self.interpret(String(buffer: buffer))
         return try Self.decode(output, as: TabListResult.self).tabs
