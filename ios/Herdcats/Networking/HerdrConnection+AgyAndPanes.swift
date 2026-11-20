@@ -17,12 +17,23 @@ extension HerdrConnection {
             return (hierarchy.workspaces, hierarchy.agents, owned)
         }
 
-        async let fetchedWorkspaces = workspaceList()
-        async let fetchedAgents = agentList()
-        let (workspaces, agents) = try await (fetchedWorkspaces, fetchedAgents)
+        let (workspaces, agents) = try await tuiOverview()
         try Task.checkCancellation()
         guard generation == owned else { throw HerdrError.notConnected }
         return (workspaces, agents, owned)
+    }
+
+    private func tuiOverview() async throws -> ([Workspace], [AgentEntry]) {
+#if DEBUG
+        if let overviewResponse {
+            async let workspaces = Self.decode(overviewResponse(.workspaces), as: WorkspaceListResult.self)
+            async let agents = Self.decode(overviewResponse(.agents), as: AgentListResult.self)
+            return try await (workspaces.workspaces, agents.agents)
+        }
+#endif
+        async let workspaces = workspaceList()
+        async let agents = agentList()
+        return try await (workspaces, agents)
     }
 
     func enrichAgentTabLabels(
@@ -70,8 +81,8 @@ extension HerdrConnection {
     ) async throws -> [TabEntry] {
         let args = Self.tabListArguments(workspaceId: workspaceId)
 #if DEBUG
-        if let herdrCommandResponse {
-            return try await Self.decode(herdrCommandResponse(args), as: TabListResult.self).tabs
+        if let overviewResponse {
+            return try await Self.decode(overviewResponse(.tabs(workspaceId: workspaceId)), as: TabListResult.self).tabs
         }
 #endif
 #if DEBUG && targetEnvironment(simulator)
@@ -81,7 +92,7 @@ extension HerdrConnection {
 #endif
         let client = try slot.ownedClient(owned)
         let command = Self.remoteCommand(args, session: session)
-        let buffer = try await client.executeOptionalTabList(command, host: host, port: port, deadline: deadline)
+        let buffer = try await client.executeOptionalTabList(command, deadline: deadline)
         let output = try Self.interpret(String(buffer: buffer))
         return try Self.decode(output, as: TabListResult.self).tabs
     }

@@ -206,10 +206,16 @@ actor HerdrConnection {
     var coreLayoutsRevision: UInt64 = 0
     var corePresentationMemo: (seq: UInt64, layoutsRevision: UInt64, value: CoreHierarchy)?
     #if DEBUG
-    let herdrCommandResponse: (@Sendable (String) async throws -> String)?
+    enum OverviewRead: Hashable, Sendable {
+        case workspaces
+        case agents
+        case tabs(workspaceId: String)
+    }
 
-    init(herdrCommandResponse: (@Sendable (String) async throws -> String)? = nil) {
-        self.herdrCommandResponse = herdrCommandResponse
+    let overviewResponse: (@Sendable (OverviewRead) async throws -> String)?
+
+    init(overviewResponse: (@Sendable (OverviewRead) async throws -> String)? = nil) {
+        self.overviewResponse = overviewResponse
     }
 
     /// How many times the hierarchy was actually built (memo misses). Test seam.
@@ -283,6 +289,7 @@ actor HerdrConnection {
         closeAllLiveShells()
         closeAllAgentBridges()
         let (attempt, previous) = slot.beginReplace()
+        previous?.invalidateOptionalTabList()
         disconnectHandler = nil
         identity = nil
         if let previous {
@@ -364,6 +371,7 @@ actor HerdrConnection {
         case .stale:
             return
         case let .invalidated(oldClient):
+            oldClient?.invalidateOptionalTabList()
             closeCore()
             closeAllLiveShells()
             closeAllAgentBridges()
@@ -392,6 +400,7 @@ actor HerdrConnection {
         case .stale:
             return
         case let .invalidated(oldClient):
+            oldClient?.invalidateOptionalTabList()
             closeCore()
             closeAllLiveShells()
             closeAllAgentBridges()
@@ -410,7 +419,8 @@ actor HerdrConnection {
         switch slot.invalidate(expected) {
         case .stale:
             return
-        case .invalidated:
+        case let .invalidated(oldClient):
+            oldClient?.invalidateOptionalTabList()
             closeCore()
             closeAllLiveShells()
             closeAllAgentBridges()
@@ -431,6 +441,7 @@ actor HerdrConnection {
         case .stale:
             return
         case let .invalidated(oldClient):
+            oldClient?.invalidateOptionalTabList()
             closeCore()
             closeAllLiveShells()
             closeAllAgentBridges()
