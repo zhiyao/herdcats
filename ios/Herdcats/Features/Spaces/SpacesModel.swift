@@ -95,7 +95,8 @@ final class SpacesModel {
     @ObservationIgnored var agentListFetch: (() async throws -> ([Workspace], [AgentEntry]))?
     private var refreshGate = RefreshGenerationGate()
     @ObservationIgnored private var tabEnrichment: (
-        id: UInt64, connection: HerdrConnection, source: ConnectionGeneration, task: Task<Void, Never>
+        id: UInt64, connection: HerdrConnection, source: ConnectionGeneration,
+        retained: [String: ContinuousClock.Instant], task: Task<Void, Never>
     )?
     @ObservationIgnored private var verifiedTabSource: (HerdrConnection, ConnectionGeneration)?
     private enum ObservedTabSource {
@@ -144,7 +145,6 @@ final class SpacesModel {
         deadline: ContinuousClock.Instant = .now + .seconds(45),
         isPoll: Bool = false
     ) async {
-        let previousEnrichment = tabEnrichment?.task
         let generation = refreshGate.begin()
         let initialScope = connectionScope
         refreshEpoch &+= 1
@@ -191,18 +191,28 @@ final class SpacesModel {
             let tabWorkspaceIDs = Set(backend == .tui ? workspaceList.filter {
                 occupied.contains($0.workspaceId) && $0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }.map(\.workspaceId) : [])
+            let reusesEnrichment = isPoll && tabEnrichment?.task.isCancelled == false
+            var retained: [String: ContinuousClock.Instant] = [:]
             var baseAgents = agentList
             if let source, verifiedTabSource?.0 === connection, verifiedTabSource?.1 == source,
                !tabWorkspaceIDs.isEmpty {
                 var labels: [String: [String: String]] = [:]
+                let now = ContinuousClock.now
                 for space in spaces where tabWorkspaceIDs.contains(space.id) {
+                    if let cutoff = tabEnrichment?.retained[space.id], cutoff <= now { continue }
                     for agent in space.agents {
                         labels[space.id, default: [:]][agent.tabId] = agent.tabLabel
                     }
                 }
                 for index in baseAgents.indices {
                     let agent = baseAgents[index]
-                    baseAgents[index].tabLabel = labels[agent.workspaceId]?[agent.tabId]
+                    guard let label = labels[agent.workspaceId]?[agent.tabId] else { continue }
+                    if !reusesEnrichment {
+                        let cutoff = min(deadline, tabEnrichment?.retained[agent.workspaceId] ?? deadline)
+                        guard cutoff > now else { continue }
+                        retained[agent.workspaceId] = cutoff
+                    }
+                    baseAgents[index].tabLabel = label
                 }
             } else {
                 verifiedTabSource = nil
@@ -223,47 +233,79 @@ final class SpacesModel {
             lastUpdated = Date()
             errorMessage = nil
             guard let source, !tabWorkspaceIDs.isEmpty else { return }
-            let predecessor = tabEnrichment?.task ?? previousEnrichment
-            if isPoll, let pending = tabEnrichment, !pending.task.isCancelled { return }
+            if reusesEnrichment { return }
+            let predecessor = tabEnrichment?.task
+            let cutoffs = Set(retained.values).sorted()
             let task = Task { [weak self] in
-                await predecessor?.value
-                defer {
-                    if let self, self.tabEnrichment?.id == generation { self.tabEnrichment = nil }
-                }
-                guard !Task.isCancelled else { return }
-                let lookups = try? await connection.agentTabLabels(
-                    workspaceIDs: tabWorkspaceIDs, generation: source, deadline: deadline
-                )
-                let currentSource = await connection.generation
-                guard let self, self.tabEnrichment?.id == generation, self.connectionScope == scope,
-                      self.canPublishTabLabels(from: source), !Task.isCancelled else { return }
-                guard currentSource == source else {
-                    self.clearVerifiedTabLabels()
-                    return
-                }
-                let updatedSpaces = self.spaces.map { space in
-                    guard tabWorkspaceIDs.contains(space.id) && space.workspace.label
-                        .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return space }
-                    let labels: [String: String]
-                    switch lookups?[space.id] {
-                    case let .completed(result): labels = result
-                    case .failed, nil: labels = [:]
+                let expiry = Task { [weak self] in
+                    for cutoff in cutoffs {
+                        do { try await ContinuousClock().sleep(until: cutoff) }
+                        catch { return }
+                        guard let self, self.ownsTabEnrichment(generation, scope: scope) else { return }
+                        let expired = self.tabEnrichment?.retained.compactMap { $0.value <= cutoff ? $0.key : nil } ?? []
+                        self.settleTabLabels([:], in: Set(expired), connection: connection, source: source)
                     }
-                    return Space(workspace: space.workspace, agents: space.agents.map { agent in
-                        var agent = agent
-                        agent.tabLabel = labels[agent.tabId]
-                        return agent
-                    })
                 }
-                self.verifiedTabSource = updatedSpaces.contains { $0.agents.contains { $0.tabLabel != nil } }
-                    ? (connection, source) : nil
-                self.spaces = updatedSpaces
+                defer {
+                    expiry.cancel()
+                    if let self, self.tabEnrichment?.id == generation {
+                        if self.ownsTabEnrichment(generation, scope: scope), let pending = self.tabEnrichment {
+                            self.settleTabLabels([:], in: Set(pending.retained.keys), connection: connection, source: source)
+                        }
+                        self.tabEnrichment = nil
+                    }
+                }
+                await predecessor?.value
+                guard !Task.isCancelled else { return }
+                try? await connection.agentTabLabels(
+                    workspaceIDs: tabWorkspaceIDs, generation: source, deadline: deadline
+                ) { [weak self] workspace, result in
+                    guard await connection.generation == source else { return }
+                    let labels: [String: String]
+                    switch result {
+                    case let .completed(result): labels = result
+                    case .failed: labels = [:]
+                    }
+                    await MainActor.run { [weak self] in
+                        guard let self, self.ownsTabEnrichment(generation, scope: scope) else { return }
+                        self.settleTabLabels(labels, in: [workspace], connection: connection, source: source)
+                    }
+                }
+                if await connection.generation != source,
+                   let self, self.ownsTabEnrichment(generation, scope: scope) {
+                    self.clearVerifiedTabLabels()
+                }
             }
-            tabEnrichment = (generation, connection, source, task)
+            tabEnrichment = (generation, connection, source, retained, task)
         } catch {
             guard refreshGate.isCurrent(generation), connectionScope == initialScope else { return }
             reportError(error)
         }
+    }
+
+    private func ownsTabEnrichment(_ id: UInt64, scope: ConnectionIdentity?) -> Bool {
+        guard let active = tabEnrichment else { return false }
+        return active.id == id && !active.task.isCancelled && connectionScope == scope
+            && canPublishTabLabels(from: active.source)
+    }
+
+    private func settleTabLabels(
+        _ labels: [String: String], in workspaceIDs: Set<String>,
+        connection: HerdrConnection, source: ConnectionGeneration
+    ) {
+        guard !workspaceIDs.isEmpty else { return }
+        for id in workspaceIDs { tabEnrichment?.retained.removeValue(forKey: id) }
+        let updated = spaces.map { space in
+            guard workspaceIDs.contains(space.id), space.workspace.label
+                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return space }
+            return Space(workspace: space.workspace, agents: space.agents.map { agent in
+                var agent = agent
+                agent.tabLabel = labels[agent.tabId]
+                return agent
+            })
+        }
+        verifiedTabSource = updated.contains { $0.agents.contains { $0.tabLabel != nil } } ? (connection, source) : nil
+        if updated != spaces { spaces = updated }
     }
 
     func waitForTabEnrichment() async {

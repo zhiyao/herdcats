@@ -43,37 +43,36 @@ extension HerdrConnection {
 
     func agentTabLabels(
         workspaceIDs: Set<String>, generation owned: ConnectionGeneration,
-        deadline: ContinuousClock.Instant
-    ) async throws -> [String: TabLabelLookup] {
-        var lookups: [String: TabLabelLookup] = [:]
+        deadline: ContinuousClock.Instant,
+        onResult: @Sendable (String, TabLabelLookup) async -> Void
+    ) async throws {
         for workspaceId in workspaceIDs.sorted() {
             try Task.checkCancellation()
             guard generation == owned else { throw HerdrError.notConnected }
             guard ContinuousClock.now < deadline else { break }
+            let result: TabLabelLookup
             do {
                 let tabs = try await optionalTabList(workspaceId: workspaceId, deadline: deadline, generation: owned)
-                guard ContinuousClock.now < deadline else {
-                    lookups[workspaceId] = .failed
-                    break
-                }
                 var labels: [String: String] = [:]
                 for tab in tabs where tab.workspaceId == workspaceId {
                     if !tab.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         labels[tab.tabId] = tab.label
                     }
                 }
-                lookups[workspaceId] = .completed(labels)
+                result = ContinuousClock.now < deadline ? .completed(labels) : .failed
             } catch is CancellationError {
                 throw CancellationError()
             } catch HerdrError.notConnected {
                 throw HerdrError.notConnected
             } catch {
-                lookups[workspaceId] = .failed
+                result = .failed
             }
+            try Task.checkCancellation()
+            guard generation == owned else { throw HerdrError.notConnected }
+            await onResult(workspaceId, result)
         }
         try Task.checkCancellation()
         guard generation == owned else { throw HerdrError.notConnected }
-        return lookups
     }
 
     private func optionalTabList(

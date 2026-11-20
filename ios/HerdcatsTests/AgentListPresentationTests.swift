@@ -274,8 +274,8 @@ struct AgentListPresentationTests {
             return (entered, release)
         }
 
-        func updateAgents(_ reply: String) {
-            replies[.agents] = reply
+        func update(_ read: HerdrConnection.OverviewRead, reply: String?) {
+            replies[read] = reply
         }
     }
 
@@ -328,7 +328,7 @@ struct AgentListPresentationTests {
         #expect(model.hasLoadedAgentList)
         #expect(!model.isLoading)
         try await withTimeout(seconds: 3, label: "base refresh completion") { await refresh.value }
-        await replies.updateAgents(agentsJSON.replacingOccurrences(of: "\"working\"", with: "\"blocked\""))
+        await replies.update(.agents, reply: agentsJSON.replacingOccurrences(of: "\"working\"", with: "\"blocked\""))
         await model.refresh(connection, isPoll: true)
         #expect(model.spaces.flatMap(\.agents).allSatisfy { $0.agentStatus == "blocked" })
         if expiresWhileWaiting {
@@ -351,14 +351,45 @@ struct AgentListPresentationTests {
             defer { finishRevalidation.release(()) }
             await model.refresh(connection)
             try await withTimeout(seconds: 3, label: "revalidation before failed refresh") { try await revalidating.wait() }
-            await replies.updateAgents("{}")
+            await replies.update(.agents, reply: "{}")
             await model.refresh(connection)
             #expect(titles() == verifiedTitles)
             finishRevalidation.release(())
             await model.waitForTabEnrichment()
             let updatedTitles = ["Closed", "Updated", "Implement", "Named"]
             #expect(titles() == updatedTitles)
-            await replies.updateAgents(agentsJSON)
+            await replies.update(.agents, reply: agentsJSON)
+
+            let firstTab = """
+            {"result":{"tabs":[
+              {"tab_id":"t-review","workspace_id":"w0","label":"Verified first","number":1,"pane_count":1,"agent_status":"working","focused":true}
+            ]}}
+            """
+            await replies.update(closedTabs, reply: firstTab)
+            await model.refresh(connection)
+            await model.waitForTabEnrichment()
+            #expect(titles() == ["Verified first", "Updated", "Implement", "Named"])
+
+            await replies.update(closedTabs, reply: #"{"result":{"tabs":[]}}"#)
+            let (firstEntered, firstRelease) = await replies.holdReply(tabsJSON)
+            defer { firstRelease.release(()) }
+            let originalCutoff = ContinuousClock.now + .seconds(2)
+            await model.refresh(connection, deadline: originalCutoff)
+            try await withTimeout(seconds: 3, label: "second workspace pending") { try await firstEntered.wait() }
+            #expect(titles() == updatedTitles)
+
+            let (successorEntered, successorRelease) = await replies.holdReply(tabsJSON)
+            defer { successorRelease.release(()) }
+            await model.refresh(connection)
+            firstRelease.release(())
+            try await withTimeout(seconds: 3, label: "successor workspace pending") { try await successorEntered.wait() }
+            #expect(titles() == updatedTitles)
+            try await ContinuousClock().sleep(until: originalCutoff + .milliseconds(100))
+            #expect(titles() == baseTitles)
+            successorRelease.release(())
+            await model.waitForTabEnrichment()
+            #expect(titles() == verifiedTitles)
+            await replies.update(closedTabs, reply: nil)
 
             let renamedTabs = """
             {"result":{"tabs":[
@@ -367,7 +398,7 @@ struct AgentListPresentationTests {
             """
             let renamedTitles = ["Closed", "Renamed", "Build", "Named"]
             for (reply, before, after, replaceSource) in [
-                (renamedTabs as String?, updatedTitles, renamedTitles, false),
+                (renamedTabs as String?, verifiedTitles, renamedTitles, false),
                 (nil, renamedTitles, baseTitles, false),
                 (tabsJSON, baseTitles, verifiedTitles, false),
                 (nil, baseTitles, baseTitles, true)
@@ -410,14 +441,20 @@ struct AgentListPresentationTests {
         let connection = HerdrConnection(overviewResponse: { try await replies.response(to: $0) })
         let generation = await connection.generation
         let deadline = ContinuousClock.now + .seconds(1)
+        let results = NIOLockedValueBox<[String: HerdrConnection.TabLabelLookup]>([:])
         let lookup = Task {
-            try await connection.agentTabLabels(workspaceIDs: ["a", "b", "c", "d"], generation: generation, deadline: deadline)
+            try await connection.agentTabLabels(
+                workspaceIDs: ["a", "b", "c", "d"], generation: generation, deadline: deadline
+            ) { workspace, result in
+                results.withLockedValue { $0[workspace] = result }
+            }
         }
         defer { replies.release.release(()) }
         try await withTimeout(seconds: 3, label: "lookup before budget expiry") { try await replies.entered.wait() }
         try await ContinuousClock().sleep(until: deadline)
         replies.release.release(())
-        #expect(try await lookup.value == ["a": .completed([:]), "b": .failed, "c": .failed])
+        try await lookup.value
+        #expect(results.withLockedValue { $0 } == ["a": .completed([:]), "b": .failed, "c": .failed])
         #expect(!(await replies.requests).contains(.tabs(workspaceId: "d")))
     }
     #endif
