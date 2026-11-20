@@ -288,8 +288,8 @@ actor HerdrConnection {
         closeCore()
         closeAllLiveShells()
         closeAllAgentBridges()
+        client?.invalidateOptionalTabList()
         let (attempt, previous) = slot.beginReplace()
-        previous?.invalidateOptionalTabList()
         disconnectHandler = nil
         identity = nil
         if let previous {
@@ -365,13 +365,18 @@ actor HerdrConnection {
         }
     }
 
+    private func invalidateTransport(expected: ConnectionGeneration) -> ClientSlotInvalidateResult<SSHClient> {
+        guard slot.matches(expected) else { return .stale }
+        client?.invalidateOptionalTabList()
+        return slot.invalidate(expected)
+    }
+
     /// Invalidates the current generation so in-flight installs fail, then closes.
     func close() async {
-        switch slot.invalidateCurrent() {
+        switch invalidateTransport(expected: generation) {
         case .stale:
             return
         case let .invalidated(oldClient):
-            oldClient?.invalidateOptionalTabList()
             closeCore()
             closeAllLiveShells()
             closeAllAgentBridges()
@@ -396,11 +401,10 @@ actor HerdrConnection {
     /// Does **not** notify AppModel — used for explicit user close / stale attempt
     /// teardown where the app already owns the phase transition.
     func invalidateAndTeardown(expected: ConnectionGeneration) {
-        switch slot.invalidate(expected) {
+        switch invalidateTransport(expected: expected) {
         case .stale:
             return
         case let .invalidated(oldClient):
-            oldClient?.invalidateOptionalTabList()
             closeCore()
             closeAllLiveShells()
             closeAllAgentBridges()
@@ -416,11 +420,10 @@ actor HerdrConnection {
     }
 
     func handleDisconnect(expected: ConnectionGeneration) {
-        switch slot.invalidate(expected) {
+        switch invalidateTransport(expected: expected) {
         case .stale:
             return
-        case let .invalidated(oldClient):
-            oldClient?.invalidateOptionalTabList()
+        case .invalidated:
             closeCore()
             closeAllLiveShells()
             closeAllAgentBridges()
@@ -437,11 +440,10 @@ actor HerdrConnection {
         expected: ConnectionGeneration,
         notifyDisconnect: Bool = true
     ) async {
-        switch slot.invalidate(expected) {
+        switch invalidateTransport(expected: expected) {
         case .stale:
             return
         case let .invalidated(oldClient):
-            oldClient?.invalidateOptionalTabList()
             closeCore()
             closeAllLiveShells()
             closeAllAgentBridges()

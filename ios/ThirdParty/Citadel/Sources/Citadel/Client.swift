@@ -446,11 +446,12 @@ public final class SSHClient {
     }
 
     public func invalidateOptionalTabList() {
-        let query = optionalTabList.withLockedValue { state in
+        let socket = optionalTabList.withLockedValue { state in
+            let socket = state.query?.revoke()
             state.invalidated = true
-            return state.query
+            return socket
         }
-        query?.cancel()
+        socket?.close(promise: nil)
     }
 
     public func close() async throws {
@@ -490,11 +491,16 @@ final class OptionalTabListQuery: Sendable {
         }
     }
 
-    func cancel() {
-        let socket = state.withLockedValue { state in
+    fileprivate func revoke() -> Channel? {
+        state.withLockedValue { state in
             state.cancelled = true
-            return state.socket
+            let socket = state.socket
+            state.socket = nil
+            return socket
         }
-        socket?.close(promise: nil)
+    }
+
+    func cancel() {
+        revoke()?.close(promise: nil)
     }
 }

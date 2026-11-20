@@ -319,8 +319,12 @@ struct AgentListPresentationTests {
     }
     #endif
 
-    @Test(arguments: [false, true])
-    func optionalTabLookupClosesOnlyDisposableConnection(timedOut: Bool) async throws {
+    enum TabLookupStop: CaseIterable {
+        case cancellation, deadline, ownerRevocation
+    }
+
+    @Test(arguments: TabLookupStop.allCases)
+    func optionalTabLookupClosesOnlyDisposableConnection(stop: TabLookupStop) async throws {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         let fixture = DelayedTabChannel()
         let server = try await fixture.listen(on: group)
@@ -339,13 +343,27 @@ struct AgentListPresentationTests {
             let lookup = Task {
                 try await ssh.executeOptionalTabList(
                     "late",
-                    deadline: ContinuousClock.now.advanced(by: timedOut ? .seconds(2) : .seconds(10))
+                    deadline: ContinuousClock.now.advanced(by: stop == .deadline ? .seconds(2) : .seconds(10))
                 )
             }
             let confirmOpen = try await withTimeout(seconds: 3, label: "pending SSH open") {
                 try await fixture.pendingOpen.wait()
             }
-            if !timedOut { lookup.cancel() }
+            switch stop {
+            case .cancellation:
+                lookup.cancel()
+            case .deadline:
+                break
+            case .ownerRevocation:
+                let connection = HerdrConnection()
+                await connection.installFixtureClient(ssh)
+                let owned = await connection.generation
+                await connection.handleDisconnect(expected: ConnectionGeneration(rawValue: owned.rawValue + 1))
+                #expect(await connection.generation == owned)
+                #expect(await connection.client === ssh)
+                await connection.handleDisconnect(expected: owned)
+                #expect(await connection.generation != owned)
+            }
             do {
                 _ = try await withTimeout(seconds: 4, label: "lookup socket teardown") {
                     try await lookup.value
@@ -353,19 +371,24 @@ struct AgentListPresentationTests {
                 Issue.record("The unanswered lookup returned output")
             } catch {
                 #expect(error as? HerdrError != .timeout("lookup socket teardown"))
-                if !timedOut { #expect(error is CancellationError) }
+                if stop == .cancellation { #expect(error is CancellationError) }
             }
             try await withTimeout(seconds: 3, label: "lookup socket close") { try await fixture.closed.wait() }
             confirmOpen.succeed(())
 
             let primary = try await ssh.executeCommand("primary")
             #expect(String(buffer: primary) == "primary")
-            let output = try await ssh.executeOptionalTabList(
-                "next",
-                deadline: ContinuousClock.now.advanced(by: .seconds(3))
-            )
-            #expect(String(buffer: output) == "next")
-            #expect(fixture.commands.withLockedValue { $0 } == ["primary", "next"])
+            let nextDeadline = ContinuousClock.now + .seconds(3)
+            if stop == .ownerRevocation {
+                await #expect(throws: CitadelError.channelCreationFailed) {
+                    try await ssh.executeOptionalTabList("next", deadline: nextDeadline)
+                }
+                #expect(fixture.commands.withLockedValue { $0 } == ["primary"])
+            } else {
+                let output = try await ssh.executeOptionalTabList("next", deadline: nextDeadline)
+                #expect(String(buffer: output) == "next")
+                #expect(fixture.commands.withLockedValue { $0 } == ["primary", "next"])
+            }
         } catch {
             try? await client?.close()
             try? await server.close()
