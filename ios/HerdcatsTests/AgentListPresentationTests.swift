@@ -24,11 +24,9 @@ struct AgentListPresentationTests {
         return try #require(HerdrConnection.decode(json, as: AgentListResult.self).agents.first)
     }
 
-    @Test(arguments: [" fm-tingxiemao ", "1"])
-    func tuiWorkspaceAndMatchingTabTakePriorityOverAgentName(tabLabel: String) throws {
-        var entry = try decodeAgent(name: #""iap-impl""#)
-        entry.tabLabel = tabLabel
-        #expect(AgentListPresentation(agent: entry, workspace: workspace("")).title == tabLabel)
+    @Test
+    func tuiWorkspaceTakesPriorityOverAgentName() throws {
+        let entry = try decodeAgent(name: #"" iap-impl ""#)
         let presentation = AgentListPresentation(agent: entry, workspace: workspace(" firstmate "))
         #expect(presentation.title == " firstmate ")
         #expect(presentation.subtitle(connectionHost: "studio-mac")?.text == "studio-mac · π · firstmate")
@@ -36,14 +34,12 @@ struct AgentListPresentationTests {
         #expect(entry.stateChangeSeq == 10)
         #expect(entry.agentStatus == "working")
 
-        let agent = try decodeAgent(name: #"" iap-impl ""#)
-        #expect(AgentListPresentation(agent: agent, workspace: workspace(" ")).title == " iap-impl ")
+        #expect(AgentListPresentation(agent: entry, workspace: workspace(" ")).title == " iap-impl ")
     }
 
     @Test(arguments: ["null", #""   ""#])
     func tuiMissingNamesUseTerminalTitleAndKeepMachineContext(name: String) throws {
-        var entry = try decodeAgent(name: name)
-        entry.tabLabel = " "
+        let entry = try decodeAgent(name: name)
         let presentation = AgentListPresentation(agent: entry, workspace: workspace(""))
         #expect(presentation.title == "π · firstmate")
         #expect(presentation.subtitle(connectionHost: "studio-mac")?.text == "studio-mac")
