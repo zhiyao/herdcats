@@ -10,74 +10,18 @@ extension HerdrConnection {
         return try await fetch(AgentListResult.self, args: "agent list").agents
     }
 
-    func spaceOverview() async throws -> ([Workspace], [AgentEntry], ConnectionGeneration, ConnectionBackend) {
-        let owned = generation
+    func spaceOverview() async throws -> ([Workspace], [AgentEntry]) {
         if backend == .core {
             let hierarchy = try await corePresentation()
-            return (hierarchy.workspaces, hierarchy.agents, owned, .core)
+            return (hierarchy.workspaces, hierarchy.agents)
         }
 
-        let (workspaces, agents) = try await tuiOverview()
-        try Task.checkCancellation()
+        let owned = generation
+        async let fetchedWorkspaces = workspaceList()
+        async let fetchedAgents = agentList()
+        let (workspaces, agents) = try await (fetchedWorkspaces, fetchedAgents)
         guard generation == owned else { throw HerdrError.notConnected }
-        return (workspaces, agents, owned, .tui)
-    }
-
-    private func tuiOverview() async throws -> ([Workspace], [AgentEntry]) {
-#if DEBUG
-        if let overviewResponse {
-            async let workspaces = Self.decode(overviewResponse(.workspaces), as: WorkspaceListResult.self)
-            async let agents = Self.decode(overviewResponse(.agents), as: AgentListResult.self)
-            return try await (workspaces.workspaces, agents.agents)
-        }
-#endif
-        async let workspaces = workspaceList()
-        async let agents = agentList()
-        return try await (workspaces, agents)
-    }
-
-    func agentTabLabels(
-        workspaceIDs: Set<String>, generation owned: ConnectionGeneration,
-        deadline: ContinuousClock.Instant,
-        onResult: @Sendable (String, [String: String]) async -> Void
-    ) async throws {
-        for workspaceId in workspaceIDs.sorted() {
-            try Task.checkCancellation()
-            guard generation == owned else { throw HerdrError.notConnected }
-            guard ContinuousClock.now < deadline else { break }
-            var labels: [String: String] = [:]
-            do {
-                let tabs = try await optionalTabList(workspaceId: workspaceId, deadline: deadline, generation: owned)
-                for tab in tabs where tab.workspaceId == workspaceId {
-                    labels[tab.tabId] = tab.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : tab.label
-                }
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch HerdrError.notConnected {
-                throw HerdrError.notConnected
-            } catch {}
-            let settledLabels = ContinuousClock.now < deadline ? labels : [:]
-            try Task.checkCancellation()
-            guard generation == owned else { throw HerdrError.notConnected }
-            await onResult(workspaceId, settledLabels)
-        }
-        try Task.checkCancellation()
-        guard generation == owned else { throw HerdrError.notConnected }
-    }
-
-    private func optionalTabList(
-        workspaceId: String, deadline: ContinuousClock.Instant, generation owned: ConnectionGeneration
-    ) async throws -> [TabEntry] {
-#if DEBUG
-        if let overviewResponse {
-            return try await Self.decode(overviewResponse(.tabs(workspaceId: workspaceId)), as: TabListResult.self).tabs
-        }
-#endif
-        let client = try slot.ownedClient(owned)
-        let command = Self.remoteCommand(Self.tabListArguments(workspaceId: workspaceId), session: session)
-        let buffer = try await client.executeOptionalTabList(command, deadline: deadline)
-        let output = try Self.interpret(String(buffer: buffer))
-        return try Self.decode(output, as: TabListResult.self).tabs
+        return (workspaces, agents)
     }
 
     /// Reads local provider quotas via `quota-axi` on the Herdr machine.

@@ -150,30 +150,3 @@ extension SSHClient {
         }.get()
     }
 }
-
-extension SSHClientSession {
-    func readOptionalTabList(_ command: String, query: OptionalTabListQuery) async throws -> ByteBuffer {
-        let eventLoop = channel.eventLoop
-        let response = eventLoop.makePromise(of: ByteBuffer.self)
-        defer { response.fail(CitadelError.channelCreationFailed) }
-        let child: Channel = try await eventLoop.submit { [sshHandler] in
-            try query.whileActive {
-                let activation = eventLoop.makePromise(of: Channel.self)
-                sshHandler.value.createChannel(activation) { channel, _ in
-                    channel.pipeline.addHandler(TTYHandler(maxResponseSize: 8 * 1024 * 1024, done: response))
-                }
-                return activation.futureResult
-            }
-        }.flatMap { $0 }.get()
-        try await eventLoop.submit {
-            try query.whileActive {
-                let sent = eventLoop.makePromise(of: Void.self)
-                child.triggerUserOutboundEvent(
-                    SSHChannelRequestEvent.ExecRequest(command: command, wantReply: true), promise: sent
-                )
-                return sent.futureResult
-            }
-        }.flatMap { $0 }.get()
-        return try await response.futureResult.get()
-    }
-}

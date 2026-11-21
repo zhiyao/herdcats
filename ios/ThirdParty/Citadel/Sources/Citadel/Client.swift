@@ -1,5 +1,4 @@
 import NIO
-import NIOConcurrencyHelpers
 import Crypto
 import Logging
 import NIOSSH
@@ -112,10 +111,6 @@ public struct SSHAlgorithms: Sendable {
 /// Represents an SSH connection.
 public final class SSHClient {
     private(set) var session: SSHClientSession
-    private enum OptionalTabAdmission {
-        case pending, allowed, revoked
-    }
-    private let optionalTabList = NIOLockedValueBox((admission: OptionalTabAdmission.pending, query: OptionalTabListQuery?.none))
     private var userInitiatedClose = false
     let authenticationMethod: () -> SSHAuthenticationMethod
     let hostKeyValidator: SSHHostKeyValidator
@@ -326,7 +321,6 @@ public final class SSHClient {
     
     private func onNewSession(_ session: SSHClientSession) {
         session.channel.closeFuture.whenComplete { [weak self] _ in
-            self?.invalidateOptionalTabList()
             self?.onClose()
         }
     }
@@ -371,147 +365,8 @@ public final class SSHClient {
         onNewSession(session)
     }
     
-    /// Runs optional tab metadata on its own socket. Closing this socket also
-    /// releases a session-channel open that the server never acknowledges.
-    public func executeOptionalTabList(
-        _ command: String, deadline: ContinuousClock.Instant
-    ) async throws -> ByteBuffer {
-        try Task.checkCancellation()
-        let query = OptionalTabListQuery(owner: session.channel, deadline: deadline)
-        guard optionalTabList.withLockedValue({ state in
-            guard state.admission == .allowed, state.query == nil else { return false }
-            state.query = query
-            return true
-        }) else { throw CitadelError.channelCreationFailed }
-        defer { optionalTabList.withLockedValue { $0.query = nil } }
-
-        guard let endpoint = query.owner.remoteAddress,
-              let host = endpoint.ipAddress, let port = endpoint.port,
-              let auth = authenticationMethod().freshBuiltInMethod() else {
-            throw CitadelError.channelCreationFailed
-        }
-        var settings = SSHClientSettings(
-            host: host, port: port, authenticationMethod: { auth }, hostKeyValidator: hostKeyValidator
-        )
-        settings.algorithms = algorithms
-        settings.protocolOptions = protocolOptions
-        let querySettings = settings
-        let inbound = SSHClientInboundChannelHandler()
-        let expiry = Task {
-            try await ContinuousClock().sleep(until: deadline)
-            query.cancel()
-        }
-        defer { expiry.cancel() }
-
-        do {
-            return try await withTaskCancellationHandler {
-                let remaining = ContinuousClock.now.duration(to: deadline)
-                let (seconds, attoseconds) = remaining.components
-                let timeout = TimeAmount.nanoseconds(seconds * 1_000_000_000 + attoseconds / 1_000_000_000)
-                try query.whileActive {}
-                let socket = try await ClientBootstrap(group: query.owner.eventLoop)
-                    .channelInitializer { channel in
-                        do {
-                            try query.install(channel)
-                        } catch {
-                            return channel.eventLoop.makeFailedFuture(error)
-                        }
-                        return SSHClientSession.addHandlers(
-                            on: channel, inboundChannelHandler: inbound, settings: querySettings
-                        )
-                    }
-                    .connectTimeout(timeout)
-                    .connect(to: endpoint).get()
-                let result: Result<ByteBuffer, Error>
-                do {
-                    try query.whileActive {}
-                    try await socket.pipeline.handler(type: ClientHandshakeHandler.self)
-                        .flatMap { $0.authenticated }.get()
-                    let session = try await socket.pipeline.handler(type: NIOSSHHandler.self).map { handler in
-                        SSHClientSession(channel: socket, inboundChannelHandler: inbound, sshHandler: handler)
-                    }.get()
-                    result = .success(try await session.readOptionalTabList(command, query: query))
-                } catch {
-                    result = .failure(error)
-                }
-                socket.close(promise: nil)
-                _ = try? await socket.closeFuture.get()
-                try Task.checkCancellation()
-                try query.whileActive {}
-                return try result.get()
-            } onCancel: {
-                query.cancel()
-            }
-        } catch {
-            try Task.checkCancellation()
-            throw error
-        }
-    }
-
-    public func allowOptionalTabList() -> Bool {
-        optionalTabList.withLockedValue { state in
-            guard state.admission != .revoked, isConnected else { return false }
-            state.admission = .allowed
-            return true
-        }
-    }
-
-    public func invalidateOptionalTabList() {
-        let socket = optionalTabList.withLockedValue { state in
-            let socket = state.query?.revoke()
-            state.admission = .revoked
-            return socket
-        }
-        socket?.close(promise: nil)
-    }
-
     public func close() async throws {
-        invalidateOptionalTabList()
         self.userInitiatedClose = true
         try await self.session.channel.close()
-    }
-}
-
-final class OptionalTabListQuery: Sendable {
-    let owner: Channel
-    private let deadline: ContinuousClock.Instant
-    private let state = NIOLockedValueBox((cancelled: false, socket: Channel?.none))
-
-    init(owner: Channel, deadline: ContinuousClock.Instant) {
-        self.owner = owner
-        self.deadline = deadline
-    }
-
-    private func requireActive(cancelled: Bool) throws {
-        guard !cancelled, owner.isActive, ContinuousClock.now < deadline else {
-            throw CitadelError.channelCreationFailed
-        }
-    }
-
-    func install(_ socket: Channel) throws {
-        try state.withLockedValue { state in
-            try requireActive(cancelled: state.cancelled)
-            state.socket = socket
-        }
-    }
-
-    func whileActive<T>(_ operation: () -> T) throws -> T {
-        try state.withLockedValue { state in
-            try requireActive(cancelled: state.cancelled)
-            return operation()
-        }
-    }
-
-    fileprivate func revoke() -> Channel? {
-        state.withLockedValue { state in
-            state.cancelled = true
-            let socket = state.socket
-            state.socket = nil
-            return socket
-        }
-    }
-
-    func cancel() {
-        revoke()?.close(promise: nil)
     }
 }

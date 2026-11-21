@@ -120,7 +120,6 @@ final class ActiveMachine {
 
         if case .connected = candidate.phase {
             let old = model
-            old.revokeOptionalTabAdmission()
             model = candidate
             clearPending()
             do {

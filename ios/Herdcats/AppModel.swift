@@ -1,4 +1,3 @@
-import Citadel
 import Observation
 import SwiftUI
 
@@ -105,12 +104,6 @@ final class AppModel {
     let optimisticPaneStatus = OptimisticPaneStatus()
     let phoneAnswers = PhoneAnswersStore()
     let connection: HerdrConnection
-    @ObservationIgnored var readyTabQueryClient: SSHClient?
-
-    func revokeOptionalTabAdmission() {
-        readyTabQueryClient?.invalidateOptionalTabList()
-        readyTabQueryClient = nil
-    }
     var dismissBannerTask: Task<Void, Never>?
     var autoReconnectTask: Task<Void, Never>?
     var isDialing = false

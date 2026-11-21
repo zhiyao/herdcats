@@ -132,7 +132,6 @@ extension AppModel {
     }
 
     func disconnect() async {
-        revokeOptionalTabAdmission()
         cancelReconnect()
         reconnectBackoff.reset()
         lastScheduledAutoReconnectDelay = nil
@@ -183,9 +182,7 @@ extension AppModel {
 
     func handleConnectionLost(generation: ConnectionGeneration) {
         // Invalidates the app attempt so delayed serverVersion cannot promote.
-        guard ownership.transportGeneration == generation else { return }
-        revokeOptionalTabAdmission()
-        _ = ownership.handleLoss(generation: generation)
+        guard ownership.handleLoss(generation: generation) else { return }
         switch phase {
         case let .connected(host, username):
             reconnectBackoff.noteDisconnectedFromConnected(at: nowUptime())

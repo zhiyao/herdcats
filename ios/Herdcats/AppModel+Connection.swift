@@ -1,4 +1,3 @@
-import Citadel
 import Observation
 import SwiftUI
 
@@ -14,11 +13,8 @@ extension AppModel {
         defer { isDialing = false }
         guard let state = await prepareConnectAttempt(config: config) else { return }
 
-        guard ownership.isCurrent(state.attempt) else {
-            state.watchdog.cancel()
-            return
-        }
-        if isAutomatic, !isSceneActive || !hasActiveSession || hostKeyVerificationBlocked {
+        if isAutomatic,
+           !isSceneActive || !hasActiveSession || hostKeyVerificationBlocked || !ownership.isCurrent(state.attempt) {
             state.watchdog.cancel()
             if case let .failed(generation) = ownership.fail(for: state.attempt) {
                 connection.forceClose(generation: generation)
@@ -77,7 +73,6 @@ extension AppModel {
                     config.backend = found.contains(.core) && !found.contains(.tui) ? .core : .tui
                     config.detectsBackend = false
                     await connection.adoptBackend(config.backend)
-                    guard ownership.isCurrent(state.attempt) else { return }
                     activeConfig = config
                     connectionIdentity = ConnectionIdentity(config)
                     detectedBackends = found
@@ -115,21 +110,10 @@ extension AppModel {
                 }
                 try await checkSessionReadiness()
             }
-            let tabQueryClient = if config.backend == .tui {
-                await connection.optionalTabAdmissionOwner(generation: generation)
-            } else {
-                nil as SSHClient?
-            }
             guard ownership.isCurrent(state.attempt) else {
                 connection.forceClose(generation: generation)
                 return
             }
-            if config.backend == .tui {
-                guard tabQueryClient?.allowOptionalTabList() ?? (customDialTransport != nil) else {
-                    throw HerdrError.notConnected
-                }
-            }
-            readyTabQueryClient = tabQueryClient
             herdrVersion = version.trimmingCharacters(in: .whitespacesAndNewlines)
             phase = .connected(host: config.host, username: config.username)
             hasActiveSession = true
@@ -151,13 +135,17 @@ extension AppModel {
     func prepareConnectAttempt(
         config: ConnectionConfig
     ) async -> ConnectAttemptState? {
-        revokeOptionalTabAdmission()
         lastConnectPassphraseRejected = false
         lastConnectNeedsSignIn = false
         hostKeyChallenge = nil
         hostKeyVerificationBlocked = false
         activeConfig = config
         detectedBackends = []
+        await connection.setRuntimeChangeHandler { [weak self] generation in
+            Task { @MainActor in
+                self?.noteRuntimeChange(generation: generation)
+            }
+        }
         let wasOffline = isOffline
         phase = .connecting
         if connectionBanner == nil || isOffline {
@@ -168,11 +156,7 @@ extension AppModel {
 
         // Reserve a transport generation before dialing so every close path
         // has an identity — never unscoped forceClose().
-        let reserved = await connection.reserveConnectGeneration(runtimeChangeHandler: { [weak self] generation in
-            Task { @MainActor in
-                self?.noteRuntimeChange(generation: generation)
-            }
-        })
+        let reserved = await connection.reserveConnectGeneration()
         guard ownership.associateReserved(reserved, for: attempt) else {
             // Stale attempt — close only this reservation; do not touch newer UI state.
             connection.forceClose(generation: reserved)

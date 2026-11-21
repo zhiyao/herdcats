@@ -39,20 +39,6 @@ struct MainTabView: View {
 
 /// Owns the selected machine's shared data and lifecycle-aware refresh loop.
 struct ConnectedTabsView: View {
-    enum ReconnectRefresh: Equatable {
-        case overview
-        case overviewAndQuota
-    }
-
-    static func refreshAfterReconnect(from oldPhase: AppModel.Phase, to newPhase: AppModel.Phase) -> ReconnectRefresh? {
-        guard case .connected = newPhase else { return nil }
-        switch oldPhase {
-        case .offline: return .overviewAndQuota
-        case .connecting: return .overview
-        case .connected, .disconnected: return nil
-        }
-    }
-
     @Environment(AppModel.self) private var appModel
     @Environment(\.scenePhase) private var scenePhase
     @State private var model = SpacesModel()
@@ -165,9 +151,6 @@ struct ConnectedTabsView: View {
             }
             paneLayoutMachine = key
         }
-        .onChange(of: appModel.ownership.transportGeneration) { _, generation in
-            model.discardTabLabels(fromOtherGeneration: generation)
-        }
         .onChange(of: model.spaces) { _, spaces in
             // Drop panes whose space is gone. An empty list is left alone: it
             // is more likely a refresh gap than every space closing at once.
@@ -178,10 +161,9 @@ struct ConnectedTabsView: View {
             if pruned != current { paneLayout.wrappedValue = pruned }
         }
         .onChange(of: appModel.phase) { oldPhase, newPhase in
-            guard let refresh = Self.refreshAfterReconnect(from: oldPhase, to: newPhase) else { return }
-            Task {
-                await model.refresh(appModel.connection)
-                if refresh == .overviewAndQuota {
+            if case .connected = newPhase, case .offline = oldPhase {
+                Task {
+                    await model.refresh(appModel.connection)
                     await model.refreshUsage(appModel.connection, force: true)
                 }
             }
