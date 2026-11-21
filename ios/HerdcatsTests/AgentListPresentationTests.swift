@@ -144,9 +144,9 @@ struct AgentListPresentationTests {
         ])
     }
 
-    @Test
-    func tuiSubtitleOmitsTerminalTitleMatchingCombinedContext() throws {
-        let agent = try decodeAgent(name: "null", terminal: " studio · ~/work/app ")
+    @Test(arguments: [" studio · ~/work/app ", " App · studio · ~/work/app "])
+    func tuiSubtitleOmitsTerminalTitleMatchingContext(terminal: String) throws {
+        let agent = try decodeAgent(name: "null", terminal: terminal)
         let example = workspace("App", worktree: Worktree(
             checkoutPath: "/work/app ", repoName: "app", repoRoot: "/work/app", isLinkedWorktree: false
         ))
@@ -154,7 +154,7 @@ struct AgentListPresentationTests {
 
         #expect(presentation.subtitle(connectionHost: "studio")?.text == "studio · ~/work/app ")
         #expect(presentation.subtitle(connectionHost: "studio")?.isPath == false)
-        #expect(presentation.subtitle(connectionHost: "lab")?.text == "lab · ~/work/app  ·  studio · ~/work/app ")
+        #expect(presentation.subtitle(connectionHost: "lab")?.text == "lab · ~/work/app  · \(terminal)")
     }
 
     @Test

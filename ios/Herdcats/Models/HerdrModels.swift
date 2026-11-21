@@ -166,7 +166,8 @@ struct AgentListPresentation {
         let context = [machine, directory].compactMap { $0 }
         let normalizedTerminal = Self.nonempty(terminalTitle)
         if let terminalTitle, normalizedTerminal != machine,
-           normalizedTerminal != Self.nonempty(context.joined(separator: " · ")) {
+           normalizedTerminal != Self.nonempty(context.joined(separator: " · ")),
+           normalizedTerminal != Self.nonempty(([title] + context).joined(separator: " · ")) {
             return ((context + [terminalTitle]).joined(separator: " · "), false)
         }
         guard !context.isEmpty else { return nil }
