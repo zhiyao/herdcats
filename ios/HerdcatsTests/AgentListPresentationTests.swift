@@ -298,9 +298,13 @@ struct AgentListPresentationTests {
         }
     }
 
+    enum ReturningTab: CaseIterable {
+        case knownWhilePending, knownAfterCompletion, blankWhilePending, newWhilePending
+    }
+
     @MainActor
-    @Test
-    func tuiPollKeepsSettledLabelsWhenWorkspaceBecomesEmptyAndReturns() async throws {
+    @Test(arguments: ReturningTab.allCases)
+    func tuiPollMatchesReturningAgentsToSettledTabs(returning: ReturningTab) async throws {
         let workspaces = """
         {"result":{"workspaces":[
           {"workspace_id":"w0","label":"","number":1,"tab_count":1,"pane_count":1,"active_tab_id":"t","agent_status":"working","focused":true},
@@ -314,11 +318,14 @@ struct AgentListPresentationTests {
         let firstTabs = HerdrConnection.OverviewRead.tabs(workspaceId: "w0")
         let secondTabs = HerdrConnection.OverviewRead.tabs(workspaceId: "w1")
         let thirdTabs = HerdrConnection.OverviewRead.tabs(workspaceId: "w2")
+        let firstTab = #"{"tab_id":"t","workspace_id":"w0","label":"First tab","number":1,"pane_count":1,"agent_status":"working","focused":true}"#
+        let blankTab = #"{"tab_id":"blank","workspace_id":"w0","label":" ","number":2,"pane_count":1,"agent_status":"working","focused":false}"#
+        let newTab = #"{"tab_id":"new","workspace_id":"w0","label":"New tab","number":3,"pane_count":1,"agent_status":"working","focused":false}"#
         let secondTabResponse = #"{"result":{"tabs":[{"tab_id":"t","workspace_id":"w1","label":"Second tab","number":1,"pane_count":1,"agent_status":"working","focused":false}]}}"#
         let replies = OverviewReplies([
             .workspaces: workspaces,
             .agents: #"{"result":{"agents":[\#(firstAgent),\#(secondAgent)]}}"#,
-            firstTabs: #"{"result":{"tabs":[{"tab_id":"t","workspace_id":"w0","label":"First tab","number":1,"pane_count":1,"agent_status":"working","focused":true}]}}"#,
+            firstTabs: #"{"result":{"tabs":[\#(firstTab),\#(blankTab)]}}"#,
             secondTabs: secondTabResponse,
             thirdTabs: #"{"result":{"tabs":[{"tab_id":"t","workspace_id":"w2","label":"Third tab","number":1,"pane_count":1,"agent_status":"working","focused":false}]}}"#
         ], heldRead: secondTabs)
@@ -344,15 +351,36 @@ struct AgentListPresentationTests {
         defer { finishSuccessorRead.release(()) }
         replies.release.release(())
         try await withTimeout(seconds: 3, label: "successor workspace lookup") { try await successorEntered.wait() }
-        await replies.update(.agents, reply: #"{"result":{"agents":[\#(firstAgent),\#(secondAgent),\#(thirdAgent)]}}"#)
+        if returning == .knownAfterCompletion {
+            finishSuccessorRead.release(())
+            await model.waitForTabEnrichment()
+        }
+        let returningAgent: String
+        let returningLabel: String?
+        switch returning {
+        case .knownWhilePending, .knownAfterCompletion:
+            returningAgent = firstAgent
+            returningLabel = "First tab"
+        case .blankWhilePending:
+            returningAgent = firstAgent.replacingOccurrences(of: #""tab_id":"t""#, with: #""tab_id":"blank""#)
+            returningLabel = nil
+        case .newWhilePending:
+            returningAgent = firstAgent.replacingOccurrences(of: #""tab_id":"t""#, with: #""tab_id":"new""#)
+            returningLabel = "New tab"
+            await replies.update(firstTabs, reply: #"{"result":{"tabs":[\#(firstTab),\#(blankTab),\#(newTab)]}}"#)
+        }
+        await replies.update(.agents, reply: #"{"result":{"agents":[\#(returningAgent),\#(secondAgent),\#(thirdAgent)]}}"#)
         await model.refresh(connection, isPoll: true)
         #expect(model.spaces.flatMap(\.agents).map(\.paneId) == ["p0", "p1", "p2"])
-        #expect(model.spaces.flatMap(\.agents).compactMap(\.tabLabel) == ["First tab"])
-        #expect(reads.withLockedValue { $0 } == [firstTabs, secondTabs, secondTabs])
+        #expect(model.spaces.first?.agents.first?.tabLabel == (returning == .newWhilePending ? nil : returningLabel))
+        let readsBeforeRelease = [firstTabs, secondTabs, secondTabs]
+        let originalReads = readsBeforeRelease + [thirdTabs]
+        #expect(reads.withLockedValue { $0 } == (returning == .knownAfterCompletion ? originalReads : readsBeforeRelease))
         finishSuccessorRead.release(())
         await model.waitForTabEnrichment()
-        #expect(model.spaces.flatMap(\.agents).compactMap(\.tabLabel) == ["First tab", "Second tab", "Third tab"])
-        #expect(reads.withLockedValue { $0 } == [firstTabs, secondTabs, secondTabs, thirdTabs])
+        #expect(model.spaces.flatMap(\.agents).map(\.tabLabel) == [returningLabel, "Second tab", "Third tab"])
+        #expect(reads.withLockedValue { $0 } == (returning == .newWhilePending
+            ? readsBeforeRelease + [firstTabs, secondTabs, thirdTabs] : originalReads))
     }
 
     @MainActor

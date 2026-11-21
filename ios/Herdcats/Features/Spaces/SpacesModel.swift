@@ -95,10 +95,10 @@ final class SpacesModel {
     @ObservationIgnored var agentListFetch: (() async throws -> ([Workspace], [AgentEntry]))?
     private var refreshGate = RefreshGenerationGate()
     @ObservationIgnored private var tabEnrichment: (
-        id: UInt64, connection: HerdrConnection, source: ConnectionGeneration, workspaceIDs: Set<String>,
+        id: UInt64, connection: HerdrConnection, source: ConnectionGeneration, pendingWorkspaceIDs: Set<String>,
         deadline: ContinuousClock.Instant,
         retained: [String: ContinuousClock.Instant], settled: [String: [String: String]],
-        task: Task<Void, Never>
+        task: Task<Void, Never>?
     )?
     @ObservationIgnored private var verifiedTabSource: (HerdrConnection, ConnectionGeneration)?
     private enum ObservedTabSource {
@@ -121,7 +121,7 @@ final class SpacesModel {
 
     func bindConnectionScope(_ scope: ConnectionIdentity?) {
         if connectionScope != scope {
-            tabEnrichment?.task.cancel()
+            invalidateTabEnrichment()
             clearVerifiedTabLabels()
             spaceCreationGeneration += 1
             isCreatingSpace = false
@@ -191,14 +191,23 @@ final class SpacesModel {
             }.map(\.workspaceId) : [])
             let now = ContinuousClock.now
             let pollBatch = tabEnrichment.flatMap { pending in
-                isPoll && !pending.task.isCancelled && pending.connection === connection && pending.source == source
+                isPoll && pending.task?.isCancelled != true && pending.connection === connection && pending.source == source
                     && pending.deadline > now ? pending : nil
             }
-            let reusesEnrichment = pollBatch.map { tabWorkspaceIDs.isSubset(of: $0.workspaceIDs) } ?? false
-            if !reusesEnrichment { tabEnrichment?.task.cancel() }
             let settled = pollBatch?.settled ?? [:]
+            let unsettledWorkspaceIDs = Set(agentList.compactMap { agent in
+                tabWorkspaceIDs.contains(agent.workspaceId) && settled[agent.workspaceId]?[agent.tabId] == nil
+                    ? agent.workspaceId : nil
+            })
+            let reusesEnrichment = pollBatch.map { unsettledWorkspaceIDs.isSubset(of: $0.pendingWorkspaceIDs) } ?? false
+            if !reusesEnrichment { invalidateTabEnrichment() }
             let enrichmentDeadline = min(deadline, pollBatch?.deadline ?? deadline)
             var retained: [String: ContinuousClock.Instant] = [:]
+            if !reusesEnrichment {
+                for id in unsettledWorkspaceIDs where settled[id] != nil {
+                    retained[id] = min(enrichmentDeadline, pollBatch?.retained[id] ?? enrichmentDeadline)
+                }
+            }
             var baseAgents = agentList
             var carried: [String: [String: String]] = [:]
             if let source, verifiedTabSource?.0 === connection, verifiedTabSource?.1 == source {
@@ -213,8 +222,8 @@ final class SpacesModel {
                 let agent = baseAgents[index]
                 guard tabWorkspaceIDs.contains(agent.workspaceId),
                       let labels = settled[agent.workspaceId] ?? carried[agent.workspaceId],
-                      let label = labels[agent.tabId] else { continue }
-                if !reusesEnrichment, settled[agent.workspaceId] == nil {
+                      let label = labels[agent.tabId], !label.isEmpty else { continue }
+                if !reusesEnrichment, unsettledWorkspaceIDs.contains(agent.workspaceId) {
                     let cutoff = min(enrichmentDeadline, tabEnrichment?.retained[agent.workspaceId] ?? enrichmentDeadline)
                     guard cutoff > now else { continue }
                     retained[agent.workspaceId] = cutoff
@@ -244,8 +253,6 @@ final class SpacesModel {
             guard let source, !tabWorkspaceIDs.isEmpty else { return }
             if reusesEnrichment { return }
             let predecessor = tabEnrichment?.task
-            let unsettledWorkspaceIDs = tabWorkspaceIDs.subtracting(settled.keys)
-            let coveredWorkspaceIDs = tabWorkspaceIDs.union(settled.keys)
             let cutoffs = Set(retained.values).sorted()
             let task = Task { [weak self] in
                 let expiry = Task { [weak self] in
@@ -254,16 +261,19 @@ final class SpacesModel {
                         catch { return }
                         guard let self, self.ownsTabEnrichment(generation, scope: scope) else { return }
                         let expired = self.tabEnrichment?.retained.compactMap { $0.value <= cutoff ? $0.key : nil } ?? []
-                        self.settleTabLabels([:], in: Set(expired), connection: connection, source: source)
+                        self.settleTabLabels(nil, in: Set(expired), connection: connection, source: source)
                     }
                 }
                 defer {
                     expiry.cancel()
                     if let self, self.tabEnrichment?.id == generation {
                         if self.ownsTabEnrichment(generation, scope: scope), let pending = self.tabEnrichment {
-                            self.settleTabLabels([:], in: Set(pending.retained.keys), connection: connection, source: source)
+                            self.settleTabLabels(nil, in: Set(pending.retained.keys), connection: connection, source: source)
+                            self.tabEnrichment?.pendingWorkspaceIDs.removeAll()
+                            self.tabEnrichment?.task = nil
+                        } else {
+                            self.tabEnrichment = nil
                         }
-                        self.tabEnrichment = nil
                     }
                 }
                 await predecessor?.value
@@ -274,16 +284,17 @@ final class SpacesModel {
                     guard await connection.generation == source else { return }
                     await MainActor.run { [weak self] in
                         guard let self, self.ownsTabEnrichment(generation, scope: scope) else { return }
-                        self.tabEnrichment?.settled[workspace] = labels
+                        self.tabEnrichment?.pendingWorkspaceIDs.remove(workspace)
                         self.settleTabLabels(labels, in: [workspace], connection: connection, source: source)
                     }
                 }
                 if await connection.generation != source,
                    let self, self.ownsTabEnrichment(generation, scope: scope) {
+                    self.tabEnrichment?.settled.removeAll()
                     self.clearVerifiedTabLabels()
                 }
             }
-            tabEnrichment = (generation, connection, source, coveredWorkspaceIDs, enrichmentDeadline, retained, settled, task)
+            tabEnrichment = (generation, connection, source, unsettledWorkspaceIDs, enrichmentDeadline, retained, settled, task)
         } catch {
             guard refreshGate.isCurrent(generation), connectionScope == initialScope else { return }
             reportError(error)
@@ -292,22 +303,25 @@ final class SpacesModel {
 
     private func ownsTabEnrichment(_ id: UInt64, scope: ConnectionIdentity?) -> Bool {
         guard let active = tabEnrichment else { return false }
-        return active.id == id && !active.task.isCancelled && connectionScope == scope
+        return active.id == id && active.task?.isCancelled == false && connectionScope == scope
             && canPublishTabLabels(from: active.source)
     }
 
     private func settleTabLabels(
-        _ labels: [String: String], in workspaceIDs: Set<String>,
+        _ labels: [String: String]?, in workspaceIDs: Set<String>,
         connection: HerdrConnection, source: ConnectionGeneration
     ) {
         guard !workspaceIDs.isEmpty else { return }
-        for id in workspaceIDs { tabEnrichment?.retained.removeValue(forKey: id) }
+        for id in workspaceIDs {
+            tabEnrichment?.retained.removeValue(forKey: id)
+            tabEnrichment?.settled[id] = labels
+        }
         let updated = spaces.map { space in
             guard workspaceIDs.contains(space.id), space.workspace.label
                 .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return space }
             return Space(workspace: space.workspace, agents: space.agents.map { agent in
                 var agent = agent
-                agent.tabLabel = labels[agent.tabId]
+                agent.tabLabel = (labels?[agent.tabId]).flatMap { $0.isEmpty ? nil : $0 }
                 return agent
             })
         }
@@ -317,14 +331,25 @@ final class SpacesModel {
 
 #if DEBUG
     func waitForTabEnrichment() async {
-        await tabEnrichment?.task.value
+        await tabEnrichment?.task?.value
     }
 #endif
 
     func discardTabLabels(fromOtherGeneration generation: ConnectionGeneration?) {
         observedTabSource = .generation(generation)
-        if let pending = tabEnrichment, pending.source != generation { pending.task.cancel() }
+        if let pending = tabEnrichment, pending.source != generation {
+            invalidateTabEnrichment()
+        }
         if verifiedTabSource?.1 != generation { clearVerifiedTabLabels() }
+    }
+
+    private func invalidateTabEnrichment() {
+        if let task = tabEnrichment?.task {
+            task.cancel()
+            tabEnrichment?.settled.removeAll()
+        } else {
+            tabEnrichment = nil
+        }
     }
 
     private func canPublishTabLabels(from source: ConnectionGeneration) -> Bool {

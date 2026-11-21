@@ -49,9 +49,7 @@ extension HerdrConnection {
             do {
                 let tabs = try await optionalTabList(workspaceId: workspaceId, deadline: deadline, generation: owned)
                 for tab in tabs where tab.workspaceId == workspaceId {
-                    if !tab.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        labels[tab.tabId] = tab.label
-                    }
+                    labels[tab.tabId] = tab.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : tab.label
                 }
             } catch is CancellationError {
                 throw CancellationError()
