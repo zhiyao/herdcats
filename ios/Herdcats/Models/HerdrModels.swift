@@ -164,10 +164,13 @@ struct AgentListPresentation {
     func subtitle(connectionHost: String?) -> (text: String, isPath: Bool)? {
         let machine = machine ?? Self.nonempty(connectionHost)
         let context = [machine, directory].compactMap { $0 }
+        let fullRow = [title] + context
         let normalizedTerminal = Self.nonempty(terminalTitle)
-        if let terminalTitle, normalizedTerminal != machine,
-           normalizedTerminal != Self.nonempty(context.joined(separator: " · ")),
-           normalizedTerminal != Self.nonempty(([title] + context).joined(separator: " · ")) {
+        let repeatsRowText = [context, fullRow].contains { components in
+            normalizedTerminal == Self.nonempty(components.joined(separator: " · ")) ||
+                normalizedTerminal == components.compactMap(Self.nonempty).joined(separator: " · ")
+        }
+        if let terminalTitle, normalizedTerminal != machine, !repeatsRowText {
             return ((context + [terminalTitle]).joined(separator: " · "), false)
         }
         guard !context.isEmpty else { return nil }
