@@ -2,9 +2,9 @@ appId: com.enchantinglabs.herdrcat
 ---
 # Show two active panes, rather than a sidebar and a single detail pane.
 - extendedWaitUntil:
-    visible: "Review the onboarding flow"
+    visible: "Herdcats"
     timeout: 10000
-- tapOn: "Review the onboarding flow"
+- tapOn: "Herdcats"
 - tapOn:
     id: "pane-split-button"
 - extendedWaitUntil:

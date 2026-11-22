@@ -92,7 +92,7 @@ struct PaneDragDropTests {
         let agent = AgentEntry(
             agent: "codex", agentStatus: "idle", stateChangeSeq: nil, cwd: nil,
             paneId: "p2", tabId: "t", workspaceId: "b",
-            terminalTitle: "Fix build", terminalTitleStripped: "Fix build", focused: false, revision: nil
+            terminalTitle: "Fix build", terminalTitleStripped: "Fix build", focused: false, revision: nil, name: nil
         )
         let space = Space(
             workspace: Workspace(

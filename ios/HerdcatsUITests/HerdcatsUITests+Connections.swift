@@ -771,7 +771,8 @@ extension HerdcatsUITests {
         XCTAssertTrue(isAgentsVisible, "Agents screen did not appear")
 
         // Either agent rows render, or the (also valid) empty state shows.
-        let agentRow = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "~/" )).firstMatch
+        let agentRow = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "agent-row-")).firstMatch
         let emptyState = app.staticTexts["No agents running"]
         XCTAssertTrue(
             agentRow.waitForExistence(timeout: 15) || emptyState.exists,

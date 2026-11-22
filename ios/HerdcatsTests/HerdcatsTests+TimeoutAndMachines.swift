@@ -223,7 +223,7 @@ struct AgentStatusAlertTests {
             agent: "codex", agentStatus: status, stateChangeSeq: nil,
             cwd: nil, paneId: id, tabId: "t1", workspaceId: "w1",
             terminalTitle: nil, terminalTitleStripped: nil, focused: false,
-            revision: nil
+            revision: nil, name: nil
         )
     }
 

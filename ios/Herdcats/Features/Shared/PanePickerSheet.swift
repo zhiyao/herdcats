@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Picker logic (pure)
 
-/// Which list the picker mirrors: the one the sidebar is showing.
+/// Which sidebar category supplies the picker's panes.
 enum PanePickerKind {
     case spaces, agents
 }
@@ -23,8 +23,8 @@ enum PanePicker {
 
 // MARK: - Picker sheet
 
-/// Chooses the pane for one slot, in the same list the sidebar shows: spaces
-/// with their tabs and panes under them, or the agents.
+/// Chooses a pane for one slot. Agent choices use terminal titles to identify
+/// individual panes.
 struct PanePickerSheet: View {
     let slot: PaneLayout.Slot
     let kind: PanePickerKind
@@ -144,7 +144,10 @@ struct PanePickerSheet: View {
     private var agentRows: some View {
         let items = AgentListItem.grouped(in: spacesModel?.spaces ?? [])
             .flatMap(\.items)
-            .filter { PanePicker.matches($0.title, query: query) || PanePicker.matches($0.space.label, query: query) }
+            .filter {
+                PanePicker.matches($0.agent.displayTitle, query: query)
+                    || PanePicker.matches($0.space.label, query: query)
+            }
             .sorted(by: AgentListItem.attentionOrder)
         ForEach(items) { item in
             let ref = PaneRef(spaceID: item.space.id, paneID: item.agent.paneId)

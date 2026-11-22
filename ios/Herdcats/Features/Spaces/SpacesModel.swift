@@ -155,9 +155,7 @@ final class SpacesModel {
             if let agentListFetch {
                 (workspaceList, agentList) = try await agentListFetch()
             } else {
-                async let workspaces = connection.workspaceList()
-                async let agents = connection.agentList()
-                (workspaceList, agentList) = try await (workspaces, agents)
+                (workspaceList, agentList) = try await connection.spaceOverview()
             }
             guard refreshGate.isCurrent(generation) else { return }
             spaces = Space.join(workspaces: workspaceList, agents: agentList)
