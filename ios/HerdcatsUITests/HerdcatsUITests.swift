@@ -26,7 +26,7 @@ func openNewConnection(in app: XCUIApplication) {
 final class HerdcatsUITests: XCTestCase {
     func testAgentsListDistinguishesMatchingTerminalTitles() {
         let app = XCUIApplication()
-        app.launchArguments = ["-hc.screenshots", "-hc.screen", "agents-collision", "-hc.tab", "agents"]
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "agents-collision", "-hc.tab", "agents", "-hc.split-capture"]
         app.launch()
 
         let titles = ["firstmate", "2ndmate-tingxiemao", "2ndmate-herdrcat"]
