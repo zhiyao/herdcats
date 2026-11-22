@@ -29,6 +29,27 @@ struct PaneContentPrivacyTests {
         #expect(core.scopedToSession("project") == core)
     }
 
+    @Test func agentSessionViewPreferenceIsPerPaneAndAbsentMeansUnset() {
+        let suite = "AgentSessionViewPreferenceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let scope = ConnectionIdentity(host: "studio-mac", port: 22, username: "demo")
+        let other = ConnectionIdentity(host: "other-mac", port: 22, username: "demo")
+        #expect(AgentSessionViewPreference.showsTimeline(scope: scope, paneId: "p0", defaults: defaults) == nil)
+        AgentSessionViewPreference.setShowsTimeline(false, scope: scope, paneId: "p0", defaults: defaults)
+        #expect(AgentSessionViewPreference.showsTimeline(scope: scope, paneId: "p0", defaults: defaults) == false)
+        #expect(AgentSessionViewPreference.showsTimeline(scope: scope, paneId: "p1", defaults: defaults) == nil)
+        #expect(AgentSessionViewPreference.showsTimeline(scope: other, paneId: "p0", defaults: defaults) == nil)
+        AgentSessionViewPreference.setShowsTimeline(true, scope: scope, paneId: "p0", defaults: defaults)
+        #expect(AgentSessionViewPreference.showsTimeline(scope: scope, paneId: "p0", defaults: defaults) == true)
+        AgentSessionViewPreference.remove(scope: scope, paneId: "p0", defaults: defaults)
+        #expect(AgentSessionViewPreference.showsTimeline(scope: scope, paneId: "p0", defaults: defaults) == nil)
+        #expect(AgentSessionViewPreference.key(scope: scope, paneId: "p0")
+            != AgentSessionViewPreference.key(scope: scope, paneId: "p1"))
+        #expect(AgentSessionViewPreference.key(scope: scope, paneId: "p0")
+            != TimelineSetupPreference.key(scope: scope))
+    }
+
     func withStore(_ body: (UserDefaults, PaneContentPersistence) -> Void) {
         let suite = "PaneContentPrivacyTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

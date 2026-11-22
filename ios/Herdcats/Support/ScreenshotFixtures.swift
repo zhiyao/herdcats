@@ -81,6 +81,14 @@ enum ScreenshotFixtures {
     static func json(_ object: Any) throws -> String {
         String(decoding: try JSONSerialization.data(withJSONObject: object), as: UTF8.self)
     }
+
+    /// Drop per-pane Timeline/Terminal choices so fixture launches stay deterministic.
+    fileprivate static func clearSessionViewPreferences(scope: ConnectionIdentity) {
+        for pane in panes {
+            guard let paneId = pane["pane_id"] as? String else { continue }
+            AgentSessionViewPreference.remove(scope: scope, paneId: paneId)
+        }
+    }
     static func response(_ args: String) throws -> String {
         if args == "--version" { return "herdr 0.8.0" }
         if args == "session list --json" {
@@ -186,9 +194,11 @@ struct ScreenshotRootView: View {
         if ProcessInfo.processInfo.arguments.contains("-hc.capture-surface"), let identity = app.connectionIdentity {
             let terminal = ["pane", "agent-pane", "keys"].contains(ScreenshotFixtures.screen)
             UserDefaults.standard.set(terminal, forKey: TimelineSetupPreference.key(scope: identity))
+            ScreenshotFixtures.clearSessionViewPreferences(scope: identity)
         }
         if ProcessInfo.processInfo.arguments.contains("-hc.timeline-intro-reset"), let identity = app.connectionIdentity {
             UserDefaults.standard.removeObject(forKey: TimelineSetupPreference.key(scope: identity))
+            ScreenshotFixtures.clearSessionViewPreferences(scope: identity)
         }
         return app
     }()

@@ -818,6 +818,40 @@ final class AgentTimelineUITests: XCTestCase {
         }
     }
 
+    func testRememberedTerminalModeSurvivesColdRestart() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline", "-hc.light", "-paneShowComposeByDefault", "NO"]
+        launch(app)
+        let openTerminal = app.buttons["timeline-open-terminal"]
+        XCTAssertTrue(openTerminal.waitForExistence(timeout: 5), "First open still defaults to Timeline")
+        saveNamedScreenshot(app.screenshot(), name: "session-view-before-terminal-preference")
+        openTerminal.tap()
+        XCTAssertTrue(app.buttons["terminal-open-timeline"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.scrollViews["pane-output-scroll-view"].exists)
+        saveNamedScreenshot(app.screenshot(), name: "session-view-after-terminal-preference")
+        app.terminate()
+
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline", "-hc.light", "-paneShowComposeByDefault", "NO"]
+        app.launch()
+        XCTAssertTrue(app.buttons["terminal-open-timeline"].waitForExistence(timeout: 5),
+                      "Toolbar Terminal choice restores after cold restart")
+        XCTAssertTrue(app.scrollViews["pane-output-scroll-view"].exists)
+        XCTAssertFalse(app.buttons["timeline-open-terminal"].exists)
+        saveNamedScreenshot(app.screenshot(), name: "session-view-restored-terminal-preference")
+        app.terminate()
+    }
+
+    func testFirstOpenFallbackStaysTimelineWhenNoPreferenceStored() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline", "-hc.light", "-paneShowComposeByDefault", "NO"]
+        launch(app)
+        XCTAssertTrue(app.buttons["timeline-open-terminal"].waitForExistence(timeout: 5),
+                      "Unset preference keeps the Timeline first-open fallback")
+        XCTAssertFalse(app.buttons["terminal-open-timeline"].exists)
+        saveNamedScreenshot(app.screenshot(), name: "session-view-first-open-timeline-fallback")
+        app.terminate()
+    }
+
     /// The pinned 0.3.0 installer cannot install Cursor support, so a Cursor pane whose
     /// bridge is missing explains the source build instead of offering the installer.
     func testCursorWithMissingHelperExplainsTheSourceBuildAndOffersNoInstaller() {

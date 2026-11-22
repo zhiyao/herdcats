@@ -100,13 +100,31 @@ struct PaneDetailView: View {
 
     private var timelineMode: Binding<Bool> {
         let key = sessionIdentity
+        let paneId = selectedPaneID
+        let scope = connectionScope
         return Binding(
             get: {
                 guard !appModel.isCoreMode, TimelineAgentAvailability.supports(agent: selectedPane.agent) else { return false }
-                return timelineModes[key] ?? !UserDefaults.standard.bool(forKey: TimelineSetupPreference.key(scope: connectionScope))
+                if let override = timelineModes[key] { return override }
+                // Host-level deferred setup still forces Terminal until the helper is ready.
+                if UserDefaults.standard.bool(forKey: TimelineSetupPreference.key(scope: scope)) {
+                    return false
+                }
+                if let saved = AgentSessionViewPreference.showsTimeline(scope: scope, paneId: paneId) {
+                    return saved
+                }
+                return true
             },
             set: { timelineModes[key] = !appModel.isCoreMode && TimelineAgentAvailability.supports(agent: selectedPane.agent) && $0 }
         )
+    }
+
+    /// Toolbar mode changes persist per pane; temporary Terminal opens do not.
+    private func toggleRememberedTimelineMode() {
+        guard supportsTimelineToggle else { return }
+        let next = !timelineMode.wrappedValue
+        timelineMode.wrappedValue = next
+        AgentSessionViewPreference.setShowsTimeline(next, scope: connectionScope, paneId: selectedPaneID)
     }
 
     private var selectedPaneSession: some View {
@@ -207,7 +225,7 @@ struct PaneDetailView: View {
 
     private var timelineToggleButton: some View {
             Button {
-                timelineMode.wrappedValue.toggle()
+                toggleRememberedTimelineMode()
             } label: {
                 Image(systemName: timelineMode.wrappedValue ? "terminal" : "bubble.left")
                     .font(.jost(16, weight: .medium))
