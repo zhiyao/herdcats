@@ -95,48 +95,32 @@ enum TimelineSetupPreference {
     }
 }
 
-/// Last Timeline/Terminal choice for one agent pane, scoped by connection.
-///
-/// Absent means first-open Timeline. Host-level deferred setup
-/// (`TimelineSetupPreference`) still forces Terminal until cleared. Temporary
-/// Terminal opens do not write here; only an explicit mode toggle persists
-/// across launches.
-enum AgentSessionViewPreference {
-    enum Mode: String {
+struct AgentSessionViewPreference: Hashable {
+    let scope: ConnectionIdentity
+    let agent: String
+    let sessionID: String
+
+    private enum Mode: String {
         case timeline
         case terminal
     }
 
-    static func key(scope: ConnectionIdentity, paneId: String) -> String {
-        "agent-session-view.\(scope.storageKey).\(paneId)"
+    var storageKey: String {
+        "agent-session-view.\(scope.storageKey)|a=\(agent)|id=\(ConnectionIdentity.encodeComponent(sessionID))"
     }
 
-    /// `nil` when the pane has never stored an explicit mode choice.
-    static func showsTimeline(
-        scope: ConnectionIdentity,
-        paneId: String,
-        defaults: UserDefaults = .standard
-    ) -> Bool? {
-        guard let raw = defaults.string(forKey: key(scope: scope, paneId: paneId)),
+    func showsTimeline(defaults: UserDefaults = .standard) -> Bool? {
+        guard let raw = defaults.string(forKey: storageKey),
               let mode = Mode(rawValue: raw) else { return nil }
         return mode == .timeline
     }
 
-    static func setShowsTimeline(
-        _ showsTimeline: Bool,
-        scope: ConnectionIdentity,
-        paneId: String,
-        defaults: UserDefaults = .standard
-    ) {
+    func setShowsTimeline(_ showsTimeline: Bool, defaults: UserDefaults = .standard) {
         let mode: Mode = showsTimeline ? .timeline : .terminal
-        defaults.set(mode.rawValue, forKey: key(scope: scope, paneId: paneId))
+        defaults.set(mode.rawValue, forKey: storageKey)
     }
 
-    static func remove(
-        scope: ConnectionIdentity,
-        paneId: String,
-        defaults: UserDefaults = .standard
-    ) {
-        defaults.removeObject(forKey: key(scope: scope, paneId: paneId))
+    func remove(defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: storageKey)
     }
 }

@@ -268,10 +268,10 @@ extension HerdrConnection {
     }
 }
 
-private struct TimelinePromptAgentResult: Decodable {
+struct TimelinePromptAgentResult: Decodable {
     let agent: TimelinePromptAgent
 }
-private struct TimelinePromptAgent: Decodable {
+struct TimelinePromptAgent: Decodable {
     let paneId: String
     let terminalId: String
     let agent: String
@@ -283,12 +283,44 @@ private struct TimelinePromptAgent: Decodable {
         let kind: String
         let value: String
     }
+    func viewPreference(scope: ConnectionIdentity, paneID: String, paneAgent: String) -> AgentSessionViewPreference? {
+        guard paneId == paneID, let reference = agentSession,
+              let canonical = TimelineAgentAvailability.canonical(paneAgent),
+              TimelineAgentAvailability.matchesSession(
+                agent: agent, referenceAgent: reference.agent, source: reference.source,
+                identityAgent: canonical, referenceKind: reference.kind
+              ) else { return nil }
+
+        let sessionID: String
+        switch reference.kind {
+        case "id":
+            sessionID = reference.value
+        case "path" where canonical == "claude" || canonical == "pi":
+            guard reference.value.hasPrefix("/"), reference.value.hasSuffix(".jsonl") else { return nil }
+            let filename = URL(fileURLWithPath: reference.value).deletingPathExtension().lastPathComponent
+            sessionID = canonical == "pi" ? String(filename.split(separator: "_").last ?? "") : filename
+        default:
+            return nil
+        }
+        guard !sessionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return AgentSessionViewPreference(scope: scope, agent: canonical, sessionID: sessionID)
+    }
+
     enum CodingKeys: String, CodingKey {
         case paneId = "pane_id", terminalId = "terminal_id", agent
         case agentStatus = "agent_status", agentSession = "agent_session"
     }
 }
 extension HerdrConnection {
+    func agentSessionViewPreference(
+        scope: ConnectionIdentity, paneID: String, paneAgent: String
+    ) async throws -> AgentSessionViewPreference? {
+        let result = try await fetch(TimelinePromptAgentResult.self,
+                                     args: "agent get \(Self.shellSafeArgument(paneID))",
+                                     timeoutPolicy: .preserveConnection)
+        return result.agent.viewPreference(scope: scope, paneID: paneID, paneAgent: paneAgent)
+    }
+
     /// Native composition uses the existing prompt API, with a fresh occupant
     /// check. It never falls back to shell input or answers a blocked request.
     func submitTimelinePrompt(text: String, identity: AgentTimelineIdentity, owned: ConnectionGeneration) async throws {

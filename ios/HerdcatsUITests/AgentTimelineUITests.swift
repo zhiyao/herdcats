@@ -818,37 +818,52 @@ final class AgentTimelineUITests: XCTestCase {
         }
     }
 
-    func testRememberedTerminalModeSurvivesColdRestart() {
+    func testRememberedModesFollowSessionAcrossColdRestarts() {
         let app = XCUIApplication()
-        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline", "-hc.light", "-paneShowComposeByDefault", "NO"]
-        launch(app)
+        let arguments = ["-hc.screenshots", "-hc.screen", "timeline", "-hc.light",
+                         "-paneShowComposeByDefault", "NO"]
         let openTerminal = app.buttons["timeline-open-terminal"]
+        let openTimeline = app.buttons["terminal-open-timeline"]
+        app.launchArguments = arguments
+        launch(app)
         XCTAssertTrue(openTerminal.waitForExistence(timeout: 5), "First open still defaults to Timeline")
+        XCTAssertFalse(openTimeline.exists)
+        saveNamedScreenshot(app.screenshot(), name: "session-view-first-open-timeline-fallback")
         saveNamedScreenshot(app.screenshot(), name: "session-view-before-terminal-preference")
         openTerminal.tap()
-        XCTAssertTrue(app.buttons["terminal-open-timeline"].waitForExistence(timeout: 5))
+        XCTAssertTrue(openTimeline.waitForExistence(timeout: 5))
         XCTAssertTrue(app.scrollViews["pane-output-scroll-view"].exists)
         saveNamedScreenshot(app.screenshot(), name: "session-view-after-terminal-preference")
         app.terminate()
 
-        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline", "-hc.light", "-paneShowComposeByDefault", "NO"]
+        app.launchArguments = arguments
         app.launch()
-        XCTAssertTrue(app.buttons["terminal-open-timeline"].waitForExistence(timeout: 5),
+        XCTAssertTrue(openTimeline.waitForExistence(timeout: 5),
                       "Toolbar Terminal choice restores after cold restart")
         XCTAssertTrue(app.scrollViews["pane-output-scroll-view"].exists)
-        XCTAssertFalse(app.buttons["timeline-open-terminal"].exists)
+        XCTAssertFalse(openTerminal.exists)
         saveNamedScreenshot(app.screenshot(), name: "session-view-restored-terminal-preference")
         app.terminate()
-    }
 
-    func testFirstOpenFallbackStaysTimelineWhenNoPreferenceStored() {
-        let app = XCUIApplication()
-        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline", "-hc.light", "-paneShowComposeByDefault", "NO"]
+        app.launchEnvironment["HC_FIXTURE_AGENT_SESSION"] = "fixture-next-session"
+        app.launchArguments = arguments + ["-hc.timeline-setup-deferred"]
         launch(app)
-        XCTAssertTrue(app.buttons["timeline-open-terminal"].waitForExistence(timeout: 5),
-                      "Unset preference keeps the Timeline first-open fallback")
-        XCTAssertFalse(app.buttons["terminal-open-timeline"].exists)
-        saveNamedScreenshot(app.screenshot(), name: "session-view-first-open-timeline-fallback")
+        XCTAssertTrue(openTimeline.waitForExistence(timeout: 5))
+        openTimeline.tap()
+        XCTAssertTrue(openTerminal.waitForExistence(timeout: 5))
+        app.terminate()
+
+        app.launchArguments = arguments + ["-hc.timeline-setup-deferred"]
+        app.launch()
+        XCTAssertTrue(openTerminal.waitForExistence(timeout: 5),
+                      "The second agent session restores Timeline even while setup is deferred")
+        app.terminate()
+
+        app.launchEnvironment.removeValue(forKey: "HC_FIXTURE_AGENT_SESSION")
+        app.launchArguments = arguments
+        app.launch()
+        XCTAssertTrue(openTimeline.waitForExistence(timeout: 5),
+                      "Returning to the original session restores its own Terminal choice")
         app.terminate()
     }
 
