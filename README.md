@@ -16,11 +16,15 @@ On iPad and on the unfolded iPhone Duo, Spaces and Agents show the list and the
 selected pane side by side. Folding or narrowing the window keeps the same pane
 open. iPhone stays portrait-only; iPad supports all orientations.
 
-In **Agents**, each row prefers the Herdr workspace name, followed by the tab
-name and then the agent name. If none is available, the row uses the terminal
-title or pane ID. The subtitle shows available machine and directory context
-and can include a distinct terminal title. Each row shows the agent status and
-includes a timestamp when available.
+In **Agents**, each row uses the first available name from the workspace, a tab
+already named in the Core layout, or the agent. If none is available, the row
+falls back to the terminal title or pane ID. The subtitle shows the full machine
+route for a routed Core terminal, or the SSH host when available. The directory
+context shows up to two trailing path components. TUI uses the configured
+workspace folder. Core uses the launch directory when available and falls back
+to the workspace folder. A terminal title can appear in the subtitle when it
+adds detail. Each row shows the agent status and includes a timestamp when
+available.
 
 Herdcats uses SwiftUI and Observation on iOS 17 or later. Each SSH connection
 uses **TUI** (the `herdr` CLI) or **Herdr Core** (the `hc connect` API). **Auto**,
