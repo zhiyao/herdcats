@@ -82,12 +82,12 @@ enum ScreenshotFixtures {
         String(decoding: try JSONSerialization.data(withJSONObject: object), as: UTF8.self)
     }
 
-    @MainActor fileprivate static func clearSessionViewPreferences(scope: ConnectionIdentity) {
+    @MainActor fileprivate static func setSessionViewPreferences(_ showsTimeline: Bool?, scope: ConnectionIdentity) {
         for agent in Set(panes.compactMap { $0["agent"] as? String }) {
             let identity = AgentTimelineIdentity(paneId: "p0", terminalId: "fixture-terminal", agent: agent,
                                                  nativeSessionId: AgentTimelineScreenshotFixture.sessionID)
             if let preference = AgentSessionViewPreference(scope: scope, identity: identity) {
-                AgentSessionViewPreferences.shared[preference] = nil
+                AgentSessionViewPreferences.shared[preference] = showsTimeline
             }
         }
     }
@@ -196,12 +196,12 @@ struct ScreenshotRootView: View {
         // Keep each capture independent of previous timeline/terminal navigation.
         if ProcessInfo.processInfo.arguments.contains("-hc.capture-surface"), let identity = app.connectionIdentity {
             let terminal = ["pane", "agent-pane", "keys"].contains(ScreenshotFixtures.screen)
-            UserDefaults.standard.set(terminal, forKey: TimelineSetupPreference.key(scope: identity))
-            ScreenshotFixtures.clearSessionViewPreferences(scope: identity)
+            UserDefaults.standard.removeObject(forKey: TimelineSetupPreference.key(scope: identity))
+            ScreenshotFixtures.setSessionViewPreferences(terminal ? false : nil, scope: identity)
         }
         if ProcessInfo.processInfo.arguments.contains("-hc.timeline-intro-reset"), let identity = app.connectionIdentity {
             UserDefaults.standard.removeObject(forKey: TimelineSetupPreference.key(scope: identity))
-            ScreenshotFixtures.clearSessionViewPreferences(scope: identity)
+            ScreenshotFixtures.setSessionViewPreferences(nil, scope: identity)
         }
         return app
     }()

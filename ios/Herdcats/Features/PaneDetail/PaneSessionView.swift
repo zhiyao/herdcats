@@ -30,6 +30,7 @@ struct PaneSessionView: View {
     @State var persistenceRevision: UInt64
     let draftKey: String
     let historyKey: String
+    let deferUnavailableSetup: Bool
     let onUseTerminal: () -> Void
     let onTimelineAppear: (AgentTimelineState) -> Void
     @Binding var showsTimeline: Bool
@@ -138,6 +139,7 @@ struct PaneSessionView: View {
         pane: PaneEntry,
         connectionScope: ConnectionIdentity,
         showsTimeline: Binding<Bool>,
+        deferUnavailableSetup: Bool,
         onUseTerminal: @escaping () -> Void,
         onTimelineAppear: @escaping (AgentTimelineState) -> Void,
         bridgeUpgrade: TimelineBridgeUpgrade = TimelineBridgeUpgrade(),
@@ -148,6 +150,7 @@ struct PaneSessionView: View {
     ) {
         self.pane = pane
         self.connectionScope = connectionScope
+        self.deferUnavailableSetup = deferUnavailableSetup
         self.onUseTerminal = onUseTerminal
         self.onTimelineAppear = onTimelineAppear
         self._showsTimeline = showsTimeline
@@ -494,8 +497,9 @@ struct PaneSessionView: View {
                         bridgeUpgrade: bridgeUpgrade,
                         topOverlayInset: topOutputInset, bottomOverlayInset: bottomDockHeight,
                         onOutputInteraction: { onOutputInteraction?() }, setupTarget: appModel.connectionIdentity ?? connectionScope,
-                        onUseTerminal: {
-                            onUseTerminal()
+                        deferUnavailableSetup: deferUnavailableSetup,
+                        onUseTerminal: onUseTerminal,
+                        onSetupDeferred: {
                             UserDefaults.standard.set(true, forKey: TimelineSetupPreference.key(scope: connectionScope))
                         },
                         onSetupComplete: {

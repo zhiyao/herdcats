@@ -107,19 +107,19 @@ struct PaneDetailView: View {
         case remembered(AgentSessionViewPreference)
     }
 
-    private var defaultShowsTimeline: Bool {
-        guard let scope = appModel.paneConnectionIdentity else { return true }
-        return !UserDefaults.standard.bool(forKey: TimelineSetupPreference.key(scope: scope))
+    private var deferUnavailableSetup: Bool {
+        guard case .initial = modeSelection, let scope = appModel.paneConnectionIdentity else { return false }
+        return UserDefaults.standard.bool(forKey: TimelineSetupPreference.key(scope: scope))
     }
 
     private var showsTimeline: Bool {
         guard supportsTimelineToggle else { return false }
-        guard displayedTimeline?.pane == sessionIdentity else { return defaultShowsTimeline }
+        guard displayedTimeline?.pane == sessionIdentity else { return true }
         switch modeSelection {
-        case .initial: return defaultShowsTimeline
+        case .initial: return true
         case .temporary(let value): return value
         case .pendingTimeline: return true
-        case .remembered(let session): return AgentSessionViewPreferences.shared[session] ?? defaultShowsTimeline
+        case .remembered(let session): return AgentSessionViewPreferences.shared[session] ?? true
         }
     }
 
@@ -160,6 +160,7 @@ struct PaneDetailView: View {
             pane: selectedPane,
             connectionScope: connectionScope,
             showsTimeline: Binding(get: { showsTimeline }, set: { modeSelection = .temporary($0) }),
+            deferUnavailableSetup: deferUnavailableSetup,
             onUseTerminal: { chooseTimeline(false) },
             onTimelineAppear: { state in
                 if displayedTimeline?.state !== state {
@@ -581,7 +582,6 @@ struct PaneDetailView: View {
         }
         .onChange(of: verifiedSession) { previous, current in
             if let current {
-                if case .temporary(true) = modeSelection, previous == nil { return }
                 if case let .pendingTimeline(expected, generation) = modeSelection,
                    expected == current, generation == appModel.ownership.transportGeneration {
                     AgentSessionViewPreferences.shared[current] = true

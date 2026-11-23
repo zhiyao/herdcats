@@ -843,7 +843,8 @@ final class AgentTimelineUITests: XCTestCase {
         saveNamedScreenshot(app.screenshot(), name: "session-view-reopened-terminal-preference")
         app.terminate()
 
-        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-session-unresolved", "-hc.agent", "codex", "-hc.light"]
+        let deferredSetup = ["-timeline-setup-deferred.u=demo|h=studio-mac|p=22", "YES"]
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-session-unresolved", "-hc.agent", "codex", "-hc.light"] + deferredSetup
         app.launch()
         XCTAssertTrue(openTerminal.waitForExistence(timeout: 5))
         XCTAssertFalse(openTimeline.exists)
@@ -862,6 +863,7 @@ final class AgentTimelineUITests: XCTestCase {
         XCTAssertTrue(transcript.waitForExistence(timeout: 10))
         app.terminate()
 
+        app.launchArguments += deferredSetup
         app.launch()
         XCTAssertTrue(agent.waitForExistence(timeout: 10))
         agent.tap()

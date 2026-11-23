@@ -362,6 +362,7 @@ struct AgentBridgeFramingTests {
         var outage = try frame("timeline.updated", seq: 2, entries: [], agent: "pi")
         outage.data?.delayed = true
         try s.consume(outage, owner: owner)
+        #expect(s.verifiedViewIdentity == identity)
         #expect(s.delayed)
         #expect(s.phase == .ready)
         #expect(!s.hasMore)
@@ -383,6 +384,10 @@ struct AgentBridgeFramingTests {
                             entryOrder: ["earlier", "root"], agent: "pi"), owner: owner)
         #expect(s.hasMore)
         #expect(s.before == "message:earlier")
+        s.markContextCleared(for: identity, reset: .wholeSession, loadedIds: s.loadedEntryIds)
+        #expect(s.verifiedViewIdentity == nil)
+        s.retire(owner: owner)
+        #expect(s.verifiedViewIdentity == nil)
     }
 }
 
