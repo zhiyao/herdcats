@@ -3,6 +3,7 @@
     import UIKit
 
     @MainActor enum AgentTimelineScreenshotFixture {
+        private static var retryWatchCount = 0
         static let sessionID = "fixture-session"
         private static let imageBlock: Data = {
             let format = UIGraphicsImageRendererFormat(); format.scale = 1
@@ -188,7 +189,12 @@
         }
         static func frame(paneId: String, helperInstalled: Bool = false) throws -> AgentBridgeFrame {
             if ScreenshotFixtures.screen == "timeline-disconnected" { throw AgentBridgeError.closed }
-            let unavailableCode: String? = switch ScreenshotFixtures.screen {
+            var screen = ScreenshotFixtures.screen
+            if ProcessInfo.processInfo.arguments.contains("-hc.timeline-cancel-retry") {
+                retryWatchCount += 1
+                if retryWatchCount == 2 { screen = "timeline-session-unresolved" }
+            }
+            let unavailableCode: String? = switch screen {
             case "timeline-pi-reload": "pi_extension_unavailable"
             case "timeline-pi-oversized", "timeline-pi-outdated": "pi_state_too_large"
             case "timeline-unavailable": "unsupported_agent"

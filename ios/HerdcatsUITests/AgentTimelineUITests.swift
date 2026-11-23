@@ -846,13 +846,15 @@ final class AgentTimelineUITests: XCTestCase {
         let deferredSetup = ["-timeline-setup-deferred.u=demo|h=studio-mac|p=22", "YES"]
         app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-session-unresolved", "-hc.agent", "codex", "-hc.light"] + deferredSetup
         app.launch()
-        XCTAssertTrue(openTerminal.waitForExistence(timeout: 5))
+        let unresolved = app.staticTexts["Waiting for Codex session"]
+        XCTAssertTrue(unresolved.waitForExistence(timeout: 10))
+        XCTAssertTrue(openTerminal.exists)
         XCTAssertFalse(openTimeline.exists)
         saveNamedScreenshot(app.screenshot(), name: "session-view-first-open-timeline-fallback")
         app.terminate()
 
         app.launchArguments = ["-hc.screenshots", "-hc.screen", "spaces", "-hc.agent", "codex", "-hc.tab", "agents", "-hc.light"]
-        app.launchArguments.append("-hc.timeline-snapshot-delay")
+        app.launchArguments.append("-hc.timeline-cancel-retry")
         app.launch()
         let agent = app.descendants(matching: .any)["agent-row-p0"].firstMatch
         XCTAssertTrue(agent.waitForExistence(timeout: 10))
@@ -860,15 +862,17 @@ final class AgentTimelineUITests: XCTestCase {
         XCTAssertTrue(openTimeline.waitForExistence(timeout: 10))
         saveNamedScreenshot(app.screenshot(), name: "session-view-restored-terminal-preference")
         openTimeline.tap()
+        XCTAssertTrue(unresolved.waitForExistence(timeout: 10))
         openTerminal.tap()
         XCTAssertTrue(openTimeline.waitForExistence(timeout: 5))
         openTimeline.tap()
         let transcript = app.staticTexts["Review the connection guidance and make it clearer in light mode."]
         XCTAssertTrue(transcript.waitForExistence(timeout: 10))
-        XCTAssertFalse(openTimeline.waitForExistence(timeout: 6), "Verification should keep the retried Timeline choice")
+        XCTAssertTrue(openTerminal.exists)
+        XCTAssertFalse(openTimeline.exists)
         app.terminate()
 
-        app.launchArguments.removeAll { $0 == "-hc.timeline-snapshot-delay" }
+        app.launchArguments.removeAll { $0 == "-hc.timeline-cancel-retry" }
         app.launchArguments += deferredSetup
         app.launch()
         XCTAssertTrue(agent.waitForExistence(timeout: 10))
