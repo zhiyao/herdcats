@@ -146,6 +146,11 @@ struct PaneDetailView: View {
         } else if value, case let .remembered(expected) = modeSelection,
                   displayedTimeline?.pane == sessionIdentity, canVerifySession {
             modeSelection = .pendingTimeline(expected, appModel.ownership.transportGeneration)
+        } else if !value, case let .pendingTimeline(expected, generation) = modeSelection,
+                  displayedTimeline?.pane == sessionIdentity, canVerifySession,
+                  generation == appModel.ownership.transportGeneration,
+                  AgentSessionViewPreferences.shared[expected] == false {
+            modeSelection = .remembered(expected)
         } else {
             modeSelection = .temporary(value)
         }

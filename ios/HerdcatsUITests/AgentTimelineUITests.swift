@@ -852,6 +852,7 @@ final class AgentTimelineUITests: XCTestCase {
         app.terminate()
 
         app.launchArguments = ["-hc.screenshots", "-hc.screen", "spaces", "-hc.agent", "codex", "-hc.tab", "agents", "-hc.light"]
+        app.launchArguments.append("-hc.timeline-snapshot-delay")
         app.launch()
         let agent = app.descendants(matching: .any)["agent-row-p0"].firstMatch
         XCTAssertTrue(agent.waitForExistence(timeout: 10))
@@ -859,10 +860,15 @@ final class AgentTimelineUITests: XCTestCase {
         XCTAssertTrue(openTimeline.waitForExistence(timeout: 10))
         saveNamedScreenshot(app.screenshot(), name: "session-view-restored-terminal-preference")
         openTimeline.tap()
+        openTerminal.tap()
+        XCTAssertTrue(openTimeline.waitForExistence(timeout: 5))
+        openTimeline.tap()
         let transcript = app.staticTexts["Review the connection guidance and make it clearer in light mode."]
         XCTAssertTrue(transcript.waitForExistence(timeout: 10))
+        XCTAssertFalse(openTimeline.waitForExistence(timeout: 6), "Verification should keep the retried Timeline choice")
         app.terminate()
 
+        app.launchArguments.removeAll { $0 == "-hc.timeline-snapshot-delay" }
         app.launchArguments += deferredSetup
         app.launch()
         XCTAssertTrue(agent.waitForExistence(timeout: 10))

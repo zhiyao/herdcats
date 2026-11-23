@@ -289,6 +289,9 @@ extension AgentTimelineView {
                 }
                 Self.publishBridgeVersion(bridgeVersion, to: bridgeUpgrade, owner: owner, activeOwner: activeOwner)
                 do {
+                    if ProcessInfo.processInfo.arguments.contains("-hc.timeline-snapshot-delay") {
+                        try await Task.sleep(for: .seconds(4))
+                    }
                     try timeline.consume(AgentTimelineScreenshotFixture.frame(
                         paneId: paneId,
                         helperInstalled: fixtureHelperInstalled || (retry > 0 && ProcessInfo.processInfo.arguments.contains("-hc.timeline-helper-installed"))
