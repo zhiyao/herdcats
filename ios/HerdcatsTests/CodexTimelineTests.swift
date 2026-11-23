@@ -241,14 +241,17 @@ struct CodexTimelineGatingTests {
         let state = AgentTimelineState()
         state.begin(owner: owner, paneId: "p-codex")
         try state.consume(try frame("timeline.snapshot", agent: "antigravity_cli", entries: ["old one", "old two"]), owner: owner)
-        state.markContextCleared(for: try #require(state.identity), reset: .loadedEntries, loadedIds: state.loadedEntryIds)
+        let session = try #require(state.verifiedViewIdentity)
+        state.markContextCleared(for: session, reset: .loadedEntries, loadedIds: state.loadedEntryIds)
         #expect(state.visibleEntries.isEmpty)
+        #expect(state.verifiedViewIdentity == nil)
 
         // Same conversation after a reconnect: old rows stay hidden, new rows show.
         try state.consume(
             try frame("timeline.snapshot", agent: "antigravity_cli", seq: 2, entries: ["old one", "old two", "after clear"]),
             owner: owner)
         #expect(state.visibleEntries.map(\.text) == ["after clear"])
+        #expect(state.verifiedViewIdentity == session)
         #expect(!state.hasMore)
     }
 
@@ -260,20 +263,24 @@ struct CodexTimelineGatingTests {
 
         state.markContextCleared(for: try #require(state.identity), reset: .wholeSession, loadedIds: state.loadedEntryIds)
         #expect(state.visibleEntries.isEmpty)
+        #expect(state.verifiedViewIdentity == nil)
 
         // A reconnect that replays the same old thread must not resurrect it.
         try state.consume(try frame("timeline.snapshot", seq: 2, entries: ["old one", "old two"]), owner: owner)
         #expect(state.visibleEntries.isEmpty)
+        #expect(state.verifiedViewIdentity == nil)
 
         // Old-session rows that arrive after the clear stay hidden too.
         try state.consume(try frame("timeline.snapshot", seq: 3, entries: ["old one", "old two", "late old"]), owner: owner)
         #expect(state.visibleEntries.isEmpty)
+        #expect(state.verifiedViewIdentity == nil)
 
         // Herdr reports the new thread with the next prompt.
         try state.consume(
             try frame("timeline.snapshot", seq: 4, entries: ["fresh"], session: "00000000-0000-0000-0000-000000000002"),
             owner: owner)
         #expect(state.visibleEntries.map(\.text) == ["fresh"])
+        #expect(state.verifiedViewIdentity?.nativeSessionId == "00000000-0000-0000-0000-000000000002")
     }
 
     @Test func agyClearSurvivesStreamEndAndKeepsPostClearHistoryReachable() throws {

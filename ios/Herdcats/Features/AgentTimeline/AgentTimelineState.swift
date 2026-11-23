@@ -95,7 +95,7 @@ import Observation
     }
     private(set) var identity: AgentTimelineIdentity?
     var verifiedViewIdentity: AgentTimelineIdentity? {
-        guard owner != nil, phase == .ready, !cutActive else { return nil }
+        guard owner != nil, phase == .ready, !cutActive || !visibleEntries.isEmpty else { return nil }
         return identity
     }
     private(set) var phase: Phase = .loading
