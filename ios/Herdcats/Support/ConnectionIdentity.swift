@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 /// Stable identity for one runtime at a remote SSH endpoint.
 ///
@@ -96,31 +97,30 @@ enum TimelineSetupPreference {
 }
 
 struct AgentSessionViewPreference: Hashable {
-    let scope: ConnectionIdentity
-    let agent: String
-    let sessionID: String
+    let storageKey: String
 
-    private enum Mode: String {
-        case timeline
-        case terminal
+    init?(scope: ConnectionIdentity, identity: AgentTimelineIdentity) {
+        guard ["claude", "pi"].contains(identity.agent), !identity.nativeSessionId.isEmpty else { return nil }
+        storageKey = "\(scope.storageKey)|a=\(identity.agent)|id=\(ConnectionIdentity.encodeComponent(identity.nativeSessionId))"
+    }
+}
+
+@MainActor @Observable final class AgentSessionViewPreferences {
+    static let shared = AgentSessionViewPreferences()
+    private let defaults: UserDefaults
+    private static let key = "verified-agent-session-view-modes"
+    private var modes: [String: Bool]
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        modes = defaults.dictionary(forKey: Self.key) as? [String: Bool] ?? [:]
     }
 
-    var storageKey: String {
-        "agent-session-view.\(scope.storageKey)|a=\(agent)|id=\(ConnectionIdentity.encodeComponent(sessionID))"
-    }
-
-    func showsTimeline(defaults: UserDefaults = .standard) -> Bool? {
-        guard let raw = defaults.string(forKey: storageKey),
-              let mode = Mode(rawValue: raw) else { return nil }
-        return mode == .timeline
-    }
-
-    func setShowsTimeline(_ showsTimeline: Bool, defaults: UserDefaults = .standard) {
-        let mode: Mode = showsTimeline ? .timeline : .terminal
-        defaults.set(mode.rawValue, forKey: storageKey)
-    }
-
-    func remove(defaults: UserDefaults = .standard) {
-        defaults.removeObject(forKey: storageKey)
+    subscript(session: AgentSessionViewPreference) -> Bool? {
+        get { modes[session.storageKey] }
+        set {
+            modes[session.storageKey] = newValue
+            defaults.set(modes, forKey: Self.key)
+        }
     }
 }

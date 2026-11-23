@@ -29,67 +29,24 @@ struct PaneContentPrivacyTests {
         #expect(core.scopedToSession("project") == core)
     }
 
-    @Test func replacingTheAgentSessionInOnePaneKeepsIndependentModes() throws {
-        try withSessionViewDefaults { defaults in
-            let scope = ConnectionIdentity(host: "studio-mac", port: 22, username: "demo")
-            let original = try sessionViewPreference("session-a", scope: scope)
-            let replacement = try sessionViewPreference("session-b", scope: scope)
-            #expect(original.showsTimeline(defaults: defaults) == nil)
-            original.setShowsTimeline(false, defaults: defaults)
-            #expect(replacement.showsTimeline(defaults: defaults) == nil)
-            replacement.setShowsTimeline(true, defaults: defaults)
-            #expect(try sessionViewPreference("session-a", scope: scope).showsTimeline(defaults: defaults) == false)
-            #expect(replacement.showsTimeline(defaults: defaults) == true)
-            original.remove(defaults: defaults)
-            #expect(original.showsTimeline(defaults: defaults) == nil)
-            #expect(replacement.showsTimeline(defaults: defaults) == true)
-        }
-    }
-
-    @Test func failedReconnectRetainsPreferenceOwnerWithoutSharingAcrossEndpoints() throws {
-        try withSessionViewDefaults { defaults in
-            let app = AppModel(autoConnectOnLaunch: false)
-            let config = ConnectionConfig(host: "studio-mac", port: 22, username: "demo", auth: .password(""))
-            app.activeConfig = config
-            app.hasActiveSession = true
-            app.phase = .connected(host: config.host, username: config.username)
-            app.connectionIdentity = ConnectionIdentity(config)
-            let onlineScope = try #require(app.displayedPaneConnectionIdentity)
-            let online = try sessionViewPreference("session-a", scope: onlineScope)
-            online.setShowsTimeline(true, defaults: defaults)
-
-            app.connectionIdentity = nil
-            app.phase = .offline(host: config.host, username: config.username)
-            let offlineScope = try #require(app.displayedPaneConnectionIdentity)
-            let offline = try sessionViewPreference("session-a", scope: offlineScope)
-            #expect(offline.showsTimeline(defaults: defaults) == true)
-            offline.setShowsTimeline(false, defaults: defaults)
-            #expect(online.showsTimeline(defaults: defaults) == false)
-
-            var otherConfig = config
-            otherConfig.port = 2222
-            app.activeConfig = otherConfig
-            let otherScope = try #require(app.displayedPaneConnectionIdentity)
-            let other = try sessionViewPreference("session-a", scope: otherScope)
-            #expect(other.showsTimeline(defaults: defaults) == nil)
-            app.hasActiveSession = false
-            #expect(app.displayedPaneConnectionIdentity == nil)
-        }
-    }
-
-    private func sessionViewPreference(_ sessionID: String, scope: ConnectionIdentity) throws -> AgentSessionViewPreference {
-        let result = try JSONDecoder().decode(TimelinePromptAgentResult.self, from: Data("""
-        {"agent":{"pane_id":"p0","terminal_id":"t0","agent":"codex","agent_status":"idle",
-                  "agent_session":{"agent":"codex","source":"herdr:codex","kind":"id","value":"\(sessionID)"}}}
-        """.utf8))
-        return try #require(result.agent.viewPreference(scope: scope, paneID: "p0", paneAgent: "codex"))
-    }
-
-    private func withSessionViewDefaults(_ body: (UserDefaults) throws -> Void) rethrows {
+    @Test func rememberedModesFollowNativeSessionAcrossPanesAndRestarts() throws {
         let suite = "AgentSessionViewPreferenceTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
-        try body(defaults)
+        let scope = ConnectionIdentity(host: "studio-mac", port: 22, username: "demo")
+        func key(_ pane: String, _ session: String) throws -> AgentSessionViewPreference {
+            let identity = AgentTimelineIdentity(paneId: pane, terminalId: "terminal-\(pane)", agent: "pi", nativeSessionId: session)
+            return try #require(AgentSessionViewPreference(scope: scope, identity: identity))
+        }
+        let store = AgentSessionViewPreferences(defaults: defaults)
+        let original = try key("p0", "session-a")
+        let replacement = try key("p0", "session-b")
+        store[original] = false
+        #expect(store[replacement] == nil)
+        store[replacement] = true
+        let restored = AgentSessionViewPreferences(defaults: defaults)
+        #expect(restored[try key("p1", "session-a")] == false)
+        #expect(restored[replacement] == true)
     }
 
     func withStore(_ body: (UserDefaults, PaneContentPersistence) -> Void) {

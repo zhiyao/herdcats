@@ -551,6 +551,7 @@ struct AgentTimelineView: View {
         }
         .onChange(of: taskKey) { _, _ in historyLoader.cancel(); updateTimelineSheet() }
         .onDisappear {
+            if let activeOwner { timeline.retire(owner: activeOwner) }
             approvalViewVisible = false
             approvalResponse.reset()
             questionResponse.reset()

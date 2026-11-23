@@ -94,6 +94,10 @@ import Observation
         revision += 1
     }
     private(set) var identity: AgentTimelineIdentity?
+    var verifiedViewIdentity: AgentTimelineIdentity? {
+        guard owner != nil, phase == .ready, !delayed, !cutActive else { return nil }
+        return identity
+    }
     private(set) var phase: Phase = .loading
     private(set) var generation: UInt64?
     /// Entries kept on the phone. Claude and Codex history pages reach back to

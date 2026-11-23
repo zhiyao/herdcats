@@ -29,8 +29,9 @@ struct PaneDetailView: View {
     @State private var siblings: [PaneEntry]
     @State private var tabs: [TabEntry] = []
     @State private var selectedPaneID: String
-    @State private var timelineModes: [String: Bool] = [:]
-    @State private var agentSessions: [String: AgentSessionViewPreference] = [:]
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var displayedTimeline: (pane: String, state: AgentTimelineState)?
+    @State private var modeSelection = ModeSelection.initial
     @State private var bridgeUpgrade = TimelineBridgeUpgrade()
     @State private var lastUpdatedByPaneID: [String: Date] = [:]
     /// Pane switcher shows chips instead of cards to give the output more room.
@@ -99,79 +100,60 @@ struct PaneDetailView: View {
             ?? ConnectionIdentity(host: "unknown", port: 0, username: "unknown")
     }
 
-    private struct AgentSessionLookup: Equatable {
-        let scope: ConnectionIdentity
-        let paneID: String
-        let agent: String
-        let generation: ConnectionGeneration?
+    private enum ModeSelection {
+        case initial
+        case temporary(Bool)
+        case remembered(AgentSessionViewPreference)
     }
 
-    private var agentSessionLookup: AgentSessionLookup? {
-        guard supportsTimelineToggle, appModel.isReadyForTerminalInput, appModel.isSceneActive,
-              let scope = appModel.displayedPaneConnectionIdentity,
-              let agent = TimelineAgentAvailability.canonical(selectedPane.agent) else { return nil }
-        return AgentSessionLookup(scope: scope, paneID: selectedPaneID, agent: agent,
-                                  generation: appModel.ownership.transportGeneration)
+    private var defaultShowsTimeline: Bool {
+        guard let scope = appModel.paneConnectionIdentity else { return true }
+        return !UserDefaults.standard.bool(forKey: TimelineSetupPreference.key(scope: scope))
     }
 
-    private var agentSessionSlot: String {
-        let owner = appModel.displayedPaneConnectionIdentity?.storageKey ?? String(describing: ObjectIdentifier(appModel))
-        let agent = TimelineAgentAvailability.canonical(selectedPane.agent) ?? ""
-        return "\(owner)#\(selectedPaneID)#\(agent)"
-    }
-
-    private var timelineMode: Binding<Bool> {
-        let slot = agentSessionSlot
-        let preference = agentSessions[slot]
-        let key = preference?.storageKey ?? slot
-        let scope = appModel.displayedPaneConnectionIdentity
-        return Binding(
-            get: {
-                guard supportsTimelineToggle else { return false }
-                if let override = timelineModes[key] { return override }
-                if let saved = preference?.showsTimeline() { return saved }
-                return scope.map { !UserDefaults.standard.bool(forKey: TimelineSetupPreference.key(scope: $0)) } ?? true
-            },
-            set: { timelineModes[key] = supportsTimelineToggle && $0 }
-        )
-    }
-
-    private func refreshAgentSession(_ lookup: AgentSessionLookup) async throws -> AgentSessionViewPreference? {
-        let preference = try await appModel.connection.agentSessionViewPreference(
-            scope: lookup.scope, paneID: lookup.paneID, paneAgent: lookup.agent
-        )
-        guard !Task.isCancelled, lookup == agentSessionLookup else { throw CancellationError() }
-        let slot = agentSessionSlot
-        if agentSessions[slot] != preference {
-            timelineModes.removeValue(forKey: slot)
-            agentSessions[slot] = preference
+    private var showsTimeline: Bool {
+        guard supportsTimelineToggle else { return false }
+        guard displayedTimeline?.pane == sessionIdentity else { return defaultShowsTimeline }
+        switch modeSelection {
+        case .initial: return defaultShowsTimeline
+        case .temporary(let value): return value
+        case .remembered(let session): return AgentSessionViewPreferences.shared[session] ?? defaultShowsTimeline
         }
-        return preference
     }
 
-    private func toggleRememberedTimelineMode() async {
+    private var verifiedSession: AgentSessionViewPreference? {
+        guard showsTimeline, scenePhase == .active, appModel.isSceneActive,
+              let scope = appModel.paneConnectionIdentity, let displayedTimeline,
+              displayedTimeline.pane == sessionIdentity else { return nil }
+        let timeline = displayedTimeline.state
+        let connection = AgentTimelineConnectionState(phase: appModel.phase, generation: appModel.ownership.transportGeneration)
+        guard timeline.hasSnapshot(for: connection, paneId: selectedPaneID, agent: selectedPane.agent),
+              let identity = timeline.verifiedViewIdentity else { return nil }
+        return AgentSessionViewPreference(scope: scope, identity: identity)
+    }
+
+    private func chooseTimeline(_ value: Bool) {
         guard supportsTimelineToggle else { return }
-        let next = !timelineMode.wrappedValue
-        let previous = agentSessions[agentSessionSlot]
-        if let lookup = agentSessionLookup {
-            do {
-                let current = try await refreshAgentSession(lookup)
-                guard previous == nil || previous == current else { return }
-                current?.setShowsTimeline(next)
-            } catch {
-                guard !Task.isCancelled, lookup == agentSessionLookup else { return }
-            }
-        } else if appModel.hasActiveSession && appModel.isOffline {
-            previous?.setShowsTimeline(next)
+        if let session = verifiedSession {
+            AgentSessionViewPreferences.shared[session] = value
+            modeSelection = .remembered(session)
+        } else {
+            modeSelection = .temporary(value)
         }
-        timelineMode.wrappedValue = next
     }
 
     private var selectedPaneSession: some View {
         PaneSessionView(
             pane: selectedPane,
             connectionScope: connectionScope,
-            showsTimeline: timelineMode,
+            showsTimeline: Binding(get: { showsTimeline }, set: { modeSelection = .temporary($0) }),
+            onUseTerminal: { chooseTimeline(false) },
+            onTimelineAppear: { state in
+                if displayedTimeline?.state !== state {
+                    displayedTimeline = (sessionIdentity, state)
+                    modeSelection = .initial
+                }
+            },
             bridgeUpgrade: bridgeUpgrade,
             topOutputInset: paneSwitcherHeight,
             showLiveDiagnostics: $showLiveDiagnostics,
@@ -265,14 +247,14 @@ struct PaneDetailView: View {
 
     private var timelineToggleButton: some View {
             Button {
-                Task { await toggleRememberedTimelineMode() }
+                chooseTimeline(!showsTimeline)
             } label: {
-                Image(systemName: timelineMode.wrappedValue ? "terminal" : "bubble.left")
+                Image(systemName: showsTimeline ? "terminal" : "bubble.left")
                     .font(.jost(16, weight: .medium))
                     .foregroundStyle(.primary)
             }
-            .accessibilityLabel(timelineMode.wrappedValue ? "Terminal" : "Timeline")
-            .accessibilityIdentifier(timelineMode.wrappedValue ? "timeline-open-terminal" : "terminal-open-timeline")
+            .accessibilityLabel(showsTimeline ? "Terminal" : "Timeline")
+            .accessibilityIdentifier(showsTimeline ? "timeline-open-terminal" : "terminal-open-timeline")
     }
 
     private var paneOptionsMenu: some View {
@@ -296,7 +278,7 @@ struct PaneDetailView: View {
                 .accessibilityIdentifier("pane-slot-close")
                 Divider()
             }
-            if timelineMode.wrappedValue, let version = bridgeUpgrade.bridgeVersion, HostHelperProbe.isOlderThanPinned(version) {
+            if showsTimeline, let version = bridgeUpgrade.bridgeVersion, HostHelperProbe.isOlderThanPinned(version) {
                 Button {
                     bridgeUpgrade.requestUpgrade()
                 } label: {
@@ -487,6 +469,7 @@ struct PaneDetailView: View {
         .toolbarBackground(Theme.background, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(colorScheme, for: .navigationBar)
+        .onChange(of: selectedPane.agent) { modeSelection = .initial }
         .onChange(of: selectedPaneID) { _, selected in
             bridgeUpgrade.bridgeVersion = nil
             openPaneMemory?.remember(selected)
@@ -578,11 +561,12 @@ struct PaneDetailView: View {
             .presentationDragIndicator(.visible)
             .presentationCornerRadius(20)
         }
-        .task(id: agentSessionLookup) {
-            guard let lookup = agentSessionLookup else { return }
-            while !Task.isCancelled {
-                _ = try? await refreshAgentSession(lookup)
-                do { try await Task.sleep(for: .seconds(15)) } catch { return }
+        .onChange(of: verifiedSession) { previous, current in
+            if let current {
+                if case .temporary(true) = modeSelection, previous == nil { return }
+                modeSelection = .remembered(current)
+            } else if showsTimeline, previous != nil {
+                modeSelection = .initial
             }
         }
         .task(id: pane.workspaceId) {

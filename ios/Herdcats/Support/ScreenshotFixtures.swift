@@ -82,25 +82,13 @@ enum ScreenshotFixtures {
         String(decoding: try JSONSerialization.data(withJSONObject: object), as: UTF8.self)
     }
 
-    private static func agentResult(for pane: [String: Any]) -> [String: Any] {
-        let paneID = pane["pane_id"] as! String
-        let agent = pane["agent"] as! String
-        let canonical = TimelineAgentAvailability.canonical(agent) ?? agent
-        let sessionID = ProcessInfo.processInfo.environment["HC_FIXTURE_AGENT_SESSION"] ?? "fixture-\(paneID)"
-        return ["agent": [
-            "pane_id": paneID, "terminal_id": "terminal-\(paneID)",
-            "agent": agent, "agent_status": pane["agent_status"] as! String,
-            "agent_session": ["agent": canonical, "source": "herdr:\(canonical)", "kind": "id", "value": sessionID]
-        ]]
-    }
-
-    fileprivate static func clearSessionViewPreferences(scope: ConnectionIdentity) {
-        for pane in panes {
-            guard let paneID = pane["pane_id"] as? String, let agent = pane["agent"] as? String,
-                  let data = try? json(agentResult(for: pane)),
-                  let result = try? JSONDecoder().decode(TimelinePromptAgentResult.self, from: Data(data.utf8))
-            else { continue }
-            result.agent.viewPreference(scope: scope, paneID: paneID, paneAgent: agent)?.remove()
+    @MainActor fileprivate static func clearSessionViewPreferences(scope: ConnectionIdentity) {
+        for agent in ["claude", "pi"] {
+            let identity = AgentTimelineIdentity(paneId: "p0", terminalId: "fixture-terminal", agent: agent,
+                                                 nativeSessionId: AgentTimelineScreenshotFixture.sessionID)
+            if let preference = AgentSessionViewPreference(scope: scope, identity: identity) {
+                AgentSessionViewPreferences.shared[preference] = nil
+            }
         }
     }
 
@@ -117,9 +105,6 @@ enum ScreenshotFixtures {
         let result: [String: Any]
         if args == "workspace list" { result = ["workspaces": workspaces] }
         else if args == "agent list" { result = ["agents": panes] }
-        else if let pane = panes.first(where: {
-            args == "agent get \(HerdrConnection.shellSafeArgument($0["pane_id"] as! String))"
-        }) { result = agentResult(for: pane) }
         else if args.hasPrefix("pane list") {
             result = ["panes": panes.filter {
                 args.contains(HerdrConnection.shellSafeArgument($0["workspace_id"] as! String))
@@ -217,9 +202,6 @@ struct ScreenshotRootView: View {
         if ProcessInfo.processInfo.arguments.contains("-hc.timeline-intro-reset"), let identity = app.connectionIdentity {
             UserDefaults.standard.removeObject(forKey: TimelineSetupPreference.key(scope: identity))
             ScreenshotFixtures.clearSessionViewPreferences(scope: identity)
-        }
-        if ProcessInfo.processInfo.arguments.contains("-hc.timeline-setup-deferred"), let identity = app.connectionIdentity {
-            UserDefaults.standard.register(defaults: [TimelineSetupPreference.key(scope: identity): true])
         }
         return app
     }()

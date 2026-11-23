@@ -31,12 +31,6 @@ final class AppModel {
     var paneConnectionIdentity: ConnectionIdentity? {
         connectionIdentity?.scopedToSession(activeConfig?.session?.name)
     }
-    var displayedPaneConnectionIdentity: ConnectionIdentity? {
-        guard hasActiveSession else { return nil }
-        return paneConnectionIdentity ?? activeConfig.map {
-            ConnectionIdentity($0).scopedToSession($0.session?.name)
-        }
-    }
     var sessions: [HerdrSession] = []
     var isLoadingSessions = false
     var sessionListError: String?

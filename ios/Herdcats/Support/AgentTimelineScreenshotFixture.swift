@@ -3,6 +3,7 @@
     import UIKit
 
     @MainActor enum AgentTimelineScreenshotFixture {
+        static let sessionID = "fixture-session"
         private static let imageBlock: Data = {
             let format = UIGraphicsImageRendererFormat(); format.scale = 1
             let image = UIGraphicsImageRenderer(size: CGSize(width: 360, height: 180), format: format).image { context in
@@ -39,7 +40,7 @@
             let data = try JSONSerialization.data(withJSONObject: [
                 "generation": generation,
                 "identity": ["pane_id": paneId, "terminal_id": "fixture-terminal", "agent": ScreenshotFixtures.paneAgent,
-                             "native_session_id": "fixture-session"],
+                             "native_session_id": sessionID],
                 "entries": rows,
                 "has_more": false
             ])
@@ -52,7 +53,7 @@
                 "event": "timeline.snapshot", "epoch": "fixture", "seq": 2,
                 "data": [
                     "identity": ["pane_id": paneId, "terminal_id": "fixture-terminal", "agent": ScreenshotFixtures.paneAgent,
-                                 "native_session_id": "fixture-session"],
+                                 "native_session_id": sessionID],
                     "generation": generation,
                     "entries": [
                         ["id": "message:replacement-root", "kind": "message", "role": "user",
@@ -68,7 +69,7 @@
                 "event": "timeline.updated", "epoch": "fixture", "seq": seq,
                 "data": [
                     "identity": ["pane_id": paneId, "terminal_id": "fixture-terminal", "agent": ScreenshotFixtures.paneAgent,
-                                 "native_session_id": "fixture-session"],
+                                 "native_session_id": sessionID],
                     "generation": 1,
                     "entries": (start...end).map { index in
                         ["id": "message:overflow-\(index)", "kind": "message", "role": index.isMultiple(of: 2) && index != 1050 ? "user" : "assistant",
@@ -126,7 +127,7 @@
             case .codexAsync: ["kind": "async_queued"]
             }
             var data: [String: Any] = [
-                "identity": ["pane_id": paneId, "terminal_id": "fixture-terminal", "agent": agent, "native_session_id": "fixture-session"],
+                "identity": ["pane_id": paneId, "terminal_id": "fixture-terminal", "agent": agent, "native_session_id": sessionID],
                 "generation": 1, "request_id": "fixture-question-\(kind.rawValue)", "kind": "question", "agent": agent,
                 "question_kind": kind.rawValue, "questions": questions, "step": step, "fresh": true,
             ]
@@ -153,7 +154,7 @@
                 ["number": 3, "label_lines": ["No"], "key": "3"],
             ]
             var data: [String: Any] = [
-                "identity": ["pane_id": paneId, "terminal_id": "fixture-terminal", "agent": agent, "native_session_id": "fixture-session"],
+                "identity": ["pane_id": paneId, "terminal_id": "fixture-terminal", "agent": agent, "native_session_id": sessionID],
                 "generation": 1, "kind": "approval", "request_id": "fixture-approval-\(agent)", "agent": agent,
                 "tool_name": agy ? "run_command" : "Bash", "command": agy ? "printf SAFE" : "touch herdcats-live-4.txt",
                 "title": agy ? "Command" : codex ? "Would you like to run the following command?" : "Do you want to proceed?",
@@ -335,7 +336,7 @@
                     "data": [
                         "identity": [
                             "pane_id": paneId, "terminal_id": "fixture-terminal", "agent": splitCheckout ? "codex" : ScreenshotFixtures.paneAgent,
-                            "native_session_id": "fixture-session",
+                            "native_session_id": sessionID,
                         ], "generation": 1, "entries": entries, "has_more": ScreenshotFixtures.screen.hasPrefix("timeline-history") || ScreenshotFixtures.screen == "timeline-pi-progressive", "before": "message:user", "agent_status": (showsApproval || showsQuestion) ? "blocked" : "idle",
                         "unknown_records": ProcessInfo.processInfo.arguments.contains("-hc.timeline-long") ? 2 : 0, "dropped_entries": 0,
                     ],
