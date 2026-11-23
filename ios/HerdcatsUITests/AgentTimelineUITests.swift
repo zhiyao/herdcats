@@ -820,7 +820,7 @@ final class AgentTimelineUITests: XCTestCase {
 
     func testRememberedModesFollowSessionAcrossColdRestarts() {
         let app = XCUIApplication()
-        let arguments = ["-hc.screenshots", "-hc.screen", "spaces", "-hc.tab", "spaces", "-hc.light",
+        let arguments = ["-hc.screenshots", "-hc.screen", "spaces", "-hc.agent", "codex", "-hc.tab", "spaces", "-hc.light",
                          "-paneShowComposeByDefault", "NO"]
         let openTerminal = app.buttons["timeline-open-terminal"]
         let openTimeline = app.buttons["terminal-open-timeline"]
@@ -843,20 +843,32 @@ final class AgentTimelineUITests: XCTestCase {
         saveNamedScreenshot(app.screenshot(), name: "session-view-reopened-terminal-preference")
         app.terminate()
 
-        app.launchArguments = ["-hc.screenshots", "-hc.screen", "spaces", "-hc.tab", "agents", "-hc.light"]
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-session-unresolved", "-hc.agent", "codex", "-hc.light"]
+        app.launch()
+        XCTAssertTrue(openTerminal.waitForExistence(timeout: 5))
+        XCTAssertFalse(openTimeline.exists)
+        saveNamedScreenshot(app.screenshot(), name: "session-view-first-open-timeline-fallback")
+        app.terminate()
+
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "spaces", "-hc.agent", "codex", "-hc.tab", "agents", "-hc.light"]
         app.launch()
         let agent = app.descendants(matching: .any)["agent-row-p0"].firstMatch
         XCTAssertTrue(agent.waitForExistence(timeout: 10))
         agent.tap()
         XCTAssertTrue(openTimeline.waitForExistence(timeout: 10))
         saveNamedScreenshot(app.screenshot(), name: "session-view-restored-terminal-preference")
+        openTimeline.tap()
+        let transcript = app.staticTexts["Review the connection guidance and make it clearer in light mode."]
+        XCTAssertTrue(transcript.waitForExistence(timeout: 10))
         app.terminate()
 
-        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-session-unresolved", "-hc.light"]
         app.launch()
-        XCTAssertTrue(openTerminal.waitForExistence(timeout: 5))
+        XCTAssertTrue(agent.waitForExistence(timeout: 10))
+        agent.tap()
+        XCTAssertTrue(transcript.waitForExistence(timeout: 10))
+        XCTAssertTrue(openTerminal.exists)
         XCTAssertFalse(openTimeline.exists)
-        saveNamedScreenshot(app.screenshot(), name: "session-view-first-open-timeline-fallback")
+        saveNamedScreenshot(app.screenshot(), name: "session-view-restored-timeline-preference")
         app.terminate()
     }
 

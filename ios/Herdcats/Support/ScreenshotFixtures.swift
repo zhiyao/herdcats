@@ -83,7 +83,7 @@ enum ScreenshotFixtures {
     }
 
     @MainActor fileprivate static func clearSessionViewPreferences(scope: ConnectionIdentity) {
-        for agent in ["claude", "pi"] {
+        for agent in Set(panes.compactMap { $0["agent"] as? String }) {
             let identity = AgentTimelineIdentity(paneId: "p0", terminalId: "fixture-terminal", agent: agent,
                                                  nativeSessionId: AgentTimelineScreenshotFixture.sessionID)
             if let preference = AgentSessionViewPreference(scope: scope, identity: identity) {

@@ -103,6 +103,7 @@ struct PaneDetailView: View {
     private enum ModeSelection {
         case initial
         case temporary(Bool)
+        case pendingTimeline(AgentSessionViewPreference, ConnectionGeneration?)
         case remembered(AgentSessionViewPreference)
     }
 
@@ -117,12 +118,17 @@ struct PaneDetailView: View {
         switch modeSelection {
         case .initial: return defaultShowsTimeline
         case .temporary(let value): return value
+        case .pendingTimeline: return true
         case .remembered(let session): return AgentSessionViewPreferences.shared[session] ?? defaultShowsTimeline
         }
     }
 
+    private var canVerifySession: Bool {
+        scenePhase == .active && appModel.isSceneActive && appModel.isReadyForTerminalInput
+    }
+
     private var verifiedSession: AgentSessionViewPreference? {
-        guard showsTimeline, scenePhase == .active, appModel.isSceneActive,
+        guard showsTimeline, canVerifySession,
               let scope = appModel.paneConnectionIdentity, let displayedTimeline,
               displayedTimeline.pane == sessionIdentity else { return nil }
         let timeline = displayedTimeline.state
@@ -137,9 +143,16 @@ struct PaneDetailView: View {
         if let session = verifiedSession {
             AgentSessionViewPreferences.shared[session] = value
             modeSelection = .remembered(session)
+        } else if value, case let .remembered(expected) = modeSelection,
+                  displayedTimeline?.pane == sessionIdentity, canVerifySession {
+            modeSelection = .pendingTimeline(expected, appModel.ownership.transportGeneration)
         } else {
             modeSelection = .temporary(value)
         }
+    }
+
+    private func discardPendingTimeline() {
+        if case .pendingTimeline = modeSelection { modeSelection = .initial }
     }
 
     private var selectedPaneSession: some View {
@@ -471,6 +484,7 @@ struct PaneDetailView: View {
         .toolbarColorScheme(colorScheme, for: .navigationBar)
         .onChange(of: selectedPane.agent) { modeSelection = .initial }
         .onChange(of: selectedPaneID) { _, selected in
+            discardPendingTimeline()
             bridgeUpgrade.bridgeVersion = nil
             openPaneMemory?.remember(selected)
         }
@@ -480,6 +494,7 @@ struct PaneDetailView: View {
         // Pushed panes hide the tab bar; in the detail column it stays so tabs can still switch.
         .toolbar(showsPaneBackButton ? .hidden : .automatic, for: .tabBar)
         .onDisappear {
+            discardPendingTimeline()
             #if DEBUG
             showLiveDiagnostics = false
             PaneLiveInputMetrics.shared.setEnabled(false)
@@ -561,9 +576,16 @@ struct PaneDetailView: View {
             .presentationDragIndicator(.visible)
             .presentationCornerRadius(20)
         }
+        .onChange(of: canVerifySession) { _, ready in
+            if !ready { discardPendingTimeline() }
+        }
         .onChange(of: verifiedSession) { previous, current in
             if let current {
                 if case .temporary(true) = modeSelection, previous == nil { return }
+                if case let .pendingTimeline(expected, generation) = modeSelection,
+                   expected == current, generation == appModel.ownership.transportGeneration {
+                    AgentSessionViewPreferences.shared[current] = true
+                }
                 modeSelection = .remembered(current)
             } else if showsTimeline, previous != nil {
                 modeSelection = .initial

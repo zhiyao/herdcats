@@ -100,7 +100,7 @@ struct AgentSessionViewPreference: Hashable {
     let storageKey: String
 
     init?(scope: ConnectionIdentity, identity: AgentTimelineIdentity) {
-        guard ["claude", "pi"].contains(identity.agent), !identity.nativeSessionId.isEmpty else { return nil }
+        guard !identity.nativeSessionId.isEmpty else { return nil }
         storageKey = "\(scope.storageKey)|a=\(identity.agent)|id=\(ConnectionIdentity.encodeComponent(identity.nativeSessionId))"
     }
 }
