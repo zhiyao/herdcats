@@ -53,6 +53,10 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # Remove this hold when Citadel and its SwiftNIO SSH dependency both support a newer major.
+    ignore:
+      - dependency-name: "github.com/apple/swift-crypto"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: cargo
     directory: /bridge
