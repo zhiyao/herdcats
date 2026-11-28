@@ -30,6 +30,9 @@ struct PaneSessionView: View {
     @State var persistenceRevision: UInt64
     let draftKey: String
     let historyKey: String
+    let deferUnavailableSetup: Bool
+    let onUseTerminal: () -> Void
+    let onTimelineAppear: (AgentTimelineState) -> Void
     @Binding var showsTimeline: Bool
     let bridgeUpgrade: TimelineBridgeUpgrade
     @State var timeline = AgentTimelineState()
@@ -136,6 +139,9 @@ struct PaneSessionView: View {
         pane: PaneEntry,
         connectionScope: ConnectionIdentity,
         showsTimeline: Binding<Bool>,
+        deferUnavailableSetup: Bool,
+        onUseTerminal: @escaping () -> Void,
+        onTimelineAppear: @escaping (AgentTimelineState) -> Void,
         bridgeUpgrade: TimelineBridgeUpgrade = TimelineBridgeUpgrade(),
         topOutputInset: CGFloat = 0,
         showLiveDiagnostics: Binding<Bool>? = nil,
@@ -144,6 +150,9 @@ struct PaneSessionView: View {
     ) {
         self.pane = pane
         self.connectionScope = connectionScope
+        self.deferUnavailableSetup = deferUnavailableSetup
+        self.onUseTerminal = onUseTerminal
+        self.onTimelineAppear = onTimelineAppear
         self._showsTimeline = showsTimeline
         self.bridgeUpgrade = bridgeUpgrade
         self.topOutputInset = topOutputInset
@@ -488,9 +497,10 @@ struct PaneSessionView: View {
                         bridgeUpgrade: bridgeUpgrade,
                         topOverlayInset: topOutputInset, bottomOverlayInset: bottomDockHeight,
                         onOutputInteraction: { onOutputInteraction?() }, setupTarget: appModel.connectionIdentity ?? connectionScope,
-                        onUseTerminal: {
+                        deferUnavailableSetup: deferUnavailableSetup,
+                        onUseTerminal: onUseTerminal,
+                        onSetupDeferred: {
                             UserDefaults.standard.set(true, forKey: TimelineSetupPreference.key(scope: connectionScope))
-                            showsTimeline = false
                         },
                         onSetupComplete: {
                             let key = TimelineSetupPreference.key(scope: connectionScope)
@@ -747,6 +757,7 @@ struct PaneSessionView: View {
 
     var body: some View {
         outputWithLifecycle
+        .onAppear { onTimelineAppear(timeline) }
         .animation(.easeInOut(duration: 0.2), value: surfaceModel.surface)
         .onChange(of: composeFieldFocused) { _, focused in
             if focused {

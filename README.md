@@ -66,6 +66,12 @@ no verifiable checksum, the app shows manual instructions instead. Pi also needs
 see [Pi conversations](ios/docs/pi-conversations.md). The terminal view works
 without the bridge.
 
+New sessions for supported agents start in Timeline. Use the pane toolbar to
+switch between Timeline and Terminal. Once Herdcats verifies the agent session,
+it remembers your choice on this device and restores it when you reopen the
+same session, even after an app restart. If Herdcats cannot verify the session,
+you can still switch views for the current visit.
+
 While native Timeline is visible, Herdcats stops terminal snapshot polling,
 ANSI parsing and terminal Live-shell setup, and retires the pane's Live input
 session. While connected and active, switching to Terminal reads fresh output

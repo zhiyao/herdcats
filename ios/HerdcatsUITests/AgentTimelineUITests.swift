@@ -818,6 +818,72 @@ final class AgentTimelineUITests: XCTestCase {
         }
     }
 
+    func testRememberedModesFollowSessionAcrossColdRestarts() {
+        let app = XCUIApplication()
+        let arguments = ["-hc.screenshots", "-hc.screen", "spaces", "-hc.agent", "codex", "-hc.tab", "spaces", "-hc.light",
+                         "-paneShowComposeByDefault", "NO"]
+        let openTerminal = app.buttons["timeline-open-terminal"]
+        let openTimeline = app.buttons["terminal-open-timeline"]
+        let row = app.descendants(matching: .any)["space-row-1"].firstMatch
+        app.launchArguments = arguments
+        launch(app)
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.tap()
+        XCTAssertTrue(app.staticTexts["Review the connection guidance and make it clearer in light mode."].waitForExistence(timeout: 10))
+        XCTAssertFalse(openTimeline.exists)
+        saveNamedScreenshot(app.screenshot(), name: "session-view-before-terminal-preference")
+        openTerminal.tap()
+        XCTAssertTrue(openTimeline.waitForExistence(timeout: 5))
+        saveNamedScreenshot(app.screenshot(), name: "session-view-after-terminal-preference")
+        app.navigationBars.buttons["Back"].tap()
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+        XCTAssertTrue(openTimeline.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.scrollViews["pane-output-scroll-view"].exists)
+        saveNamedScreenshot(app.screenshot(), name: "session-view-reopened-terminal-preference")
+        app.terminate()
+
+        let deferredSetup = ["-timeline-setup-deferred.u=demo|h=studio-mac|p=22", "YES"]
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "timeline-session-unresolved", "-hc.agent", "codex", "-hc.light"] + deferredSetup
+        app.launch()
+        let unresolved = app.staticTexts["Waiting for Codex session"]
+        XCTAssertTrue(unresolved.waitForExistence(timeout: 10))
+        XCTAssertTrue(openTerminal.exists)
+        XCTAssertFalse(openTimeline.exists)
+        saveNamedScreenshot(app.screenshot(), name: "session-view-first-open-timeline-fallback")
+        app.terminate()
+
+        app.launchArguments = ["-hc.screenshots", "-hc.screen", "spaces", "-hc.agent", "codex", "-hc.tab", "agents", "-hc.light"]
+        app.launchArguments.append("-hc.timeline-cancel-retry")
+        app.launch()
+        let agent = app.descendants(matching: .any)["agent-row-p0"].firstMatch
+        XCTAssertTrue(agent.waitForExistence(timeout: 10))
+        agent.tap()
+        XCTAssertTrue(openTimeline.waitForExistence(timeout: 10))
+        saveNamedScreenshot(app.screenshot(), name: "session-view-restored-terminal-preference")
+        openTimeline.tap()
+        XCTAssertTrue(unresolved.waitForExistence(timeout: 10))
+        openTerminal.tap()
+        XCTAssertTrue(openTimeline.waitForExistence(timeout: 5))
+        openTimeline.tap()
+        let transcript = app.staticTexts["Review the connection guidance and make it clearer in light mode."]
+        XCTAssertTrue(transcript.waitForExistence(timeout: 10))
+        XCTAssertTrue(openTerminal.exists)
+        XCTAssertFalse(openTimeline.exists)
+        app.terminate()
+
+        app.launchArguments.removeAll { $0 == "-hc.timeline-cancel-retry" }
+        app.launchArguments += deferredSetup
+        app.launch()
+        XCTAssertTrue(agent.waitForExistence(timeout: 10))
+        agent.tap()
+        XCTAssertTrue(transcript.waitForExistence(timeout: 10))
+        XCTAssertTrue(openTerminal.exists)
+        XCTAssertFalse(openTimeline.exists)
+        saveNamedScreenshot(app.screenshot(), name: "session-view-restored-timeline-preference")
+        app.terminate()
+    }
+
     /// The pinned 0.3.0 installer cannot install Cursor support, so a Cursor pane whose
     /// bridge is missing explains the source build instead of offering the installer.
     func testCursorWithMissingHelperExplainsTheSourceBuildAndOffersNoInstaller() {

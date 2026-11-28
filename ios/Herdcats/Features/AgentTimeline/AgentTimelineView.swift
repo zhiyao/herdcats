@@ -19,7 +19,9 @@ struct AgentTimelineView: View {
     let bottomOverlayInset: CGFloat
     let onOutputInteraction: () -> Void
     let setupTarget: ConnectionIdentity
+    var deferUnavailableSetup = false
     let onUseTerminal: () -> Void
+    var onSetupDeferred: () -> Void = {}
     let onSetupComplete: () -> Void
     var onFocusComposer: () -> Void = {}
     /// Herdr's status for this pane; gates typing `/reload` into Pi.
@@ -497,6 +499,10 @@ struct AgentTimelineView: View {
                 }
                 let isNeedsUpgrade = Self.isNeedsUpgrade(code: code, agent: agent, bridgeVersion: bridgeVersion)
                 let isMissing = code == "helper_missing"
+                if (isMissing || isNeedsUpgrade) && deferUnavailableSetup && !showsSetup {
+                    onOpenTerminal()
+                    return
+                }
                 if (isMissing || isNeedsUpgrade) && !showsSetup && canPinnedInstallerSupportAgent {
                     #if DEBUG && targetEnvironment(simulator)
                     if ScreenshotFixtures.enabled && ProcessInfo.processInfo.arguments.contains("-hc.timeline-suppress-drawer") {
@@ -551,6 +557,7 @@ struct AgentTimelineView: View {
         }
         .onChange(of: taskKey) { _, _ in historyLoader.cancel(); updateTimelineSheet() }
         .onDisappear {
+            if let activeOwner { timeline.retire(owner: activeOwner) }
             approvalViewVisible = false
             approvalResponse.reset()
             questionResponse.reset()
@@ -635,7 +642,10 @@ struct AgentTimelineView: View {
         sheetState.didDismiss()
         if dismissed == .helper {
             cancelHelperInstallation()
-            if setupShouldUseTerminal { onUseTerminal() }
+            if setupShouldUseTerminal {
+                onSetupDeferred()
+                onUseTerminal()
+            }
         }
         updateTimelineSheet()
     }

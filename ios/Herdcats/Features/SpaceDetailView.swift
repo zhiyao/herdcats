@@ -29,7 +29,9 @@ struct PaneDetailView: View {
     @State private var siblings: [PaneEntry]
     @State private var tabs: [TabEntry] = []
     @State private var selectedPaneID: String
-    @State private var timelineModes: [String: Bool] = [:]
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var displayedTimeline: (pane: String, state: AgentTimelineState)?
+    @State private var modeSelection = ModeSelection.initial
     @State private var bridgeUpgrade = TimelineBridgeUpgrade()
     @State private var lastUpdatedByPaneID: [String: Date] = [:]
     /// Pane switcher shows chips instead of cards to give the output more room.
@@ -98,22 +100,79 @@ struct PaneDetailView: View {
             ?? ConnectionIdentity(host: "unknown", port: 0, username: "unknown")
     }
 
-    private var timelineMode: Binding<Bool> {
-        let key = sessionIdentity
-        return Binding(
-            get: {
-                guard !appModel.isCoreMode, TimelineAgentAvailability.supports(agent: selectedPane.agent) else { return false }
-                return timelineModes[key] ?? !UserDefaults.standard.bool(forKey: TimelineSetupPreference.key(scope: connectionScope))
-            },
-            set: { timelineModes[key] = !appModel.isCoreMode && TimelineAgentAvailability.supports(agent: selectedPane.agent) && $0 }
-        )
+    private enum ModeSelection {
+        case initial
+        case temporary(Bool)
+        case pendingTimeline(AgentSessionViewPreference, ConnectionGeneration?)
+        case remembered(AgentSessionViewPreference)
+    }
+
+    private var deferUnavailableSetup: Bool {
+        guard case .initial = modeSelection, let scope = appModel.paneConnectionIdentity else { return false }
+        return UserDefaults.standard.bool(forKey: TimelineSetupPreference.key(scope: scope))
+    }
+
+    private var showsTimeline: Bool {
+        guard supportsTimelineToggle else { return false }
+        guard displayedTimeline?.pane == sessionIdentity else { return true }
+        switch modeSelection {
+        case .initial: return true
+        case .temporary(let value): return value
+        case .pendingTimeline: return true
+        case .remembered(let session): return AgentSessionViewPreferences.shared[session] ?? true
+        }
+    }
+
+    private var canVerifySession: Bool {
+        scenePhase == .active && appModel.isSceneActive && appModel.isReadyForTerminalInput
+    }
+
+    private var verifiedSession: AgentSessionViewPreference? {
+        guard showsTimeline, canVerifySession,
+              let scope = appModel.paneConnectionIdentity, let displayedTimeline,
+              displayedTimeline.pane == sessionIdentity else { return nil }
+        let timeline = displayedTimeline.state
+        let connection = AgentTimelineConnectionState(phase: appModel.phase, generation: appModel.ownership.transportGeneration)
+        guard timeline.hasSnapshot(for: connection, paneId: selectedPaneID, agent: selectedPane.agent),
+              let identity = timeline.verifiedViewIdentity else { return nil }
+        return AgentSessionViewPreference(scope: scope, identity: identity)
+    }
+
+    private func chooseTimeline(_ value: Bool) {
+        guard supportsTimelineToggle else { return }
+        if let session = verifiedSession {
+            AgentSessionViewPreferences.shared[session] = value
+            modeSelection = .remembered(session)
+        } else if value, case let .remembered(expected) = modeSelection,
+                  displayedTimeline?.pane == sessionIdentity, canVerifySession {
+            modeSelection = .pendingTimeline(expected, appModel.ownership.transportGeneration)
+        } else if !value, case let .pendingTimeline(expected, generation) = modeSelection,
+                  displayedTimeline?.pane == sessionIdentity, canVerifySession,
+                  generation == appModel.ownership.transportGeneration,
+                  AgentSessionViewPreferences.shared[expected] == false {
+            modeSelection = .remembered(expected)
+        } else {
+            modeSelection = .temporary(value)
+        }
+    }
+
+    private func discardPendingTimeline() {
+        if case .pendingTimeline = modeSelection { modeSelection = .initial }
     }
 
     private var selectedPaneSession: some View {
         PaneSessionView(
             pane: selectedPane,
             connectionScope: connectionScope,
-            showsTimeline: timelineMode,
+            showsTimeline: Binding(get: { showsTimeline }, set: { modeSelection = .temporary($0) }),
+            deferUnavailableSetup: deferUnavailableSetup,
+            onUseTerminal: { chooseTimeline(false) },
+            onTimelineAppear: { state in
+                if displayedTimeline?.state !== state {
+                    displayedTimeline = (sessionIdentity, state)
+                    modeSelection = .initial
+                }
+            },
             bridgeUpgrade: bridgeUpgrade,
             topOutputInset: paneSwitcherHeight,
             showLiveDiagnostics: $showLiveDiagnostics,
@@ -207,14 +266,14 @@ struct PaneDetailView: View {
 
     private var timelineToggleButton: some View {
             Button {
-                timelineMode.wrappedValue.toggle()
+                chooseTimeline(!showsTimeline)
             } label: {
-                Image(systemName: timelineMode.wrappedValue ? "terminal" : "bubble.left")
+                Image(systemName: showsTimeline ? "terminal" : "bubble.left")
                     .font(.jost(16, weight: .medium))
                     .foregroundStyle(.primary)
             }
-            .accessibilityLabel(timelineMode.wrappedValue ? "Terminal" : "Timeline")
-            .accessibilityIdentifier(timelineMode.wrappedValue ? "timeline-open-terminal" : "terminal-open-timeline")
+            .accessibilityLabel(showsTimeline ? "Terminal" : "Timeline")
+            .accessibilityIdentifier(showsTimeline ? "timeline-open-terminal" : "terminal-open-timeline")
     }
 
     private var paneOptionsMenu: some View {
@@ -238,7 +297,7 @@ struct PaneDetailView: View {
                 .accessibilityIdentifier("pane-slot-close")
                 Divider()
             }
-            if timelineMode.wrappedValue, let version = bridgeUpgrade.bridgeVersion, HostHelperProbe.isOlderThanPinned(version) {
+            if showsTimeline, let version = bridgeUpgrade.bridgeVersion, HostHelperProbe.isOlderThanPinned(version) {
                 Button {
                     bridgeUpgrade.requestUpgrade()
                 } label: {
@@ -429,7 +488,9 @@ struct PaneDetailView: View {
         .toolbarBackground(Theme.background, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(colorScheme, for: .navigationBar)
+        .onChange(of: selectedPane.agent) { modeSelection = .initial }
         .onChange(of: selectedPaneID) { _, selected in
+            discardPendingTimeline()
             bridgeUpgrade.bridgeVersion = nil
             openPaneMemory?.remember(selected)
         }
@@ -439,6 +500,7 @@ struct PaneDetailView: View {
         // Pushed panes hide the tab bar; in the detail column it stays so tabs can still switch.
         .toolbar(showsPaneBackButton ? .hidden : .automatic, for: .tabBar)
         .onDisappear {
+            discardPendingTimeline()
             #if DEBUG
             showLiveDiagnostics = false
             PaneLiveInputMetrics.shared.setEnabled(false)
@@ -519,6 +581,20 @@ struct PaneDetailView: View {
             .presentationDetents([.height(340)])
             .presentationDragIndicator(.visible)
             .presentationCornerRadius(20)
+        }
+        .onChange(of: canVerifySession) { _, ready in
+            if !ready { discardPendingTimeline() }
+        }
+        .onChange(of: verifiedSession) { previous, current in
+            if let current {
+                if case let .pendingTimeline(expected, generation) = modeSelection,
+                   expected == current, generation == appModel.ownership.transportGeneration {
+                    AgentSessionViewPreferences.shared[current] = true
+                }
+                modeSelection = .remembered(current)
+            } else if showsTimeline, previous != nil {
+                modeSelection = .initial
+            }
         }
         .task(id: pane.workspaceId) {
             await refreshWorkspace()

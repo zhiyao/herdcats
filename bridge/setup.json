@@ -57,13 +57,13 @@
   "onboarding": {
     "status": "0.5.0 published and pinned; minimum compatible version 0.5.0",
     "app_flow": [
-      "For a supported agent, missing helper automatically opens near-full-screen Timeline benefits and host-helper setup guidance",
-      "Dismiss or Use Terminal for now selects Terminal and remembers the SSH-host choice",
+      "For a supported agent, a missing helper opens Timeline setup guidance unless setup was previously deferred for this connection",
+      "Dismissing setup or choosing Use Terminal for now defers setup for this connection. On subsequent opens, Herdcats falls back to Terminal if the helper is still missing or needs an upgrade",
       "Timeline toolbar icon retries and reopens guidance while helper is missing",
       "Display SSH host/user/port and ~/.local/bin/herdcats-bridge before an explicit Install action",
       "Probe existing helper, then install pinned release with progress; a managed older copy upgrades in one tap from the Upgrade drawer, while an unmanaged copy elsewhere still needs explicit confirmation and is left unchanged",
       "After uncertain installation, check existing helper before allowing a retry; retain Manual setup copy instructions",
-      "Check again remains in guidance when unavailable; verified native Timeline closes the sheet and restores its default"
+      "Check again keeps setup guidance open while the helper is unavailable. A verified native Timeline closes the sheet and clears the setup deferral"
     ],
     "command": "curl -fsSL https://github.com/zhiyao/herdcats/releases/download/herdcats-bridge-v0.5.0/install.sh | sh -s -- --version 0.5.0",
     "user_dependencies": [

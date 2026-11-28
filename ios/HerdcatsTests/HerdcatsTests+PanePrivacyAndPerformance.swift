@@ -29,6 +29,27 @@ struct PaneContentPrivacyTests {
         #expect(core.scopedToSession("project") == core)
     }
 
+    @Test(arguments: ["claude", "pi", "codex", "cursor", "antigravity_cli"])
+    func rememberedModesFollowNativeSessionAcrossPanesAndRestarts(agent: String) throws {
+        let suite = "AgentSessionViewPreferenceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let scope = ConnectionIdentity(host: "studio-mac", port: 22, username: "demo")
+        func key(_ pane: String, _ session: String) throws -> AgentSessionViewPreference {
+            let identity = AgentTimelineIdentity(paneId: pane, terminalId: "terminal-\(pane)", agent: agent, nativeSessionId: session)
+            return try #require(AgentSessionViewPreference(scope: scope, identity: identity))
+        }
+        let store = AgentSessionViewPreferences(defaults: defaults)
+        let original = try key("p0", "session-a")
+        let replacement = try key("p0", "session-b")
+        store[original] = false
+        #expect(store[replacement] == nil)
+        store[replacement] = true
+        let restored = AgentSessionViewPreferences(defaults: defaults)
+        #expect(restored[try key("p1", "session-a")] == false)
+        #expect(restored[replacement] == true)
+    }
+
     func withStore(_ body: (UserDefaults, PaneContentPersistence) -> Void) {
         let suite = "PaneContentPrivacyTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

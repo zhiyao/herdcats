@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 /// Stable identity for one runtime at a remote SSH endpoint.
 ///
@@ -92,5 +93,34 @@ enum PanePersistenceKeys {
 enum TimelineSetupPreference {
     static func key(scope: ConnectionIdentity) -> String {
         "timeline-setup-deferred.\(scope.storageKey)"
+    }
+}
+
+struct AgentSessionViewPreference: Hashable {
+    let storageKey: String
+
+    init?(scope: ConnectionIdentity, identity: AgentTimelineIdentity) {
+        guard !identity.nativeSessionId.isEmpty else { return nil }
+        storageKey = "\(scope.storageKey)|a=\(identity.agent)|id=\(ConnectionIdentity.encodeComponent(identity.nativeSessionId))"
+    }
+}
+
+@MainActor @Observable final class AgentSessionViewPreferences {
+    static let shared = AgentSessionViewPreferences()
+    private let defaults: UserDefaults
+    private static let key = "verified-agent-session-view-modes"
+    private var modes: [String: Bool]
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        modes = defaults.dictionary(forKey: Self.key) as? [String: Bool] ?? [:]
+    }
+
+    subscript(session: AgentSessionViewPreference) -> Bool? {
+        get { modes[session.storageKey] }
+        set {
+            modes[session.storageKey] = newValue
+            defaults.set(modes, forKey: Self.key)
+        }
     }
 }

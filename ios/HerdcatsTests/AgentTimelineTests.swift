@@ -352,16 +352,18 @@ struct AgentBridgeFramingTests {
         #expect(!s.delayed)
         #expect(s.entries.map(\.text) == ["msg1", "msg2"])
     }
-    @Test func exhaustedPiHistorySurvivesTransportDelayAndRecovery() throws {
+    @Test(arguments: ["claude", "codex", "pi"])
+    func verifiedSessionAndExhaustedHistorySurviveTranscriptDelay(agent: String) throws {
         let s = store()
-        try s.consume(frame("timeline.snapshot", entries: ["tail"], hasMore: true, agent: "pi"), owner: owner)
-        let page = try #require(frame("timeline.snapshot", entries: ["root"], agent: "pi").data)
+        try s.consume(frame("timeline.snapshot", entries: ["tail"], hasMore: true, agent: agent), owner: owner)
+        let page = try #require(frame("timeline.snapshot", entries: ["root"], agent: agent).data)
         try s.mergeHistory(page, owner: owner, generation: 1)
         let identity = try #require(s.identity)
 
-        var outage = try frame("timeline.updated", seq: 2, entries: [], agent: "pi")
+        var outage = try frame("timeline.updated", seq: 2, entries: [], agent: agent)
         outage.data?.delayed = true
         try s.consume(outage, owner: owner)
+        #expect(s.verifiedViewIdentity == identity)
         #expect(s.delayed)
         #expect(s.phase == .ready)
         #expect(!s.hasMore)
@@ -369,20 +371,24 @@ struct AgentBridgeFramingTests {
         #expect(s.visibleEntries.map(\.text) == ["root", "tail"])
 
         var recovery = try frame("timeline.updated", seq: 3, entries: ["reply"], hasMore: true,
-                                 entryOrder: ["tail", "reply"], agent: "pi")
+                                 entryOrder: ["tail", "reply"], agent: agent)
         recovery.data?.delayed = false
         try s.consume(recovery, owner: owner)
         #expect(!s.delayed)
         #expect(s.generation == 1)
-        #expect(s.identity == identity)
+        #expect(s.verifiedViewIdentity == identity)
         #expect(!s.hasMore)
         #expect(s.before == "message:root")
         #expect(s.visibleEntries.map(\.text) == ["root", "tail", "reply"])
 
         try s.consume(frame("timeline.updated", seq: 4, entries: ["earlier"], hasMore: true,
-                            entryOrder: ["earlier", "root"], agent: "pi"), owner: owner)
+                            entryOrder: ["earlier", "root"], agent: agent), owner: owner)
         #expect(s.hasMore)
         #expect(s.before == "message:earlier")
+        s.markContextCleared(for: identity, reset: .wholeSession, loadedIds: s.loadedEntryIds)
+        #expect(s.verifiedViewIdentity == nil)
+        s.retire(owner: owner)
+        #expect(s.verifiedViewIdentity == nil)
     }
 }
 
